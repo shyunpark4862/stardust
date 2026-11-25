@@ -34,7 +34,7 @@
 
 - 관례(2026-11-25, 1권 1장에서 정함): 자연수 ℕ은 0을 포함한다. 장 끝에는 번호 없는 Notes 절(문헌 안내와 출처)을 두고 그 뒤에 참고문헌을 둔다. 아직 없는 장은 "Chapter 3", "Volume 4"처럼 적고 그 장이 생기면 \\cref로 바꾼다.
 
-- 본문 안 수식(inline, `$...$`)의 분수는 가급적 `\frac`이 아니라 사선 `/`로 쓴다(2026-11-26 사용자 지시): `$a/b$`, `$(x+1)/(x-1)$`, `$1/2$`. `\frac`은 별행 수식(display)에서 쓴다. 지수·첨자 안의 분수도 사선으로. 괄호를 빠뜨려 뜻이 바뀌지 않게 한다.
+- 본문 안 수식(inline, `$...$`)의 분수는 가급적 `\frac`이 아니라 사선 `/`로 쓴다(2026-11-26 사용자 지시): `$a/b$`, `$(x+1)/(x-1)$`, `$1/2$`. `\frac`은 별행 수식(display)에서 쓴다. 수 분수가 인수 앞에 오는 `$(1/2)x$` 꼴은 `$x/2$`, `$(a+b)/2$`처럼 순서를 바꿔 쓴다(2026-11-26). 지수·첨자 안의 분수도 사선으로. 괄호를 빠뜨려 뜻이 바뀌지 않게 한다.
 - 행렬(성분을 늘어놓은 꼴: pmatrix, bmatrix, 열벡터 등)은 가급적 본문 안이 아니라 별행 수식으로 쓴다(2026-11-26 사용자 지시). 문장 속에서는 이름(A, x)이나 행 꼴 (x₁, …, xₙ)로 가리킨다. 줄 간격을 벌리는 것(큰 연산자의 위아래 첨자, 여러 층 분수 등)도 같은 원칙으로 별행에 둔다.
 - 벡터·행렬 표기(2026-11-26, 1권 10장에서 정함; 책 전체 공통, 자세한 것은 vol1.tex의 Notation): 벡터는 굵은 직립 소문자(열벡터), 벡터 값 함수도 굵게, 행렬은 대문자 이탤릭, 전치 A^T(\mathsf T), 내적 ⟨x,y⟩, ‖x‖은 Euclid 노름(다른 노름과 섞이면 ‖·‖₂), 행렬 노름 ‖A‖₂·‖A‖_F, 도함수 Df(a)(m×n Jacobian), 기울기 ∇f는 열벡터, Hessian ∇²f, 구면 좌표는 ISO 80000-2(θ가 극각).
 
@@ -57,7 +57,7 @@
 
 ## 7. 디자인 (2026-11-25 확정, 구현은 sdbook-eng.cls)
 - 바탕: Springer SNmono 그대로(판형, 장·절 머리, 정리 꼴, 10/12pt Times). pdfLaTeX.
-- 정리 환경: theorem, lemma, proposition, corollary, definition, assumption. remark, example, 코드 목록(listing)은 쓰지 않는다. 환경을 흉내 낸 머리말도 쓰지 않는다(2026-11-26 사용자 지적): 문단 첫머리에 이탤릭·굵은 "Examples.", "Example.", "Remark.", "Note." 같은 꼬리표를 달지 말고 그냥 문장으로 잇는다(예: "The following computations show the definition at work.").
+- 정리 환경: theorem, lemma, proposition, corollary, definition, assumption. remark, example, 코드 목록(listing)은 쓰지 않는다. 환경을 흉내 낸 머리말도 쓰지 않는다(2026-11-26 사용자 지적): 문단 첫머리에 이탤릭·굵은 "Examples.", "Example.", "Remark.", "Note." 같은 꼬리표를 달지 말고 그냥 문장으로 잇는다(주제 이름을 단 이탤릭 머리말 "Cards.", "Polar coordinates."는 괜찮다)(예: "The following computations show the definition at work.").
 - 그래프: Nature 계열 꼴을 세리프로(왼쪽·아래 축만, 짧은 바깥 눈금, 격자 없음, 범례 테두리 없음, 범례는 그림 안). 패널 그림이라고 글자를 줄이지 않는다. 축은 칠과 곡선 위에 그린다(`axis on top`; 칠이 축 선을 덮으면 안 된다).
 - 캡션: "Figure", "Table". 그림·표는 `\sdfloat`로 폭에 따라 아래 또는 오른쪽. 패널은 `\sdpanel`, 캡션 하나에 (A) … (B) ….
 - 의사코드: 위 선, Input/Output, 가는 선, 작은 대문자 함수 이름(`\Name`), 번호 줄(작은 행 번호, 들여쓰기 안내선, end 줄 없음), 아래 선, 번호와 설명은 아래 캡션, 주석은 `//` 뒤 tt체.

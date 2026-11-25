@@ -71,6 +71,7 @@ This list collects the symbols that are used in several chapters, and the conven
 \item[$\int_a^bf$, $\int_a^bf(x)\,dx$] the integral of $f$ over $[a,b]$; $\int_b^af=-\int_a^bf$
 \item[$\Lambda(x)$] the function $\int_1^x dt/t$ ($x>0$) of \cref{ch:integration,ch:series}, which \cref{ch:transcendental} identifies with $\ln x$
 \item[$\Gamma(s)$] the gamma function $\int_0^\infty t^{s-1}e^{-t}\,dt$, $s>0$
+\item[$\mathrm B(a,b)$] the beta function $\Gamma(a)\Gamma(b)/\Gamma(a+b)$ (upright, unlike the ball $B(\mathbf a,r)$)
 \item[$f=O(g)$, $f=o(g)$] $|f|\le C|g|$ near the limit point; $|f|\le\varepsilon|g|$ near it for every $\varepsilon>0$ (the limit point is stated or clear from the context)
 \item[$f=\Omega(g)$, $f=\Theta(g)$] $|f|\ge c|g|$ with $c>0$ near the limit point; both $f=O(g)$ and $f=\Omega(g)$
 \item[$f\sim g$] $f$ is asymptotically equal to $g$: $f-g=o(g)$
@@ -105,6 +106,7 @@ This list collects the symbols that are used in several chapters, and the conven
 \item[$\nabla^2f(\mathbf a)$] the Hessian matrix $(\partial_i\partial_jf(\mathbf a))$
 \item[$D_{\mathbf v}f(\mathbf a)$] the directional derivative of $f$ at $\mathbf a$ in the direction $\mathbf v$
 \item[$|\alpha|$, $\alpha!$, $\mathbf h^\alpha$, $\partial^\alpha f$] for a multi-index $\alpha\in\mathbb N^n$: $\sum\alpha_i$, $\prod\alpha_i!$, $\prod h_i^{\alpha_i}$, $\partial_1^{\alpha_1}\cdots\partial_n^{\alpha_n}f$
+\item[$\int_Sf(\mathbf x)\,d\mathbf x$, $\operatorname{vol}(S)$] the integral of $f$ over $S\subseteq\mathbb R^n$ ($\iint_Sf\,dA$ for $n=2$); the volume of $S$
 \item[$(r,\theta,\varphi)$] spherical coordinates (ISO 80000-2): $\theta\in[0,\pi]$ is the polar angle from the positive $z$-axis, $\varphi$ the azimuth; $(x,y,z)=(r\sin\theta\cos\varphi,r\sin\theta\sin\varphi,r\cos\theta)$
 \end{symbols}
 
@@ -122,6 +124,7 @@ This list collects the symbols that are used in several chapters, and the conven
 \input{chapters/v1-08-series-approximation}
 \input{chapters/v1-09-transcendental-functions}
 \input{chapters/v1-10-several-variables-differential}
+\input{chapters/v1-11-several-variables-integral}
 
 \backmatter
 \end{document}

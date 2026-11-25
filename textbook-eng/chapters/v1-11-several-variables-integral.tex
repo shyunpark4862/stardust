@@ -1,0 +1,1677 @@
+%% Volume I, Chapter 11: Integral Calculus in Several Variables
+\chapter{Integral Calculus in Several Variables}
+\label{ch:multiple-integrals}
+
+\abstract{A probability is the integral of a density, and as soon as a random quantity has several components, the integral has several variables. The normal distribution owes its constant $\sqrt{2\pi}$ to a double integral, and every change of variables in a statistical computation brings in a Jacobian determinant, because a smooth map stretches small volumes by exactly that factor. This chapter builds the integral of a function of several variables from boxes, as the Riemann integral was built from intervals, and shows how to compute it one variable at a time. It evaluates the Gaussian integral, measures balls in many dimensions, and ends with the observation that grids fail in high dimensions, which is why random points are used instead.}
+
+\Cref{ch:integration} defined the integral of a function of one variable as the common limit of lower and upper sums, the total areas of thin rectangles below and above its graph. This chapter does the same for functions of several variables. The integral of a function $f(x,y)\ge0$ over a rectangle in the plane is to be the volume of the solid between the rectangle and the graph of $f$, and it is approximated from below and from above by the total volumes of thin columns with rectangular bases. The definitions, the criterion for integrability and the integrability of continuous functions carry over from one variable with hardly a change, and we shall not repeat proofs that are word for word the same. What is genuinely new comes from the geometry of $\mathbb R^n$. A region of the plane can have a complicated shape, and we must say which regions have an area. An integral in several variables is computed by integrating in one variable at a time, and Fubini's theorem says when this is legitimate. And the substitution rule of one variable becomes the change of variables formula, in which the Jacobian determinant of \cref{ch:several-variables} measures how a map stretches volumes.
+
+The results of the chapter are used throughout the later volumes. Probability densities of several variables are integrated over regions of $\mathbb R^n$ (Volume~III); the normal distribution in $n$ dimensions is normalised by the Gaussian integral of \cref{sec:gaussian}; the gamma and beta functions of \cref{sec:improper-multiple,sec:parameter-integrals} are among the special functions of Volume~X; and numerical integration in several variables, of which \cref{sec:cubature} gives a first look, is part of Volume~XI.
+
+The chapter is organised as follows. \Cref{sec:double-rectangles} defines the double integral over a rectangle by upper and lower sums and proves that continuous functions are integrable. \Cref{sec:fubini} proves Fubini's theorem, which computes a double integral as two single integrals, shows by an example that the order of integration can matter when the hypotheses fail, and proves the rule for differentiating under the integral sign. \Cref{sec:general-regions} introduces sets of content zero and regions with an area, and integrates over regions bounded by graphs. \Cref{sec:multiple} extends everything to $n$ variables, justifies Cavalieri's principle and the volume of solids of revolution, and computes the volume of a simplex. \Cref{sec:change-variables} proves that a linear map multiplies volumes by the absolute value of its determinant, states the change of variables formula, and applies it to polar, cylindrical and spherical coordinates. \Cref{sec:gaussian} evaluates the Gaussian integral $\int_{-\infty}^\infty e^{-x^2}dx=\sqrt\pi$ and the volume of the ball in $\mathbb R^n$. \Cref{sec:improper-multiple} defines improper integrals in several variables and proves the relation between the beta and gamma functions, \cref{sec:parameter-integrals} studies integrals that depend on a parameter and computes $\int_0^\infty(\sin x/x)\,dx=\pi/2$, and \cref{sec:cubature} closes with product rules, the curse of dimensionality and the idea of Monte Carlo integration. Line and surface integrals are the subject of Chapter~12; the Lebesgue integral, which removes the restrictions of Riemann's integral in several variables even more decisively than in one, is the subject of Volume~II. As in the preceding chapters this is a review: every result is stated precisely, and the important ones are proved.
+
+\section{Double Integrals over Rectangles}
+\label{sec:double-rectangles}
+
+\subsection{Volume under a Surface}
+
+Let $f$ be a function of two variables that is nonnegative on the rectangle $R=[a,b]\times[c,d]$. Its graph $z=f(x,y)$ is a surface over $R$, and we ask for the volume of the solid between $R$ and the surface. As in \cref{sec:area}, the question includes the problem of saying what this volume is. The answer follows the pattern of \cref{ch:integration}. Cut $R$ into small rectangles by lines parallel to the axes, and erect over each small rectangle a column whose height is the smallest value of $f$ on it; these columns lie inside the solid. Columns whose heights are the largest values contain the part of the solid above each small rectangle. The volume, whatever it is, lies between the total volumes of the two families of columns, and if the two totals approach a common value as the rectangles become small, that value is the volume (\cref{fig:double-riemann}).
+
+The function $f(x,y)=x^2+y^2$ on the unit square $[0,1]^2$ shows the method at work. Divide each side into $n$ intervals of length $1/n$, which cuts the square into $n^2$ small squares of area $1/n^2$. On the small square $[(j-1)/n,j/n]\times[(k-1)/n,k/n]$ the function increases in both variables, so its smallest value is taken at the lower left corner and its largest at the upper right corner. The sums of the volumes of the inner and the outer columns are therefore
+\[
+\sum_{j=1}^n\sum_{k=1}^n\frac{(j-1)^2+(k-1)^2}{n^2}\cdot\frac1{n^2}\qquad\text{and}\qquad\sum_{j=1}^n\sum_{k=1}^n\frac{j^2+k^2}{n^2}\cdot\frac1{n^2}.
+\]
+In the second sum, the terms $j^2$ do not depend on $k$, so the double sum of $j^2$ is $n\sum_jj^2$, and the same holds for the terms $k^2$. With the notation $L_n$ and $U_n$ of \cref{sec:area}, the two sums are $2L_n$ and $2U_n$:
+\[
+\frac2{n^4}\cdot n\sum_{k=1}^{n}k^2=2\cdot\frac{n(n+1)(2n+1)}{6n^3}=2U_n ,
+\]
+and similarly for the inner columns. Both tend to $2/3$, and their difference is $2/n$. So the solid under the paraboloid $z=x^2+y^2$ over the unit square has volume $2/3$, if it has a volume at all. The computation was easy because the double sum fell apart into single sums; \cref{sec:fubini} shows that this is no accident.
+
+\subsection{Partitions and Sums}
+
+From now on, a \term{rectangle} is a closed rectangle $R=[a,b]\times[c,d]$ with sides parallel to the axes, $a<b$ and $c<d$, and its area is $\operatorname{vol}(R)\coloneqq(b-a)(d-c)$. We write $\operatorname{vol}$ for areas because the same notation will serve for volumes in every dimension.
+
+\begin{definition}[Partition of a rectangle]
+\label{def:rectangle-partition}
+A \term{partition} of the rectangle $R=[a,b]\times[c,d]$ is a pair $P=(P_1,P_2)$ of a partition $P_1=\{x_0,\ldots,x_m\}$ of $[a,b]$ and a partition $P_2=\{y_0,\ldots,y_n\}$ of $[c,d]$ (\cref{def:interval-partition}). Its \term{subrectangles} are
+\[
+R_{jk}\coloneqq[x_{j-1},x_j]\times[y_{k-1},y_k]\qquad(1\le j\le m,\ 1\le k\le n),
+\]
+of areas $\operatorname{vol}(R_{jk})=\Delta x_j\,\Delta y_k$, and its \term{mesh} is $\|P\|\coloneqq\max(\|P_1\|,\|P_2\|)$. A partition $Q=(Q_1,Q_2)$ is a \term{refinement} of $P$ if $P_1\subseteq Q_1$ and $P_2\subseteq Q_2$.
+\end{definition}
+
+The lines $x=x_j$ and $y=y_k$ cut $R$ into the $mn$ subrectangles, which overlap only along their edges, and their areas add up to $\operatorname{vol}(R)$, since $\sum_j\sum_k\Delta x_j\Delta y_k=(\sum_j\Delta x_j)(\sum_k\Delta y_k)=(b-a)(d-c)$. Any two partitions $P$ and $P'$ have the \term{common refinement} $(P_1\cup P_1',P_2\cup P_2')$. A subrectangle of a partition with mesh $\|P\|$ has sides of length at most $\|P\|$, so any two of its points are at distance at most $\sqrt2\,\|P\|$.
+
+\begin{definition}[Double integral]
+\label{def:double-integral}
+Let $f\colon R\to\mathbb R$ be bounded, and let $P$ be a partition of $R$. With
+\[
+m_{jk}\coloneqq\inf_{R_{jk}}f,\qquad M_{jk}\coloneqq\sup_{R_{jk}}f ,
+\]
+the \term{lower sum} and the \term{upper sum} of $f$ with respect to $P$ are
+\[
+L(f,P)\coloneqq\sum_{j=1}^m\sum_{k=1}^nm_{jk}\operatorname{vol}(R_{jk}),\qquad U(f,P)\coloneqq\sum_{j=1}^m\sum_{k=1}^nM_{jk}\operatorname{vol}(R_{jk}).
+\]
+The \term{lower integral} and the \term{upper integral} of $f$ over $R$ are the supremum of all lower sums and the infimum of all upper sums. The function $f$ is \term{integrable} on $R$ if they are equal, and their common value is the \term{double integral} of $f$ over $R$, written
+\[
+\iint_Rf\qquad\text{or}\qquad\iint_Rf\,dA\qquad\text{or}\qquad\iint_Rf(x,y)\,dA .
+\]
+\end{definition}
+
+The letter $A$ in $dA$ stands for area; like $dx$ in a single integral, the symbol $dA$ has no meaning by itself and only marks the integral as one over a region of the plane. Other common notations are $\iint_Rf(x,y)\,d(x,y)$ and $\iint_Rf(x,y)\,dx\,dy$. We avoid the last one for the double integral, because we shall need a notation for integrating first in one variable and then in the other, and \cref{sec:fubini} reserves expressions such as $\int_a^b\int_c^df(x,y)\,dy\,dx$ for that purpose. Before Fubini's theorem it is not obvious that the two notions agree.
+
+The basic facts of \cref{sec:riemann} carry over with the same proofs, subrectangles taking the place of subintervals. Adding a point to $P_1$ splits each subrectangle of one column of $P$ into two, and on each part the infimum can only increase and the supremum only decrease; this gives the refinement lemma.
+
+\begin{lemma}[Refinement]
+\label{lem:refinement-2d}
+Let $f\colon R\to\mathbb R$ be bounded. If $Q$ is a refinement of $P$, then $L(f,P)\le L(f,Q)\le U(f,Q)\le U(f,P)$. Consequently $L(f,P)\le U(f,P')$ for any two partitions $P$ and $P'$, and the lower integral is at most the upper integral.
+\end{lemma}
+
+\begin{proof}
+It suffices to add a single point, say $x^*\in(x_{j-1},x_j)$ to $P_1$. Each of the subrectangles $R_{jk}$, $k=1,\ldots,n$, is replaced by two rectangles of areas $(x^*-x_{j-1})\Delta y_k$ and $(x_j-x^*)\Delta y_k$, whose infima are at least $m_{jk}$; so $L$ does not decrease, and likewise $U$ does not increase. For two partitions, $L(f,P)\le L(f,Q)\le U(f,Q)\le U(f,P')$ with the common refinement $Q$, exactly as in \cref{cor:lower-upper}.
+\end{proof}
+
+\begin{theorem}[Riemann's criterion in two variables]
+\label{thm:riemann-criterion-2d}
+A bounded function $f\colon R\to\mathbb R$ is integrable if and only if for every $\varepsilon>0$ there is a partition $P$ of $R$ with $U(f,P)-L(f,P)<\varepsilon$. If $(P_\nu)$ is a sequence of partitions with $U(f,P_\nu)-L(f,P_\nu)\to0$, then $f$ is integrable and $\iint_Rf=\lim_\nu L(f,P_\nu)=\lim_\nu U(f,P_\nu)$.
+\end{theorem}
+
+\begin{proof}
+The proofs of \cref{thm:riemann-criterion,cor:riemann-sequence} apply word for word, with \cref{lem:refinement-2d} in place of \cref{lem:refinement}.
+\end{proof}
+
+For the paraboloid $f(x,y)=x^2+y^2$ and the uniform partitions $P_n$ of the unit square, the computation above gave $U(f,P_n)-L(f,P_n)=2/n\to0$, so $f$ is integrable and $\iint_{[0,1]^2}(x^2+y^2)\,dA=\lim 2U_n=2/3$. A constant function $c$ has $\iint_Rc\,dA=c\operatorname{vol}(R)$, since all its lower and upper sums equal $c\operatorname{vol}(R)$.
+
+\begin{figure}
+\sdpanel{A}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.43\textwidth, height=0.52\textwidth, xmin=0, xmax=2.15, ymin=0, ymax=3.2,
+  xtick={0,0.6,1.1,1.5,2}, xticklabels={$a$,$x_1$,$x_2$,$x_3$,$b$}, ytick={0,0.8,2,3}, yticklabels={$c$,$y_1$,$y_2$,$d$},
+  xlabel={$x$}, ylabel={$y$}]
+\fill[sdfill] (axis cs:0.6,0.8) rectangle (axis cs:1.1,2.0);
+\pgfplotsinvokeforeach{0,0.6,1.1,1.5,2}{\draw[black!60, line width=0.4pt] (axis cs:#1,0) -- (axis cs:#1,3);}
+\pgfplotsinvokeforeach{0,0.8,2,3}{\draw[black!60, line width=0.4pt] (axis cs:0,#1) -- (axis cs:2,#1);}
+\fill[black] (axis cs:0.18,0.32) circle (1.3pt) (axis cs:0.42,1.16) circle (1.3pt) (axis cs:0.24,2.7) circle (1.3pt) (axis cs:0.9,0.4) circle (1.3pt) (axis cs:0.72,1.52) circle (1.3pt) (axis cs:0.85,2.35) circle (1.3pt) (axis cs:1.42,0.6) circle (1.3pt) (axis cs:1.24,1.1) circle (1.3pt) (axis cs:1.36,2.55) circle (1.3pt) (axis cs:1.73,0.64) circle (1.3pt) (axis cs:1.65,1.34) circle (1.3pt) (axis cs:1.85,2.7) circle (1.3pt);
+\node[font=\scriptsize, anchor=south] at (axis cs:0.85,1.58) {$R_{22}$};
+\end{axis}
+\end{tikzpicture}}\hfill
+\sdpanel{B}{\begin{tikzpicture}[x={(0.85cm,-0.33cm)}, y={(0.66cm,0.52cm)}, z={(0cm,1.3cm)}, font=\scriptsize]
+\def\barcol#1#2#3#4#5{%
+  \filldraw[fill=black!22, draw=black, line width=0.3pt] (#1,#3,0) -- (#2,#3,0) -- (#2,#3,#5) -- (#1,#3,#5) -- cycle;
+  \filldraw[fill=black!40, draw=black, line width=0.3pt] (#2,#3,0) -- (#2,#4,0) -- (#2,#4,#5) -- (#2,#3,#5) -- cycle;
+  \filldraw[fill=black!7, draw=black, line width=0.3pt] (#1,#3,#5) -- (#2,#3,#5) -- (#2,#4,#5) -- (#1,#4,#5) -- cycle;}
+\draw[line width=0.4pt, -{Latex[length=1.4mm]}] (0,3,0) -- (0,3,1.95) node[above] {$z$};
+\barcol{0}{0.6}{2.0}{3.0}{0.485}
+\barcol{0.6}{1.1}{2.0}{3.0}{0.840}
+\barcol{1.1}{1.5}{2.0}{3.0}{0.884}
+\barcol{1.5}{2.0}{2.0}{3.0}{0.879}
+\barcol{0}{0.6}{0.8}{2.0}{1.172}
+\barcol{0.6}{1.1}{0.8}{2.0}{1.206}
+\barcol{1.1}{1.5}{0.8}{2.0}{1.435}
+\barcol{1.5}{2.0}{0.8}{2.0}{1.447}
+\barcol{0}{0.6}{0}{0.8}{0.780}
+\barcol{0.6}{1.1}{0}{0.8}{1.131}
+\barcol{1.1}{1.5}{0}{0.8}{1.347}
+\barcol{1.5}{2.0}{0}{0.8}{1.385}
+\draw[line width=0.4pt, -{Latex[length=1.4mm]}] (2,0,0) -- (2.55,0,0) node[below] {$x$};
+\draw[line width=0.4pt, -{Latex[length=1.4mm]}] (2,3,0) -- (2,3.6,0) node[right] {$y$};
+\end{tikzpicture}}
+\caption{A Riemann sum of a function of two variables. (A) A partition of the rectangle $R=[a,b]\times[c,d]$ into twelve subrectangles of different sizes, with a tag $\boldsymbol\xi_{jk}$ (dot) in each; the subrectangle $R_{22}$ is shaded. (B) Over each subrectangle stands a column whose height is the value of $f(x,y)=0.45+0.6x-0.17x^2+0.4\sin(1.6y)+0.1y$ at the tag. The total volume of the columns is the Riemann sum $S(f,P,\boldsymbol\xi)\approx6.44$; the volume under the graph of $f$ is $\iint_Rf\approx6.30$.}
+\label{fig:double-riemann}
+\end{figure}
+
+\subsection{Riemann Sums}
+
+A \term{choice of tags} for a partition $P$ of $R$ is a family of points $\boldsymbol\xi_{jk}\in R_{jk}$, one in each subrectangle, and the corresponding \term{Riemann sum} is
+\[
+S(f,P,\boldsymbol\xi)\coloneqq\sum_{j=1}^m\sum_{k=1}^nf(\boldsymbol\xi_{jk})\operatorname{vol}(R_{jk}) .
+\]
+It is the total volume of columns whose heights are the values of $f$ at the tags (\cref{fig:double-riemann}), and it lies between $L(f,P)$ and $U(f,P)$.
+
+\begin{theorem}[Double integrals as limits of Riemann sums]
+\label{thm:riemann-sums-2d}
+Let $f\colon R\to\mathbb R$ be bounded and $I\in\mathbb R$. Then $f$ is integrable with $\iint_Rf=I$ if and only if for every $\varepsilon>0$ there is $\delta>0$ with $|S(f,P,\boldsymbol\xi)-I|<\varepsilon$ for every partition $P$ with $\|P\|<\delta$ and every choice $\boldsymbol\xi$ of tags.
+\end{theorem}
+
+\begin{proof}
+The proof of \cref{thm:riemann-sums} applies with one change, in the estimate of how much a refinement changes the sums. Let $|f|\le K$. Adding one point $x^*$ to $P_1$ changes only the terms of the subrectangles in one column, of total area $\Delta x_j(d-c)\le\|P\|(d-c)$, and each infimum changes by at most $2K$; so the lower sum increases by at most $2K\|P\|(d-c)$. Adding a point to $P_2$ changes it by at most $2K\|P\|(b-a)$. With $\ell\coloneqq\max(b-a,d-c)$, adding $r$ points in all to $P_1$ and $P_2$ therefore changes the lower and the upper sum by at most $2Kr\ell\|P\|$, which is the estimate of \cref{lem:refinement} with $\ell$ as an extra factor. The rest of the proof is unchanged.
+\end{proof}
+
+\subsection{Continuous Functions Are Integrable}
+
+The integrability of continuous functions on $[a,b]$ rested on their uniform continuity. In the plane, and in $\mathbb R^n$, the same holds on closed bounded sets, with the same proof.
+
+\begin{lemma}[Uniform continuity in $\mathbb R^n$]
+\label{lem:heine-cantor-rn}
+Let $K\subseteq\mathbb R^n$ be closed and bounded, and $f\colon K\to\mathbb R$ continuous. Then $f$ is uniformly continuous: for every $\varepsilon>0$ there is $\delta>0$ with $|f(\mathbf x)-f(\mathbf y)|<\varepsilon$ for all $\mathbf x,\mathbf y\in K$ with $\|\mathbf x-\mathbf y\|<\delta$.
+\end{lemma}
+
+\begin{proof}
+Suppose not. Then there are $\varepsilon>0$ and, for every $k\in\mathbb N$, points $\mathbf x_k,\mathbf y_k\in K$ with $\|\mathbf x_k-\mathbf y_k\|<1/(k+1)$ and $|f(\mathbf x_k)-f(\mathbf y_k)|\ge\varepsilon$. By the Bolzano--Weierstrass theorem in $\mathbb R^n$ (\cref{thm:bolzano-weierstrass-rn}) a subsequence $(\mathbf x_{k_i})$ converges to some $\mathbf c$, which lies in $K$ because $K$ is closed (\cref{prop:closed-sequences}); then $\mathbf y_{k_i}\to\mathbf c$ as well. By continuity at $\mathbf c$, $f(\mathbf x_{k_i})-f(\mathbf y_{k_i})\to f(\mathbf c)-f(\mathbf c)=0$, a contradiction. This is the proof of \cref{thm:heine-cantor} with norms in place of absolute values.
+\end{proof}
+
+\begin{theorem}[Continuous functions are integrable]
+\label{thm:continuous-integrable-2d}
+Every continuous function $f\colon R\to\mathbb R$ on a rectangle is integrable. More precisely, for every $\varepsilon>0$ there is $\delta>0$ with $U(f,P)-L(f,P)<\varepsilon$ whenever $\|P\|<\delta$. If $|f(\mathbf x)-f(\mathbf y)|\le K\|\mathbf x-\mathbf y\|$ for all $\mathbf x,\mathbf y\in R$, then
+\[
+U(f,P)-L(f,P)\le\sqrt2\,K\operatorname{vol}(R)\,\|P\|\qquad\text{for every partition }P .
+\]
+\end{theorem}
+
+\begin{proof}
+The rectangle is closed and bounded, so $f$ is bounded and attains its extreme values on each subrectangle, by the extreme value theorem (\cref{thm:evt-rn}), and it is uniformly continuous, by \cref{lem:heine-cantor-rn}. Given $\varepsilon>0$, choose $\delta>0$ such that $|f(\mathbf x)-f(\mathbf y)|<\varepsilon/\operatorname{vol}(R)$ whenever $\|\mathbf x-\mathbf y\|<\sqrt2\,\delta$. If $\|P\|<\delta$, any two points of a subrectangle are at distance less than $\sqrt2\,\delta$, so $M_{jk}-m_{jk}=f(\mathbf s)-f(\mathbf t)<\varepsilon/\operatorname{vol}(R)$ for the points $\mathbf s,\mathbf t$ at which the maximum and the minimum are attained. Hence
+\[
+U(f,P)-L(f,P)=\sum_{j,k}(M_{jk}-m_{jk})\operatorname{vol}(R_{jk})<\frac\varepsilon{\operatorname{vol}(R)}\sum_{j,k}\operatorname{vol}(R_{jk})=\varepsilon ,
+\]
+and $f$ is integrable by \cref{thm:riemann-criterion-2d}. In the Lipschitz case, $M_{jk}-m_{jk}\le K\|\mathbf s-\mathbf t\|\le\sqrt2\,K\|P\|$, and the same computation gives the bound.
+\end{proof}
+
+The rules for computing with integrals also carry over. We collect them; the proofs of \cref{sec:integrable-functions,sec:integral-properties} apply with subrectangles in place of subintervals, and the oscillation of $f$ on a subrectangle in place of that on a subinterval.
+
+\begin{theorem}[Properties of the double integral]
+\label{thm:double-properties}
+Let $f$ and $g$ be integrable on the rectangle $R$, and $\alpha,\beta\in\mathbb R$.
+\begin{enumerate}
+\item $\alpha f+\beta g$ is integrable, and $\iint_R(\alpha f+\beta g)=\alpha\iint_Rf+\beta\iint_Rg$.
+\item The functions $|f|$, $\max(f,g)$, $\min(f,g)$ and $fg$ are integrable, and so is $\varphi\circ f$ for every function $\varphi$ continuous on a closed bounded interval containing the values of $f$.
+\item If $f\le g$ on $R$, then $\iint_Rf\le\iint_Rg$. In particular $\bigl|\iint_Rf\bigr|\le\iint_R|f|\le\operatorname{vol}(R)\sup_R|f|$.
+\item If a line parallel to an axis cuts $R$ into two rectangles $R'$ and $R''$, then a bounded function is integrable on $R$ if and only if it is integrable on $R'$ and on $R''$, and then $\iint_Rf=\iint_{R'}f+\iint_{R''}f$.
+\end{enumerate}
+\end{theorem}
+
+For a continuous function $f\ge0$ we now \emph{define} the volume of the solid $\{(x,y,z): (x,y)\in R,\ 0\le z\le f(x,y)\}$ to be $\iint_Rf$. The argument at the beginning of this section shows that this is the only possible value if volume is to be monotone, additive and to give boxes their usual volume.
+
+\section{Iterated Integrals and Fubini's Theorem}
+\label{sec:fubini}
+
+\subsection{Integrating by Slices}
+
+The definition of the double integral gives no practical way of computing it, just as the definition of the single integral did not. In one variable the fundamental theorem of calculus came to the rescue; in two variables the rescue is to integrate in one variable at a time. Slice the solid under the graph of $f\ge0$ by the plane $x=t$, perpendicular to the $x$-axis. The slice is the region under the curve $y\mapsto f(t,y)$, $c\le y\le d$, and its area is
+\[
+A(t)\coloneqq\int_c^df(t,y)\,dy .
+\]
+Slices at the points $x_0<x_1<\cdots<x_m$ of a partition of $[a,b]$ cut the solid into thin slabs, and the slab between $x_{j-1}$ and $x_j$ has volume about $A(\xi_j)\,\Delta x_j$. Adding up, the volume is about $\sum_jA(\xi_j)\Delta x_j$, a Riemann sum of $A$, so one expects
+\[
+\iint_Rf=\int_a^bA(x)\,dx=\int_a^b\Bigl(\int_c^df(x,y)\,dy\Bigr)dx
+\]
+(\cref{fig:slicing}). An integral of this form is an \term{iterated integral}. We usually omit the parentheses and write $\int_a^b\int_c^df(x,y)\,dy\,dx$, with the understanding that the inner differential $dy$ belongs to the inner integral sign: one integrates first with respect to $y$, for fixed $x$, and then integrates the result with respect to $x$. Slicing by planes $y=t$ instead suggests that the double integral also equals $\int_c^d\int_a^bf(x,y)\,dx\,dy$. Fubini's theorem says that both expectations are correct under mild hypotheses.
+
+\begin{figure}
+\sdfloat{%
+\begin{tikzpicture}[x={(0.95cm,-0.4cm)}, y={(0.78cm,0.62cm)}, z={(0cm,1.15cm)}, font=\scriptsize]
+\draw[black!50, line width=0.4pt, dashed] (1.2,0,0) -- (2,0,0) -- (2,3,0) -- (1.2,3,0);
+\fill[black!10] (0,0,0) -- (1.2,0,0) -- plot[domain=1.2:0, samples=20, variable=\t] (\t,0,{1+0.25*\t-0.05*\t*\t}) -- cycle;
+\pgfplotsinvokeforeach{0,0.3,0.6,0.9}{\draw[black!55, line width=0.35pt, domain=0:3, samples=30, variable=\t] plot (#1,\t,{1+0.25*#1-0.05*#1*#1+0.3*sin(1.2*\t r)});}
+\pgfplotsinvokeforeach{0.5,1,1.5,2,2.5,3}{\draw[black!55, line width=0.35pt, domain=0:1.2, samples=20, variable=\t] plot (\t,#1,{1+0.25*\t-0.05*\t*\t+0.3*sin(1.2*#1 r)});}
+\filldraw[fill=black!32, draw=black, line width=0.6pt] (1.2,0,0) -- (1.2,3,0) -- plot[domain=3:0, samples=30, variable=\t] (1.2,\t,{1+0.25*1.2-0.05*1.44+0.3*sin(1.2*\t r)}) -- cycle;
+\draw[black, line width=0.6pt] (0,0,0) -- (1.2,0,0);
+\draw[black, line width=0.6pt, domain=0:1.2, samples=20, variable=\t] plot (\t,0,{1+0.25*\t-0.05*\t*\t});
+\draw[black, line width=0.6pt] (0,0,0) -- (0,0,1);
+\draw[black, line width=0.6pt, domain=0:3, samples=30, variable=\t] plot (0,\t,{1+0.3*sin(1.2*\t r)});
+\draw[line width=0.4pt, -{Latex[length=1.4mm]}] (2,0,0) -- (2.55,0,0) node[below] {$x$};
+\draw[line width=0.4pt, -{Latex[length=1.4mm]}] (2,3,0) -- (2,3.6,0) node[right] {$y$};
+\draw[line width=0.4pt, -{Latex[length=1.4mm]}] (0,0,1) -- (0,0,1.75) node[above] {$z$};
+\node at (1.2,1.5,0.55) {$A(t)$};
+\node[below] at (1.2,0,0) {$t$};
+\node[below left] at (0,0,0) {$a$};
+\node[below] at (2,0,0) {$b$};
+\end{tikzpicture}}{Integration by slices. The solid under the graph of $f$ over $R=[a,b]\times[c,d]$ is cut by the plane $x=t$; the part with $x\le t$ is drawn, and the rest of the base is dashed. The dark face is the slice at $x=t$, the region under the curve $y\mapsto f(t,y)$, of area $A(t)=\int_c^df(t,y)\,dy$. Fubini's theorem says that the volume of the solid is $\int_a^bA(t)\,dt$.\label{fig:slicing}}
+\end{figure}
+
+\subsection{Fubini's Theorem}
+
+We first make sure that the slice areas depend continuously on the position of the slice when $f$ is continuous.
+
+\begin{lemma}
+\label{lem:parameter-continuous}
+Let $f$ be continuous on $R=[a,b]\times[c,d]$. Then $F(x)\coloneqq\int_c^df(x,y)\,dy$ is continuous on $[a,b]$. More generally, if $f$ is continuous on $[a,b]\times J$ with $J\subseteq\mathbb R^k$ closed and bounded, then $\mathbf t\mapsto\int_a^bf(x,\mathbf t)\,dx$ is continuous on $J$.
+\end{lemma}
+
+\begin{proof}
+For each $x$ the function $y\mapsto f(x,y)$ is continuous, hence integrable, so $F$ is defined. Let $\varepsilon>0$. By \cref{lem:heine-cantor-rn} there is $\delta>0$ with $|f(x,y)-f(x',y')|<\varepsilon$ whenever $\|(x,y)-(x',y')\|<\delta$. If $|x-x'|<\delta$, then for every $y$ the points $(x,y)$ and $(x',y)$ are at distance less than $\delta$, and
+\[
+|F(x)-F(x')|\le\int_c^d|f(x,y)-f(x',y)|\,dy\le\varepsilon\,(d-c).
+\]
+The general statement is proved in the same way, with $\mathbf t$ in place of $x$.
+\end{proof}
+
+\begin{theorem}[Fubini's theorem]
+\label{thm:fubini}
+Let $f$ be integrable on the rectangle $R=[a,b]\times[c,d]$.
+\begin{enumerate}
+\item If for every $x\in[a,b]$ the function $y\mapsto f(x,y)$ is integrable on $[c,d]$, then $F(x)\coloneqq\int_c^df(x,y)\,dy$ is integrable on $[a,b]$, and
+\[
+\iint_Rf=\int_a^b\int_c^df(x,y)\,dy\,dx .
+\]
+\item Without this hypothesis, the same holds with $F(x)$ replaced by the lower integral, or by the upper integral, of $y\mapsto f(x,y)$ over $[c,d]$; both are integrable on $[a,b]$.
+\item The statements with the roles of $x$ and $y$ exchanged hold as well. In particular, if $f$ is continuous on $R$, then
+\[
+\iint_Rf=\int_a^b\int_c^df(x,y)\,dy\,dx=\int_c^d\int_a^bf(x,y)\,dx\,dy .
+\]
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+For each $x$ let $\underline F(x)$ and $\overline F(x)$ be the lower and the upper integral of $y\mapsto f(x,y)$ over $[c,d]$; under the hypothesis of (i), both equal $F(x)$. Let $P=(P_1,P_2)$ be a partition of $R$, with the subintervals $I_j$ of $P_1$ and $J_k$ of $P_2$. Fix $j$ and a point $x\in I_j$. For every $k$ and $y\in J_k$ we have $m_{jk}\le f(x,y)\le M_{jk}$, since $(x,y)\in R_{jk}$. Hence the lower and the upper sum of $y\mapsto f(x,y)$ for the partition $P_2$ lie between $\sum_km_{jk}\Delta y_k$ and $\sum_kM_{jk}\Delta y_k$, and so do the lower and the upper integral:
+\[
+\sum_{k=1}^nm_{jk}\Delta y_k\le\underline F(x)\le\overline F(x)\le\sum_{k=1}^nM_{jk}\Delta y_k\qquad(x\in I_j).
+\]
+The left side is therefore a lower bound of $\underline F$ on $I_j$, and the right side an upper bound of $\overline F$ on $I_j$. Multiplying by $\Delta x_j$ and adding over $j$ gives
+\[
+L(f,P)\le L(\underline F,P_1)\le U(\underline F,P_1)\le U(\overline F,P_1)\le U(f,P),
+\]
+and in the same way $L(f,P)\le L(\overline F,P_1)\le U(\overline F,P_1)\le U(f,P)$. Since $f$ is integrable, \cref{thm:riemann-criterion-2d} provides, for every $\varepsilon>0$, a partition $P$ with $U(f,P)-L(f,P)<\varepsilon$, and then $U(\underline F,P_1)-L(\underline F,P_1)<\varepsilon$. So $\underline F$ is integrable by Riemann's criterion, and its integral lies between $L(f,P)$ and $U(f,P)$ for every $P$, as does $\iint_Rf$; hence the two are equal. The same holds for $\overline F$. This proves (i) and (ii). The argument is symmetric in $x$ and $y$, and a continuous function is integrable on $R$ by \cref{thm:continuous-integrable-2d}, with continuous, hence integrable, sections. This proves (iii).
+\end{proof}
+
+The theorem is named after Guido Fubini, who proved a general version for the Lebesgue integral in 1907~\cite{fubini1907}. For continuous functions the interchange of the order of integration had been used freely since the eighteenth century, and Cauchy observed in a memoir of 1814 that it can fail for integrands that are not bounded; Hawkins tells this history~\cite{hawkins1975}. Part~(ii) is needed only rarely, but it shows that the hypothesis on the sections in (i) is a convenience, not a restriction: an integrable function can have finitely many sections that are not integrable, and the theorem copes with them.
+
+The theorem reduces double integrals to single integrals, which the fundamental theorem of calculus evaluates. For $f(x,y)=x^2+xy$ on $R=[0,1]\times[0,2]$,
+\[
+\int_0^1\int_0^2(x^2+xy)\,dy\,dx=\int_0^1\Bigl[x^2y+\frac{xy^2}2\Bigr]_{y=0}^{y=2}dx=\int_0^1(2x^2+2x)\,dx=\frac23+1=\frac53 ,
+\]
+and in the other order
+\[
+\int_0^2\int_0^1(x^2+xy)\,dx\,dy=\int_0^2\Bigl(\frac13+\frac y2\Bigr)dy=\frac23+1=\frac53 .
+\]
+In the inner integral the other variable is a constant, which we indicate by writing $y=0$ and $y=2$ for the limits where confusion is possible. The order can make a great difference to the labour. For $f(x,y)=xe^{xy}$ on $[0,1]^2$, integrating first with respect to $y$ is immediate,
+\[
+\int_0^1\int_0^1xe^{xy}\,dy\,dx=\int_0^1\Bigl[e^{xy}\Bigr]_{y=0}^{y=1}dx=\int_0^1(e^x-1)\,dx=e-2 ,
+\]
+whereas integrating first with respect to $x$ requires an integration by parts and leads to an inner integral, $e^y/y-(e^y-1)/y^2$, whose integral over $[0,1]$ is not obvious at all. The theorem guarantees that it is $e-2$ as well.
+
+When the integrand is a product of a function of $x$ and a function of $y$, the double integral is a product of single integrals. This simple fact is the key to the Gaussian integral of \cref{sec:gaussian}.
+
+\begin{corollary}[Products]
+\label{cor:product-integral}
+If $g$ is integrable on $[a,b]$ and $h$ on $[c,d]$, then $(x,y)\mapsto g(x)h(y)$ is integrable on $R=[a,b]\times[c,d]$, and
+\[
+\iint_Rg(x)h(y)\,dA=\int_a^bg\cdot\int_c^dh .
+\]
+\end{corollary}
+
+\begin{proof}
+The function $G(x,y)\coloneqq g(x)$ has, on the subrectangle $R_{jk}$, the infimum and the supremum of $g$ on $I_j$, so $U(G,P)-L(G,P)=\bigl(U(g,P_1)-L(g,P_1)\bigr)(d-c)$, and $G$ is integrable by Riemann's criterion; so is $H(x,y)\coloneqq h(y)$, and hence the product $GH$, by \cref{thm:double-properties}\,(ii). Every section $y\mapsto g(x)h(y)$ is a constant multiple of $h$, with integral $g(x)\int_c^dh$, and \cref{thm:fubini}\,(i) gives $\iint_RGH=\int_a^bg(x)\bigl(\int_c^dh\bigr)dx=\int_a^bg\cdot\int_c^dh$.
+\end{proof}
+
+For instance, $\iint_{[0,1]^2}e^{x+y}\,dA=\bigl(\int_0^1e^x\,dx\bigr)^2=(e-1)^2$, because $e^{x+y}=e^xe^y$ (\cref{thm:exp-properties}).
+
+\subsection{When the Order Matters}
+
+Fubini's theorem assumes that $f$ is integrable on the rectangle, in particular bounded. Without this hypothesis the two iterated integrals can exist and differ. Let
+\[
+f(x,y)\coloneqq\frac{x^2-y^2}{(x^2+y^2)^2}\qquad\bigl((x,y)\ne(0,0)\bigr).
+\]
+For fixed $x>0$, the function $y\mapsto y/(x^2+y^2)$ has the derivative $(x^2+y^2-2y^2)/(x^2+y^2)^2=f(x,y)$, so
+\[
+\int_0^1f(x,y)\,dy=\Bigl[\frac y{x^2+y^2}\Bigr]_{y=0}^{y=1}=\frac1{1+x^2}
+\]
+and
+\[
+\int_0^1\int_0^1f(x,y)\,dy\,dx=\int_0^1\frac{dx}{1+x^2}=\frac\pi4 ,
+\]
+by \cref{prop:arctan-integral}. The value of the inner integral at the single point $x=0$, where the section $-1/y^2$ is not integrable, does not affect the outer integral (\cref{cor:change-finitely-many}). Since $f(y,x)=-f(x,y)$, the same computation with the roles of the variables exchanged gives
+\[
+\int_0^1\int_0^1f(x,y)\,dx\,dy=-\frac\pi4 .
+\]
+The two iterated integrals differ. There is no contradiction with Fubini's theorem: $f$ is unbounded near the origin, since $f(x,0)=1/x^2$, so it is not integrable on $[0,1]^2$ in the sense of \cref{def:double-integral}, whatever value is given to it at the origin. The positive values near the $x$-axis and the negative values near the $y$-axis are both so large that their total contributions are infinite, and the order of integration decides which of the two infinite quantities is cut off first. \Cref{sec:improper-multiple} returns to this example and shows that the trouble disappears for integrands whose absolute value has a finite integral.
+
+\begin{note}{The Lebesgue integral and the Fubini--Tonelli theorem}
+For the Lebesgue integral of Volume~II, Fubini's theorem takes a form that is both simpler and more general. Tonelli's theorem says that for every nonnegative measurable function on a product of two intervals, or of two $\sigma$-finite measure spaces, the double integral and the two iterated integrals are equal, the common value possibly being $+\infty$~\cite{tonelli1909}. Fubini's theorem says that the same holds for every function whose absolute value has a finite double integral~\cite{fubini1907}. Together they give a practical rule: to interchange the order of integration, first check, by integrating $|f|$ in either order, that $\iint|f|<\infty$. In the example above $\iint|f|=\infty$, and the rule correctly forbids the interchange. Folland~\cite[Sect.~2.5]{folland1999} gives a modern proof; the Riemann version above is a special case. The rule is equally important for sums, which are integrals with respect to counting measure: a double series of nonnegative terms, or an absolutely convergent one, may be summed in either order.
+\end{note}
+
+\subsection{Differentiating under the Integral Sign}
+
+If $f$ depends on a parameter, so does its integral, and it is often useful to differentiate with respect to the parameter. Fubini's theorem gives a short proof that one may differentiate under the integral sign when the partial derivative is continuous.
+
+\begin{theorem}[Differentiation under the integral sign]
+\label{thm:diff-under-integral}
+Let $f$ and its partial derivative $\partial_xf$ be continuous on $R=[a,b]\times[c,d]$. Then $F(x)\coloneqq\int_c^df(x,y)\,dy$ is continuously differentiable on $[a,b]$, and
+\[
+F'(x)=\int_c^d\frac{\partial f}{\partial x}(x,y)\,dy .
+\]
+\end{theorem}
+
+\begin{proof}
+Let $G(x)\coloneqq\int_c^d\partial_xf(x,y)\,dy$, a continuous function by \cref{lem:parameter-continuous}. For $x\in[a,b]$, Fubini's theorem on the rectangle $[a,x]\times[c,d]$ and the fundamental theorem of calculus in the variable $t$ give
+\[
+\int_a^xG(t)\,dt=\int_c^d\int_a^x\frac{\partial f}{\partial x}(t,y)\,dt\,dy=\int_c^d\bigl(f(x,y)-f(a,y)\bigr)\,dy=F(x)-F(a).
+\]
+By the first part of the fundamental theorem (\cref{thm:ftc1}), the left side is differentiable with derivative $G(x)$, so $F'=G$, which is continuous.
+\end{proof}
+
+The theorem is often called Leibniz's rule for integrals, to distinguish it from the formula for the $n$th derivative of a product (\cref{thm:leibniz-rule}). When the limits of integration depend on the parameter as well, the chain rule adds the terms of \cref{cor:variable-limits}.
+
+\begin{corollary}[Variable limits]
+\label{cor:leibniz-variable}
+Let $f$ and $\partial_xf$ be continuous on $[a,b]\times[c,d]$, and let $u,v\colon(a,b)\to[c,d]$ be differentiable. Then $G(x)\coloneqq\int_{u(x)}^{v(x)}f(x,y)\,dy$ is differentiable on $(a,b)$, and
+\[
+G'(x)=f\bigl(x,v(x)\bigr)\,v'(x)-f\bigl(x,u(x)\bigr)\,u'(x)+\int_{u(x)}^{v(x)}\frac{\partial f}{\partial x}(x,y)\,dy .
+\]
+\end{corollary}
+
+\begin{proof}
+Let $H(x,s,t)\coloneqq\int_s^tf(x,y)\,dy$ for $x\in(a,b)$ and $s,t\in[c,d]$, so that $G(x)=H(x,u(x),v(x))$; extending $f$ to $y<c$ by $f(x,c)$ and to $y>d$ by $f(x,d)$, which keeps $f$ and $\partial_xf$ continuous, we may let $s$ and $t$ range over an open interval containing $[c,d]$. By the fundamental theorem, $\partial_tH=f(x,t)$ and $\partial_sH=-f(x,s)$, and by \cref{thm:diff-under-integral}, applied on the interval between $s$ and $t$, $\partial_xH=\int_s^t\partial_xf(x,y)\,dy$. All three partial derivatives are continuous in $(x,s,t)$, the third by an estimate as in the proof of \cref{lem:parameter-continuous}. So $H$ is differentiable (\cref{thm:c1-differentiable}), and the chain rule (\cref{thm:chain-rule-rn}) gives $G'=\partial_xH+\partial_sH\,u'+\partial_tH\,v'$, which is the formula.
+\end{proof}
+
+Differentiation under the integral sign can evaluate integrals that resist other methods. Consider
+\[
+I(t)\coloneqq\int_0^1\frac{x^t-1}{\ln x}\,dx\qquad(t>0).
+\]
+The integrand, with the value $0$ at $x=0$ and the value $t$ at $x=1$, is continuous on $[0,1]\times[\delta,T]$ for all $0<\delta<T$: as $x\to1$, $(x^t-1)/\ln x=(e^{t\ln x}-1)/\ln x\to t$, by the derivative of the exponential function at $0$, and as $x\to0^+$ the numerator stays bounded while $|\ln x|\to\infty$. Its partial derivative with respect to $t$ is $x^t\ln x/\ln x=x^t$, also continuous there. By \cref{thm:diff-under-integral}, with the roles of the variables exchanged,
+\[
+I'(t)=\int_0^1x^t\,dx=\frac1{t+1},
+\]
+so $I(t)=\ln(1+t)+C$ for $t>0$. To find $C$, note that $1-e^{-s}\le s$ for $s\ge0$ (\cref{prop:exp-tangent}); with $s=-t\ln x$ this gives $0\le(1-x^t)/(-\ln x)\le t$, so $0\le I(t)\le t$, and $I(t)\to0$ as $t\to0^+$. Since also $\ln(1+t)\to0$, we get $C=0$:
+\[
+\int_0^1\frac{x^t-1}{\ln x}\,dx=\ln(1+t),\qquad\text{in particular}\qquad\int_0^1\frac{x-1}{\ln x}\,dx=\ln2 .
+\]
+The integrand has no elementary antiderivative; the parameter $t$, introduced artificially, turned the problem into the integration of $x^t$. \Cref{sec:parameter-integrals} extends the method to improper integrals and computes $\int_0^\infty(\sin x/x)\,dx$ in this way.
+
+\section{Integrals over General Regions}
+\label{sec:general-regions}
+
+\subsection{Sets of Content Zero}
+
+Rectangles are rarely the regions one wants to integrate over: the disc, the triangle and the region between two curves are more typical. The plan is to put the region $S$ into a rectangle $R$, to extend the integrand by zero outside $S$, and to integrate over $R$. The extended function is discontinuous along the boundary of $S$, and the question is whether such discontinuities do any harm. They do not, as long as the boundary is ``thin'' in the following sense.
+
+\begin{definition}[Content zero]
+\label{def:content-zero}
+A set $Z\subseteq\mathbb R^2$ has \term{content zero} if for every $\varepsilon>0$ there are finitely many rectangles $B_1,\ldots,B_N$ with
+\[
+Z\subseteq B_1\cup\cdots\cup B_N\qquad\text{and}\qquad\sum_{i=1}^N\operatorname{vol}(B_i)<\varepsilon .
+\]
+\end{definition}
+
+A set of content zero is bounded, since it lies in a finite union of rectangles. Subsets of sets of content zero have content zero, and so do finite unions: if $Z_1,\ldots,Z_k$ have content zero, cover each by rectangles of total area less than $\varepsilon/k$. By enlarging each rectangle slightly, say by doubling its sides about its centre, which multiplies the total area by $4$, we may also assume that $Z$ lies in the union of the \emph{interiors} of the rectangles; we shall use this freedom without comment. The following examples are the ones that matter.
+
+\begin{proposition}[Sets of content zero]
+\label{prop:content-zero-examples}
+\leavevmode
+\begin{enumerate}
+\item Every finite set and every bounded segment of a straight line have content zero.
+\item If $\varphi\colon[a,b]\to\mathbb R$ is continuous, its graph $\{(x,\varphi(x)): a\le x\le b\}$ has content zero; so does the set $\{(\psi(y),y): c\le y\le d\}$ for continuous $\psi\colon[c,d]\to\mathbb R$.
+\item The boundary of a rectangle, and the boundary of a disc, have content zero.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(ii) Let $\varepsilon>0$. By the uniform continuity of $\varphi$ (\cref{thm:heine-cantor}) there is $\delta>0$ with $|\varphi(x)-\varphi(x')|<\varepsilon$ whenever $|x-x'|<\delta$. Let $a=x_0<\cdots<x_m=b$ be a partition with mesh less than $\delta$. Over $[x_{j-1},x_j]$ the graph lies in the rectangle $[x_{j-1},x_j]\times[\varphi(x_j)-\varepsilon,\varphi(x_j)+\varepsilon]$, of area $2\varepsilon\,\Delta x_j$, and these rectangles have total area $2\varepsilon(b-a)$, which is as small as desired. The second statement follows by exchanging the roles of the coordinates. (i) A point is covered by a square of arbitrarily small area, and a segment is either the graph of an affine function over an interval or a vertical segment $\{(c,y): y\in[y_1,y_2]\}$, which is covered by the rectangle $[c-\eta,c+\eta]\times[y_1,y_2]$ of arbitrarily small area. (iii) The boundary of a rectangle consists of four segments, and the boundary of the disc of radius $r$ about $(x_0,y_0)$ consists of the graphs of the continuous functions $y_0\pm\sqrt{r^2-(x-x_0)^2}$ on $[x_0-r,x_0+r]$.
+\end{proof}
+
+Not every thin-looking set has content zero. The set of points of $[0,1]^2$ with rational coordinates is countable, but any finite family of rectangles covering them has total area at least $1$: the rectangles are closed, so their union is closed, and it contains all of $[0,1]^2$ by \cref{prop:closed-sequences}, since every point of the square is a limit of points with rational coordinates. Content, which measures sets by \emph{finite} covers, cannot see that a countable set is small; the Lebesgue measure of Volume~II, which allows countable covers, can.
+
+\begin{theorem}[Discontinuities on a set of content zero]
+\label{thm:integrable-content-zero}
+Let $f\colon R\to\mathbb R$ be bounded on the rectangle $R$ and continuous at every point of $R$ outside a set $Z$ of content zero. Then $f$ is integrable on $R$. If $f$ vanishes outside $Z$, then $\iint_Rf=0$.
+\end{theorem}
+
+\begin{proof}
+Let $|f|\le K$ and $\varepsilon>0$. Cover $Z$ by rectangles $B_1,\ldots,B_N$ whose interiors contain $Z$ and whose total area is less than $\varepsilon$. The set $C$ of points of $R$ outside the open interiors of all $B_i$ is closed and bounded, and $f$ is continuous on it; so $f$ is uniformly continuous on $C$ by \cref{lem:heine-cantor-rn}, and there is $\delta>0$ with $|f(\mathbf x)-f(\mathbf y)|<\varepsilon$ for $\mathbf x,\mathbf y\in C$ with $\|\mathbf x-\mathbf y\|<\delta$. Let $P$ be a partition of $R$ whose points include the coordinates of all edges of the rectangles $B_i$ that cross $R$, and whose mesh is less than $\delta/\sqrt2$. Since the edges of every $B_i$ lie on lines of the partition, each subrectangle $R_{jk}$ either lies in some $B_i$ or does not meet the interior of any $B_i$, in which case it lies in $C$. The subrectangles of the first kind have total area at most $\sum_i\operatorname{vol}(B_i)<\varepsilon$, because each lies in some $B_i$ and the subrectangles do not overlap, and on them $M_{jk}-m_{jk}\le2K$. On the subrectangles of the second kind $M_{jk}-m_{jk}\le\varepsilon$, since any two of their points lie in $C$ at distance less than $\delta$. Hence
+\[
+U(f,P)-L(f,P)\le2K\varepsilon+\varepsilon\operatorname{vol}(R),
+\]
+which is as small as desired, and $f$ is integrable. If $f$ vanishes outside $Z$, the subrectangles of the second kind meet no point of $Z$, so $f=0$ on them, and $|L(f,P)|$ and $|U(f,P)|$ are at most $K\varepsilon$; hence $\iint_Rf=0$.
+\end{proof}
+
+\begin{corollary}
+\label{cor:change-content-zero}
+If $f$ is integrable on $R$ and $g$ is bounded and differs from $f$ only on a set of content zero, then $g$ is integrable and $\iint_Rg=\iint_Rf$.
+\end{corollary}
+
+\begin{proof}
+Let $Z$ be the set where $g$ and $f$ differ. Its closure has content zero as well, being covered by the same finitely many closed rectangles. The difference $g-f$ is bounded and vanishes outside $Z$, so it is continuous at every point outside the closure of $Z$; by \cref{thm:integrable-content-zero}, applied with the closure of $Z$ as the exceptional set, it is integrable with integral $0$, and $g=f+(g-f)$.
+\end{proof}
+
+The theorem is the two-dimensional counterpart of \cref{prop:piecewise-integrable}, and it is far more useful than its model, because in two dimensions the discontinuities of an integrand typically lie along whole curves, not at isolated points.
+
+\subsection{Regions with an Area}
+
+\begin{definition}[Integral over a bounded set]
+\label{def:integral-over-set}
+Let $S\subseteq\mathbb R^2$ be bounded, $f\colon S\to\mathbb R$, and let $R$ be a rectangle containing $S$. Let $f_S\colon R\to\mathbb R$ be $f$ on $S$ and $0$ on $R\setminus S$. If $f_S$ is integrable on $R$, then $f$ is \term{integrable on} $S$, and
+\[
+\iint_Sf\coloneqq\iint_Rf_S .
+\]
+\end{definition}
+
+The definition does not depend on the rectangle. If $R\subseteq R'$ are two rectangles containing $S$, the lines through the edges of $R$ cut $R'$ into $R$ and at most eight further rectangles, on which $f_S$ vanishes; by \cref{thm:double-properties}\,(iv), $f_S$ is integrable on $R'$ if and only if it is integrable on $R$, with the same integral. Two arbitrary rectangles containing $S$ are both contained in a third.
+
+\begin{definition}[Jordan measurable set, area]
+\label{def:jordan-measurable}
+A bounded set $S\subseteq\mathbb R^2$ is \term{Jordan measurable} if its boundary has content zero. Its \term{area} is then
+\[
+\operatorname{vol}(S)\coloneqq\iint_S1\,dA .
+\]
+\end{definition}
+
+The integral exists: the indicator function $\mathbf 1_S$ is continuous at every interior point of $S$, where it is $1$ near the point, and at every point outside the closure of $S$, where it is $0$ near the point; so it is continuous outside the boundary $\partial S$, and \cref{thm:integrable-content-zero} applies to $(\mathbf 1)_S=\mathbf 1_S$. Rectangles, discs, triangles, and in general all regions bounded by finitely many graphs of continuous functions are Jordan measurable, by \cref{prop:content-zero-examples}. The set of points with rational coordinates in $[0,1]^2$ is not: its boundary is all of $[0,1]^2$, and $\mathbf 1_S$, the two-dimensional Dirichlet function, has lower integral $0$ and upper integral $1$. The name refers to Camille Jordan, who developed this notion of area, now called the Jordan content, in his \emph{Cours d'analyse}~\cite{jordan1893,hawkins1975}. Conversely, a bounded set $S$ for which $\mathbf 1_S$ is integrable is Jordan measurable~\cite{munkres1991}; we shall not need this.
+
+\begin{theorem}[Integrals over regions]
+\label{thm:integral-over-region}
+Let $S\subseteq\mathbb R^2$ be Jordan measurable, and let $f\colon S\to\mathbb R$ be bounded and continuous at all points of $S$ outside a set of content zero. Then $f$ is integrable on $S$. Moreover:
+\begin{enumerate}
+\item The integral is linear and monotone in $f$, and $\bigl|\iint_Sf\bigr|\le\operatorname{vol}(S)\sup_S|f|$. In particular, $S\subseteq T$ implies $\operatorname{vol}(S)\le\operatorname{vol}(T)$ for Jordan measurable sets.
+\item If $S=S_1\cup S_2$ with Jordan measurable sets $S_1$, $S_2$ such that $S_1\cap S_2$ has content zero, then $\iint_Sf=\iint_{S_1}f+\iint_{S_2}f$.
+\item A set of content zero is Jordan measurable with area $0$, and changing $f$ on a set of content zero does not change $\iint_Sf$.
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+The function $f_S$ is continuous at every point of $R$ that lies neither in $\partial S$ nor in the exceptional set of $f$: at interior points of $S$ it agrees with $f$ near the point, and at points outside the closure of $S$ it vanishes near the point. Both exceptional sets have content zero, so $f_S$ is integrable by \cref{thm:integrable-content-zero}. (i) follows from \cref{thm:double-properties}, since $(\alpha f+\beta g)_S=\alpha f_S+\beta g_S$, and since $f\le g$ on $S$ implies $f_S\le g_S$ on $R$. (ii) The functions $f_S$ and $f_{S_1}+f_{S_2}$ agree except on $S_1\cap S_2$, so the claim follows from \cref{cor:change-content-zero} and linearity. (iii) The boundary of a set $Z$ of content zero lies in its closure, which is covered by the same finitely many closed rectangles as $Z$ and so has content zero; hence $Z$ is Jordan measurable, and $\iint_Z1=0$ by \cref{thm:integrable-content-zero}, since $\mathbf 1_Z$ vanishes outside $Z$. The last statement is \cref{cor:change-content-zero}.
+\end{proof}
+
+\subsection{Elementary Regions}
+
+Most regions met in practice are bounded by two graphs, and on them the double integral is computed by Fubini's theorem as an iterated integral with variable limits.
+
+\begin{definition}[Elementary regions]
+\label{def:elementary-region}
+A set $S\subseteq\mathbb R^2$ is \term{$y$-simple} if
+\[
+S=\{(x,y): a\le x\le b,\ \varphi_1(x)\le y\le\varphi_2(x)\}
+\]
+with continuous functions $\varphi_1\le\varphi_2$ on $[a,b]$, and \term{$x$-simple} if $S=\{(x,y): c\le y\le d,\ \psi_1(y)\le x\le\psi_2(y)\}$ with continuous $\psi_1\le\psi_2$ on $[c,d]$.
+\end{definition}
+
+A $y$-simple region is met by every vertical line in a segment, or not at all; an $x$-simple region is met by every horizontal line in a segment (\cref{fig:elementary-regions}). Discs, triangles and rectangles are both.
+
+\begin{theorem}[Integrals over elementary regions]
+\label{thm:elementary-regions}
+Let $S$ be $y$-simple as in \cref{def:elementary-region}, and let $f$ be continuous on $S$. Then $S$ is Jordan measurable, $f$ is integrable on $S$, and
+\[
+\iint_Sf=\int_a^b\int_{\varphi_1(x)}^{\varphi_2(x)}f(x,y)\,dy\,dx .
+\]
+In particular, $\operatorname{vol}(S)=\int_a^b\bigl(\varphi_2(x)-\varphi_1(x)\bigr)\,dx$. The corresponding statement holds for $x$-simple regions, with the order of integration reversed.
+\end{theorem}
+
+\begin{proof}
+The boundary of $S$ lies in the union of the graphs of $\varphi_1$ and $\varphi_2$ and of the two vertical segments over $x=a$ and $x=b$, which has content zero by \cref{prop:content-zero-examples}; so $S$ is Jordan measurable. The set $S$ is bounded, and it is closed, because the limit of a convergent sequence of points of $S$ satisfies the same non-strict inequalities, by the continuity of $\varphi_1$ and $\varphi_2$ (\cref{prop:closed-sequences}); so the continuous function $f$ is bounded on it, by \cref{thm:evt-rn}, and integrable on $S$ by \cref{thm:integral-over-region}. Let $R=[a,b]\times[c,d]$ contain $S$. For fixed $x\in[a,b]$, the section $y\mapsto f_S(x,y)$ equals the continuous function $f(x,y)$ on $[\varphi_1(x),\varphi_2(x)]$ and vanishes elsewhere on $[c,d]$; it is bounded with at most two discontinuities, hence integrable by \cref{prop:piecewise-integrable}, and its integral over $[c,d]$ is $\int_{\varphi_1(x)}^{\varphi_2(x)}f(x,y)\,dy$, by \cref{thm:integral-additive}. Fubini's theorem (\cref{thm:fubini}\,(i)) gives the formula. For $f=1$ the inner integral is $\varphi_2(x)-\varphi_1(x)$.
+\end{proof}
+
+The formula for the area is the familiar ``area between two curves'' of a first calculus course, which is thereby justified. For the disc $D_r$ of radius $r$ about the origin, with $\varphi_{1,2}(x)=\mp\sqrt{r^2-x^2}$ on $[-r,r]$,
+\[
+\operatorname{vol}(D_r)=\int_{-r}^r2\sqrt{r^2-x^2}\,dx=4r^2\int_0^1\sqrt{1-t^2}\,dt=4r^2\cdot\frac\pi4=\pi r^2 ,
+\]
+by the symmetry of the integrand, the substitution $x=rt$ and the computation $\int_0^1\sqrt{1-t^2}\,dt=\pi/4$ of \cref{sec:techniques}.
+
+\begin{figure}
+\sdpanel{A}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.47\textwidth, height=0.4\textwidth, xmin=0, xmax=3.3, ymin=0, ymax=2.6,
+  xtick={0.4,1.7,3}, xticklabels={$a$,$x$,$b$}, ytick=\empty, xlabel={}]
+\addplot[draw=none, fill=sdfill, domain=0.4:3, samples=60] {1.6+0.35*sin(deg(1.8*x))+0.1*x} \closedcycle;
+\addplot[draw=none, fill=white, domain=0.4:3, samples=60] {0.35+0.15*x+0.2*sin(deg(2.5*x))} \closedcycle;
+\addplot[black, line width=0.8pt, domain=0.4:3, samples=60] {1.6+0.35*sin(deg(1.8*x))+0.1*x};
+\addplot[black, line width=0.8pt, domain=0.4:3, samples=60] {0.35+0.15*x+0.2*sin(deg(2.5*x))};
+\draw[black, line width=0.8pt] (axis cs:0.4,0.5783) -- (axis cs:0.4,1.8708);
+\draw[black, line width=0.8pt] (axis cs:3,0.9876) -- (axis cs:3,1.6295);
+\draw[black, line width=1.6pt] (axis cs:1.7,0.4260) -- (axis cs:1.7,1.7985);
+\node[font=\scriptsize, anchor=west] at (axis cs:2.2,2.12) {$\varphi_2$};
+\node[font=\scriptsize, anchor=west] at (axis cs:2.15,0.38) {$\varphi_1$};
+\node[font=\scriptsize] at (axis cs:1.1,1.15) {$S$};
+\end{axis}
+\end{tikzpicture}}\hfill
+\sdpanel{B}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.47\textwidth, height=0.4\textwidth, xmin=0, xmax=3.3, ymin=0, ymax=2.6,
+  ytick={0.3,1.3,2.3}, yticklabels={$c$,$y$,$d$}, xtick=\empty, xlabel={}]
+\addplot[draw=none, fill=sdfill] coordinates {(2.6839,0.3000) (2.7088,0.3500) (2.7312,0.4000) (2.7508,0.4500) (2.7674,0.5000) (2.7807,0.5500) (2.7906,0.6000) (2.7970,0.6500) (2.7999,0.7000) (2.7991,0.7500) (2.7946,0.8000) (2.7867,0.8500) (2.7752,0.9000) (2.7605,0.9500) (2.7425,1.0000) (2.7217,1.0500) (2.6982,1.1000) (2.6723,1.1500) (2.6442,1.2000) (2.6145,1.2500) (2.5834,1.3000) (2.5512,1.3500) (2.5185,1.4000) (2.4855,1.4500) (2.4527,1.5000) (2.4204,1.5500) (2.3892,1.6000) (2.3592,1.6500) (2.3310,1.7000) (2.3048,1.7500) (2.2810,1.8000) (2.2598,1.8500) (2.2415,1.9000) (2.2264,1.9500) (2.2145,2.0000) (2.2061,2.0500) (2.2013,2.1000) (2.2000,2.1500) (2.2024,2.2000) (2.2084,2.2500) (2.2179,2.3000) (0.8368,2.3000) (0.7931,2.2500) (0.7492,2.2000) (0.7055,2.1500) (0.6625,2.1000) (0.6207,2.0500) (0.5806,2.0000) (0.5427,1.9500) (0.5074,1.9000) (0.4752,1.8500) (0.4466,1.8000) (0.4218,1.7500) (0.4011,1.7000) (0.3848,1.6500) (0.3731,1.6000) (0.3659,1.5500) (0.3634,1.5000) (0.3654,1.4500) (0.3718,1.4000) (0.3823,1.3500) (0.3968,1.3000) (0.4149,1.2500) (0.4361,1.2000) (0.4601,1.1500) (0.4863,1.1000) (0.5144,1.0500) (0.5437,1.0000) (0.5737,0.9500) (0.6041,0.9000) (0.6343,0.8500) (0.6638,0.8000) (0.6923,0.7500) (0.7195,0.7000) (0.7450,0.6500) (0.7686,0.6000) (0.7902,0.5500) (0.8096,0.5000) (0.8270,0.4500) (0.8423,0.4000) (0.8557,0.3500) (0.8675,0.3000)} -- cycle;
+\addplot[black, line width=0.8pt, domain=0.3:2.3, samples=60] ({2.5+0.3*sin(deg(2.2*x))}, {x});
+\addplot[black, line width=0.8pt, domain=0.3:2.3, samples=60] ({0.5+0.25*(x-1.3)^2+0.15*sin(deg(3*x))}, {x});
+\draw[black, line width=0.8pt] (axis cs:0.8675,0.3) -- (axis cs:2.6839,0.3);
+\draw[black, line width=0.8pt] (axis cs:0.8368,2.3) -- (axis cs:2.2179,2.3);
+\draw[black, line width=1.6pt] (axis cs:0.3968,1.3) -- (axis cs:2.5834,1.3);
+\node[font=\scriptsize, anchor=west] at (axis cs:2.75,1.75) {$\psi_2$};
+\node[font=\scriptsize, anchor=east] at (axis cs:0.55,2.0) {$\psi_1$};
+\end{axis}
+\end{tikzpicture}}
+\caption{Elementary regions. (A) A $y$-simple region $S$ between the graphs of $\varphi_1\le\varphi_2$ over $[a,b]$. The vertical line at $x$ meets it in the segment from $\varphi_1(x)$ to $\varphi_2(x)$ (thick), and the inner integral of \cref{thm:elementary-regions} integrates along this segment. (B) An $x$-simple region between the graphs $x=\psi_1(y)$ and $x=\psi_2(y)$ over $[c,d]$; here every horizontal line meets the region in a segment (thick).}
+\label{fig:elementary-regions}
+\end{figure}
+
+\subsection{Changing the Order of Integration}
+
+A region that is both $y$-simple and $x$-simple can be integrated over in either order, and the choice can decide whether the integral can be computed at all. Consider
+\[
+\int_0^1\int_x^1e^{y^2}\,dy\,dx .
+\]
+The inner integral cannot be evaluated in closed form, because $e^{y^2}$, like $e^{-y^2}$, has no elementary antiderivative (\cref{sec:techniques}). The iterated integral is, however, the double integral of $e^{y^2}$ over the triangle $T=\{0\le x\le1,\ x\le y\le1\}$, which is $y$-simple. The same triangle is $x$-simple, $T=\{0\le y\le1,\ 0\le x\le y\}$ (\cref{fig:order-reversal}), so by \cref{thm:elementary-regions} applied twice,
+\[
+\int_0^1\int_x^1e^{y^2}\,dy\,dx=\iint_Te^{y^2}\,dA=\int_0^1\int_0^ye^{y^2}\,dx\,dy=\int_0^1ye^{y^2}\,dy=\frac{e-1}2 ,
+\]
+the last integral by the substitution $u=y^2$; the value is $0.8591\ldots$ The method is general: to reverse the order of an iterated integral, describe the region of integration by inequalities, draw it, and read off the limits in the other order. A second example, with the integrand $xy$ on the triangle $\{0\le y\le x\le1\}$:
+\[
+\begin{aligned}
+\int_0^1\int_0^xxy\,dy\,dx&=\int_0^1\frac{x^3}2\,dx=\frac18 ,\\
+\int_0^1\int_y^1xy\,dx\,dy&=\int_0^1\frac{y(1-y^2)}2\,dy=\frac14-\frac18=\frac18 .
+\end{aligned}
+\]
+
+\begin{figure}
+\sdpanel{A}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.42\textwidth, height=0.42\textwidth, xmin=0, xmax=1.12, ymin=0, ymax=1.12,
+  xtick={0,0.4,1}, xticklabels={0,$x$,1}, ytick={0,1}, xlabel={$x$}, ylabel={$y$}]
+\fill[sdfill] (axis cs:0,0) -- (axis cs:1,1) -- (axis cs:0,1) -- cycle;
+\draw[black, line width=0.8pt] (axis cs:0,0) -- (axis cs:1,1) -- (axis cs:0,1) -- cycle;
+\fill[black!45] (axis cs:0.38,0.38) rectangle (axis cs:0.42,1);
+\node[font=\scriptsize, anchor=north west] at (axis cs:0.6,0.55) {$y=x$};
+\end{axis}
+\end{tikzpicture}}\hfill
+\sdpanel{B}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.42\textwidth, height=0.42\textwidth, xmin=0, xmax=1.12, ymin=0, ymax=1.12,
+  ytick={0,0.65,1}, yticklabels={0,$y$,1}, xtick={0,1}, xlabel={$x$}, ylabel={$y$}]
+\fill[sdfill] (axis cs:0,0) -- (axis cs:1,1) -- (axis cs:0,1) -- cycle;
+\draw[black, line width=0.8pt] (axis cs:0,0) -- (axis cs:1,1) -- (axis cs:0,1) -- cycle;
+\fill[black!45] (axis cs:0,0.63) rectangle (axis cs:0.65,0.67);
+\node[font=\scriptsize, anchor=north west] at (axis cs:0.6,0.55) {$y=x$};
+\end{axis}
+\end{tikzpicture}}
+\caption{Reversing the order of integration over the triangle $T$ with vertices $(0,0)$, $(1,1)$ and $(0,1)$. (A) Integrating first with respect to $y$: for fixed $x$, $y$ runs from $x$ to $1$ (vertical strip). (B) Integrating first with respect to $x$: for fixed $y$, $x$ runs from $0$ to $y$ (horizontal strip). For the integrand $e^{y^2}$ the first order leads to an integral without an elementary antiderivative, the second to $\int_0^1ye^{y^2}dy=(e-1)/2$.}
+\label{fig:order-reversal}
+\end{figure}
+
+\subsection{Mass and Centre of Mass}
+
+Double integrals measure every quantity that is spread over a region of the plane, in the way that single integrals measure quantities spread along an interval. A thin plate occupying the Jordan measurable region $S$, with a continuous \term{density} $\rho(x,y)\ge0$ of mass per unit area, has the \term{mass} and the \term{centre of mass}
+\[
+M\coloneqq\iint_S\rho\,dA,\qquad\bar x\coloneqq\frac1M\iint_Sx\,\rho(x,y)\,dA,\qquad\bar y\coloneqq\frac1M\iint_Sy\,\rho(x,y)\,dA ,
+\]
+the continuous counterparts of the total mass $\sum m_i$ and the weighted average $\sum m_i\mathbf x_i/\sum m_i$ of finitely many point masses $m_i$ at points $\mathbf x_i$. By \cref{thm:riemann-sums-2d}, they are the limits of these discrete quantities for the masses $\rho(\boldsymbol\xi_{jk})\operatorname{vol}(R_{jk})$ concentrated at the tags. For constant density the centre of mass depends only on the shape of $S$ and is called its \term{centroid}. For the half disc $S=\{x^2+y^2\le r^2,\ y\ge0\}$, of area $\pi r^2/2$, symmetry gives $\bar x=0$, and
+\[
+\iint_Sy\,dA=\int_{-r}^r\int_0^{\sqrt{r^2-x^2}}y\,dy\,dx=\int_{-r}^r\frac{r^2-x^2}2\,dx=\frac{2r^3}3,\qquad\bar y=\frac{2r^3/3}{\pi r^2/2}=\frac{4r}{3\pi} .
+\]
+In probability the same formulas describe a pair $(X,Y)$ of random quantities with a joint density $\rho$ of total mass $M=1$: then $\iint_S\rho\,dA$ is the probability that $(X,Y)$ lies in $S$, and $(\bar x,\bar y)$ is the pair of expected values (Volume~III).
+
+\section{Triple and Multiple Integrals}
+\label{sec:multiple}
+
+\subsection{Integrals over Boxes in \texorpdfstring{$\mathbb R^n$}{R\^{}n}}
+
+Nothing in the preceding sections depended on the dimension two, except the pictures. A \term{box} in $\mathbb R^n$ is a set
+\[
+R=[a_1,b_1]\times[a_2,b_2]\times\cdots\times[a_n,b_n]\qquad(a_i<b_i),
+\]
+and its volume is $\operatorname{vol}(R)\coloneqq\prod_{i=1}^n(b_i-a_i)$. A partition of $R$ is an $n$-tuple $P=(P_1,\ldots,P_n)$ of partitions $P_i$ of $[a_i,b_i]$; the hyperplanes $x_i=\text{const}$ through the points of the $P_i$ cut $R$ into subboxes, whose volumes add up to $\operatorname{vol}(R)$, and the mesh $\|P\|$ is the largest mesh of the $P_i$. Lower sums, upper sums, Riemann sums, lower and upper integrals and integrability are defined exactly as in \cref{def:double-integral}, with subboxes in place of subrectangles, and the integral of an integrable function is written
+\[
+\int_Rf\qquad\text{or}\qquad\int_Rf(\mathbf x)\,d\mathbf x ,
+\]
+and for $n=3$ also $\iiint_Rf\,dV$, with $V$ for volume. For $n=1$ we recover the integral of \cref{ch:integration}, and for $n=2$ the double integral. A set $Z\subseteq\mathbb R^n$ has \term{content zero} if for every $\varepsilon>0$ it is covered by finitely many boxes of total volume less than $\varepsilon$; a bounded set $S$ is \term{Jordan measurable} if its boundary has content zero, and then its \term{volume} is $\operatorname{vol}(S)\coloneqq\int_S1$, where the integral over a bounded set is defined by extension by zero as in \cref{def:integral-over-set}. When the dimension must be shown we write $\operatorname{vol}_n$.
+
+\begin{theorem}[Integrals in $\mathbb R^n$]
+\label{thm:multiple-summary}
+The results of \cref{sec:double-rectangles,sec:general-regions} hold in $\mathbb R^n$, with boxes in place of rectangles:
+\begin{enumerate}
+\item the refinement lemma, Riemann's criterion and the characterisation by Riemann sums (\cref{lem:refinement-2d,thm:riemann-criterion-2d,thm:riemann-sums-2d});
+\item the integrability of continuous functions on boxes, with $U(f,P)-L(f,P)\le\sqrt n\,K\operatorname{vol}(R)\|P\|$ for a function with Lipschitz constant $K$, and the properties of \cref{thm:double-properties};
+\item \cref{thm:integrable-content-zero,cor:change-content-zero,thm:integral-over-region} on functions with discontinuities on a set of content zero and on integrals over Jordan measurable sets.
+\end{enumerate}
+Moreover, the graph $\{(\mathbf u,\varphi(\mathbf u)): \mathbf u\in K\}$ of a continuous function $\varphi$ on a closed bounded set $K\subseteq\mathbb R^{n-1}$ has content zero in $\mathbb R^n$, and so has every bounded subset of a hyperplane $\{\mathbf x: x_i=c\}$.
+\end{theorem}
+
+\begin{proof}
+The proofs given for $n=2$ apply verbatim; the factor $\sqrt n$ is the largest distance between two points of a cube of side $1$, \cref{prop:norm}\,(v). For the graph, let $K$ lie in a box $B\subseteq\mathbb R^{n-1}$, and let $\varepsilon>0$. By \cref{lem:heine-cantor-rn} there is $\delta>0$ with $|\varphi(\mathbf u)-\varphi(\mathbf v)|<\varepsilon$ for $\mathbf u,\mathbf v\in K$ with $\|\mathbf u-\mathbf v\|<\delta$. Partition $B$ into subboxes of diameter less than $\delta$. Over each subbox $Q$ that meets $K$, pick $\mathbf u_Q\in Q\cap K$; the part of the graph over $Q$ lies in the box $Q\times[\varphi(\mathbf u_Q)-\varepsilon,\varphi(\mathbf u_Q)+\varepsilon]$, of volume $2\varepsilon\operatorname{vol}_{n-1}(Q)$, and these boxes have total volume at most $2\varepsilon\operatorname{vol}_{n-1}(B)$. A bounded subset of a hyperplane $x_i=c$ lies in a box whose $i$th side $[c-\eta,c+\eta]$ is as short as desired.
+\end{proof}
+
+Fubini's theorem also holds in $\mathbb R^n$, and in a form that splits the variables into two blocks of any sizes. We write points of $\mathbb R^{p+q}$ as pairs $(\mathbf x,\mathbf y)$ with $\mathbf x\in\mathbb R^p$ and $\mathbf y\in\mathbb R^q$.
+
+\begin{theorem}[Fubini's theorem in $\mathbb R^n$]
+\label{thm:fubini-n}
+Let $A\subseteq\mathbb R^p$ and $B\subseteq\mathbb R^q$ be boxes, and let $f$ be integrable on the box $A\times B\subseteq\mathbb R^{p+q}$. If for every $\mathbf x\in A$ the function $\mathbf y\mapsto f(\mathbf x,\mathbf y)$ is integrable on $B$, then $F(\mathbf x)\coloneqq\int_Bf(\mathbf x,\mathbf y)\,d\mathbf y$ is integrable on $A$, and
+\[
+\int_{A\times B}f=\int_A\Bigl(\int_Bf(\mathbf x,\mathbf y)\,d\mathbf y\Bigr)d\mathbf x .
+\]
+Without the hypothesis on the sections, the same holds with the lower or the upper integral of the section in place of $F(\mathbf x)$. In particular, a continuous function on a box $R=[a_1,b_1]\times\cdots\times[a_n,b_n]$ satisfies
+\[
+\int_Rf=\int_{a_1}^{b_1}\int_{a_2}^{b_2}\cdots\int_{a_n}^{b_n}f(x_1,\ldots,x_n)\,dx_n\cdots dx_2\,dx_1 ,
+\]
+and the single integrals may be taken in any order.
+\end{theorem}
+
+\begin{proof}
+The proof of \cref{thm:fubini} applies with the subboxes of a partition of $A$ in place of the subintervals $I_j$ and those of a partition of $B$ in place of the $J_k$. For a continuous $f$, all sections are continuous, and the formula follows by applying the theorem $n-1$ times, splitting off one variable at a time, in any order; the functions obtained along the way are continuous by \cref{lem:parameter-continuous}.
+\end{proof}
+
+The theorem gives iterated integrals over regions bounded by graphs, as in the plane. We state the case of three variables, which is the one used most.
+
+\begin{corollary}[Triple integrals over elementary regions]
+\label{cor:triple-elementary}
+Let $D\subseteq\mathbb R^2$ be closed and Jordan measurable, let $\psi_1\le\psi_2$ be continuous on $D$, and let
+\[
+S\coloneqq\{(x,y,z): (x,y)\in D,\ \psi_1(x,y)\le z\le\psi_2(x,y)\}.
+\]
+Then $S$ is Jordan measurable, and for every continuous function $f$ on $S$,
+\[
+\iiint_Sf\,dV=\iint_D\Bigl(\int_{\psi_1(x,y)}^{\psi_2(x,y)}f(x,y,z)\,dz\Bigr)dA .
+\]
+\end{corollary}
+
+\begin{proof}
+The boundary of $S$ lies in the union of the graphs of $\psi_1$ and $\psi_2$ and of the set $\{(x,y,z): (x,y)\in\partial D,\ z\in[m,M]\}$, where $m$ and $M$ bound $\psi_1$ and $\psi_2$; the graphs have content zero by \cref{thm:multiple-summary}, and the last set is covered by the products of the rectangles covering $\partial D$ with $[m,M]$, of total volume less than $\varepsilon(M-m)$. So $S$ is Jordan measurable, and $f$, which is continuous on the closed bounded set $S$, is integrable on it. The inner integral is a continuous function of $(x,y)\in D$, as one sees by writing it, with the substitution $z=\psi_1+s(\psi_2-\psi_1)$, as
+\[
+\int_0^1f\bigl(x,y,\psi_1(x,y)+s(\psi_2(x,y)-\psi_1(x,y))\bigr)\bigl(\psi_2(x,y)-\psi_1(x,y)\bigr)\,ds
+\]
+and applying \cref{lem:parameter-continuous}, with the parameter $(x,y)$ in the closed bounded set $D$. \Cref{thm:fubini-n}, with $\mathbf x=(x,y)$ and $\mathbf y=z$, then gives the formula, exactly as in the proof of \cref{thm:elementary-regions}.
+\end{proof}
+
+For the tetrahedron $\Delta_3=\{x,y,z\ge0,\ x+y+z\le1\}$, which lies over the triangle $D=\{x,y\ge0,\ x+y\le1\}$ between $z=0$ and $z=1-x-y$,
+\[
+\begin{aligned}
+\iiint_{\Delta_3}x\,dV&=\int_0^1\int_0^{1-x}\int_0^{1-x-y}x\,dz\,dy\,dx\\
+&=\int_0^1x\int_0^{1-x}(1-x-y)\,dy\,dx=\int_0^1\frac{x(1-x)^2}2\,dx=\frac1{24} .
+\end{aligned}
+\]
+With the integrand $1$, the same steps give $\operatorname{vol}(\Delta_3)=\int_0^1(1-x)^2/2\,dx=1/6$, so the centroid of the tetrahedron has the $x$-coordinate $(1/24)/(1/6)=1/4$, and by symmetry the centroid is $(1/4,1/4,1/4)$.
+
+\subsection{Scaling and Cavalieri's Principle}
+
+Two facts about volumes follow at once from the definitions. The first is the behaviour of volume under translations and dilations.
+
+\begin{proposition}[Translation and scaling]
+\label{prop:scaling}
+Let $S\subseteq\mathbb R^n$ be Jordan measurable, $\mathbf a\in\mathbb R^n$ and $c\ne0$. Then $\mathbf a+cS\coloneqq\{\mathbf a+c\mathbf u: \mathbf u\in S\}$ is Jordan measurable, and
+\[
+\operatorname{vol}(\mathbf a+cS)=|c|^n\operatorname{vol}(S).
+\]
+More generally, $\int_{\mathbf a+cS}f(\mathbf x)\,d\mathbf x=|c|^n\int_Sf(\mathbf a+c\mathbf u)\,d\mathbf u$ for every function $f$ integrable on $\mathbf a+cS$.
+\end{proposition}
+
+\begin{proof}
+The map $\boldsymbol\phi(\mathbf u)\coloneqq\mathbf a+c\mathbf u$ maps every box onto a box whose sides are $|c|$ times as long, hence whose volume is $|c|^n$ times as large, and it maps the subboxes of a partition $P$ of a box $B$ onto the subboxes of a partition $\boldsymbol\phi(P)$ of the box $\boldsymbol\phi(B)$. So it maps a cover of $\partial S$ by boxes of total volume less than $\varepsilon$ onto a cover of $\partial(\mathbf a+cS)=\boldsymbol\phi(\partial S)$ of total volume less than $|c|^n\varepsilon$, and $\mathbf a+cS$ is Jordan measurable. If $S\subseteq B$, then $\mathbf a+cS\subseteq\boldsymbol\phi(B)$, and the function $g\coloneqq f\circ\boldsymbol\phi$ satisfies $g_S=f_{\mathbf a+cS}\circ\boldsymbol\phi$ on $B$. Corresponding subboxes carry the same infima and suprema, so $L(f_{\mathbf a+cS},\boldsymbol\phi(P))=|c|^nL(g_S,P)$ and likewise for the upper sums. Hence $g$ is integrable on $S$, and the two integrals differ by the factor $|c|^n$. For $f=1$ this is the statement about volumes.
+\end{proof}
+
+The second is the principle by which Archimedes and Cavalieri compared volumes: solids whose cross-sections at every height have equal areas have equal volumes. Cavalieri stated it in 1635 in his \emph{Geometria indivisibilibus}, without a proof in the modern sense~\cite{edwards1979}. In our setting it is a special case of Fubini's theorem.
+
+\begin{theorem}[Cavalieri's principle]
+\label{thm:cavalieri}
+Let $S\subseteq\mathbb R^n$, $n\ge2$, be Jordan measurable and contained in $[a,b]\times\mathbb R^{n-1}$, and suppose that for every $t\in[a,b]$ the slice
+\[
+S_t\coloneqq\{\mathbf y\in\mathbb R^{n-1}: (t,\mathbf y)\in S\}
+\]
+is Jordan measurable in $\mathbb R^{n-1}$. Then $t\mapsto\operatorname{vol}_{n-1}(S_t)$ is integrable on $[a,b]$, and
+\[
+\operatorname{vol}_n(S)=\int_a^b\operatorname{vol}_{n-1}(S_t)\,dt .
+\]
+Consequently, two such sets with $\operatorname{vol}_{n-1}(S_t)=\operatorname{vol}_{n-1}(S'_t)$ for every $t$ have the same volume.
+\end{theorem}
+
+\begin{proof}
+Let $S\subseteq[a,b]\times B$ with a box $B\subseteq\mathbb R^{n-1}$. The section of $\mathbf 1_S$ at $t$ is $\mathbf 1_{S_t}$, which is integrable on $B$ with integral $\operatorname{vol}_{n-1}(S_t)$. \Cref{thm:fubini-n}, with $p=1$ and $q=n-1$, gives the claim.
+\end{proof}
+
+\Cref{fig:slicing} illustrates the theorem as well as Fubini's: the volume is the integral of the areas of the slices. A slanted pile of coins has the same volume as a straight one, because each coin keeps its area when it is pushed sideways.
+
+\subsection{Solids of Revolution}
+
+\Cref{sec:integral-applications} computed the volume of a solid of revolution by adding up thin discs, and noted that the argument required integrals in several variables. Cavalieri's principle supplies the missing justification.
+
+\begin{proposition}[Solids of revolution]
+\label{prop:revolution}
+Let $f\ge0$ be continuous on $[a,b]$, and let $S\coloneqq\{(x,y,z): a\le x\le b,\ y^2+z^2\le f(x)^2\}$ be the solid obtained by rotating the region under the graph of $f$ about the $x$-axis. Then $S$ is Jordan measurable, and
+\[
+\operatorname{vol}(S)=\pi\int_a^bf(x)^2\,dx .
+\]
+\end{proposition}
+
+\begin{proof}
+The set $S$ is the elementary region of \cref{cor:triple-elementary} over the closed region $D\coloneqq\{(x,y): a\le x\le b,\ -f(x)\le y\le f(x)\}$ of the $(x,y)$-plane, which is $y$-simple and hence Jordan measurable, between the graphs of the continuous functions $\mp\sqrt{f(x)^2-y^2}$; so $S$ is Jordan measurable. Its slice at $x=t$ is the closed disc of radius $f(t)$ in the $(y,z)$-plane, which is Jordan measurable with area $\pi f(t)^2$ by \cref{sec:general-regions} (a point if $f(t)=0$, with area $0$). Cavalieri's principle gives the formula.
+\end{proof}
+
+With $f(x)=\sqrt{r^2-x^2}$ on $[-r,r]$, the ball of radius $r$ has volume $\pi\int_{-r}^r(r^2-x^2)\,dx=4\pi r^3/3$, and with $f(x)=rx/H$ on $[0,H]$, the cone of radius $r$ and height $H$ has volume $\pi r^2H/3$, the values computed in \cref{sec:integral-applications}, which are now theorems. If a region $0\le\varphi_1(x)\le y\le\varphi_2(x)$, $a\le x\le b$, is rotated about the $x$-axis, the slices are annuli of areas $\pi(\varphi_2^2-\varphi_1^2)$, and the volume is $\pi\int_a^b(\varphi_2^2-\varphi_1^2)\,dx$. Comparing with
+\[
+\iint_Dy\,dA=\int_a^b\int_{\varphi_1(x)}^{\varphi_2(x)}y\,dy\,dx=\frac12\int_a^b\bigl(\varphi_2(x)^2-\varphi_1(x)^2\bigr)\,dx
+\]
+for the region $D$ shows that the volume equals $2\pi\bar y\operatorname{vol}(D)$, where $\bar y$ is the $y$-coordinate of the centroid of $D$: the area of the region times the length of the circle described by its centroid. This is the centroid theorem found in the \emph{Collection} of Pappus of Alexandria~\cite{heath1921}. For the half disc of \cref{sec:general-regions}, with $\bar y=4r/(3\pi)$, it gives $2\pi\cdot4r/(3\pi)\cdot\pi r^2/2=4\pi r^3/3$ once more.
+
+\subsection{The Volume of a Simplex}
+
+The \term{standard simplex} in $\mathbb R^n$ is
+\[
+\Delta_n\coloneqq\{\mathbf x\in\mathbb R^n: x_1,\ldots,x_n\ge0,\ x_1+\cdots+x_n\le1\}.
+\]
+It is the segment $[0,1]$ for $n=1$, a right triangle for $n=2$ and the tetrahedron of the last example for $n=3$ (\cref{fig:simplex}). Its volume decreases very fast with the dimension.
+
+\begin{proposition}[Volume of the simplex]
+\label{prop:simplex}
+For every $n\ge1$, $\operatorname{vol}(\Delta_n)=1/n!$. The set $\{\mathbf x\in[0,1]^n: x_1\le x_2\le\cdots\le x_n\}$ also has volume $1/n!$.
+\end{proposition}
+
+\begin{proof}
+The simplex is closed, and its boundary lies in the union of the hyperplanes $x_i=0$ and of the graph of $x_n=1-x_1-\cdots-x_{n-1}$ over $\Delta_{n-1}$, so it is Jordan measurable by \cref{thm:multiple-summary}. We use induction on $n$; for $n=1$, $\operatorname{vol}(\Delta_1)=1$. For $n\ge2$, slice by the value $t$ of the last coordinate, which lies in $[0,1]$. The slice is
+\[
+\{(x_1,\ldots,x_{n-1}): x_i\ge0,\ x_1+\cdots+x_{n-1}\le1-t\}=(1-t)\Delta_{n-1},
+\]
+a scaled copy of $\Delta_{n-1}$, of volume $(1-t)^{n-1}/(n-1)!$ by \cref{prop:scaling} and the induction hypothesis (for $t=1$ it is a point). Cavalieri's principle, with the last coordinate in the role of the first, gives
+\[
+\operatorname{vol}(\Delta_n)=\int_0^1\frac{(1-t)^{n-1}}{(n-1)!}\,dt=\frac1{(n-1)!}\cdot\frac1n=\frac1{n!} .
+\]
+For the second statement, consider for each permutation $\sigma$ of $\{1,\ldots,n\}$ the set $C_\sigma\coloneqq\{\mathbf x\in[0,1]^n: x_{\sigma(1)}\le\cdots\le x_{\sigma(n)}\}$. These $n!$ sets are Jordan measurable, their boundaries lying in the faces of the cube and in the hyperplanes $x_i=x_j$, and they cover the cube $[0,1]^n$, since the coordinates of every point can be sorted, and two of them overlap only in points with two equal coordinates, which lie in the hyperplanes $x_i=x_j$; bounded pieces of these hyperplanes have content zero, by the argument of \cref{thm:multiple-summary} applied to the graphs $x_j=x_i$. Each $C_\sigma$ is mapped onto the set $C_{\mathrm{id}}$ of the statement by the permutation of coordinates $\mathbf x\mapsto(x_{\sigma(1)},\ldots,x_{\sigma(n)})$, which maps boxes onto boxes of the same volume and therefore preserves volumes, by the argument of \cref{prop:scaling}. So the $n!$ sets have the same volume, and by \cref{thm:integral-over-region}\,(ii) these volumes add up to $\operatorname{vol}([0,1]^n)=1$.
+\end{proof}
+
+The second statement has a probabilistic reading that Volume~III develops: if $n$ numbers are chosen independently and uniformly at random from $[0,1]$, the probability that they come out in increasing order is $1/n!$, as it must be by symmetry, since each of the $n!$ orders is equally likely. The sets $C_\sigma$ are the starting point of the theory of order statistics. The first statement explains the factor $1/n!$ in the volume of every $n$-dimensional simplex: \cref{sec:change-variables} shows that the simplex with vertices $\mathbf v_0,\ldots,\mathbf v_n$ has volume $|\det(\mathbf v_1-\mathbf v_0,\ldots,\mathbf v_n-\mathbf v_0)|/n!$. For $n=10$, the simplex fills less than one three-millionth of the unit cube, a first sign of how strangely volume behaves in high dimensions; \cref{sec:gaussian,sec:cubature} return to this theme.
+
+\begin{figure}
+\sdfloat{%
+\begin{tikzpicture}[x={(-1.25cm,-0.75cm)}, y={(2.1cm,0cm)}, z={(0cm,2.1cm)}, font=\scriptsize]
+\draw[black!45, line width=0.4pt, -{Latex[length=1.4mm]}] (1,0,0) -- (1.35,0,0) node[below left=-1pt] {$x_1$};
+\draw[black!45, line width=0.4pt, -{Latex[length=1.4mm]}] (0,1,0) -- (0,1.3,0) node[right] {$x_2$};
+\draw[black!45, line width=0.4pt, -{Latex[length=1.4mm]}] (0,0,1) -- (0,0,1.28) node[above] {$x_3$};
+\fill[black!8] (1,0,0) -- (0,1,0) -- (0,0,1) -- cycle;
+\filldraw[fill=black!30, draw=black, line width=0.5pt] (0.6,0,0.4) -- (0,0.6,0.4) -- (0,0,0.4) -- cycle;
+\draw[black, line width=0.7pt, dashed] (0,0,0) -- (1,0,0);
+\draw[black, line width=0.7pt] (1,0,0) -- (0,1,0) -- (0,0,1) -- cycle;
+\draw[black, line width=0.7pt, dashed] (0,0,0) -- (0,1,0);
+\draw[black, line width=0.7pt, dashed] (0,0,0) -- (0,0,1);
+\fill (0,0,0) circle (1.1pt);
+\node[left] at (0,0,0) {$\mathbf 0$};
+\node[below] at (1,0,0) {$\mathbf e_1$};
+\node[below] at (0,1,0) {$\mathbf e_2$};
+\node[left] at (0,0,1) {$\mathbf e_3$};
+\node[right] at (0,0.6,0.4) {$x_3=t$};
+\end{tikzpicture}}{The standard simplex $\Delta_3$, the tetrahedron with vertices $\mathbf 0$, $\mathbf e_1$, $\mathbf e_2$ and $\mathbf e_3$ (the three edges at $\mathbf 0$, which lie behind the face $x_1+x_2+x_3=1$, are dashed). Its slice at height $x_3=t$ (dark) is the triangle $(1-t)\Delta_2$, of area $(1-t)^2/2$, and Cavalieri's principle gives $\operatorname{vol}(\Delta_3)=\int_0^1(1-t)^2/2\,dt=1/6$.\label{fig:simplex}}
+\end{figure}
+
+\section{Change of Variables}
+\label{sec:change-variables}
+
+The substitution rule of \cref{thm:substitution} changes the variable of a single integral, $x=g(t)$, and the factor $g'(t)$ records how the map $g$ stretches short intervals. In several variables a map $\mathbf g$ stretches small boxes into small, slightly curved parallelepipeds, and the factor that records the change of volume is the Jacobian determinant $|\det D\mathbf g|$, as \cref{sec:inverse-implicit} anticipated for polar coordinates. We first treat linear maps, for which the factor is exact and the same everywhere.
+
+\subsection{Linear Maps and Volume}
+
+We need to know that maps which do not stretch distances too much preserve sets of content zero.
+
+\begin{lemma}[Lipschitz images of sets of content zero]
+\label{lem:lipschitz-content}
+Let $Z\subseteq\mathbb R^n$ have content zero, and let $\mathbf g\colon Z\to\mathbb R^n$ satisfy $\|\mathbf g(\mathbf x)-\mathbf g(\mathbf y)\|\le K\|\mathbf x-\mathbf y\|$ for all $\mathbf x,\mathbf y\in Z$. Then $\mathbf g(Z)$ has content zero.
+\end{lemma}
+
+\begin{proof}
+Let $\varepsilon>0$, and cover $Z$ by boxes $B_1,\ldots,B_N$ of total volume less than $\varepsilon$. A box with sides $s_1,\ldots,s_n$ is covered by cubes of side $\eta$ whose number is $\prod_i\lceil s_i/\eta\rceil$, of total volume at most $\prod_i(s_i+\eta)$, which is less than twice the volume of the box if $\eta$ is small enough. So $Z$ is covered by finitely many cubes of side $\eta$, of total volume less than $2\varepsilon$. Two points of a cube of side $\eta$ are at distance at most $\sqrt n\,\eta$, so the image of the part of $Z$ in such a cube lies in a ball of radius $K\sqrt n\,\eta$ about the image of any one of its points, and hence in a cube of side $2K\sqrt n\,\eta$, of volume $(2K\sqrt n)^n\eta^n$. The image cubes cover $\mathbf g(Z)$ and have total volume less than $(2K\sqrt n)^n\cdot2\varepsilon$, which is as small as desired.
+\end{proof}
+
+\begin{theorem}[Linear maps multiply volume by the determinant]
+\label{thm:linear-volume}
+Let $A\in\mathbb R^{n\times n}$ and let $S\subseteq\mathbb R^n$ be Jordan measurable. Then $A(S)\coloneqq\{A\mathbf x: \mathbf x\in S\}$ is Jordan measurable, and
+\[
+\operatorname{vol}\bigl(A(S)\bigr)=|\det A|\operatorname{vol}(S).
+\]
+\end{theorem}
+
+\begin{proof}
+We give the proof for $n=2$ in full; for general $n$ it is the same, given one fact from Chapter~14, which we point out at the end.
+
+\emph{The singular case.} If $\det A=0$, the proof of \cref{prop:inverse-2x2} shows that $A\mathbf v=\mathbf0$ for some $\mathbf v\ne\mathbf0$, so the image of $A$ is spanned by the image of a single vector and is a line through the origin or the origin itself. The bounded set $A(S)$ therefore lies in a bounded segment, which has content zero (\cref{prop:content-zero-examples}), and $\operatorname{vol}(A(S))=0=|\det A|\operatorname{vol}(S)$.
+
+\emph{Measurability.} Let $A$ be invertible. The maps $A$ and $A^{-1}$ are continuous, so $A$ maps interior points of $S$ to interior points of $A(S)$, and points outside the closure of $S$ to points outside the closure of $A(S)$; hence $\partial(A(S))=A(\partial S)$. Since $\|A\mathbf x-A\mathbf y\|\le\|A\|_2\|\mathbf x-\mathbf y\|$ (\cref{prop:matrix-norms}), \cref{lem:lipschitz-content} shows that $A(\partial S)$ has content zero, and $A(S)$ is Jordan measurable.
+
+\emph{Products.} Say that $A$ has property (V) if $\operatorname{vol}(A(S))=|\det A|\operatorname{vol}(S)$ for every Jordan measurable $S$. If $A$ and $B$ have property (V), so does $AB$, since
+\[
+\operatorname{vol}\bigl(AB(S)\bigr)=|\det A|\operatorname{vol}\bigl(B(S)\bigr)=|\det A|\,|\det B|\operatorname{vol}(S)
+\]
+and $\det A\det B=\det(AB)$ (\cref{thm:invertible-matrices}\,(ii), which for $n=2$ is checked by multiplying out).
+
+\emph{Elementary matrices.} The following three kinds of invertible matrices have property (V).
+\begin{enumerate}
+\item The \emph{exchange} of two coordinates, with determinant $-1$. It maps every box onto a box of the same volume, and the subboxes of a partition $P$ of a box onto those of a partition of the image box. As in the proof of \cref{prop:scaling}, the lower and upper sums of $\mathbf 1_{A(S)}$ and of $\mathbf 1_S$ for corresponding partitions coincide, so the volumes agree.
+\item The \emph{scaling} of one coordinate by a factor $\lambda\ne0$, with determinant $\lambda$. It maps every box onto a box of $|\lambda|$ times the volume, and the same argument gives $\operatorname{vol}(A(S))=|\lambda|\operatorname{vol}(S)$.
+\item The \emph{shear} $(x_1,x_2)\mapsto(x_1+cx_2,x_2)$, with determinant $1$, and its counterpart with the roles of the coordinates exchanged. For fixed $x_2$, the section of $A(S)$ along the $x_1$-direction is the section of $S$ translated by $cx_2$. Translating a function of one variable does not change its lower integral, since partitions can be translated with it. By Fubini's theorem in the form with lower integrals (\cref{thm:fubini}\,(ii), with $x_1$ as the inner variable), the volumes of $A(S)$ and $S$ are the integrals over $x_2$ of these lower integrals, and they are equal.
+\end{enumerate}
+
+\emph{Factorisation.} Let $A$ have the rows $(a,b)$ and $(c,d)$, with $\det A=ad-bc\ne0$. If $a\ne0$, then
+\[
+A=\begin{pmatrix}1&0\\c/a&1\end{pmatrix}\begin{pmatrix}a&0\\0&\det A/a\end{pmatrix}\begin{pmatrix}1&b/a\\0&1\end{pmatrix},
+\]
+as one checks by multiplying out: the product of the last two factors has the rows $(a,b)$ and $(0,\det A/a)$, and the first factor adds $c/a$ times the first row to the second, which gives $(c,\,bc/a+(ad-bc)/a)=(c,d)$. This writes $A$ as a product of shears and scalings. If $a=0$, then $c\ne0$, and $A$ is the exchange of the two rows applied to a matrix with nonzero upper left entry, which factors as before. By the step on products, $A$ has property (V).
+
+For general $n$, all steps carry over word for word, the singular case by the fact that the image of a singular matrix lies in a hyperplane, a bounded part of which is the graph of a linear function over a bounded set and has content zero (\cref{thm:multiple-summary}), and the factorisation by Gaussian elimination: every invertible $n\times n$ matrix is a product of exchanges, scalings and shears $x_i\mapsto x_i+cx_j$. Chapter~14 proves both facts.
+\end{proof}
+
+Applied to the unit square, the theorem proves what \cref{sec:vectors-rn} stated as a geometric fact: the parallelogram spanned by the columns $\mathbf a_1$ and $\mathbf a_2$ of $A$ is the image of $[0,1]^2$, so its area is $|\det A|$ (\cref{fig:linear-map}). In the same way the parallelepiped spanned by $n$ vectors in $\mathbb R^n$ has volume $|\det(\mathbf a_1,\ldots,\mathbf a_n)|$, the absolute value of the determinant of the matrix with these columns. The simplex with vertices $\mathbf v_0,\ldots,\mathbf v_n$ is the image of $\Delta_n$ under $\mathbf x\mapsto\mathbf v_0+A\mathbf x$, where $A$ has the columns $\mathbf v_i-\mathbf v_0$, so by \cref{prop:simplex} and the invariance of volume under translations its volume is $|\det A|/n!$; for $n=2$ this is the familiar formula for the area of a triangle with vertices $(x_0,y_0)$, $(x_1,y_1)$, $(x_2,y_2)$,
+\[
+\frac12\bigl|(x_1-x_0)(y_2-y_0)-(x_2-x_0)(y_1-y_0)\bigr| .
+\]
+The ellipse $E=\{x^2/a^2+y^2/b^2\le1\}$, with $a,b>0$, is the image of the unit disc under $\operatorname{diag}(a,b)$, so its area is $\pi ab$.
+
+\begin{figure}
+\sdpanel{A}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.4\textwidth, height=0.4\textwidth, xmin=-0.2, xmax=3.3, ymin=-0.2, ymax=2.3,
+  axis equal image, xtick={0,1,2,3}, ytick={0,1,2}, xlabel={$u_1$}, ylabel={$u_2$}]
+\fill[sdfill] (axis cs:0,0) rectangle (axis cs:1,1);
+\pgfplotsinvokeforeach{0,0.25,0.5,0.75,1}{\draw[black!60, line width=0.4pt] (axis cs:#1,0) -- (axis cs:#1,1); \draw[black!60, line width=0.4pt] (axis cs:0,#1) -- (axis cs:1,#1);}
+\draw[black, line width=0.8pt] (axis cs:0,0) rectangle (axis cs:1,1);
+\draw[line width=0.9pt, -{Latex[length=1.8mm]}] (axis cs:0,0) -- (axis cs:1,0) node[below, font=\scriptsize] {$\mathbf e_1$};
+\draw[line width=0.9pt, -{Latex[length=1.8mm]}] (axis cs:0,0) -- (axis cs:0,1) node[left, font=\scriptsize] {$\mathbf e_2$};
+\end{axis}
+\end{tikzpicture}}\hfill
+\sdpanel{B}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.4\textwidth, height=0.4\textwidth, xmin=-0.2, xmax=3.3, ymin=-0.2, ymax=2.3,
+  axis equal image, xtick={0,1,2,3}, ytick={0,1,2}, xlabel={$x_1$}, ylabel={$x_2$}]
+\fill[sdfill] (axis cs:0,0) -- (axis cs:2,0.5) -- (axis cs:3,2) -- (axis cs:1,1.5) -- cycle;
+\pgfplotsinvokeforeach{0,0.25,0.5,0.75,1}{\draw[black!60, line width=0.4pt] (axis cs:{2*#1},{0.5*#1}) -- (axis cs:{2*#1+1},{0.5*#1+1.5}); \draw[black!60, line width=0.4pt] (axis cs:{#1},{1.5*#1}) -- (axis cs:{#1+2},{1.5*#1+0.5});}
+\draw[black, line width=0.8pt] (axis cs:0,0) -- (axis cs:2,0.5) -- (axis cs:3,2) -- (axis cs:1,1.5) -- cycle;
+\draw[line width=0.9pt, -{Latex[length=1.8mm]}] (axis cs:0,0) -- (axis cs:2,0.5) node[below, font=\scriptsize] {$\mathbf a_1$};
+\draw[line width=0.9pt, -{Latex[length=1.8mm]}] (axis cs:0,0) -- (axis cs:1,1.5) node[left, font=\scriptsize] {$\mathbf a_2$};
+\end{axis}
+\end{tikzpicture}}
+\caption{A linear map and area. (A) The unit square with a grid of sixteen small squares. (B) Its image under the matrix $A$ with the rows $(2,1)$ and $(1/2,3/2)$: the parallelogram spanned by the columns $\mathbf a_1=(2,1/2)$ and $\mathbf a_2=(1,3/2)$, cut into sixteen congruent small parallelograms. Every region is stretched by the same factor $|\det A|=3-1/2=5/2$, the area of the parallelogram.}
+\label{fig:linear-map}
+\end{figure}
+
+\subsection{The Change of Variables Formula}
+
+Let $\mathbf g$ be a continuously differentiable map from an open set of the $(u,v)$-plane to the $(x,y)$-plane. A small rectangle $Q=[u,u+h]\times[v,v+k]$ is mapped onto a region bounded by four curves, which is in general not a parallelogram (\cref{fig:change-variables}). But $\mathbf g$ is differentiable at $(u,v)$, so for small $(s,t)$
+\[
+\mathbf g(u+s,v+t)\approx\mathbf g(u,v)+s\,\frac{\partial\mathbf g}{\partial u}(u,v)+t\,\frac{\partial\mathbf g}{\partial v}(u,v),
+\]
+and the image of $Q$ is approximately the parallelogram with a corner at $\mathbf g(u,v)$ spanned by the vectors $h\,\partial_u\mathbf g(u,v)$ and $k\,\partial_v\mathbf g(u,v)$. These are $D\mathbf g(u,v)$ applied to the sides $h\mathbf e_1$ and $k\mathbf e_2$ of $Q$, so by \cref{thm:linear-volume} the parallelogram has area $|\det D\mathbf g(u,v)|\,hk$. Cut a region $S$ of the $(u,v)$-plane into small rectangles $Q_{jk}$ with tags $\boldsymbol\xi_{jk}$; their images cut $\mathbf g(S)$ into small curved pieces, and
+\[
+\iint_{\mathbf g(S)}f\,dA\approx\sum_{j,k}f\bigl(\mathbf g(\boldsymbol\xi_{jk})\bigr)\operatorname{vol}\bigl(\mathbf g(Q_{jk})\bigr)\approx\sum_{j,k}f\bigl(\mathbf g(\boldsymbol\xi_{jk})\bigr)\,|\det D\mathbf g(\boldsymbol\xi_{jk})|\operatorname{vol}(Q_{jk}).
+\]
+The right side is a Riemann sum of the function $f(\mathbf g(\mathbf u))|\det D\mathbf g(\mathbf u)|$ over $S$. If the errors of both approximations vanish in the limit, the integral of $f$ over $\mathbf g(S)$ equals the integral of $(f\circ\mathbf g)|\det D\mathbf g|$ over $S$. This is the content of the following theorem.
+
+\begin{figure}
+\sdpanel{A}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.38\textwidth, height=0.42\textwidth, xmin=0.8, xmax=2.15, ymin=0, ymax=1.15,
+  xtick={1,1.5,2}, ytick={0.2,0.6,1}, xlabel={$u$}, ylabel={$v$}]
+\fill[sdfill] (axis cs:1.5,0.6) rectangle (axis cs:1.75,0.8);
+\pgfplotsinvokeforeach{1,1.25,1.5,1.75,2}{\draw[black!60, line width=0.4pt] (axis cs:#1,0.2) -- (axis cs:#1,1);}
+\pgfplotsinvokeforeach{0.2,0.4,0.6,0.8,1}{\draw[black!60, line width=0.4pt] (axis cs:1,#1) -- (axis cs:2,#1);}
+\draw[black, line width=0.8pt] (axis cs:1.5,0.6) rectangle (axis cs:1.75,0.8);
+\end{axis}
+\end{tikzpicture}}\hfill
+\sdpanel{B}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.55\textwidth, height=0.47\textwidth, xmin=0, xmax=4.1, ymin=0, ymax=4.1,
+  axis equal image, xtick={0,1,2,3,4}, ytick={0,1,2,3,4}, xlabel={$x$}, ylabel={$y$}]
+\addplot[draw=none, fill=sdfill] coordinates {(1.8900,1.8000) (1.9847,1.8375) (2.0814,1.8750) (2.1800,1.9125) (2.2806,1.9500) (2.3832,1.9875) (2.4877,2.0250) (2.5941,2.0625) (2.7025,2.1000) (2.6719,2.1875) (2.6400,2.2750) (2.6069,2.3625) (2.5725,2.4500) (2.5369,2.5375) (2.5000,2.6250) (2.4619,2.7125) (2.4225,2.8000) (2.3141,2.7500) (2.2077,2.7000) (2.1032,2.6500) (2.0006,2.6000) (1.9000,2.5500) (1.8014,2.5000) (1.7047,2.4500) (1.6100,2.4000) (1.6494,2.3250) (1.6875,2.2500) (1.7244,2.1750) (1.7600,2.1000) (1.7944,2.0250) (1.8275,1.9500) (1.8594,1.8750)} -- cycle;
+\pgfplotsinvokeforeach{1,1.25,1.5,1.75,2}{\addplot[black!60, line width=0.4pt, domain=0.2:1, samples=30] ({#1*#1-x*x},{2*#1*x});}
+\pgfplotsinvokeforeach{0.2,0.4,0.6,0.8,1}{\addplot[black!60, line width=0.4pt, domain=1:2, samples=30] ({x*x-#1*#1},{2*x*#1});}
+\addplot[black, line width=0.8pt, domain=1.5:1.75, samples=20] ({x*x-0.36},{1.2*x});
+\addplot[black, line width=0.8pt, domain=1.5:1.75, samples=20] ({x*x-0.64},{1.6*x});
+\addplot[black, line width=0.8pt, domain=0.6:0.8, samples=20] ({2.25-x*x},{3*x});
+\addplot[black, line width=0.8pt, domain=0.6:0.8, samples=20] ({3.0625-x*x},{3.5*x});
+\draw[black, dashed, line width=0.7pt] (axis cs:1.89,1.8) -- (axis cs:2.64,2.1) -- (axis cs:2.40,2.7) -- (axis cs:1.65,2.4) -- cycle;
+\end{axis}
+\end{tikzpicture}}
+\caption{The local picture behind the change of variables formula, for $\mathbf g(u,v)=(u^2-v^2,2uv)$, with $\det D\mathbf g(u,v)=4(u^2+v^2)$. (A) A grid in the $(u,v)$-plane with the cell $Q=[1.5,1.75]\times[0.6,0.8]$ shaded. (B) The images of the grid lines are parabolas, and the image of $Q$ (shaded) is a curved quadrilateral of area $0.628$. The parallelogram spanned by $0.25\,\partial_u\mathbf g$ and $0.2\,\partial_v\mathbf g$ at the corner $\mathbf g(1.5,0.6)=(1.89,1.8)$ (dashed) has area $|\det D\mathbf g(1.5,0.6)|\cdot0.25\cdot0.2=0.522$. The ratio of the two areas, $0.83$, tends to $1$ as the cell shrinks; for the cell with sides halved it is $0.91$.}
+\label{fig:change-variables}
+\end{figure}
+
+\begin{theorem}[Change of variables]
+\label{thm:change-variables}
+Let $U\subseteq\mathbb R^n$ be open, let $\mathbf g\colon U\to\mathbb R^n$ be continuously differentiable, and let $S\subseteq U$ be closed, bounded and Jordan measurable. Suppose that $\mathbf g$ is injective on the interior of $S$ and that $\det D\mathbf g(\mathbf u)\ne0$ for every interior point $\mathbf u$ of $S$. Then $\mathbf g(S)$ is closed, bounded and Jordan measurable, and for every function $f$ continuous on $\mathbf g(S)$,
+\[
+\int_{\mathbf g(S)}f(\mathbf x)\,d\mathbf x=\int_Sf\bigl(\mathbf g(\mathbf u)\bigr)\,\bigl|\det D\mathbf g(\mathbf u)\bigr|\,d\mathbf u .
+\]
+In particular, $\operatorname{vol}(\mathbf g(S))=\int_S|\det D\mathbf g(\mathbf u)|\,d\mathbf u$.
+\end{theorem}
+
+\begin{proof}
+We describe the structure of the proof; complete proofs are given by Spivak~\cite[Thm.~3-13]{spivak1965manifolds} and Munkres~\cite[Chap.~4]{munkres1991}, and a short one by Lax~\cite{lax1999}.
+
+\emph{The image is Jordan measurable.} $\mathbf g(S)$ is closed and bounded as the continuous image of a closed bounded set. By the inverse function theorem (\cref{thm:inverse-function}), $\mathbf g$ maps a neighbourhood of every interior point of $S$ onto an open set, so interior points of $S$ go to interior points of $\mathbf g(S)$, and the boundary of $\mathbf g(S)$ lies in $\mathbf g(\partial S)$. On a neighbourhood of the closed bounded set $\partial S$, the map $\mathbf g$ is Lipschitz continuous, by the mean value inequality (\cref{thm:mean-value-inequality}) applied on small balls, and \cref{lem:lipschitz-content} shows that $\mathbf g(\partial S)$ has content zero.
+
+\emph{The key estimate.} Let $\mathbf u_0$ be an interior point and $A\coloneqq D\mathbf g(\mathbf u_0)$. The map $\mathbf h\coloneqq A^{-1}\circ\mathbf g$ has the derivative $I$ at $\mathbf u_0$, and by the continuity of $D\mathbf g$ its derivative is within $\varepsilon$ of $I$ in norm on a small ball around $\mathbf u_0$. By the mean value inequality, $\mathbf h$ maps every cube $Q$ of half-side $s$ centred at a point $\mathbf c$ of this ball into the cube of half-side $(1+\varepsilon\sqrt n)s$ centred at $\mathbf h(\mathbf c)$, so $\operatorname{vol}(\mathbf h(Q))\le(1+\varepsilon\sqrt n)^n\operatorname{vol}(Q)$, and by \cref{thm:linear-volume}
+\[
+\operatorname{vol}\bigl(\mathbf g(Q)\bigr)=|\det A|\operatorname{vol}\bigl(\mathbf h(Q)\bigr)\le(1+\varepsilon\sqrt n)^n\,|\det D\mathbf g(\mathbf u_0)|\operatorname{vol}(Q).
+\]
+By the uniform continuity of $D\mathbf g$ on closed bounded subsets of the interior of $S$, one $\varepsilon$ serves for all sufficiently small cubes at once.
+
+\emph{Summation.} For $f\ge0$, cut a closed bounded subset of the interior of $S$ into small cubes $Q$, apply the estimate on each, and add: the images $\mathbf g(Q)$ overlap only in sets of content zero, by injectivity, and the sum of the bounds is an upper sum of $(f\circ\mathbf g)|\det D\mathbf g|$ up to the factor $(1+\varepsilon\sqrt n)^n$. Letting the cubes shrink gives $\int_{\mathbf g(S)}f\le\int_S(f\circ\mathbf g)|\det D\mathbf g|$, apart from contributions near $\partial S$, which tend to zero because $\partial S$ and its image have content zero. The same argument for the inverse map, which exists and is continuously differentiable on $\mathbf g$ of the interior of $S$ by the inverse function theorem, gives the reverse inequality. A general continuous $f$ is the difference of the nonnegative functions $\max(f,0)$ and $\max(-f,0)$.
+\end{proof}
+
+For $n=1$ and an increasing $g$, the theorem is the substitution rule $\int_{g(\alpha)}^{g(\beta)}f(x)\,dx=\int_\alpha^\beta f(g(t))\,g'(t)\,dt$ of \cref{thm:substitution}; for a decreasing $g$ the absolute value $|g'|=-g'$ compensates for the reversed order of $g(\alpha)>g(\beta)$. In several variables there is no orientation of the limits to absorb a sign, and the absolute value is essential. The injectivity is essential as well: the polar coordinate map below, applied to $[0,1]\times[0,4\pi]$, covers the unit disc twice, and the right side of the formula with $f=1$ gives $2\pi$, twice the area of the disc. The exceptions allowed on the boundary of $S$ are what make the theorem usable: the coordinate maps below fail to be injective, or have vanishing Jacobian determinant, exactly on the boundaries of their natural domains.
+
+The theorem for $n=2$ goes back to Euler, who changed variables in double integrals in 1769, and for $n=3$ to Lagrange in 1773; Jacobi stated it in general, with the functional determinant, in 1841~\cite{jacobi1841,katz1982}.
+
+\subsection{Polar, Cylindrical and Spherical Coordinates}
+
+The coordinate maps of \cref{sec:inverse-implicit} satisfy the hypotheses of \cref{thm:change-variables} on their natural domains. For \term{polar coordinates} $\mathbf P(r,\theta)=(r\cos\theta,r\sin\theta)$, with $\det D\mathbf P(r,\theta)=r$, let $S^*$ be a closed bounded Jordan measurable subset of the strip $[0,\infty)\times[\alpha,\alpha+2\pi]$ of the $(r,\theta)$-plane. Its interior points have $r>0$ and $\alpha<\theta<\alpha+2\pi$, where $\mathbf P$ is injective with positive Jacobian determinant, so
+\begin{equation}
+\iint_{\mathbf P(S^*)}f\,dA=\iint_{S^*}f(r\cos\theta,r\sin\theta)\,r\,dA(r,\theta)
+\label{eq:polar-integral}
+\end{equation}
+for continuous $f$; this is the precise meaning of the rule $dx\,dy=r\,dr\,d\theta$. Most often $S^*$ is a region $\{\alpha\le\theta\le\beta,\ \rho_1(\theta)\le r\le\rho_2(\theta)\}$ with continuous $0\le\rho_1\le\rho_2$ and $\beta-\alpha\le2\pi$, and Fubini's theorem turns the right side into $\int_\alpha^\beta\int_{\rho_1(\theta)}^{\rho_2(\theta)}f(r\cos\theta,r\sin\theta)\,r\,dr\,d\theta$. With $f=1$ the area of the region is
+\[
+\int_\alpha^\beta\int_{\rho_1(\theta)}^{\rho_2(\theta)}r\,dr\,d\theta=\int_\alpha^\beta\frac{\rho_2(\theta)^2-\rho_1(\theta)^2}2\,d\theta .
+\]
+The cardioid $r\le1+\cos\theta$, $0\le\theta\le2\pi$, has the area $\int_0^{2\pi}(1+\cos\theta)^2/2\,d\theta=(2\pi+\pi)/2=3\pi/2$, using $\int_0^{2\pi}\cos\theta\,d\theta=0$ and $\int_0^{2\pi}\cos^2\theta\,d\theta=\pi$. Polar coordinates are the natural choice for integrands that depend only on $x^2+y^2=r^2$. Over the disc $D_R$ of radius $R$ about the origin,
+\[
+\begin{aligned}
+\iint_{D_R}(x^2+y^2)\,dA&=\int_0^{2\pi}\int_0^Rr^3\,dr\,d\theta=\frac{\pi R^4}2,\\
+\iint_{D_R}e^{-(x^2+y^2)}\,dA&=\int_0^{2\pi}\int_0^Re^{-r^2}r\,dr\,d\theta=\pi\bigl(1-e^{-R^2}\bigr),
+\end{aligned}
+\]
+the last because $-e^{-r^2}/2$ is an antiderivative of $re^{-r^2}$. This last integral is the heart of the next section.
+
+\term{Cylindrical coordinates} $(r,\theta,z)\mapsto(r\cos\theta,r\sin\theta,z)$ replace $x$ and $y$ by polar coordinates and keep $z$; the Jacobian determinant is again $r$, since the Jacobian matrix has the $2\times2$ block of $D\mathbf P$ and a $1$ in the corner. The solid bounded by the paraboloid $z=x^2+y^2$ and the plane $z=1$ has the volume
+\[
+\int_0^{2\pi}\int_0^1\int_{r^2}^1r\,dz\,dr\,d\theta=2\pi\int_0^1(r-r^3)\,dr=\frac\pi2 ,
+\]
+half the volume of the cylinder $x^2+y^2\le1$, $0\le z\le1$; Archimedes found it in the form that a segment of a paraboloid of revolution is three halves of the cone with the same base and axis~\cite{heath1897archimedes}.
+
+For \term{spherical coordinates} $\mathbf S(r,\theta,\varphi)=(r\sin\theta\cos\varphi,r\sin\theta\sin\varphi,r\cos\theta)$, with the polar angle $\theta\in[0,\pi]$ and the azimuth $\varphi$ as in \cref{sec:inverse-implicit}, the Jacobian determinant is $r^2\sin\theta$, which is positive for $r>0$ and $0<\theta<\pi$. On a closed bounded Jordan measurable subset $S^*$ of $[0,\infty)\times[0,\pi]\times[\alpha,\alpha+2\pi]$ the map is injective at interior points, and
+\[
+\iiint_{\mathbf S(S^*)}f\,dV=\iiint_{S^*}f\bigl(\mathbf S(r,\theta,\varphi)\bigr)\,r^2\sin\theta\,dV(r,\theta,\varphi).
+\]
+The ball $B_R$ of radius $R$ about the origin is the image of the box $[0,R]\times[0,\pi]\times[-\pi,\pi]$, so
+\[
+\operatorname{vol}(B_R)=\int_{-\pi}^\pi\int_0^\pi\int_0^Rr^2\sin\theta\,dr\,d\theta\,d\varphi=\frac{R^3}3\cdot2\cdot2\pi=\frac43\pi R^3 ,
+\]
+by the three-variable version of \cref{cor:product-integral}, since the integrand is a product of functions of $r$, $\theta$ and $\varphi$. In the same way $\iiint_{B_R}(x^2+y^2+z^2)\,dV=\int r^4\,dr\int\sin\theta\,d\theta\int d\varphi=4\pi R^5/5$. By symmetry the three integrals of $x^2$, $y^2$ and $z^2$ over the ball are equal, so $\iiint_{B_R}(x^2+y^2)\,dV=8\pi R^5/15$. For a ball of constant density $\rho$ and mass $M=4\pi R^3\rho/3$, this is the moment of inertia about an axis through the centre, $8\pi R^5\rho/15=2MR^2/5$, a value that every physics student meets. \Cref{tab:coordinates} collects the three coordinate systems.
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}{colspec={lll}, row{1}={font=\small\bfseries}}
+\toprule
+coordinates & map & volume element \\
+\midrule
+polar & $x=r\cos\theta$, $y=r\sin\theta$ & $r\,dr\,d\theta$ \\
+cylindrical & $x=r\cos\theta$, $y=r\sin\theta$, $z=z$ & $r\,dr\,d\theta\,dz$ \\
+spherical & $x=r\sin\theta\cos\varphi$, $y=r\sin\theta\sin\varphi$, $z=r\cos\theta$ & $r^2\sin\theta\,dr\,d\theta\,d\varphi$ \\
+linear & $\mathbf x=A\mathbf u$ & $|\det A|\,d\mathbf u$ \\
+\bottomrule
+\end{sdtable}}{Coordinate systems and their volume elements $|\det D\mathbf g|$, for use in \cref{thm:change-variables}. In spherical coordinates $\theta\in[0,\pi]$ is the polar angle measured from the positive $z$-axis and $\varphi$ the azimuth (ISO 80000-2).\label{tab:coordinates}}
+\end{table}
+
+A linear change of variables can simplify the region rather than the integrand. The square $S=\{|x|+|y|\le1\}$, with vertices $(\pm1,0)$ and $(0,\pm1)$, is described by $-1\le x+y\le1$ and $-1\le x-y\le1$. With $u=x+y$ and $v=x-y$, that is, $\mathbf g(u,v)=((u+v)/2,(u-v)/2)$, the square is the image of $[-1,1]^2$, and $|\det D\mathbf g|=|(-1/4)-(1/4)|=1/2$. Hence
+\[
+\iint_Se^{x+y}\,dA=\int_{-1}^1\int_{-1}^1e^u\cdot\frac12\,dv\,du=e-\frac1e .
+\]
+
+\section{The Gaussian Integral}
+\label{sec:gaussian}
+
+\subsection{The Value of \texorpdfstring{$\int e^{-x^2}dx$}{the Gaussian Integral}}
+
+The function $e^{-x^2}$ has no elementary antiderivative (\cref{thm:liouville}), so the fundamental theorem of calculus cannot evaluate $\int_{-\infty}^\infty e^{-x^2}dx$. A double integral can. The idea is to square the integral: by \cref{cor:product-integral} the square is a double integral of $e^{-x^2}e^{-y^2}=e^{-(x^2+y^2)}$, a function of the distance from the origin, and in polar coordinates the factor $r$ supplies exactly the derivative that the single integral lacks. Laplace evaluated the integral in 1774, in his first work on probability, and the normal distribution of de Moivre, Laplace and Gauss has made it the most important integral of probability and statistics~\cite{stigler1986}.
+
+\begin{theorem}[Gaussian integral]
+\label{thm:gaussian}
+The improper integral $\int_{-\infty}^\infty e^{-x^2}dx$ converges, and
+\[
+\int_{-\infty}^\infty e^{-x^2}\,dx=\sqrt\pi .
+\]
+\end{theorem}
+
+\begin{proof}
+For $R>0$ let $I(R)\coloneqq\int_{-R}^Re^{-x^2}dx$ and let $Q_R\coloneqq[-R,R]^2$. By \cref{cor:product-integral} and \cref{thm:exp-properties}\,(ii),
+\[
+I(R)^2=\int_{-R}^Re^{-x^2}dx\cdot\int_{-R}^Re^{-y^2}dy=\iint_{Q_R}e^{-(x^2+y^2)}\,dA .
+\]
+The square $Q_R$ contains the disc $D_R$ of radius $R$ about the origin and is contained in the disc $D_{R\sqrt2}$, which passes through its corners (\cref{fig:gaussian}B). The integrand is positive, so by the monotonicity of the integral (\cref{thm:integral-over-region}\,(i), applied to the integrand times the indicator functions of the three sets) and the polar computation \eqref{eq:polar-integral} of \cref{sec:change-variables},
+\begin{equation}
+\pi\bigl(1-e^{-R^2}\bigr)=\iint_{D_R}e^{-(x^2+y^2)}\,dA\le I(R)^2\le\iint_{D_{R\sqrt2}}e^{-(x^2+y^2)}\,dA=\pi\bigl(1-e^{-2R^2}\bigr).
+\label{eq:gaussian-squeeze}
+\end{equation}
+Both bounds tend to $\pi$ as $R\to\infty$, so $I(R)^2\to\pi$ by the squeeze theorem, and $I(R)\to\sqrt\pi$, since $I(R)>0$ and the square root is continuous. It remains to see that the improper integral converges in the sense of \cref{def:improper}, that is, that $\int_0^\infty e^{-x^2}dx$ converges. The function $R\mapsto\int_0^Re^{-x^2}dx=I(R)/2$, by the evenness of the integrand, is increasing and bounded by $\sqrt\pi/2$, by \eqref{eq:gaussian-squeeze}; so it converges, to $\sqrt\pi/2$, by \cref{lem:monotone-limit-infinity}. The integral over $(-\infty,0]$ is the same by symmetry, and the sum is $\sqrt\pi$.
+\end{proof}
+
+\Cref{tab:gaussian-squeeze} shows how quickly the two bounds of \eqref{eq:gaussian-squeeze} close in on $I(R)^2$: for $R=3$ all three numbers agree with $\pi=3.14159\ldots$ to three decimals. The reason is visible in \cref{fig:gaussian}: the integrand is tiny outside a disc of radius $3$, so it matters little whether one integrates over a disc or over a square. The proof uses three tools of the chapter at once: Fubini's theorem for the product, polar coordinates for the disc, and the comparison of integrals over nested regions.
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}{colspec={rlll}, row{1}={font=\small\bfseries}}
+\toprule
+$R$ & $\pi(1-e^{-R^2})$ & $I(R)^2$ & $\pi(1-e^{-2R^2})$ \\
+\midrule
+0.5 & 0.694918 & 0.851121 & 1.236120 \\
+1 & 1.985865 & 2.230985 & 2.716424 \\
+1.5 & 2.810471 & 2.932234 & 3.106693 \\
+2 & 3.084052 & 3.112270 & 3.140539 \\
+3 & 3.141205 & 3.141454 & 3.141593 \\
+\bottomrule
+\end{sdtable}}{The squeeze \eqref{eq:gaussian-squeeze}: the integral of $e^{-(x^2+y^2)}$ over the square $[-R,R]^2$, which is $I(R)^2=\bigl(\int_{-R}^Re^{-x^2}dx\bigr)^2$, lies between the integrals over the inscribed and the circumscribed disc. All three tend to $\pi$.\label{tab:gaussian-squeeze}}
+\end{table}
+
+\begin{figure}
+\sdpanel{A}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.5\textwidth, height=0.38\textwidth, xmin=-3.2, xmax=3.2, ymin=0, ymax=1.12,
+  xtick={-3,-2,-1,0,1,2,3}, ytick={0,0.5,1}, xlabel={$x$}]
+\addplot[draw=none, fill=sdfill, domain=-3.2:3.2, samples=120] {exp(-x^2)} \closedcycle;
+\addplot[black, line width=0.8pt, domain=-3.2:3.2, samples=120] {exp(-x^2)};
+\node[font=\scriptsize] at (axis cs:0,0.35) {$\sqrt\pi$};
+\end{axis}
+\end{tikzpicture}}\hfill
+\sdpanel{B}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.42\textwidth, height=0.42\textwidth, xmin=-1.5, xmax=1.5, ymin=-1.5, ymax=1.5,
+  axis equal image, xtick={-1,0,1}, ytick={-1,0,1}, xlabel={$x$}, ylabel={$y$}]
+\addplot[draw=none, fill=black!7, domain=0:360, samples=90] ({1.41421*cos(x)},{1.41421*sin(x)});
+\fill[black!16] (axis cs:-1,-1) rectangle (axis cs:1,1);
+\addplot[draw=none, fill=black!30, domain=0:360, samples=90] ({cos(x)},{sin(x)});
+\addplot[black, dashed, line width=0.6pt, domain=0:360, samples=90] ({1.41421*cos(x)},{1.41421*sin(x)});
+\draw[black, line width=0.7pt] (axis cs:-1,-1) rectangle (axis cs:1,1);
+\addplot[black, line width=0.6pt, domain=0:360, samples=90] ({cos(x)},{sin(x)});
+\node[font=\scriptsize] at (axis cs:0,0) {$D_R$};
+\node[font=\scriptsize] at (axis cs:0.82,-0.86) {$Q_R$};
+\end{axis}
+\end{tikzpicture}}
+\caption{The Gaussian integral. (A) The area under $e^{-x^2}$ is $\sqrt\pi=1.7725\ldots$, although the integrand has no elementary antiderivative. (B) The squeeze in the proof of \cref{thm:gaussian}, for $R=1$: the disc $D_R$ (dark) lies in the square $Q_R=[-R,R]^2$, which lies in the disc of radius $R\sqrt2$ (dashed). The integral of $e^{-(x^2+y^2)}$ over the square is $I(R)^2$, and over the discs it is computed in polar coordinates.}
+\label{fig:gaussian}
+\end{figure}
+
+\begin{corollary}[Consequences of the Gaussian integral]
+\label{cor:gaussian-consequences}
+\leavevmode
+\begin{enumerate}
+\item $\int_{-\infty}^\infty e^{-ax^2}dx=\sqrt{\pi/a}$ for every $a>0$.
+\item For every $\mu\in\mathbb R$ and $\sigma>0$,
+\[
+\int_{-\infty}^\infty\frac1{\sigma\sqrt{2\pi}}\,e^{-(x-\mu)^2/(2\sigma^2)}\,dx=1 .
+\]
+\item $\Gamma(1/2)=\sqrt\pi$, and $\Gamma(k+1/2)=(2k)!\sqrt\pi/(4^kk!)$ for every $k\in\mathbb N$.
+\item $\int_{-\infty}^\infty x^{2k}e^{-x^2/2}dx=1\cdot3\cdot5\cdots(2k-1)\sqrt{2\pi}$ for every $k\ge1$, and the integrals of the odd powers $x^{2k+1}e^{-x^2/2}$ vanish.
+\end{enumerate}
+\end{corollary}
+
+\begin{proof}
+(i) The substitution $x=t/\sqrt a$, by \eqref{eq:linear-substitution}, gives $\int_{-R}^Re^{-ax^2}dx=\int_{-R\sqrt a}^{R\sqrt a}e^{-t^2}dt/\sqrt a$, which tends to $\sqrt\pi/\sqrt a$. (ii) The substitution $x=\mu+t$ reduces the integral to $\int e^{-t^2/(2\sigma^2)}dt=\sqrt{2\pi\sigma^2}$, by (i) with $a=1/(2\sigma^2)$; the limits of the improper integral are shifted by $\mu$, which does not affect convergence or the value. (iii) For $0<c<R$, the substitution $t=x^2$, $dt=2x\,dx$, gives
+\[
+\int_c^Rt^{-1/2}e^{-t}\,dt=\int_{\sqrt c}^{\sqrt R}x^{-1}e^{-x^2}\,2x\,dx=2\int_{\sqrt c}^{\sqrt R}e^{-x^2}\,dx ,
+\]
+which tends to $2\cdot\sqrt\pi/2=\sqrt\pi$ as $c\to0^+$ and $R\to\infty$. The second formula holds for $k=0$, and it follows for all $k$ by induction from $\Gamma(s+1)=s\Gamma(s)$ (\cref{thm:gamma}):
+\[
+\Gamma\Bigl(k+\frac32\Bigr)=\Bigl(k+\frac12\Bigr)\Gamma\Bigl(k+\frac12\Bigr)=\frac{2k+1}2\cdot\frac{(2k)!\sqrt\pi}{4^kk!}=\frac{(2k+2)!\sqrt\pi}{4^{k+1}(k+1)!},
+\]
+since $(2k+2)!=(2k+2)(2k+1)(2k)!$ and $2k+2=2(k+1)$. (iv) Let $M_j\coloneqq\int_{-\infty}^\infty x^je^{-x^2/2}dx$, which converges absolutely because $|x|^je^{-x^2/2}\le x^{-2}$ for large $|x|$ (\cref{prop:real-growth}). Odd powers give odd integrands, and their integrals over $[-R,R]$ vanish. For $j\ge2$, integration by parts with $u=x^{j-1}$ and $v'=xe^{-x^2/2}$, $v=-e^{-x^2/2}$, gives
+\[
+\int_{-R}^Rx^je^{-x^2/2}dx=\Bigl[-x^{j-1}e^{-x^2/2}\Bigr]_{-R}^R+(j-1)\int_{-R}^Rx^{j-2}e^{-x^2/2}dx ,
+\]
+and the boundary term tends to $0$. So $M_j=(j-1)M_{j-2}$, and $M_0=\sqrt{2\pi}$ by (i).
+\end{proof}
+
+Part~(ii) says that the function $e^{-(x-\mu)^2/(2\sigma^2)}/(\sigma\sqrt{2\pi})$ is a probability density, the \term{normal density} with mean $\mu$ and standard deviation $\sigma$; part~(iv) with $k=1$ says that the standard normal density has variance $1$. The constant $\sqrt{2\pi}$ is the one that also appears in Stirling's formula, \cref{thm:stirling}. This is no coincidence: $n!=\Gamma(n+1)=\int_0^\infty t^ne^{-t}dt$, the integrand is sharply peaked at $t=n$, and near the peak it is approximately a Gaussian function, whose integral produces $\sqrt{2\pi n}$. This is Laplace's method for the asymptotic evaluation of integrals, which Volume~X develops. The values $\Gamma(1/2)=\sqrt\pi$, $\Gamma(3/2)=\sqrt\pi/2$ and $\Gamma(5/2)=3\sqrt\pi/4$ announced in \cref{sec:improper} are now proved, and they mark the points $s=1/2,3/2,5/2$ on the graph of \cref{fig:gamma}.
+
+\subsection{Gaussian Integrals in Several Variables}
+
+In $n$ variables the Gaussian function is $e^{-\|\mathbf x\|^2}=e^{-x_1^2}\cdots e^{-x_n^2}$, a product of one-variable functions, and its integral over a cube is a product of single integrals. Integrals over all of $\mathbb R^n$ are improper, and \cref{sec:improper-multiple} shows that for a nonnegative continuous integrand they may be computed as limits of integrals over any increasing family of closed bounded regions that fills out $\mathbb R^n$, such as cubes or balls; we use this here in advance.
+
+\begin{proposition}
+\label{prop:gaussian-n}
+Let $\lambda_1,\ldots,\lambda_n>0$. Then
+\[
+\int_{\mathbb R^n}e^{-(\lambda_1x_1^2+\cdots+\lambda_nx_n^2)}\,d\mathbf x=\prod_{i=1}^n\sqrt{\frac\pi{\lambda_i}}\qquad\text{and in particular}\qquad\int_{\mathbb R^n}e^{-\|\mathbf x\|^2}\,d\mathbf x=\pi^{n/2}.
+\]
+\end{proposition}
+
+\begin{proof}
+Over the cube $[-R,R]^n$ the integral is the product $\prod_i\int_{-R}^Re^{-\lambda_ix_i^2}dx_i$, by Fubini's theorem applied $n-1$ times as in \cref{cor:product-integral}, and each factor tends to $\sqrt{\pi/\lambda_i}$ by \cref{cor:gaussian-consequences}\,(i).
+\end{proof}
+
+A quadratic form with cross terms reduces to this case by a linear change of variables. For two variables the reduction is completing the square.
+
+\begin{theorem}[Gaussian integrals of quadratic forms]
+\label{thm:gaussian-quadratic}
+Let $A\in\mathbb R^{n\times n}$ be symmetric and positive definite. Then
+\[
+\int_{\mathbb R^n}e^{-\langle\mathbf x,A\mathbf x\rangle}\,d\mathbf x=\frac{\pi^{n/2}}{\sqrt{\det A}} .
+\]
+\end{theorem}
+
+\begin{proof}
+Let $n=2$, and let $A$ have the rows $(a,b)$ and $(b,c)$, so that $q(x,y)\coloneqq\langle(x,y),A(x,y)\rangle=ax^2+2bxy+cy^2$, with $a>0$ and $\det A=ac-b^2>0$ by \cref{prop:definite-2x2}. Completing the square as in \eqref{eq:complete-square},
+\[
+q(x,y)=a\Bigl(x+\frac bay\Bigr)^2+\frac{\det A}a\,y^2 .
+\]
+The linear map $\mathbf g(u,v)\coloneqq(u-bv/a,\,v)$ has determinant $1$ and satisfies $q(\mathbf g(u,v))=au^2+(\det A/a)v^2$. The parallelograms $\mathbf g([-R,R]^2)$, $R=1,2,3,\ldots$, are closed, bounded and Jordan measurable, each lies in the interior of the next, and together they cover the plane; so they form an exhaustion of the plane in the sense of \cref{sec:improper-multiple}. By \cref{thm:change-variables} and \cref{prop:gaussian-n},
+\[
+\iint_{\mathbf g([-R,R]^2)}e^{-q}\,dA=\iint_{[-R,R]^2}e^{-au^2-(\det A/a)v^2}\,dA\to\sqrt{\frac\pi a}\sqrt{\frac{\pi a}{\det A}}=\frac\pi{\sqrt{\det A}} .
+\]
+For general $n$ the same argument works with a linear change of variables that turns $\langle\mathbf x,A\mathbf x\rangle$ into $\sum_i\lambda_iu_i^2$: completing the square $n$ times, which is the factorisation $A=LDL^{\mathsf T}$ of \cref{thm:definiteness-criteria}\,(ii), gives a map of determinant $1$ and $\prod_i\lambda_i=\det A$; alternatively, the spectral theorem gives an orthogonal map, of determinant $\pm1$, with the eigenvalues of $A$ as the $\lambda_i$. Chapter~20 proves both factorisations.
+\end{proof}
+
+With $A=\Sigma^{-1}/2$ for a symmetric positive definite matrix $\Sigma$, the theorem shows that
+\[
+\frac1{(2\pi)^{n/2}\sqrt{\det\Sigma}}\,e^{-\langle\mathbf x-\boldsymbol\mu,\Sigma^{-1}(\mathbf x-\boldsymbol\mu)\rangle/2}
+\]
+has total integral $1$, since $\det(\Sigma^{-1}/2)=2^{-n}/\det\Sigma$; after a translation by $\boldsymbol\mu$, this is the density of the multivariate normal distribution with mean $\boldsymbol\mu$ and covariance matrix $\Sigma$, the central distribution of multivariate statistics (Volume~III) and of the regression models of Volume~XV.
+
+\subsection{The Volume of a Ball in \texorpdfstring{$\mathbb R^n$}{R\^{}n}}
+
+The unit disc has area $\pi$ and the unit ball in $\mathbb R^3$ has volume $4\pi/3$. The general formula involves the gamma function at half-integers, which we have just computed.
+
+\begin{theorem}[Volume of the ball]
+\label{thm:ball-volume}
+For $n\ge1$, the closed ball $\bar B(\mathbf a,R)\subseteq\mathbb R^n$ is Jordan measurable, and its volume is $V_nR^n$, where
+\[
+V_n\coloneqq\operatorname{vol}\bigl(\bar B(\mathbf 0,1)\bigr)=\frac{\pi^{n/2}}{\Gamma(n/2+1)} .
+\]
+\end{theorem}
+
+\begin{proof}
+The boundary of the unit ball is the union of the graphs of $\pm\sqrt{1-x_1^2-\cdots-x_{n-1}^2}$ over the closed unit ball of $\mathbb R^{n-1}$, so it has content zero by \cref{thm:multiple-summary}, and the ball is Jordan measurable; by \cref{prop:scaling}, $\bar B(\mathbf a,R)=\mathbf a+R\,\bar B(\mathbf 0,1)$ has volume $V_nR^n$. Now $V_1=\operatorname{vol}([-1,1])=2$ and $V_2=\pi$. For $n\ge3$, write points of $\mathbb R^n$ as $(\mathbf y,\mathbf z)$ with $\mathbf z\in\mathbb R^2$ and $\mathbf y\in\mathbb R^{n-2}$. For fixed $\mathbf z$ with $\|\mathbf z\|\le1$, the slice $\{\mathbf y: \|\mathbf y\|^2+\|\mathbf z\|^2\le1\}$ is the ball of radius $(1-\|\mathbf z\|^2)^{1/2}$ in $\mathbb R^{n-2}$, of volume $V_{n-2}(1-\|\mathbf z\|^2)^{(n-2)/2}$, and for $\|\mathbf z\|>1$ it is empty. By \cref{thm:fubini-n}, with $\mathbf z$ as the outer block of variables, and by polar coordinates in the $\mathbf z$-plane,
+\[
+\begin{aligned}
+V_n&=\iint_{\|\mathbf z\|\le1}V_{n-2}\bigl(1-\|\mathbf z\|^2\bigr)^{(n-2)/2}\,dA(\mathbf z)\\
+&=V_{n-2}\int_0^{2\pi}\int_0^1(1-r^2)^{(n-2)/2}\,r\,dr\,d\theta=\frac{2\pi}n\,V_{n-2},
+\end{aligned}
+\]
+since $-(1-r^2)^{n/2}/n$ is an antiderivative of $(1-r^2)^{(n-2)/2}r$. The formula of the theorem satisfies the same recursion, because $\Gamma(n/2+1)=(n/2)\Gamma(n/2)$, and it gives $\pi^{1/2}/\Gamma(3/2)=2$ for $n=1$, by \cref{cor:gaussian-consequences}\,(iii), and $\pi/\Gamma(2)=\pi$ for $n=2$. By induction it gives $V_n$ for every $n$.
+\end{proof}
+
+For even $n=2k$ the formula reads $V_{2k}=\pi^k/k!$; for odd $n$, \cref{cor:gaussian-consequences}\,(iii) gives $V_3=4\pi/3$, $V_5=8\pi^2/15$, and so on. \Cref{tab:ball-volumes} and \cref{fig:ball-volumes} show the first values. They grow up to $n=5$, where $V_5=5.2638\ldots$, and then decrease to zero faster than any geometric sequence, since $\pi^{n/2}$ grows only geometrically while $\Gamma(n/2+1)$ grows like a factorial. The unit ball of $\mathbb R^{20}$ has volume $0.0258$, although it contains points at distance $1$ from the origin in every direction.
+
+The comparison with the cube is even more striking. The ball of radius $1$ is inscribed in the cube $[-1,1]^n$, of volume $2^n$, and the fraction $V_n/2^n$ of the cube that it fills is $\pi/4=0.785$ for $n=2$, $0.524$ for $n=3$, $0.0025$ for $n=10$ and $2.5\times10^{-8}$ for $n=20$. In high dimensions almost all the volume of a cube lies in its corners, far from the centre. Within the ball, in turn, almost all the volume lies near the surface: the ball of radius $1-\varepsilon$ has the fraction $(1-\varepsilon)^n$ of the volume, so the shell of thickness $0.05$ contains $1-0.95^{100}=99.4\,\%$ of the volume of the unit ball in $\mathbb R^{100}$. These facts, which defeat the intuition trained in two and three dimensions, govern the behaviour of algorithms in high dimensions: grids, nearest neighbours and random sampling all behave differently there, and \cref{sec:cubature} meets the first consequence. The derivative of $R\mapsto V_nR^n$ is $nV_nR^{n-1}$, the area of the sphere of radius $R$ in $\mathbb R^n$ (for $n=3$, $4\pi R^2$); Chapter~12 defines surface area and confirms this.
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}{colspec={rlll}, row{1}={font=\small\bfseries}}
+\toprule
+$n$ & $V_n$ & value & $V_n/2^n$ \\
+\midrule
+1 & $2$ & 2.000000 & 1 \\
+2 & $\pi$ & 3.141593 & 0.785 \\
+3 & $4\pi/3$ & 4.188790 & 0.524 \\
+4 & $\pi^2/2$ & 4.934802 & 0.308 \\
+5 & $8\pi^2/15$ & 5.263789 & 0.164 \\
+6 & $\pi^3/6$ & 5.167713 & 0.0807 \\
+8 & $\pi^4/24$ & 4.058712 & 0.0159 \\
+10 & $\pi^5/120$ & 2.550164 & 0.00249 \\
+20 & $\pi^{10}/10!$ & 0.025807 & $2.5\times10^{-8}$ \\
+\bottomrule
+\end{sdtable}}{The volume $V_n$ of the unit ball in $\mathbb R^n$, and the fraction $V_n/2^n$ of the circumscribed cube $[-1,1]^n$ that the ball fills.\label{tab:ball-volumes}}
+\end{table}
+
+\begin{figure}
+\sdpanel{A}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.48\textwidth, height=0.4\textwidth, xmin=0, xmax=21, ymin=0, ymax=5.8,
+  xtick={1,5,10,15,20}, ytick={0,1,2,3,4,5}, xlabel={$n$}, ylabel={$V_n$}]
+\addplot[black, line width=0.4pt, mark=*, mark size=1.2pt] coordinates {(1,2.0000) (2,3.1416) (3,4.1888) (4,4.9348) (5,5.2638) (6,5.1677) (7,4.7248) (8,4.0587) (9,3.2985) (10,2.5502) (11,1.8841) (12,1.3353) (13,0.9106) (14,0.5993) (15,0.3814) (16,0.2353) (17,0.1410) (18,0.0821) (19,0.0466) (20,0.0258)};
+\end{axis}
+\end{tikzpicture}}\hfill
+\sdpanel{B}{\begin{tikzpicture}
+\begin{axis}[sdplot, ymode=log, width=0.48\textwidth, height=0.4\textwidth, xmin=0, xmax=21, ymin=1e-8, ymax=3,
+  xtick={1,5,10,15,20}, ytick={1e-8,1e-6,1e-4,1e-2,1}, xlabel={$n$}, ylabel={$V_n/2^n$}]
+\addplot[black, line width=0.4pt, mark=*, mark size=1.2pt] coordinates {(1,1.0000e+00) (2,7.8540e-01) (3,5.2360e-01) (4,3.0843e-01) (5,1.6449e-01) (6,8.0746e-02) (7,3.6912e-02) (8,1.5854e-02) (9,6.4424e-03) (10,2.4904e-03) (11,9.1997e-04) (12,3.2599e-04) (13,1.1116e-04) (14,3.6576e-05) (15,1.1641e-05) (16,3.5909e-06) (17,1.0756e-06) (18,3.1336e-07) (19,8.8924e-08) (20,2.4611e-08)};
+\end{axis}
+\end{tikzpicture}}
+\caption{Balls in high dimensions. (A) The volume $V_n$ of the unit ball in $\mathbb R^n$ is largest for $n=5$ and tends to $0$. (B) The fraction of the cube $[-1,1]^n$ filled by the inscribed unit ball, on a logarithmic scale, falls below one in a hundred million at $n=20$.}
+\label{fig:ball-volumes}
+\end{figure}
+
+\section{Improper Multiple Integrals}
+\label{sec:improper-multiple}
+
+\subsection{Exhaustions}
+
+The Riemann integral in several variables, like that of one variable, requires a bounded function on a bounded set. Integrals over all of $\mathbb R^n$, such as those of the Gaussian functions in \cref{sec:gaussian}, and integrals of functions that are unbounded near a point, such as $\|\mathbf x\|^{-1}$ near the origin of $\mathbb R^3$, are improper. In one variable an improper integral was a limit of integrals over growing intervals. In several variables there are many ways for a region to grow: squares and discs both fill out the plane, and so do long thin rectangles. The definition must therefore say which growing regions are admitted, and the main theorem must say when the choice does not matter.
+
+\begin{definition}[Exhaustion, local integrability]
+\label{def:exhaustion}
+Let $S\subseteq\mathbb R^n$ be open. An \term{exhaustion} of $S$ is a sequence $(K_j)_{j\ge1}$ of closed, bounded, Jordan measurable sets with
+\[
+K_j\subseteq\operatorname{int}K_{j+1}\quad(j\ge1)\qquad\text{and}\qquad\bigcup_{j\ge1}K_j=S,
+\]
+where $\operatorname{int}K$ denotes the set of interior points of $K$. A function $f\colon S\to\mathbb R$ is \term{locally integrable} on $S$ if it is integrable on every closed, bounded, Jordan measurable subset of $S$.
+\end{definition}
+
+The closed balls $\bar B(\mathbf0,j)$ and the cubes $[-j,j]^n$ are exhaustions of $\mathbb R^n$; the squares $[1/j,j]^2$, for $j\ge2$, exhaust the open quadrant $(0,\infty)^2$; and the shells $\{1/j\le\|\mathbf x\|\le j\}$, for $j\ge2$, exhaust $\mathbb R^n\setminus\{\mathbf0\}$. Every continuous function on $S$ is locally integrable, since it is bounded and continuous on every closed bounded subset of $S$ (\cref{thm:evt-rn,thm:multiple-summary}). The condition $K_j\subseteq\operatorname{int}K_{j+1}$ ensures that the exhaustion eventually swallows every closed bounded subset of $S$, which is what makes the following theorem work.
+
+\begin{lemma}
+\label{lem:exhaustion-compact}
+Let $(K_j)$ be an exhaustion of the open set $S$. Every closed bounded set $K\subseteq S$ is contained in some $K_j$.
+\end{lemma}
+
+\begin{proof}
+Suppose not. Then for every $j$ there is a point $\mathbf x_j\in K\setminus K_j$. By the Bolzano--Weierstrass theorem a subsequence converges, to a point $\mathbf x\in K$ since $K$ is closed. As $\mathbf x\in S$, it lies in some $K_m$, hence in the open set $\operatorname{int}K_{m+1}$, which contains a ball around $\mathbf x$. Infinitely many terms of the subsequence lie in this ball, so $\mathbf x_j\in K_{m+1}\subseteq K_j$ for some $j>m+1$, contrary to the choice of $\mathbf x_j$.
+\end{proof}
+
+\begin{theorem}[Independence of the exhaustion]
+\label{thm:exhaustion}
+Let $S\subseteq\mathbb R^n$ be open and $f\colon S\to[0,\infty)$ locally integrable. For every exhaustion $(K_j)$ of $S$, the limit $\lim_{j\to\infty}\int_{K_j}f$ exists in $[0,\infty]$, and it equals
+\[
+\sup\Bigl\{\int_Kf: K\subseteq S\text{ closed, bounded and Jordan measurable}\Bigr\}.
+\]
+In particular, it is the same for all exhaustions.
+\end{theorem}
+
+\begin{proof}
+Since $f\ge0$ and $K_j\subseteq K_{j+1}$, the integrals $\int_{K_j}f$ increase with $j$, by \cref{thm:integral-over-region}\,(i) applied to $f\mathbf 1_{K_j}\le f\mathbf 1_{K_{j+1}}$, so they have a limit $L\in[0,\infty]$. Let $s$ be the supremum in the statement. Each $\int_{K_j}f$ is one of the numbers whose supremum is $s$, so $L\le s$. Conversely, every closed bounded Jordan measurable $K\subseteq S$ lies in some $K_j$, by \cref{lem:exhaustion-compact}, so $\int_Kf\le\int_{K_j}f\le L$, and $s\le L$.
+\end{proof}
+
+\begin{definition}[Improper integral in several variables]
+\label{def:improper-multiple}
+Let $S\subseteq\mathbb R^n$ be open and $f$ locally integrable on $S$. If $f\ge0$, the \term{improper integral} $\int_Sf$ is the limit of \cref{thm:exhaustion}; it \term{converges} if it is finite. For general $f$, the integral $\int_Sf$ \term{converges absolutely} if $\int_S|f|<\infty$, and its value is then
+\[
+\int_Sf\coloneqq\int_Sf^+-\int_Sf^-,\qquad f^+\coloneqq\max(f,0),\quad f^-\coloneqq\max(-f,0).
+\]
+\end{definition}
+
+\begin{theorem}
+\label{thm:absolute-multiple}
+Let $S\subseteq\mathbb R^n$ be open and $f$ locally integrable on $S$ with $\int_S|f|<\infty$. Then $\int_{K_j}f\to\int_Sf$ for every exhaustion $(K_j)$ of $S$, and $\bigl|\int_Sf\bigr|\le\int_S|f|$. If $g$ is locally integrable with $|g|\le f$ on $S$, then $\int_Sg$ converges absolutely.
+\end{theorem}
+
+\begin{proof}
+The functions $f^\pm$ are locally integrable, by \cref{thm:double-properties}\,(ii) in its $n$-dimensional form, and $0\le f^\pm\le|f|$, so $\int_Sf^\pm\le\int_S|f|<\infty$ by \cref{thm:exhaustion}. For every exhaustion, $\int_{K_j}f=\int_{K_j}f^+-\int_{K_j}f^-$ tends to $\int_Sf^+-\int_Sf^-$. The inequality follows from $|\int_{K_j}f|\le\int_{K_j}|f|$ in the limit, and the last statement from $\int_{K_j}|g|\le\int_{K_j}f\le\int_Sf$.
+\end{proof}
+
+For a nonnegative integrand, then, the improper integral is unambiguous, and it may be computed with whatever exhaustion is convenient: cubes when the integrand is a product, balls or shells when it depends on $\|\mathbf x\|$. This is what \cref{sec:gaussian} used. For integrands of both signs, absolute convergence is the right notion, and the example of \cref{sec:fubini} shows why. For $f(x,y)=(x^2-y^2)/(x^2+y^2)^2$ and $0<a,b<1$, the computation made there gives
+\[
+\int_a^1\int_b^1f(x,y)\,dy\,dx=\frac\pi4-\arctan a-\arctan\frac1b+\arctan\frac ab .
+\]
+Let the rectangles $[a,1]\times[b,1]$ grow to fill the square. If $a=b\to0$, the value tends to $\pi/4-\pi/2+\pi/4=0$; if $a=1/j$ and $b=1/j^2$, so that $a/b=j\to\infty$, it tends to $\pi/4-\pi/2+\pi/2=\pi/4$; and if $a=1/j^2$ and $b=1/j$, it tends to $-\pi/4$. Different ways of filling out the square give different limits, so the integral has no value, and $\iint|f|=\infty$ by \cref{thm:absolute-multiple}. On the line there is essentially only one way of letting an interval grow to $[a,\infty)$, which is why conditionally convergent integrals such as $\int_0^\infty(\sin x/x)\,dx$ make sense in one variable; in several variables they do not.
+
+\subsection{Radial Integrands}
+
+Integrands that depend only on the distance from the origin are integrated over shells, and the shell of radii $r$ and $r+dr$ contributes the volume $nV_nr^{n-1}\,dr$, the area of a sphere times the thickness.
+
+\begin{proposition}[Radial integrals]
+\label{prop:radial}
+Let $0\le a<b$, and let $g$ be continuous on $[a,b]$. Then the shell $A\coloneqq\{\mathbf x\in\mathbb R^n: a\le\|\mathbf x\|\le b\}$ is Jordan measurable, and
+\[
+\int_Ag(\|\mathbf x\|)\,d\mathbf x=nV_n\int_a^bg(r)\,r^{n-1}\,dr .
+\]
+\end{proposition}
+
+\begin{proof}
+The boundary of $A$ consists of two spheres, which have content zero (proof of \cref{thm:ball-volume}), so $A$ is Jordan measurable; and the shell between the radii $s<t$ has volume $V_n(t^n-s^n)$, by \cref{thm:integral-over-region}\,(ii) and \cref{thm:ball-volume}. Let $a=r_0<\cdots<r_m=b$ be a partition, and let $A_k$ be the shell between $r_{k-1}$ and $r_k$. The function $g(\|\mathbf x\|)$ takes on $A_k$ the values of $g$ on $[r_{k-1},r_k]$, so its integral over $A_k$ lies between the minimum and the maximum of $g$ on $[r_{k-1},r_k]$ times $\operatorname{vol}(A_k)$, and by the intermediate value theorem it equals $g(\xi_k)\operatorname{vol}(A_k)$ for some $\xi_k\in[r_{k-1},r_k]$. By the mean value theorem, $\operatorname{vol}(A_k)=V_n(r_k^n-r_{k-1}^n)=nV_n\eta_k^{n-1}\Delta r_k$ for some $\eta_k\in[r_{k-1},r_k]$. Adding over $k$, and using that the spheres where the shells meet have content zero,
+\[
+\int_Ag(\|\mathbf x\|)\,d\mathbf x=nV_n\sum_{k=1}^mg(\xi_k)\,\eta_k^{n-1}\Delta r_k .
+\]
+The sum differs from the Riemann sum $\sum_kg(\xi_k)\xi_k^{n-1}\Delta r_k$ by at most $\max|g|\cdot(n-1)b^{n-2}\|P\|(b-a)$, since $|\eta_k^{n-1}-\xi_k^{n-1}|\le(n-1)b^{n-2}\Delta r_k$ by the mean value theorem. As the mesh tends to zero, the Riemann sum tends to $\int_a^bg(r)r^{n-1}dr$ and the difference to zero.
+\end{proof}
+
+With $g(r)=e^{-r^2}$ and the exhaustion of $\mathbb R^n$ by balls, the proposition gives
+\[
+\int_{\mathbb R^n}e^{-\|\mathbf x\|^2}d\mathbf x=nV_n\int_0^\infty r^{n-1}e^{-r^2}dr=nV_n\cdot\frac12\Gamma\Bigl(\frac n2\Bigr),
+\]
+by the substitution $t=r^2$ in the definition of $\Gamma(n/2)$. Comparing with $\pi^{n/2}$ from \cref{prop:gaussian-n} gives $V_n=2\pi^{n/2}/(n\Gamma(n/2))=\pi^{n/2}/\Gamma(n/2+1)$, a second proof of \cref{thm:ball-volume}. The proposition also decides the convergence of the integrals of powers of $\|\mathbf x\|$, the counterpart of \cref{prop:p-integrals}.
+
+\begin{corollary}[Integrals of powers of the norm]
+\label{cor:power-integrals-rn}
+Let $p$ be real. The integral of $\|\mathbf x\|^{-p}$ over $\{\mathbf x\in\mathbb R^n: \|\mathbf x\|>1\}$ converges if and only if $p>n$, and then equals $nV_n/(p-n)$. The integral over $\{\mathbf x\in\mathbb R^n: 0<\|\mathbf x\|<1\}$ converges if and only if $p<n$, and then equals $nV_n/(n-p)$.
+\end{corollary}
+
+\begin{proof}
+Use the exhaustions by the shells $1+1/j\le\|\mathbf x\|\le j$ and $1/j\le\|\mathbf x\|\le1-1/j$, apply \cref{prop:radial} with $g(r)=r^{-p}$, and use \cref{prop:p-integrals} for real exponents (\cref{cor:real-exponent-extensions}) for the integral of $r^{n-1-p}$.
+\end{proof}
+
+The dimension shifts the threshold: in one variable $\int_0^1x^{-p}dx$ converges for $p<1$, while in $\mathbb R^3$ the integral of $\|\mathbf x\|^{-p}$ near the origin converges for $p<3$. The extra room comes from the factor $r^{n-1}$: a small ball contains little volume. So the Newtonian potential $\|\mathbf x\|^{-1}$ and the force law $\|\mathbf x\|^{-2}$ have finite integrals over a ball around the source in $\mathbb R^3$, which is why the gravitational potential inside a solid body is finite.
+
+\subsection{The Beta Function}
+
+\begin{definition}[Beta function]
+\label{def:beta}
+For $a,b>0$, the \term{beta function} is
+\[
+\mathrm B(a,b)\coloneqq\int_0^1t^{a-1}(1-t)^{b-1}\,dt .
+\]
+\end{definition}
+
+The integral is improper at $0$ if $a<1$ and at $1$ if $b<1$, and it converges by comparison with $t^{a-1}$ near $0$ and with $(1-t)^{b-1}$ near $1$ (\cref{thm:comparison-test,prop:p-integrals}). The upright capital B distinguishes the function from the ball $B(\mathbf a,r)$. The substitution $t\mapsto1-t$ shows $\mathrm B(a,b)=\mathrm B(b,a)$. Both the beta integral and its relation to the gamma function go back to Euler~\cite{davis1959gamma}; the proof below obtains the relation from a change of variables in a double integral.
+
+\begin{theorem}[Beta and gamma]
+\label{thm:beta-gamma}
+For all $a,b>0$,
+\[
+\mathrm B(a,b)=\frac{\Gamma(a)\,\Gamma(b)}{\Gamma(a+b)} .
+\]
+\end{theorem}
+
+\begin{proof}
+Let $S\coloneqq(0,\infty)^2$ and $F(s,t)\coloneqq s^{a-1}t^{b-1}e^{-s-t}$, a positive continuous function on $S$. With the exhaustion of $S$ by the squares $[1/j,j]^2$, \cref{cor:product-integral} gives
+\[
+\iint_{[1/j,j]^2}F\,dA=\int_{1/j}^js^{a-1}e^{-s}ds\cdot\int_{1/j}^jt^{b-1}e^{-t}dt\to\Gamma(a)\Gamma(b),
+\]
+so $\iint_SF=\Gamma(a)\Gamma(b)$. Now let $U\coloneqq(0,\infty)\times(0,1)$ and $\mathbf g(u,v)\coloneqq(uv,\,u(1-v))$. This map is a bijection of $U$ onto $S$, with the continuous inverse $u=s+t$, $v=s/(s+t)$, and
+\[
+D\mathbf g(u,v)=\begin{pmatrix}v&u\\1-v&-u\end{pmatrix},\qquad\det D\mathbf g(u,v)=-uv-u(1-v)=-u\ne0 .
+\]
+The rectangles $L_j\coloneqq[1/j,j]\times[1/j,1-1/j]$, $j\ge3$, exhaust $U$, and their images $\mathbf g(L_j)$ exhaust $S$: they are closed, bounded and Jordan measurable by \cref{thm:change-variables}, each lies in the interior of the next because $\mathbf g$ and its inverse are continuous, and they cover $S$ because the $L_j$ cover $U$. Since $F(\mathbf g(u,v))\,u=(uv)^{a-1}(u(1-v))^{b-1}e^{-u}u=u^{a+b-1}e^{-u}\,v^{a-1}(1-v)^{b-1}$, \cref{thm:change-variables} and \cref{cor:product-integral} give
+\[
+\iint_{\mathbf g(L_j)}F\,dA=\int_{1/j}^ju^{a+b-1}e^{-u}\,du\cdot\int_{1/j}^{1-1/j}v^{a-1}(1-v)^{b-1}\,dv\to\Gamma(a+b)\,\mathrm B(a,b).
+\]
+By \cref{thm:exhaustion}, both limits equal $\iint_SF$, so $\Gamma(a)\Gamma(b)=\Gamma(a+b)\mathrm B(a,b)$.
+\end{proof}
+
+Three consequences show the theorem at work. First, the substitution $t=\sin^2\theta$, with $dt=2\sin\theta\cos\theta\,d\theta$, turns the beta integral into a trigonometric one,
+\[
+\int_0^{\pi/2}\sin^{2a-1}\theta\,\cos^{2b-1}\theta\,d\theta=\frac12\,\mathrm B(a,b)=\frac{\Gamma(a)\Gamma(b)}{2\,\Gamma(a+b)} ;
+\]
+with $a=b=1/2$ the left side is $\pi/2$, so $\Gamma(1/2)^2=\pi\,\Gamma(1)=\pi$, a proof of $\Gamma(1/2)=\sqrt\pi$ independent of the Gaussian integral. With $b=1/2$ and $a=(m+1)/2$ it evaluates the integrals $\int_0^{\pi/2}\sin^m\theta\,d\theta$ behind Wallis's product (\cref{prop:wallis}). Second, for natural numbers $m$ and $k$,
+\[
+\mathrm B(m+1,k+1)=\int_0^1t^m(1-t)^k\,dt=\frac{m!\,k!}{(m+k+1)!},
+\]
+an identity that would take some effort to prove by repeated integration by parts. Third, the function $t^{a-1}(1-t)^{b-1}/\mathrm B(a,b)$ on $(0,1)$ is a probability density, that of the \term{beta distribution}, which Volume~III uses to describe unknown proportions.
+
+\begin{note}{Dirichlet's integral over the simplex}
+The theorem generalises to the simplex. For $a_1,\ldots,a_{n+1}>0$,
+\[
+\int_{\Delta_n}x_1^{a_1-1}\cdots x_n^{a_n-1}\,(1-x_1-\cdots-x_n)^{a_{n+1}-1}\,d\mathbf x=\frac{\Gamma(a_1)\cdots\Gamma(a_{n+1})}{\Gamma(a_1+\cdots+a_{n+1})},
+\]
+the integral being improper over the interior of the simplex $\Delta_n$ when some $a_i<1$. Dirichlet found the formula in 1839~\cite{dirichlet1839}. It can be proved by the method above, with the product $\Gamma(a_1)\cdots\Gamma(a_{n+1})$ written as an integral over $(0,\infty)^{n+1}$ and the change of variables $x_i=s_i/(s_1+\cdots+s_{n+1})$, $u=s_1+\cdots+s_{n+1}$, or by induction on $n$ from \cref{thm:beta-gamma}, slicing the simplex as in \cref{prop:simplex}. For $a_1=\cdots=a_{n+1}=1$ the formula gives $\operatorname{vol}(\Delta_n)=1/\Gamma(n+1)=1/n!$, and for $n=1$ it is \cref{thm:beta-gamma}. Normalised, the integrand is the density of the Dirichlet distribution of Volume~III, which describes random vectors of proportions that add up to $1$.
+\end{note}
+
+\section{Integrals Depending on a Parameter}
+\label{sec:parameter-integrals}
+
+\subsection{Uniform Convergence of Improper Integrals}
+
+Many functions of analysis and probability are defined by integrals that depend on a parameter: the gamma function $\Gamma(s)=\int_0^\infty t^{s-1}e^{-t}dt$, the beta function, Laplace and Fourier transforms, and the expectations of Volume~III. For integrals over closed bounded intervals, \cref{lem:parameter-continuous} and \cref{thm:diff-under-integral} say that such a function is continuous, and may be differentiated under the integral sign, when the integrand and its partial derivative are continuous. For improper integrals this is not enough. The function $f(x,t)=te^{-tx}$ is continuous on $[0,\infty)\times[0,\infty)$, and $\int_0^\infty te^{-tx}dx$ equals $1$ for every $t>0$ and $0$ for $t=0$, so the integral is not continuous at $t=0$. What goes wrong is that the tail $\int_R^\infty te^{-tx}dx=e^{-tR}$ becomes small for large $R$ only when $t$ is not too close to $0$. The remedy is to require that the tails become small uniformly in the parameter.
+
+\begin{definition}[Uniform convergence]
+\label{def:uniform-convergence-integral}
+Let $J$ be an interval, and let $f$ be continuous on $[a,\infty)\times J$ with $\int_a^\infty f(x,t)\,dx$ convergent for every $t\in J$. The integral \term{converges uniformly} on $J$ if for every $\varepsilon>0$ there is $R_0\ge a$ with
+\[
+\Bigl|\int_R^\infty f(x,t)\,dx\Bigr|<\varepsilon\qquad\text{for all }R\ge R_0\text{ and all }t\in J .
+\]
+\end{definition}
+
+The usual way to establish uniform convergence is to bound the integrand by an integrable function that does not depend on the parameter, as in Weierstrass's test for series.
+
+\begin{proposition}[Domination]
+\label{prop:weierstrass-test}
+If $|f(x,t)|\le g(x)$ for all $x\ge a$ and $t\in J$, where $\int_a^\infty g$ converges, then $\int_a^\infty f(x,t)\,dx$ converges absolutely for every $t$ and uniformly on $J$.
+\end{proposition}
+
+\begin{proof}
+Absolute convergence follows from the comparison test (\cref{thm:comparison-test}), and $\bigl|\int_R^\infty f(x,t)\,dx\bigr|\le\int_R^\infty g$ for every $t$, a bound that tends to $0$ as $R\to\infty$ and does not depend on $t$.
+\end{proof}
+
+\begin{theorem}[Continuity and differentiation of improper integrals]
+\label{thm:parameter-improper}
+Let $J$ be an interval and $f$ continuous on $[a,\infty)\times J$.
+\begin{enumerate}
+\item If $\int_a^\infty f(x,t)\,dx$ converges uniformly on $J$, then $F(t)\coloneqq\int_a^\infty f(x,t)\,dx$ is continuous on $J$.
+\item If moreover $\partial_tf$ exists and is continuous on $[a,\infty)\times J$, and $\int_a^\infty\partial_tf(x,t)\,dx$ converges uniformly on $J$, then $F$ is continuously differentiable on $J$, and
+\[
+F'(t)=\int_a^\infty\frac{\partial f}{\partial t}(x,t)\,dx .
+\]
+\end{enumerate}
+The same holds for integrals that are improper at a finite end of the interval of integration, or at both ends. Since continuity and differentiability are local properties, it suffices that the convergence be uniform on every closed bounded subinterval of $J$.
+\end{theorem}
+
+\begin{proof}
+(i) Let $F_R(t)\coloneqq\int_a^Rf(x,t)\,dx$, which is continuous in $t$ by \cref{lem:parameter-continuous}, applied on $[a,R]\times[c,d]$ for closed bounded subintervals $[c,d]$ of $J$. Let $t_0\in J$ and $\varepsilon>0$, and choose $R$ with $|F(t)-F_R(t)|<\varepsilon$ for all $t\in J$, which is possible by uniform convergence. Then
+\[
+\begin{aligned}
+|F(t)-F(t_0)|&\le|F(t)-F_R(t)|+|F_R(t)-F_R(t_0)|+|F_R(t_0)-F(t_0)|\\
+&<2\varepsilon+|F_R(t)-F_R(t_0)|,
+\end{aligned}
+\]
+and the last term is less than $\varepsilon$ for $t$ close to $t_0$. (ii) Let $G(t)\coloneqq\int_a^\infty\partial_tf(x,t)\,dx$ and $G_R(t)\coloneqq\int_a^R\partial_tf(x,t)\,dx$. By (i), $G$ is continuous. By \cref{thm:diff-under-integral}, $F_R$ is continuously differentiable with $F_R'=G_R$, so for $t_0,t\in J$ the fundamental theorem gives $F_R(t)-F_R(t_0)=\int_{t_0}^tG_R(\tau)\,d\tau$. As $R\to\infty$, the left side tends to $F(t)-F(t_0)$, and the right side to $\int_{t_0}^tG$, because
+\[
+\Bigl|\int_{t_0}^t\bigl(G_R(\tau)-G(\tau)\bigr)\,d\tau\Bigr|\le|t-t_0|\sup_{\tau\in J}|G_R(\tau)-G(\tau)| ,
+\]
+and the supremum tends to $0$ by uniform convergence. So $F(t)=F(t_0)+\int_{t_0}^tG$, and $F'=G$ by \cref{thm:ftc1}. For integrals improper at a finite end the proof is the same, and an integral improper at both ends is split into two.
+\end{proof}
+
+\subsection{The Gamma Function Is Smooth}
+
+\begin{proposition}[Derivatives of the gamma function]
+\label{prop:gamma-smooth}
+The gamma function is infinitely differentiable on $(0,\infty)$, with
+\[
+\Gamma^{(k)}(s)=\int_0^\infty t^{s-1}(\ln t)^ke^{-t}\,dt\qquad(k\in\mathbb N).
+\]
+It is strictly convex, and it has a unique minimum on $(0,\infty)$, which lies between $1$ and $2$.
+\end{proposition}
+
+\begin{proof}
+The partial derivative of $t^{s-1}(\ln t)^ke^{-t}=e^{(s-1)\ln t}(\ln t)^ke^{-t}$ with respect to $s$ is $t^{s-1}(\ln t)^{k+1}e^{-t}$, so by induction on $k$ and \cref{thm:parameter-improper} it suffices to dominate $t^{s-1}|\ln t|^ke^{-t}$, for $s$ in a closed interval $[s_0,s_1]\subseteq(0,\infty)$, by an integrable function of $t$ alone. For $t\ge1$, $t^{s-1}|\ln t|^ke^{-t}\le t^{s_1+k-1}e^{-t}$, since $\ln t\le t$, and the right side is integrable on $[1,\infty)$, because $\Gamma(s_1+k)$ converges. For $0<t\le1$, $t^{s-1}\le t^{s_0-1}$; choose a rational $p$ with $0<pk<s_0/2$. Then $t^{p}|\ln t|\to0$ as $t\to0^+$ by \cref{prop:ln-growth}, so $t^p|\ln t|\le C$ on $(0,1]$, and
+\[
+t^{s-1}|\ln t|^ke^{-t}\le t^{s_0-1-pk}\bigl(t^p|\ln t|\bigr)^k\le C^kt^{s_0/2-1},
+\]
+which is integrable on $(0,1]$ because $s_0/2-1>-1$. This proves the formula. For $k=2$ the integrand $t^{s-1}(\ln t)^2e^{-t}$ is nonnegative, continuous and not identically zero, so $\Gamma''(s)>0$ by \cref{prop:positive-integral} applied on a subinterval, and $\Gamma$ is strictly convex. Since $\Gamma(1)=\Gamma(2)=1$, Rolle's theorem gives a point $s^*\in(1,2)$ with $\Gamma'(s^*)=0$; as $\Gamma'$ is strictly increasing, $\Gamma'<0$ to the left of $s^*$ and $\Gamma'>0$ to the right, so $s^*$ is the unique minimum.
+\end{proof}
+
+The minimum, at $s^*=1.4616\ldots$ with $\Gamma(s^*)=0.8856\ldots$, is visible in \cref{fig:gamma}. More is true: $\ln\Gamma$ is convex as well, and the Bohr--Mollerup theorem says that $\Gamma$ is the only function on $(0,\infty)$ with $\Gamma(1)=1$, $\Gamma(s+1)=s\Gamma(s)$ and a convex logarithm, which makes it the natural interpolation of the factorials~\cite{artin1964gamma}. One can also show that $\Gamma'(1)=\int_0^\infty\ln t\,e^{-t}dt=-\gamma$, where $\gamma=0.5772\ldots$ is Euler's constant of \cref{thm:euler-constant}~\cite{havil2003gamma}. The logarithmic derivative $\Gamma'/\Gamma$, the digamma function, is one of the special functions of Volume~X.
+
+\subsection{The Integral of \texorpdfstring{$\sin x/x$}{sin x / x}}
+
+\Cref{sec:improper} showed that $\int_0^\infty(\sin x/x)\,dx$ converges, but only conditionally, and left its value open. Differentiation with respect to a parameter computes it. The idea is to insert a damping factor $e^{-tx}$, which makes the integral absolutely convergent and easy to differentiate, and to let $t\to0$ at the end; the delicate step is this limit, because at $t=0$ the convergence is not absolute.
+
+\begin{theorem}
+\label{thm:sinc-integral}
+\[
+\int_0^\infty\frac{\sin x}x\,dx=\frac\pi2 .
+\]
+\end{theorem}
+
+\begin{proof}
+Let $\operatorname{sinc}x\coloneqq\sin x/x$ for $x\ne0$ and $\operatorname{sinc}0\coloneqq1$, a continuous function with $|\operatorname{sinc}x|\le1$, since $|\sin x|\le|x|$. For $t\ge0$ let
+\[
+F(t)\coloneqq\int_0^\infty e^{-tx}\operatorname{sinc}x\,dx ,
+\]
+which converges absolutely for $t>0$, by comparison with $e^{-tx}$, and converges for $t=0$ by \cref{sec:improper}.
+
+\emph{The derivative.} The integrand $f(x,t)=e^{-tx}\operatorname{sinc}x$ has the partial derivative $\partial_tf=-e^{-tx}\sin x$, continuous on $[0,\infty)\times(0,\infty)$, and for $t\ge t_0>0$ both $|f|$ and $|\partial_tf|$ are at most $e^{-t_0x}$, whose integral converges. By \cref{prop:weierstrass-test,thm:parameter-improper}, $F$ is differentiable on $(0,\infty)$, with
+\[
+F'(t)=-\int_0^\infty e^{-tx}\sin x\,dx=\Bigl[\frac{e^{-tx}(t\sin x+\cos x)}{1+t^2}\Bigr]_0^\infty=-\frac1{1+t^2},
+\]
+as one checks by differentiating the bracket. Hence $F(t)=C-\arctan t$ for $t>0$, with a constant $C$, by \cref{cor:zero-derivative}. Since $|F(t)|\le\int_0^\infty e^{-tx}dx=1/t\to0$ and $\arctan t\to\pi/2$ as $t\to\infty$, the constant is $C=\pi/2$.
+
+\emph{The tails.} For $R>0$ and every $t\ge0$,
+\begin{equation}
+\Bigl|\int_R^\infty e^{-tx}\frac{\sin x}x\,dx\Bigr|\le\frac2R .
+\label{eq:sinc-tail}
+\end{equation}
+Indeed, $h(x)\coloneqq e^{-tx}/x$ is positive and decreasing on $[R,\infty)$, and integration by parts gives, for $S>R$,
+\[
+\int_R^Sh(x)\sin x\,dx=\Bigl[-h(x)\cos x\Bigr]_R^S+\int_R^Sh'(x)\cos x\,dx ,
+\]
+whose absolute value is at most $h(R)+h(S)+\int_R^S(-h')=2h(R)\le2/R$; let $S\to\infty$.
+
+\emph{The limit $t\to0^+$.} For $t>0$ and $R>0$, split both integrals at $R$ and use $0\le1-e^{-tx}\le tx$ (\cref{prop:exp-tangent}) and $|\operatorname{sinc}x|\le1$ on $[0,R]$ and \eqref{eq:sinc-tail} on $[R,\infty)$:
+\[
+|F(t)-F(0)|\le\int_0^Rtx\,dx+\frac2R+\frac2R=\frac{tR^2}2+\frac4R .
+\]
+Given $\varepsilon>0$, choose $R=8/\varepsilon$ and then $t<\varepsilon/R^2$; the right side is less than $\varepsilon$. So $F(t)\to F(0)$ as $t\to0^+$, and $F(0)=\lim_{t\to0^+}(\pi/2-\arctan t)=\pi/2$.
+\end{proof}
+
+\Cref{fig:sinc} shows the integrand and the function $F$. The proof shows two typical features of the method. The damped integral $F(t)$ is a nicer object than the original one, and its derivative is an integral that can be evaluated in closed form; but returning to $t=0$ requires an argument of its own, since the theorem on differentiation under the integral sign says nothing about the boundary point where uniform convergence fails. The function $F(t)=\pi/2-\arctan t=\arctan(1/t)$ is the Laplace transform of $\operatorname{sinc}$, an example of the integral transforms that Volume~XI studies; Volume~II computes the integral once more with the residue theorem of complex analysis.
+
+\begin{figure}
+\sdpanel{A}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.5\textwidth, height=0.38\textwidth, xmin=0, xmax=20.5, ymin=-0.3, ymax=1.1,
+  xtick={0,5,10,15,20}, ytick={0,0.5,1}, xlabel={$x$}]
+\addplot[draw=none, fill=sdfill, domain=0.001:20.5, samples=300] {sin(deg(x))/x} \closedcycle;
+\addplot[black, line width=0.8pt, domain=0.001:20.5, samples=300] {sin(deg(x))/x};
+\draw[black!50, line width=0.3pt] (axis cs:0,0) -- (axis cs:20.5,0);
+\end{axis}
+\end{tikzpicture}}\hfill
+\sdpanel{B}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.44\textwidth, height=0.38\textwidth, xmin=0, xmax=5.2, ymin=0, ymax=1.75,
+  xtick={0,1,2,3,4,5}, ytick={0,0.5,1,1.5708}, yticklabels={0,0.5,1,$\pi/2$}, xlabel={$t$}, ylabel={$F(t)$}]
+\addplot[black, line width=0.8pt, domain=0:5.2, samples=100] {pi/2-rad(atan(x))};
+\fill[black] (axis cs:0,1.5708) circle (1.4pt);
+\end{axis}
+\end{tikzpicture}}
+\caption{The integral of $\sin x/x$. (A) The integrand: the areas of the positive and negative lobes decrease like $2/(k\pi)$, so their sum converges, but the sum of their absolute values diverges. The signed total area is $\pi/2$. (B) The damped integral $F(t)=\int_0^\infty e^{-tx}(\sin x/x)\,dx=\pi/2-\arctan t$; its value at $t=0$ (dot) is the integral in (A).}
+\label{fig:sinc}
+\end{figure}
+
+\subsection{The Fourier Transform of the Gaussian}
+
+A second application of \cref{thm:parameter-improper} computes an integral that is basic to probability and signal processing. Here differentiation under the integral sign leads to a differential equation rather than to an elementary integral.
+
+\begin{proposition}
+\label{prop:gaussian-fourier}
+For every real $t$,
+\[
+\int_{-\infty}^\infty e^{-x^2}\cos(tx)\,dx=\sqrt\pi\,e^{-t^2/4} .
+\]
+\end{proposition}
+
+\begin{proof}
+Let $F(t)$ denote the integral. The integrand and its partial derivative with respect to $t$, which is $-xe^{-x^2}\sin(tx)$, are continuous and bounded in absolute value by $e^{-x^2}$ and $|x|e^{-x^2}$, whose integrals over $\mathbb R$ converge. By \cref{thm:parameter-improper}, with the integral split at $0$,
+\[
+\begin{aligned}
+F'(t)&=-\int_{-\infty}^\infty xe^{-x^2}\sin(tx)\,dx\\
+&=\Bigl[\frac{e^{-x^2}}2\sin(tx)\Bigr]_{-\infty}^\infty-\frac t2\int_{-\infty}^\infty e^{-x^2}\cos(tx)\,dx=-\frac t2\,F(t),
+\end{aligned}
+\]
+by integration by parts with $u=\sin(tx)$ and $v'=-xe^{-x^2}$, $v=e^{-x^2}/2$; the boundary terms vanish. Hence the function $F(t)e^{t^2/4}$ has the derivative $e^{t^2/4}(F'(t)+tF(t)/2)=0$, so it is constant (\cref{cor:zero-derivative}), equal to its value $F(0)=\sqrt\pi$ at $t=0$.
+\end{proof}
+
+The substitution $x=u/\sqrt2$ gives the equivalent form $\int_{-\infty}^\infty e^{-u^2/2}\cos(tu)\,du=\sqrt{2\pi}\,e^{-t^2/2}$. Since $\int e^{-u^2/2}\sin(tu)\,du=0$, the integrand being odd, this says that the standard normal density $e^{-u^2/2}/\sqrt{2\pi}$ has the Fourier transform $e^{-t^2/2}$: the Gaussian function is reproduced, up to scaling, by the Fourier transform. In the language of Volume~III, the characteristic function of the standard normal distribution is $e^{-t^2/2}$, the fact on which the proof of the central limit theorem rests; in Volume~XI, it explains why Gaussian windows are used in signal processing.
+
+\section{Numerical Integration in Several Variables: A First Look}
+\label{sec:cubature}
+
+Most integrals in several variables cannot be evaluated in closed form, and those of probability and statistics often have many variables: the probability that a random vector with a given density lies in a box of $\mathbb R^{10}$ is a ten-fold integral. This section asks what the rules of \cref{sec:quadrature} achieve in several variables. The answer is sobering, and it leads to a completely different idea. Rules for integrals in several variables are also called \term{cubature} rules, after the old name for the computation of volumes. Volume~XI treats them, and the library routines that implement them, in depth.
+
+\subsection{Product Rules}
+
+Fubini's theorem suggests applying a rule of one variable in each variable in turn. For the trapezoidal rule $T_m$ on $[a,b]$, with step $h=(b-a)/m$, nodes $x_i=a+ih$ and weights $hc_i$, where $c_0=c_m=1/2$ and $c_i=1$ otherwise, and the trapezoidal rule $T'_{m'}$ on $[c,d]$, with step $k$, nodes $y_l$ and weights $kc'_l$, the \term{product trapezoidal rule} on $R=[a,b]\times[c,d]$ is
+\[
+T_{m,m'}(f)\coloneqq\sum_{i=0}^m\sum_{l=0}^{m'}hk\,c_ic'_l\,f(x_i,y_l).
+\]
+It applies $T'_{m'}$ to each function $y\mapsto f(x_i,y)$ and then combines the results with the weights of $T_m$. The weights are $hk$ at interior nodes, $hk/2$ on the edges and $hk/4$ at the corners (\cref{fig:cubature-nodes}A). In $d$ variables the product rule with $m$ subintervals in each direction uses $(m+1)^d$ nodes.
+
+\begin{proposition}[Error of the product trapezoidal rule]
+\label{prop:product-trapezoid-error}
+Let $f$ be continuous on $R=[a,b]\times[c,d]$ with continuous partial derivatives $\partial_x^2f$ and $\partial_y^2f$. Then
+\[
+\Bigl|\iint_Rf\,dA-T_{m,m'}(f)\Bigr|\le\frac{\operatorname{vol}(R)}{12}\Bigl(h^2\max_R|\partial_x^2f|+k^2\max_R|\partial_y^2f|\Bigr).
+\]
+In $d$ variables, on a box with steps $h_1,\ldots,h_d$, the error is at most $\operatorname{vol}(R)/12$ times $\sum_jh_j^2\max|\partial_j^2f|$.
+\end{proposition}
+
+\begin{proof}
+For a function $g$ on $[a,b]$ write $I(g)\coloneqq\int_a^bg$, and similarly $I'$ on $[c,d]$. By Fubini's theorem, $\iint_Rf=I(x\mapsto I'(f(x,\cdot)))$, and by definition $T_{m,m'}(f)=\sum_lkc'_l\,T_m(f(\cdot,y_l))$. Hence the error is
+\[
+\begin{aligned}
+\iint_Rf-T_{m,m'}(f)&=\int_a^b\Bigl(I'\bigl(f(x,\cdot)\bigr)-T'_{m'}\bigl(f(x,\cdot)\bigr)\Bigr)dx\\
+&\quad+\sum_{l=0}^{m'}kc'_l\Bigl(I\bigl(f(\cdot,y_l)\bigr)-T_m\bigl(f(\cdot,y_l)\bigr)\Bigr),
+\end{aligned}
+\]
+as one sees by expanding: the first term is $\iint_Rf-\int_a^b\sum_lkc'_lf(x,y_l)\,dx$, and the second is $\sum_lkc'_l\int_a^bf(x,y_l)\,dx-T_{m,m'}(f)$. By \cref{thm:quadrature-errors}, the expression in the first integral is at most $(d-c)k^2\max|\partial_y^2f|/12$ in absolute value for every $x$, and each difference in the second sum is at most $(b-a)h^2\max|\partial_x^2f|/12$; the weights $kc'_l$ are positive and add up to $d-c$. Adding the two bounds gives the claim. In $d$ variables the same splitting, applied one variable at a time, gives one term for each variable.
+\end{proof}
+
+The trapezoidal rule therefore keeps its order $2$ in each variable: halving all the steps divides the error by about $4$. But the number of nodes is multiplied by $2^d$. With $N=(m+1)^d$ nodes the step is about $N^{-1/d}$, and the error behaves like $N^{-2/d}$; for Simpson's rule it behaves like $N^{-4/d}$. In one variable, doubling the number of function values divides the error of the trapezoidal rule by $4$; in ten variables, by $2^{1/5}=1.15$.
+
+\subsection{The Curse of Dimensionality}
+
+\Cref{tab:curse} shows what this means in practice. A grid with only ten subintervals in each direction, which in one variable gives errors proportional to $h^2=10^{-2}$ for the trapezoidal rule and to $h^4=10^{-4}$ for Simpson's rule, needs $11^d$ function values. At a billion evaluations per second this takes about $26$ seconds for $d=10$ and twenty thousand years for $d=20$. Bellman called this exponential growth of the cost with the dimension the \term{curse of dimensionality}~\cite{bellman1957}. The geometry of \cref{sec:gaussian} shows another side of it: in high dimensions almost everything lies near the boundary of a cube. Of the $11^{20}$ nodes of the grid above in $\mathbb R^{20}$, only $9^{20}$ lie in the interior of the cube, a fraction $(9/11)^{20}\approx0.018$; the rest lie on its faces.
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}{colspec={rrl}, row{1}={font=\small\bfseries}}
+\toprule
+$d$ & nodes $11^d$ & time at $10^9$ evaluations per second \\
+\midrule
+1 & 11 & $1.1\times10^{-8}$ seconds \\
+2 & 121 & $1.2\times10^{-7}$ seconds \\
+3 & 1\,331 & $1.3\times10^{-6}$ seconds \\
+5 & 161\,051 & $1.6\times10^{-4}$ seconds \\
+10 & $2.6\times10^{10}$ & 26 seconds \\
+20 & $6.7\times10^{20}$ & 21\,000 years \\
+30 & $1.7\times10^{31}$ & $5.5\times10^{14}$ years \\
+\bottomrule
+\end{sdtable}}{The cost of a product rule with ten subintervals in each of $d$ directions. The number of function values grows exponentially with the dimension.\label{tab:curse}}
+\end{table}
+
+\subsection{Monte Carlo Integration}
+
+A different idea avoids grids altogether. The integral of $f$ over the unit cube $[0,1]^d$ is the mean value of $f$ there, and a mean value can be estimated from a sample. Let $\mathbf X_1,\ldots,\mathbf X_N$ be points chosen independently and uniformly at random from the cube, and let
+\[
+Q_N(f)\coloneqq\frac1N\sum_{i=1}^Nf(\mathbf X_i).
+\]
+This is the \term{Monte Carlo} estimate of $\int_{[0,1]^d}f$, named after the casino by the physicists who used it at Los Alamos in the 1940s~\cite{metropolis1949}. Its error is random. Volume~III proves, with the tools of probability theory, that $Q_N(f)$ is correct on average and that its typical error, the root mean square of $Q_N(f)-\int f$ over all possible samples, is exactly
+\begin{equation}
+\frac\sigma{\sqrt N},\qquad\sigma^2\coloneqq\int_{[0,1]^d}f^2-\Bigl(\int_{[0,1]^d}f\Bigr)^2 ,
+\label{eq:monte-carlo-error}
+\end{equation}
+where $\sigma^2$ is the variance of $f$ over the cube. The rate $N^{-1/2}$ is slow, much slower than that of the trapezoidal rule in one variable, but it does not depend on the dimension. It beats the product trapezoidal rule, whose error behaves like $N^{-2/d}$, as soon as $d>4$, and Simpson's rule as soon as $d>8$, provided $\sigma$ is not large. In a computer the random points are replaced by pseudorandom numbers, deterministic sequences that imitate randomness well enough; Volume~XIII describes how they are generated.
+
+\begin{figure}
+\sdpanel{A}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.42\textwidth, height=0.42\textwidth, xmin=-0.08, xmax=1.08, ymin=-0.08, ymax=1.08,
+  axis equal image, xtick={0,0.5,1}, ytick={0,0.5,1}, xlabel={$x_1$}, ylabel={$x_2$}]
+\pgfplotsinvokeforeach{0,0.25,0.5,0.75,1}{\draw[black!25, line width=0.3pt] (axis cs:#1,0) -- (axis cs:#1,1); \draw[black!25, line width=0.3pt] (axis cs:0,#1) -- (axis cs:1,#1);}
+\addplot[only marks, mark=*, mark size=2.2pt, black] coordinates {(0.25,0.25) (0.5,0.25) (0.75,0.25) (0.25,0.5) (0.5,0.5) (0.75,0.5) (0.25,0.75) (0.5,0.75) (0.75,0.75)};
+\addplot[only marks, mark=*, mark size=1.55pt, black] coordinates {(0,0.25) (0,0.5) (0,0.75) (1,0.25) (1,0.5) (1,0.75) (0.25,0) (0.5,0) (0.75,0) (0.25,1) (0.5,1) (0.75,1)};
+\addplot[only marks, mark=*, mark size=1.1pt, black] coordinates {(0,0) (1,0) (0,1) (1,1)};
+\end{axis}
+\end{tikzpicture}}\hfill
+\sdpanel{B}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.42\textwidth, height=0.42\textwidth, xmin=-0.08, xmax=1.08, ymin=-0.08, ymax=1.08,
+  axis equal image, xtick={0,0.5,1}, ytick={0,0.5,1}, xlabel={$x_1$}, ylabel={$x_2$}]
+\draw[black!25, line width=0.3pt] (axis cs:0,0) rectangle (axis cs:1,1);
+\addplot[only marks, mark=*, mark size=1.4pt, black] coordinates {(0.324,0.151) (0.651,0.072) (0.536,0.366) (0.058,0.507) (0.037,0.434) (0.070,0.091) (0.425,0.827) (0.124,0.223) (0.627,0.948) (0.577,0.397) (0.976,0.047) (0.858,0.290) (0.144,0.118) (0.308,0.816) (0.181,0.582) (0.639,0.372) (0.548,0.063) (0.060,0.206) (0.680,0.428) (0.314,0.586) (0.453,0.300) (0.794,0.699) (0.244,0.574) (0.525,0.875) (0.729,0.288)};
+\end{axis}
+\end{tikzpicture}}
+\caption{Two ways of placing $25$ nodes in the unit square. (A) The product trapezoidal rule with $m=4$: the node weights are $1/16$ inside, $1/32$ on the edges and $1/64$ at the corners, shown by the sizes of the dots. In $d$ dimensions the same resolution needs $5^d$ nodes. (B) Twenty-five pseudorandom points for the Monte Carlo rule, all of weight $1/25$. Random points leave gaps and clusters, but their number can be chosen freely, independently of the dimension.}
+\label{fig:cubature-nodes}
+\end{figure}
+
+\Cref{tab:monte-carlo} compares the two methods on the integral of $f(\mathbf x)=e^{-\|\mathbf x\|^2}$ over $[0,1]^d$, whose exact value $\bigl(\int_0^1e^{-x^2}dx\bigr)^d=0.746824\ldots^{\,d}$ follows from Fubini's theorem; the variance in \eqref{eq:monte-carlo-error} is computed in the same way, since $f^2(\mathbf x)=e^{-2\|\mathbf x\|^2}$. For each dimension the two rules use about the same number $N$ of function values, about a million except where the grid allows only coarser choices. In two variables the product rule is a thousand times more accurate than Monte Carlo. In four variables the two are comparable. In eight variables the product rule can afford only $m=4$ subintervals per direction and is wrong by $4\,\%$, while Monte Carlo, with fewer points, is accurate to $0.13\,\%$; in sixteen variables the coarsest product rule, which evaluates $f$ only at the $2^{16}$ corners of the cube, is useless. The observed Monte Carlo errors agree with the prediction $\sigma/\sqrt N$; with only ten repetitions, the root mean square of the errors is itself only a rough estimate, accurate to perhaps a quarter.
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}{colspec={rrrlll}, row{1}={font=\small\bfseries}}
+\toprule
+$d$ & $m$ & $N$ & product trapezoid & Monte Carlo & $\sigma/(I\sqrt N)$ \\
+\midrule
+1 & 999 & 1\,000 & $8.2\times10^{-8}$ & $9.0\times10^{-3}$ & $8.5\times10^{-3}$ \\
+2 & 999 & 1\,000\,000 & $1.7\times10^{-7}$ & $3.9\times10^{-4}$ & $3.9\times10^{-4}$ \\
+3 & 99 & 1\,000\,000 & $2.5\times10^{-5}$ & $4.6\times10^{-4}$ & $4.8\times10^{-4}$ \\
+4 & 31 & 1\,048\,576 & $3.4\times10^{-4}$ & $5.3\times10^{-4}$ & $5.6\times10^{-4}$ \\
+8 & 4 & 390\,625 & $4.0\times10^{-2}$ & $1.3\times10^{-3}$ & $1.4\times10^{-3}$ \\
+16 & 1 & 65\,536 & $7.6\times10^{-1}$ & $3.6\times10^{-3}$ & $5.6\times10^{-3}$ \\
+\bottomrule
+\end{sdtable}}{Relative errors for $I=\int_{[0,1]^d}e^{-\|\mathbf x\|^2}d\mathbf x$ with $N=(m+1)^d$ function values. Product trapezoid: the rule with $m$ subintervals per direction. Monte Carlo: the root mean square of the relative errors of ten runs with $N$ points each, using the Mersenne Twister generator of the Python standard library with the seeds $1,\ldots,10$. Last column: the predicted relative error \eqref{eq:monte-carlo-error}.\label{tab:monte-carlo}}
+\end{table}
+
+\subsection{Two Algorithms}
+
+\Cref{alg:product-trapezoid} implements the product trapezoidal rule on the cube $[0,1]^d$ by running through all multi-indices $(i_1,\ldots,i_d)\in\{0,\ldots,m\}^d$, like an odometer whose wheels have $m+1$ positions; the weight of a node is the product of the one-dimensional weights. \Cref{alg:monte-carlo} implements the Monte Carlo rule and returns, together with the estimate, an estimate of its error from the sample itself: the sample variance $s^2$ estimates $\sigma^2$, and $s/\sqrt N$ estimates the error \eqref{eq:monte-carlo-error}. The product rule has no comparably cheap error estimate.
+
+\begin{algorithm}
+\begin{algorithmic}[1]
+\Require a function $f$ on $[0,1]^d$; the dimension $d\ge1$; a number $m\ge1$ of subintervals per direction
+\Ensure the product trapezoidal approximation of $\int_{[0,1]^d}f$
+\Name{ProductTrapezoid}{f,d,m}
+\State $h\gets1/m$;\quad $s\gets0$;\quad $(i_1,\ldots,i_d)\gets(0,\ldots,0)$
+\Loop
+  \State $w\gets1$
+  \For{$j=1,\ldots,d$}
+    \If{$i_j=0$ or $i_j=m$} $w\gets w/2$ \Comment{end node in direction $j$}
+    \EndIf
+  \EndFor
+  \State $s\gets s+w\cdot f(i_1h,\ldots,i_dh)$
+  \State $j\gets1$ \Comment{advance the odometer}
+  \While{$j\le d$ and $i_j=m$}
+    \State $i_j\gets0$;\quad $j\gets j+1$
+  \EndWhile
+  \If{$j>d$} \Return $h^d\cdot s$ \Comment{all $(m+1)^d$ nodes done}
+  \EndIf
+  \State $i_j\gets i_j+1$
+\EndLoop
+\end{algorithmic}
+\caption{The product trapezoidal rule on the unit cube. The loop body runs $(m+1)^d$ times.}
+\label{alg:product-trapezoid}
+\end{algorithm}
+
+\begin{algorithm}
+\begin{algorithmic}[1]
+\Require a function $f$ on $[0,1]^d$; a number $N\ge2$ of sample points; a source of independent uniform random numbers in $[0,1)$
+\Ensure an estimate $Q$ of $\int_{[0,1]^d}f$ and an estimate $e$ of its root mean square error
+\Name{MonteCarlo}{f,d,N}
+\State $s\gets0$;\quad $q\gets0$
+\For{$i=1,\ldots,N$}
+  \State draw $u_1,\ldots,u_d$ uniformly from $[0,1)$
+  \State $y\gets f(u_1,\ldots,u_d)$
+  \State $s\gets s+y$;\quad $q\gets q+y^2$
+\EndFor
+\State $Q\gets s/N$
+\State $e\gets\sqrt{(q-NQ^2)/((N-1)N)}$ \Comment{$s/\sqrt N$ with the sample variance}
+\State \Return $(Q,e)$
+\end{algorithmic}
+\caption{Monte Carlo integration over the unit cube. The cost is $N$ evaluations of $f$ whatever the dimension. Accumulating $q$ as a sum of squares can lose accuracy when the mean is large compared with the spread; Volume~V discusses stable updating formulas.}
+\label{alg:monte-carlo}
+\end{algorithm}
+
+Monte Carlo integration and the product rules are two extremes. Between them lie methods that exploit smoothness in a cleverer way than products do, and methods that place deterministic points more evenly than random ones; the following note mentions them.
+
+\begin{note}{Beyond products and random points}
+Three refinements dominate modern practice. \emph{Product Gauss rules} replace the trapezoidal rule in each direction by Gaussian quadrature (Volume~XI), which is far more accurate for smooth integrands, but they still need $n^d$ nodes. \emph{Sparse grids}, introduced by Smolyak~\cite{smolyak1963}, combine product rules of different resolutions in different directions so that, for sufficiently smooth integrands, about $N(\log N)^{d-1}$ nodes achieve nearly the accuracy that a full product grid reaches with $N$ nodes in each direction, that is, with $N^d$ nodes. \emph{Quasi-Monte Carlo} methods replace the random points by deterministic low-discrepancy sequences, such as those of Halton and Sobol', which fill the cube more evenly than random points; for integrands of bounded variation in the sense of Hardy and Krause, the Koksma--Hlawka inequality bounds the error by a constant times $(\log N)^d/N$, much better than $N^{-1/2}$ when $d$ is moderate~\cite{niederreiter1992}. Davis and Rabinowitz~\cite{davis1984} survey the classical cubature rules.
+\end{note}
+
+\bigskip
+The integral of a function of several variables is defined by boxes in the same way as that of one variable by intervals, and continuous functions on boxes and on regions with a boundary of content zero are integrable. What makes the integral computable is Fubini's theorem, which turns it into single integrals, and the change of variables formula, in which the Jacobian determinant measures how a map stretches volume. With them this chapter evaluated the Gaussian integral, the volume of the ball in every dimension, the beta function and the integral of $\sin x/x$, and justified the volumes of solids of revolution promised in \cref{ch:integration}. Chapter~12 integrates over curves and surfaces, where the Jacobian determinant is replaced by the lengths and areas of tangent vectors, and proves the theorems of Green, Gauss and Stokes, which relate integrals over a region to integrals over its boundary. The integrals of probability densities, which have been the recurring application here, become the foundation of Volume~III, and the Lebesgue integral of Volume~II removes the remaining restrictions of Riemann's integral: it integrates over every reasonable set, and its Fubini theorem needs no integrability of the sections.
+
+\chapternotes
+
+The integral of a function of several variables was used long before it was defined: Euler changed variables in double integrals in 1769, Lagrange in triple integrals in 1773, and Jacobi gave the general rule with the functional determinant in 1841~\cite{jacobi1841}; Katz~\cite{katz1982} tells this history. The definition by upper and lower sums over regions with a boundary of content zero goes back to Peano and Jordan~\cite{jordan1893}, and Hawkins~\cite{hawkins1975} describes how the theory of content led to Lebesgue's measure. Fubini's theorem for the Lebesgue integral is due to Fubini~\cite{fubini1907} and its form for nonnegative functions to Tonelli~\cite{tonelli1909}; Folland~\cite{folland1999} gives a modern account. Cavalieri's principle and the ancient volumes of the cone, the ball and the paraboloid are discussed by Edwards~\cite{edwards1979} and, in Archimedes' own words, by Heath~\cite{heath1897archimedes}. Laplace's evaluation of the Gaussian integral and the origins of the normal distribution are described by Stigler~\cite{stigler1986}; Davis~\cite{davis1959gamma} tells the history of the gamma and beta functions and Artin~\cite{artin1964gamma} proves the Bohr--Mollerup theorem. Dirichlet's integral over the simplex comes from~\cite{dirichlet1839}.
+
+Among textbooks at the level of this chapter, Apostol's second volume~\cite{apostol1969calculus} develops multiple integrals with step functions and proves the change of variables formula in two dimensions, Marsden and Tromba~\cite{marsden2012vector} emphasise the geometry and the coordinate systems, with many worked examples, and Hubbard and Hubbard~\cite{hubbard2015vector} give a careful treatment of the change of variables in $n$ dimensions. Spivak's \emph{Calculus on Manifolds}~\cite{spivak1965manifolds} gives a concise rigorous account of integration over Jordan measurable sets, Fubini's theorem and the change of variables, and Munkres~\cite{munkres1991} a more detailed one; Lax~\cite{lax1999} gives a short proof of the change of variables formula. For integrals depending on a parameter and uniform convergence, see Apostol~\cite{apostol1969calculus} and Rudin~\cite{rudin1976}. For cubature, Davis and Rabinowitz~\cite{davis1984} survey the classical rules, Bellman~\cite{bellman1957} named the curse of dimensionality, Metropolis and Ulam~\cite{metropolis1949} introduced the Monte Carlo method under that name, Smolyak~\cite{smolyak1963} sparse grids, and Niederreiter~\cite{niederreiter1992} is the standard account of quasi-Monte Carlo methods.
+
+\chapterreferences
