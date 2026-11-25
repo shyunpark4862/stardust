@@ -168,12 +168,31 @@ The symbols used in this volume are collected here. Each is defined again, with 
 \item[$D=(V,A)$] a directed graph with vertex set $V$ and arc set $A$
 \end{symbols}
 
+\symbolgroup{Limits and continuity}
+\begin{symbols}
+\item[$(a_n)$, $(a_n)_{n\in\mathbb N}$] a sequence with terms $a_0,a_1,a_2,\ldots$; $(a_n)_{n\ge1}$ starts at $a_1$
+\item[$\lim_{n\to\infty}a_n$] the limit of a convergent sequence $(a_n)$
+\item[$a_n\to\infty$, $a_n\to-\infty$] the sequence $(a_n)$ diverges to infinity, to minus infinity
+\item[$\infty$, $-\infty$] symbols used in limits; they are not real numbers
+\item[$(a_{n_k})_{k\in\mathbb N}$] a subsequence of $(a_n)$, with $n_0<n_1<\cdots$
+\item[$e$] the number $\lim_{n\to\infty}(1+1/n)^n=2.71828\ldots$
+\item[$\lim_{x\to a^+}f(x)$, $f(a^+)$] the right-hand limit of $f$ at $a$
+\item[$\lim_{x\to a^-}f(x)$, $f(a^-)$] the left-hand limit of $f$ at $a$
+\item[$\lim_{x\to\infty}f(x)$] the limit of $f(x)$ as $x$ grows without bound; similarly $x\to-\infty$
+\item[$C(D)$, $C{[a,b]}$] the set of continuous real functions on $D$, on $[a,b]$
+\item[$\operatorname{sign}x$] the sign of $x$: $-1$, $0$ or $1$ according as $x<0$, $x=0$ or $x>0$
+\item[$\arcsin$, $\arccos$, $\arctan$] the inverses of $\sin$ on $[-\pi/2,\pi/2]$, $\cos$ on $[0,\pi]$, $\tan$ on $(-\pi/2,\pi/2)$
+\end{symbols}
+
 \mainmatter
 \part{Foundations}
 \input{chapters/v1-01-logic-and-proof}
 \input{chapters/v1-02-sets-functions-relations}
 \input{chapters/v1-03-number-systems}
 \input{chapters/v1-04-counting-discrete}
+
+\part{Calculus}
+\input{chapters/v1-05-limits-continuity}
 
 \backmatter
 \end{document}

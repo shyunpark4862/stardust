@@ -9,7 +9,8 @@ Work only inside /Users/sanghyunpark/Desktop/stardust/textbook-eng/. The rest of
 2. The chapter plan in plans/ — sections, results to prove, figures, note boxes. Follow it; add what helps a first-year reader.
 3. OUTLINE.md — where the chapter sits and what neighbouring chapters cover, so that you neither repeat nor presuppose them wrongly.
 4. sdbook-eng.cls comments — every command of the fixed design: theorem environments (theorem, lemma, proposition, corollary, definition, assumption; no remark/example/listing — worked examples go in the running text), \sdfloat{content}{caption\label{}} for every figure and table, sdtable / sdlongtable, the sdplot pgfplots style, \sdpanel, the algorithm design with \Name, the `note` box, lists, symbols lists, \term{}, \code{}, \abstract{}, \chapterreferences.
-5. The previous chapter of the volume (chapters/) — for notation, conventions, tone and depth. Use what it has established; refer to its results with \cref.
+5. plans/PROMISES.md — forward promises made by earlier chapters. Keep every promise addressed to your chapter (mark it [완료] there) and add the promises your chapter makes to later ones.
+6. The previous chapter of the volume (chapters/) — for notation, conventions, tone and depth. Use what it has established; refer to its results with \cref.
 
 ## What to write
 - The chapter file, and the edits to the volume's main file (volN.tex): \input the chapter in its place (start a new \part where OUTLINE.md starts one) and add the chapter's new symbols to the Notation chapter.
