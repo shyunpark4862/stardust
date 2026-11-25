@@ -342,7 +342,7 @@
 % 8. Title page: SNmono's, without the publisher line
 % ---------------------------------------------------------------------------
 % \volume{1}{Calculus, Linear Algebra, and Differential Equations} sets the two lines
-% under the title: "Volume 1", then the volume's own title in smaller type. The series
+% under the title: "Volume I" (roman numeral), then the volume's own title in smaller type. The series
 % title is set in italics (2026-11-25).
 \newcommand\volume[2]{\gdef\sd@volno{#1}\gdef\sd@voltitle{#2}}
 \def\sd@volno{}\def\sd@voltitle{}
@@ -356,7 +356,7 @@
   \ifx\sd@volno\@empty
     \if!\@subtitle!\else{\LARGE\ignorespaces\@subtitle \par}\vskip 1cm\fi
   \else
-    {\LARGE Volume \sd@volno\par}\vskip 6\p@
+    {\LARGE Volume \uppercase\expandafter{\romannumeral\sd@volno}\par}\vskip 6\p@
     {\Large \sd@voltitle\par}\vskip 1cm
   \fi
   \ifx\@date\@empty\else{\large \@date}\par\vskip 1.5em\fi

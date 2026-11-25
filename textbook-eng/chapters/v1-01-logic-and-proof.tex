@@ -1,4 +1,4 @@
-%% Volume 1, Chapter 1: Logic and Proof
+%% Volume I, Chapter 1: Logic and Proof
 \chapter{Logic and Proof}
 \label{ch:logic}
 
@@ -188,7 +188,7 @@ The connectives also have a geometric picture. Imagine all possible situations a
 The picture becomes literal in \cref{sec:quantifiers}, where a statement depends on a variable $x$ and the region of a statement is the set of values of $x$ for which it is true. Negation then corresponds to the complement of a set, conjunction to the intersection of two sets and disjunction to their union, and the laws of \cref{prop:laws} turn into laws of set operations, which are studied in the next chapter.
 
 \begin{note}{Boolean algebra and logic circuits}
-The laws of \cref{prop:laws} were first treated as an algebra by George Boole~\cite{boole1847,boole1854}, who wrote truth values as $1$ and $0$ and the connectives as operations on them; for instance $P\wedge Q$ becomes the product $PQ$ and $\neg P$ becomes $1-P$. A set with two operations and a complement obeying these laws is now called a \emph{Boolean algebra}. In 1938 Claude Shannon observed that circuits of electrical switches obey the same laws, so that the design of a switching circuit can be carried out by manipulating formulas~\cite{shannon1938}. Digital computers are designed on this principle. Their circuits are assembled from \emph{gates}, small circuits that compute $\neg$, $\wedge$ and $\vee$ on voltages representing $0$ and $1$, and their arithmetic on integers and floating-point numbers is assembled from gates in turn. Volume~4 of this series builds an adder from gates; Volume~5 treats floating-point arithmetic, including the rounding that makes \code{0.1 + 0.2 == 0.3} false.
+The laws of \cref{prop:laws} were first treated as an algebra by George Boole~\cite{boole1847,boole1854}, who wrote truth values as $1$ and $0$ and the connectives as operations on them; for instance $P\wedge Q$ becomes the product $PQ$ and $\neg P$ becomes $1-P$. A set with two operations and a complement obeying these laws is now called a \emph{Boolean algebra}. In 1938 Claude Shannon observed that circuits of electrical switches obey the same laws, so that the design of a switching circuit can be carried out by manipulating formulas~\cite{shannon1938}. Digital computers are designed on this principle. Their circuits are assembled from \emph{gates}, small circuits that compute $\neg$, $\wedge$ and $\vee$ on voltages representing $0$ and $1$, and their arithmetic on integers and floating-point numbers is assembled from gates in turn. Volume~IV of this series builds an adder from gates; Volume~V treats floating-point arithmetic, including the rounding that makes \code{0.1 + 0.2 == 0.3} false.
 \end{note}
 
 \section{Implication}
@@ -1080,7 +1080,7 @@ There is no smallest positive real number.
 Suppose, for a contradiction, that $\varepsilon$ is a smallest positive real number. Then $\varepsilon/2$ is a real number with $0<\varepsilon/2<\varepsilon$, so it is positive and smaller than $\varepsilon$. This contradicts the choice of $\varepsilon$.
 \end{proof}
 
-The proposition is a statement about real numbers and not about the numbers in a computer. The binary64 floating-point format used by almost all scientific software contains a smallest positive number, $2^{-1074}\approx4.9\times10^{-324}$, and halving it gives zero under the default rounding rule~\cite{ieee754-2019}. Facts about $\mathbb R$ hold for floating-point numbers only when they have been proved for them; Volume~5 of this series is devoted to such proofs.
+The proposition is a statement about real numbers and not about the numbers in a computer. The binary64 floating-point format used by almost all scientific software contains a smallest positive number, $2^{-1074}\approx4.9\times10^{-324}$, and halving it gives zero under the default rounding rule~\cite{ieee754-2019}. Facts about $\mathbb R$ hold for floating-point numbers only when they have been proved for them; Volume~V of this series is devoted to such proofs.
 
 \subsection{Choosing Between the Techniques}
 
@@ -1368,7 +1368,7 @@ m\coloneqq\frac{n-b_0}{2}=\sum_{i=1}^{k}b_i2^{i-1}=\sum_{i=1}^{l}c_i2^{i-1}.
 Here $m\ge2^{k-1}\ge1$ and $m<n$, so by the inductive hypothesis the two representations of $m$ coincide: $k-1=l-1$ and $b_i=c_i$ for $1\le i\le k$. Together with $b_0=c_0$ this proves $P(n)$.
 \end{proof}
 
-The existence proof is constructive: it tells us how to find the digits. The last digit is $n\bmod2$, and the remaining digits are those of $(n-b_0)/2$. Repeating this until nothing is left produces the digits from the lowest to the highest, as \cref{tab:binary37} shows for $n=37$. Nothing in the proofs depends on the base being $2$: with \cref{prop:parity} replaced by division with remainder, which is proved in Chapter~3, the same arguments show that every positive integer has a unique representation in any base $\beta\ge2$, with digits $0,1,\ldots,\beta-1$. The decimal system is the case $\beta=10$. Volume~4 builds the representations of integers and of floating-point numbers in a computer on this theorem.
+The existence proof is constructive: it tells us how to find the digits. The last digit is $n\bmod2$, and the remaining digits are those of $(n-b_0)/2$. Repeating this until nothing is left produces the digits from the lowest to the highest, as \cref{tab:binary37} shows for $n=37$. Nothing in the proofs depends on the base being $2$: with \cref{prop:parity} replaced by division with remainder, which is proved in Chapter~3, the same arguments show that every positive integer has a unique representation in any base $\beta\ge2$, with digits $0,1,\ldots,\beta-1$. The decimal system is the case $\beta=10$. Volume~IV builds the representations of integers and of floating-point numbers in a computer on this theorem.
 
 \begin{table}
 \sdfloat{%
@@ -1441,7 +1441,7 @@ the invariant holds with the new values at the next test.
 \emph{Result.} At the end $m=0$, and the invariant gives $n=\sum_{j=0}^{i-1}b_j2^j$ with all $b_j\in\{0,1\}$. In the last pass the value $m$ was positive and became $m'=0$, so $m=b_{i-1}\le1$, that is, $m=1$ and $b_{i-1}=1$. Thus the output is a representation with leading digit $1$, and by the uniqueness part of \cref{thm:binary} it is the binary representation of $n$.
 \end{proof}
 
-The pattern of this proof, an invariant established by induction and termination established by a quantity that decreases in the natural numbers, recurs whenever an algorithm in this series is proved correct. Volume~4 treats it systematically.
+The pattern of this proof, an invariant established by induction and termination established by a quantity that decreases in the natural numbers, recurs whenever an algorithm in this series is proved correct. Volume~IV treats it systematically.
 
 \subsection{A Faulty Induction}
 
