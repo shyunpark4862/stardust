@@ -776,9 +776,9 @@ so that the sequence begins $0,1,1,2,3,5,8,13,21,34,55,89,144$. By the following
 
 \begin{theorem}[Lam\'e]
 \label{thm:lame}
-Let $a>b\ge1$ be integers, and suppose that \cref{alg:euclid} applied to $a$ and $b$ performs $n$ passes through its loop. Then $b\ge F_{n+1}$ and $a\ge F_{n+2}$. Consequently, with $\varphi\coloneqq(1+\sqrt5)/2$,
+Let $a>b\ge1$ be integers, and suppose that \cref{alg:euclid} applied to $a$ and $b$ performs $n$ passes through its loop. Then $b\ge F_{n+1}$ and $a\ge F_{n+2}$. Consequently, with $\phi\coloneqq(1+\sqrt5)/2$,
 \[
-n\le1+\log_\varphi b ,
+n\le1+\log_\phi b ,
 \]
 and $n$ is at most five times the number of decimal digits of $b$.
 \end{theorem}
@@ -790,11 +790,11 @@ r_{n-j}=q_{n-j+1}r_{n-j+1}+r_{n-j+2}\ge r_{n-j+1}+r_{n-j+2}\ge F_{j+1}+F_j=F_{j+
 \]
 Taking $j=n-1$ and $j=n$ gives $b=r_1\ge F_{n+1}$ and $a=r_0\ge F_{n+2}$.
 
-For the bound on $n$ we show $F_{k+1}\ge\varphi^{k-1}$ for every $k\ge1$. The number $\varphi$ satisfies $\varphi^2=\varphi+1$, as one checks by squaring, and $1<\varphi<2$. Now $F_2=1=\varphi^0$ and $F_3=2>\varphi$, and if the inequality holds for $k$ and $k+1$, then
+For the bound on $n$ we show $F_{k+1}\ge\phi^{k-1}$ for every $k\ge1$. The number $\phi$ satisfies $\phi^2=\phi+1$, as one checks by squaring, and $1<\phi<2$. Now $F_2=1=\phi^0$ and $F_3=2>\phi$, and if the inequality holds for $k$ and $k+1$, then
 \[
-F_{k+3}=F_{k+2}+F_{k+1}\ge\varphi^k+\varphi^{k-1}=\varphi^{k-1}(\varphi+1)=\varphi^{k+1}.
+F_{k+3}=F_{k+2}+F_{k+1}\ge\phi^k+\phi^{k-1}=\phi^{k-1}(\phi+1)=\phi^{k+1}.
 \]
-Hence $b\ge F_{n+1}\ge\varphi^{n-1}$, that is, $n\le1+\log_\varphi b$. Finally, if $b$ has $D$ decimal digits, then $b<10^D$ and $\log_\varphi b<D\log_\varphi10<4.79\,D$, so $n<1+4.79\,D\le1+5D$, and $n\le5D$ because $n$ is an integer.
+Hence $b\ge F_{n+1}\ge\phi^{n-1}$, that is, $n\le1+\log_\phi b$. Finally, if $b$ has $D$ decimal digits, then $b<10^D$ and $\log_\phi b<D\log_\phi10<4.79\,D$, so $n<1+4.79\,D\le1+5D$, and $n\le5D$ because $n$ is an integer.
 \end{proof}
 
 The bound is attained: for $a=F_{n+2}$ and $b=F_{n+1}$ every quotient except the last equals $1$, and the algorithm performs exactly $n$ passes. \Cref{fig:lame} compares the bound with the true worst case for small $b$. The logarithmic growth is what makes the algorithm practical: two numbers of a hundred decimal digits need at most $500$ passes, while trying all candidate divisors one by one would take longer than the age of the universe. The average number of passes is smaller still: for a fixed $b$ and $a$ chosen at random, it is about $(12\ln2/\pi^2)\ln b\approx0.84\ln b$ plus a small constant. Knuth gives the full analysis~\cite[Sect.~4.5.3]{knuth1997taocp2}.
@@ -810,7 +810,7 @@ The bound is attained: for $a=F_{n+2}$ and $b=F_{n+1}$ every quotient except the
 (1,1) (2,2) (3,3) (4,3) (5,4) (6,3) (7,4) (8,5) (9,4) (10,4) (11,5) (12,5) (13,6) (14,5) (15,5) (16,5) (17,5) (18,6) (19,6) (20,5) (21,7) (22,5) (23,6) (24,5) (25,6) (26,6) (27,6) (28,6) (29,7) (30,7) (31,7) (32,6) (33,6) (34,8) (35,6) (36,6) (37,7) (38,6) (39,7) (40,7) (41,7) (42,7) (43,7) (44,7) (45,7) (46,7) (47,8) (48,7) (49,8) (50,8) (51,7) (52,7) (53,7) (54,6) (55,9) (56,7) (57,7) (58,7) (59,7) (60,8) (61,7) (62,7) (63,7) (64,8) (65,8) (66,8) (67,8) (68,8) (69,8) (70,7) (71,8) (72,7) (73,8) (74,8) (75,8) (76,9) (77,7) (78,7) (79,9) (80,9) (81,9) (82,8) (83,8) (84,7) (85,8) (86,8) (87,8) (88,8) (89,10) (90,7) (91,8) (92,8) (93,8) (94,8) (95,8) (96,7) (97,9) (98,8) (99,8) (100,8) (101,8) (102,8) (103,9) (104,8) (105,9) (106,8) (107,9) (108,9) (109,9) (110,9) (111,9) (112,9) (113,8) (114,8) (115,9) (116,9) (117,9) (118,9) (119,9) (120,8) (121,9) (122,8) (123,10) (124,8) (125,8) (126,8) (127,9) (128,10) (129,10) (130,9) (131,10) (132,8) (133,9) (134,9) (135,8) (136,8) (137,9) (138,8) (139,9) (140,9) (141,8) (142,9) (143,9) (144,11) (145,9) (146,9) (147,8) (148,9) (149,9) (150,8) (151,9) (152,9) (153,9) (154,9) (155,9) (156,8) (157,10) (158,9) (159,9) (160,9) (161,9) (162,9) (163,9) (164,8) (165,9) (166,9) (167,10) (168,9) (169,10) (170,10) (171,9) (172,9) (173,10) (174,9) (175,10) (176,9) (177,10) (178,10) (179,10) (180,9) (181,10) (182,8) (183,10) (184,9) (185,10) (186,10) (187,10) (188,10) (189,9) (190,9) (191,10) (192,10) (193,10) (194,10) (195,9) (196,10) (197,9) (198,9) (199,11) (200,8)};
 \addlegendentry{worst case over all $a>b$}
 \addplot[black, dashed, line width=0.7pt, domain=1:220, samples=60] {1+ln(x)/ln(1.6180339887)};
-\addlegendentry{Lam\'e's bound $1+\log_\varphi b$}
+\addlegendentry{Lam\'e's bound $1+\log_\phi b$}
 \addplot[black, only marks, mark=o, mark size=2.2pt, forget plot] coordinates {(1,1) (2,2) (3,3) (5,4) (8,5) (13,6) (21,7) (34,8) (55,9) (89,10) (144,11)};
 \end{axis}
 \end{tikzpicture}}{The largest number of passes of the Euclidean algorithm over all inputs $a>b$, for $b=1,\ldots,200$ (dots), and the bound of \cref{thm:lame} (dashed). The circled points are the Fibonacci numbers $b=F_{n+1}$, where the bound $b\ge F_{n+1}$ is attained. On the logarithmic scale the bound is a straight line.\label{fig:lame}}
