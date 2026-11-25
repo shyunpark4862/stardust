@@ -50,3 +50,9 @@
 - 위치: `csrc/special/ops/zeta.hpp` `euler_maclaurin`(그리고 같은 꼴의 `hurwitz_relative`, `hurwitz_scaled`)의 `a += 1.0; b = std::pow(a, -s);`. q가 정수가 아니면 q + i가 반올림되고, a의 상대오차 δ가 a^-s에서 sδ가 된다.
 - 관찰(`textbook/figures/03/hurwitz_fix.py`, 정확한 유리수 참값, q ∈ (0.01, 100] 무작위 300점; 공개 저장소 복제본의 `sd.special.zeta`도 같은 최대 오차): s = 10에서 9.11ULP, s = 20에서 8.08ULP. 합의 낮은 부분을 two_sum으로 들고 다니며 b ← b (1 − s·lo/a)로 일차 보정하면 3.49, 3.38ULP. s = 2, 3에서는 변화 없음.
 - 제안(고치지 않음): 위의 일차 보정, 또는 a를 double-double로 두기. 결과 비트가 바뀌므로 골든 갱신 필요.
+
+## linalg: 노름의 척도 맞춤 경로가 a_max로 나눈다 (2026-11-25, 4장)
+
+- 위치: `csrc/linalg/ops/vnorm.hpp` `finish_pnorm`의 `out[k] / amax`. 넘치거나 아주 작은 입력에서만 타는 경로이다.
+- 관찰: a_max 대신 그에 가까운 2의 거듭제곱(예: `ldexp(1, -ilogb(amax))`)을 곱하면 나눗셈과 그 반올림이 없어지고 곱셈이 정확하다. 결과의 끝 비트가 바뀔 수 있다. 측정한 정확도 문제는 없다(`textbook/figures/04/measure.py`: 2^-1070–2^1010 척도에서 모두 올바르게 반올림).
+- 제안(고치지 않음, 우선순위 낮음): 2의 거듭제곱 척도. 골든 갱신 필요.
