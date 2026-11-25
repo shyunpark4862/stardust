@@ -306,9 +306,9 @@
 \pretocmd{\@makechapterhead}{\vspace*{48\p@}}{}{\ClassError{sdbook-eng}{patch failed}{}}
 \pretocmd{\@makeschapterhead}{\vspace*{48\p@}}{}{\ClassError{sdbook-eng}{patch failed}{}}
 
-% The chapter abstract is set off from the text: a blank line's worth of space follows it
+% The chapter abstract is set in \small and set off from the text: a blank line's worth of space follows it
 % and the first paragraph of the text is not indented (2026-11-25).
-\def\@abstract#1{\noindent\textbf{\abstractname}\enskip #1\par
+\def\@abstract#1{{\small\noindent\textbf{\abstractname}\enskip #1\par}%
   \addvspace{\baselineskip}\@afterindentfalse\@afterheading}
 
 % ---------------------------------------------------------------------------
