@@ -382,7 +382,7 @@ For example,
 \]
 By \cref{prop:empty-set}, $\emptyset\in\mathcal P(A)$ for every set $A$, and of course $A\in\mathcal P(A)$. In particular $\mathcal P(\emptyset)=\{\emptyset\}$, which has one element, and $\mathcal P(\{\emptyset\})=\{\emptyset,\{\emptyset\}\}$, which has two.
 
-The number of elements of a finite set $A$ is written $|A|$. The same vertical bars denote the absolute value of a number, and the context always shows which is meant. In this section and the next we use the number of elements informally, as in everyday counting; \cref{sec:cardinality} gives the precise definition, and the rules of counting are the subject of Chapter~4. The example above has $8=2^3$ elements, and this is no accident.
+The number of elements of a finite set $A$ is written $|A|$. The same vertical bars denote the absolute value of a number, and the context always shows which is meant. In this section and the next we use the number of elements informally, as in everyday counting; \cref{sec:cardinality} gives the precise definition, and the rules of counting are the subject of \cref{ch:counting}. The example above has $8=2^3$ elements, and this is no accident.
 
 \begin{proposition}
 \label{prop:power-set-size}
@@ -553,7 +553,7 @@ If $A$ has $m$ elements and $B$ has $n$ elements, then $A\times B$ has $mn$ elem
 For each $a\in A$, the pairs with first component $a$ form the set $\{a\}\times B$, a row of the grid in \cref{fig:product}A. It has $n$ elements, one pair $(a,b)$ for each $b\in B$. The $m$ rows together make up $A\times B$, and two different rows have no pair in common, since pairs with different first components are different. Hence $A\times B$ has $n+n+\cdots+n=mn$ elements. The second statement follows by induction on $k$: identifying the $(k+1)$-tuple $(a_1,\ldots,a_k,a_{k+1})$ with the pair $\bigl((a_1,\ldots,a_k),a_{k+1}\bigr)$ shows that $A^{k+1}$ has as many elements as $A^k\times A$, namely $m^k\cdot m=m^{k+1}$.
 \end{proof}
 
-For instance, a binary word of $64$ bits is an element of $\{0,1\}^{64}$, and there are $2^{64}=18\,446\,744\,073\,709\,551\,616$ of them. This is the number of distinct values of a $64$-bit integer, and also the number of distinct bit patterns of a $64$-bit floating-point number; Volume~V explains why the floating-point numbers represented by these patterns are slightly fewer. The counting arguments used here informally, splitting a set into disjoint parts and adding their sizes, are justified in Chapter~4.
+For instance, a binary word of $64$ bits is an element of $\{0,1\}^{64}$, and there are $2^{64}=18\,446\,744\,073\,709\,551\,616$ of them. This is the number of distinct values of a $64$-bit integer, and also the number of distinct bit patterns of a $64$-bit floating-point number; Volume~V explains why the floating-point numbers represented by these patterns are slightly fewer. The counting arguments used here informally, splitting a set into disjoint parts and adding their sizes, are justified in \cref{ch:counting}.
 
 \section{Functions}
 \label{sec:functions}
@@ -592,7 +592,7 @@ Here are some functions that occur throughout the series.
 
 It is equally important to recognise what is not a function. The rule ``assign to $x$ the number $y$ with $y^2=x$'' does not define a function from $\mathbb R$ to $\mathbb R$: for $x=-1$ there is no such $y$, so existence fails, and for $x=4$ there are two, $2$ and $-2$, so uniqueness fails. Both defects can be repaired by changing the sets: $x\mapsto\sqrt x$ is a function from $[0,\infty)$ to $\mathbb R$, by \cref{asm:numbers}\,(iv). Similarly, $x\mapsto1/x$ is a function on $\mathbb R\setminus\{0\}$ but not on $\mathbb R$. A function is not required to be given by a formula; ``$f(n)$ is the $n$th prime number'' and ``$f(x)=1$ if $x$ is rational and $0$ otherwise'' are perfectly good functions.
 
-For sets $A$ and $B$, the set of all functions from $A$ to $B$ is written $B^A$. The notation is explained by the count: if $A$ has $m$ elements and $B$ has $n$, then a function is specified by choosing one of the $n$ values for each of the $m$ elements of $A$, and there are $n^m$ ways to do so (Chapter~4 makes this precise). For example, the set $\{0,1\}^{\mathbb N}$ is the set of all infinite sequences of zeros and ones. The indicator functions give a one-to-one correspondence between the subsets of $A$ and the functions $A\to\{0,1\}$: each subset $S$ yields $\mathbf 1_S$, and each function $g\colon A\to\{0,1\}$ is the indicator function of exactly one subset, namely $\{a\in A: g(a)=1\}$. This explains once more why a set of $n$ elements has $2^n$ subsets (\cref{prop:power-set-size}).
+For sets $A$ and $B$, the set of all functions from $A$ to $B$ is written $B^A$. The notation is explained by the count: if $A$ has $m$ elements and $B$ has $n$, then a function is specified by choosing one of the $n$ values for each of the $m$ elements of $A$, and there are $n^m$ ways to do so (\cref{ch:counting} makes this precise). For example, the set $\{0,1\}^{\mathbb N}$ is the set of all infinite sequences of zeros and ones. The indicator functions give a one-to-one correspondence between the subsets of $A$ and the functions $A\to\{0,1\}$: each subset $S$ yields $\mathbf 1_S$, and each function $g\colon A\to\{0,1\}$ is the indicator function of exactly one subset, namely $\{a\in A: g(a)=1\}$. This explains once more why a set of $n$ elements has $2^n$ subsets (\cref{prop:power-set-size}).
 
 \subsection{Images and Preimages}
 
@@ -890,7 +890,7 @@ and in the same way $(g\circ f)\circ(f^{-1}\circ g^{-1})=\operatorname{id}_C$. S
 
 The order is reversed for the same reason that one takes off one's shoes before one's socks: what was done last must be undone first.
 
-A bijection from a set to itself is called a \term{permutation} of the set. The permutations of $\{0,1,\ldots,n-1\}$ describe the rearrangements of an array of length $n$: sorting an array, for instance, amounts to finding a permutation $\sigma$ such that the entry at position $\sigma(0)$ is the smallest, the entry at position $\sigma(1)$ the next, and so on. If $\sigma$ is the permutation of $\{0,1,2,3\}$ with $\sigma(0)=2$, $\sigma(1)=0$, $\sigma(2)=3$ and $\sigma(3)=1$, then its inverse is obtained by reading the assignments backwards: $\sigma^{-1}(2)=0$, $\sigma^{-1}(0)=1$, $\sigma^{-1}(3)=2$ and $\sigma^{-1}(1)=3$. Volume~VI uses permutations of this kind throughout, and Chapter~4 counts them.
+A bijection from a set to itself is called a \term{permutation} of the set. The permutations of $\{0,1,\ldots,n-1\}$ describe the rearrangements of an array of length $n$: sorting an array, for instance, amounts to finding a permutation $\sigma$ such that the entry at position $\sigma(0)$ is the smallest, the entry at position $\sigma(1)$ the next, and so on. If $\sigma$ is the permutation of $\{0,1,2,3\}$ with $\sigma(0)=2$, $\sigma(1)=0$, $\sigma(2)=3$ and $\sigma(3)=1$, then its inverse is obtained by reading the assignments backwards: $\sigma^{-1}(2)=0$, $\sigma^{-1}(0)=1$, $\sigma^{-1}(3)=2$ and $\sigma^{-1}(1)=3$. Volume~VI uses permutations of this kind throughout, and \cref{ch:counting} counts them.
 
 \subsection{One-Sided Inverses}
 
@@ -1394,7 +1394,7 @@ The number $1$ is an upper bound of $[0,1)$. Let $u$ be any upper bound; we show
 
 In other posets the supremum takes other forms. In $\mathcal P(X)$ ordered by inclusion, $\sup\{A,B\}=A\cup B$ and $\inf\{A,B\}=A\cap B$, because $A\cup B$ contains both $A$ and $B$ and is contained in every set that contains both, and dually for $A\cap B$. In $\mathbb N$ ordered by divisibility, $\inf\{4,6\}=2$ and $\sup\{4,6\}=12$: the lower bounds of $\{4,6\}$ are the common divisors $1$ and $2$, and the upper bounds are the common multiples $0,12,24,\ldots$, among which $12$ divides all the others. In general the infimum and supremum of two natural numbers under divisibility are their greatest common divisor and least common multiple, as \cref{ch:numbers} shows. In this order $0$ is the greatest element of $\mathbb N$, since every natural number divides $0$.
 
-A supremum need not exist. In $\mathbb Q$ with its usual order, the set $\{q\in\mathbb Q: q^2<2\}$ is bounded above, for instance by $2$, but it has no least upper bound in $\mathbb Q$: the candidate would be $\sqrt2$, which is not rational. The property that distinguishes $\mathbb R$ from $\mathbb Q$ is precisely that every nonempty subset of $\mathbb R$ that is bounded above has a supremum in $\mathbb R$. This is the completeness axiom, on which \cref{ch:numbers} bases the theory of the real numbers and much of calculus rests.
+A supremum need not exist. In $\mathbb Q$ with its usual order, the set $\{q\in\mathbb Q: q^2<2\}$ is bounded above, for instance by $2$, but it has no least upper bound in $\mathbb Q$: the candidate would be $\sqrt2$, which is not rational. The property that distinguishes $\mathbb R$ from $\mathbb Q$ is precisely that every nonempty subset of $\mathbb R$ that is bounded above has a supremum in $\mathbb R$. This is the completeness axiom. \Cref{ch:numbers} bases the theory of the real numbers on it, and much of calculus rests on it.
 
 \subsection{Lexicographic Order}
 
@@ -1490,7 +1490,7 @@ is a bijection. To prove this with \cref{thm:inverse}, consider $\psi\colon\math
 A set $A$ is \term{finite} with $n$ elements, for $n\in\mathbb N$, if $|A|=|\{0,1,\ldots,n-1\}|$; we then write $|A|=n$. (For $n=0$ the set $\{0,\ldots,n-1\}$ is empty.) A set that is not finite is \term{infinite}.
 \end{definition}
 
-For this definition to be sensible, a set must not have two different numbers of elements. This, and much more, follows from the next lemma~\cite{hrbacek1999}, which is a form of the pigeonhole principle of Chapter~4: $m$ pigeons cannot be placed in $n<m$ holes, one pigeon per hole.
+For this definition to be sensible, a set must not have two different numbers of elements. This, and much more, follows from the next lemma~\cite{hrbacek1999}, which is a form of the pigeonhole principle of \cref{ch:counting}: $m$ pigeons cannot be placed in $n<m$ holes, one pigeon per hole.
 
 \begin{lemma}
 \label{lem:pigeonhole}

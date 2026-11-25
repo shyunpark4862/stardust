@@ -136,11 +136,43 @@ The symbols used in this volume are collected here. Each is defined again, with 
 \item[$\Sigma^*$] the set of words over the alphabet $\Sigma$
 \end{symbols}
 
+\symbolgroup{Counting}
+\begin{symbols}
+\item[$\binom Sk$] the set of $k$-element subsets of a set $S$
+\item[$x^{\underline k}$] the falling factorial $x(x-1)\cdots(x-k+1)$, with $x^{\underline 0}=1$
+\item[$\binom nk$] the binomial coefficient, the number of $k$-element subsets of a set of $n$ elements; $\binom rk=r^{\underline k}/k!$ for real $r$ and $k\in\mathbb N$
+\item[$\binom{n}{k_1,\ldots,k_m}$] the multinomial coefficient $n!/(k_1!\cdots k_m!)$
+\item[$\left\{{n\atop m}\right\}$, $B_n$] the Stirling numbers of the second kind and the Bell numbers
+\item[$\tau(n)$] the number of positive divisors of $n$
+\item[$D_n$] the number of derangements of $n$ elements
+\item[$\phi$, $\hat\phi$] the golden ratio $(1+\sqrt5)/2$ and its conjugate $(1-\sqrt5)/2$
+\item[$C_n$] the $n$th Catalan number $\binom{2n}{n}/(n+1)$
+\item[$H_n$] the $n$th harmonic number $1+\frac12+\cdots+\frac1n$
+\item[{$\mathbb C[[x]]$}] the ring of formal power series in $x$ with complex coefficients
+\item[{$[x^n]A(x)$}] the coefficient of $x^n$ in the power series $A(x)$
+\item[$p(n)$] the number of partitions of the natural number $n$
+\item[$P(E)$] the probability of an event $E$; in the classical model $|E|/|\Omega|$
+\end{symbols}
+
+\symbolgroup{Graphs}
+\begin{symbols}
+\item[$G=(V,E)$] a graph with vertex set $V$ and edge set $E$
+\item[$uv$] the edge $\{u,v\}$
+\item[$\deg(v)$] the degree of the vertex $v$
+\item[$K_n$, $K_{m,n}$] the complete graph on $n$ vertices and the complete bipartite graph
+\item[$Q_d$] the hypercube of dimension $d$
+\item[{$G[W]$}] the subgraph of $G$ induced by the vertex set $W$
+\item[$G-v$, $G-e$] $G$ with the vertex $v$, or the edge $e$, removed
+\item[$d(u,v)$] the distance between the vertices $u$ and $v$
+\item[$D=(V,A)$] a directed graph with vertex set $V$ and arc set $A$
+\end{symbols}
+
 \mainmatter
 \part{Foundations}
 \input{chapters/v1-01-logic-and-proof}
 \input{chapters/v1-02-sets-functions-relations}
 \input{chapters/v1-03-number-systems}
+\input{chapters/v1-04-counting-discrete}
 
 \backmatter
 \end{document}
