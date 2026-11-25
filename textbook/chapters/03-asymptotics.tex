@@ -1,0 +1,1093 @@
+%% 3장 점근 해석 (새 목차, 2026-11-25)
+\chapter{Asymptotic Analysis}
+\label{ch:asymptotics}
+
+\abstract{특수함수와 확률분포의 계산은 대개 변수가 크거나 작을 때의 거동에 기댄다. 이 장은 점근 기호와 증가 차수의 측정에서 시작해 점근 급수, Laplace의 방법과 Stirling 공식, Euler--Maclaurin 공식, 연분수를 세우고 stardust의 \code{erfcx}, 이항 pmf, Hurwitz 제타, \code{gammaln}, 불완전 감마의 구현으로 잇는다.}
+
+
+\section{Asymptotic Notation}
+\label{sec:asym-notation}
+
+\subsection{Definitions}
+
+두 함수가 어떤 극한에서 ``얼마나 비슷한지''를 간결하게 말하기 위해 다음 기호들을 쓴다. 극한의 위치 $x\to x_0$는 유한한 점일 수도 $+\infty$일 수도 있다. 알고리즘의 비용을 이야기할 때는 정수 $n\to\infty$이다. 아래에서 $g$는 $x_0$의 근방에서 $0$이 아니라고 하자.
+
+\begin{definition}[점근 기호]
+\label{def:big-o}
+\begin{enumerate}
+\item $x_0$의 어떤 근방에서 $|f(x)|\le C|g(x)|$인 상수 $C$가 있으면 $f(x)=O(g(x))$라 쓴다.
+\item $f(x)/g(x)\to0$이면 $f(x)=o(g(x))$라 쓴다.
+\item $f(x)/g(x)\to1$이면 $f\sim g$라 쓰고 $f$와 $g$가 \term{점근적으로 같다}{asymptotically equivalent}고 한다.
+\item $f=O(g)$이고 $g=O(f)$이면 $f=\Theta(g)$라 쓴다.
+\end{enumerate}
+\end{definition}
+
+정의에서 $f=O(g)$의 등호는 진짜 등식이 아니라 ``$f$는 $g$로 위에서 눌리는 함수들의 모임에 속한다''는 뜻이다. $x=O(x^2)$은 $x\to\infty$에서 참이지만 $x^2=O(x)$는 거짓이며 등호의 양변을 바꾸어 쓸 수 없다. 이 기호를 쓸 때는 늘 어떤 극한을 두고 하는 말인지를 밝혀야 한다. 같은 $x=O(x^2)$도 $x\to0$에서는 거짓이다. 다음 성질들은 정의에서 바로 따라 나오며 계산에서 자주 쓴다.
+
+\begin{proposition}
+\label{prop:big-o-rules}
+같은 극한에서 다음이 성립한다.
+\begin{enumerate}
+\item $f=O(g)$이고 $g=O(h)$이면 $f=O(h)$이다. $o$와 $\sim$도 같은 방식으로 추이적이다.
+\item $f_1=O(g_1)$이고 $f_2=O(g_2)$이면 $f_1f_2=O(g_1g_2)$이고 $f_1+f_2=O(|g_1|+|g_2|)$이다.
+\item $f\sim g$일 필요충분조건은 $f=g\,(1+o(1))$, 곧 $f-g=o(g)$인 것이다.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) 근방에서 $|f|\le C_1|g|$이고 $|g|\le C_2|h|$이면 두 근방의 교집합에서 $|f|\le C_1C_2|h|$이다. $o$는 $f/h=(f/g)(g/h)$의 극한에서, $\sim$은 같은 식에서 두 인수가 모두 $1$로 가는 데서 나온다. (ii) 두 근방의 교집합에서 $|f_1f_2|\le C_1C_2|g_1g_2|$이고 $|f_1+f_2|\le\max(C_1,C_2)(|g_1|+|g_2|)$이다. (iii) $f/g\to1$과 $(f-g)/g\to0$은 같은 말이다.
+\end{proof}
+
+\begin{aside}[기호의 역사]
+$O$는 정수론 학자 Bachmann이 1894년에 처음 쓰고 Landau가 널리 퍼뜨려 흔히 Landau 기호라 불린다. 알고리즘의 분석에서는 하한을 나타내는 $\Omega$와 위아래를 함께 누르는 $\Theta$가 필요했는데 Knuth는 1976년의 짧은 글에서 이 기호들의 뜻을 오늘날 쓰는 방식으로 정리하자고 제안했다\cite{knuth1976bigomicron}. 해석학자들은 $\Omega$를 ``$o$가 아니다''라는 다른 뜻으로 써 왔기에 같은 기호라도 분야마다 뜻이 다르다. 이 책에서는 $\Omega$를 쓰지 않는다.
+\end{aside}
+
+\subsection{Uniformity}
+
+계산에 쓰는 근사는 대개 변수가 둘 이상이다. 불완전 감마함수 $\Gamma(a,x)$의 근사에는 $a$와 $x$가 함께 들어가고 이항분포의 확률에는 $n$, $k$, $p$가 들어간다. 이때 $O$의 상수가 다른 변수에 따라 달라지면 근사가 쓸모없어질 수 있다. 예를 들어 $f(x,a)=a/x$는 $a$를 고정하면 $x\to\infty$에서 $O(1/x)$이지만 상수 $C=a$가 $a$와 함께 커지므로 ``$x\ge10$이면 오차가 $0.1$ 이하''처럼 영역을 정하는 데 쓸 수 없다.
+
+\begin{definition}
+\label{def:uniform-o}
+매개변수 집합 $A$에 대해 $x_0$의 근방 $U$와 상수 $C$가 있어 모든 $a\in A$, $x\in U$에서 $|f(x,a)|\le C|g(x,a)|$이면 $f=O(g)$가 $a\in A$에 대해 \term{균등하다}{uniform}고 한다.
+\end{definition}
+
+특수함수를 구현한다는 것은 정의역을 여러 영역으로 나누고 영역마다 근사를 고르는 일인데 영역의 경계를 정하는 근거가 바로 균등한 오차 한계이다. 이 장의 오차 정리들은 될 수 있는 대로 상수까지 밝힌 꼴로 적는다. \cref{thm:erfc-asym}의 ``나머지는 첫 번째로 버린 항보다 작다''처럼 상수가 $1$인 한계는 균등성의 가장 좋은 형태이다.
+
+\subsection{Sums and Integrals}
+
+알고리즘의 비용은 대개 합으로 나타나고 합의 크기는 적분으로 어림한다. 다음 명제가 그 다리이다.
+
+\begin{proposition}
+\label{prop:sum-integral}
+$f$가 $[a,b+1]$에서 양이고 감소하면($a\le b$는 정수)
+\[
+\int_a^{b+1}f(x)\,dx\le\sum_{k=a}^bf(k)\le f(a)+\int_a^bf(x)\,dx
+\]
+이다. $f$가 증가하면 부등호의 방향을 바꾸어 같은 꼴이 성립한다.
+\end{proposition}
+
+\begin{proof}
+$f$가 감소하므로 $x\in[k,k+1]$에서 $f(k+1)\le f(x)\le f(k)$이다. 따라서 $\int_k^{k+1}f\le f(k)$이고 $f(k+1)\le\int_k^{k+1}f$이다. 앞 부등식을 $k=a,\dots,b$에 대해 더하면 왼쪽 부등식이, 뒤 부등식을 $k=a,\dots,b-1$에 대해 더하고 $f(a)$를 보태면 오른쪽 부등식이 나온다.
+\end{proof}
+
+예컨대 $f(x)=1/x$를 쓰면 조화수 $H_n=\sum_{k=1}^n1/k$가 $\ln(n+1)\le H_n\le1+\ln n$을 만족하므로 $H_n=\ln n+O(1)$이다. $f(x)=\ln x$(증가)를 쓰면 $\ln n!=n\ln n-n+O(\ln n)$이다. \cref{sec:euler-maclaurin}의 Euler--Maclaurin 공식은 이 대충의 꼴을 모든 차수까지 다듬는다. 같은 명제로 알고리즘의 비용도 센다. 무작위 순서의 $n$개를 삽입 정렬하면 원소를 옮기는 횟수가 역전쌍의 수와 같은데 쌍 $\binom n2$개가 저마다 확률 $1/2$로 역전되므로 평균은 $n(n-1)/4=\Theta(n^2)$이다. 반으로 나누어 병합하는 정렬은 비교가 $n\log_2n+O(n)$번이다(점화식은 6장에서 푼다).
+
+\subsection{Measuring the Order of Growth}
+
+점근 기호는 상수를 숨기므로 실제 구현이 이론의 차수를 따르는지는 재 보아야 안다. $T(n)\approx Cn^\alpha$이면 $\log T=\log C+\alpha\log n$이므로 로그–로그 그래프의 기울기가 지수 $\alpha$이다. \cref{alg:loglog}는 이 기울기를 최소제곱으로 구한다.
+
+\begin{algorithm}[htbp]
+\begin{algorithmic}[1]
+\Require 크기 $n_1<\dots<n_m$ (보통 $2$의 거듭제곱), 실행할 코드, 반복 수 $r$
+\Ensure 증가 지수의 추정 $\hat\alpha$
+\For{$i=1,\dots,m$}
+  \State 같은 입력을 $r$번 실행해 걸린 시간의 \textbf{최솟값} $T_i$를 둔다 \Comment{잡음은 늘 시간을 늘린다}
+\EndFor
+\State $X_i\gets\log n_i$, $Y_i\gets\log T_i$ \Comment{큰 크기 몇 개만 쓴다}
+\State $\hat\alpha\gets\sum_i(X_i-\bar X)(Y_i-\bar Y)\big/\sum_i(X_i-\bar X)^2$
+\State \Return $\hat\alpha$
+\end{algorithmic}
+\caption{측정에서 증가 지수 추정하기}
+\label{alg:loglog}
+\end{algorithm}
+
+2행은 측정 잡음의 성질에 맞추어 평균 대신 최솟값을 쓴다. 다른 프로세스, 인터럽트, 캐시를 비우는 일은 모두 시간을 늘리기만 하므로 여러 번 잰 값 가운데 가장 작은 것이 ``방해받지 않은'' 실행에 가장 가깝다. 작은 $n$에서는 낮은 차수의 항과 고정 비용이 섞이므로 4행은 큰 크기만 쓴다. 차수가 $n\log n$이면 기울기가 $1$이 아니라 국소적으로
+\[
+\frac{d\log(n\log n)}{d\log n}=1+\frac{1}{\ln n}
+\]
+이어서 $n=2^{16}$에서도 $1.09$이고 아주 천천히 $1$로 내려간다. 기울기만 보아서는 $n^{1.09}$와 $n\log n$을 가릴 수 없으므로 $T(n)/(n\log_2n)$이 일정한지를 함께 본다.
+
+이 책의 측정 기계에서 무작위 \code{double} 배열을 직접 짠 삽입 정렬과 병합 정렬로 정렬하고 그 시간을 \cref{fig:sort-growth}와 \cref{tab:growth-slopes}에 실었다(\code{figures/03/growth.c}, \code{clang -O2}). 병합 정렬의 $T(n)/(n\log_2n)$은 $n=2^{12}$에서 $2.83$ns, $n=2^{20}$에서 $2.84$ns로 거의 그대로이므로 차수는 $n\log n$이다. 삽입 정렬의 기울기는 $n\ge2^{13}$에서 $1.92$이고 크기를 두 배로 할 때마다 시간이 $3.5$--$4.1$배가 되어 $2$에 다가간다. 두 곡선은 $n=128$ 근처에서 만나는데 그보다 작은 배열에서는 삽입 정렬이 더 빠르다. 정렬 라이브러리는 그래서 짧은 구간을 삽입 정렬이나 정렬 네트워크로 처리한다(1장, 18장).
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}
+\begin{loglogaxis}[sdplot,xlabel={$n$},ylabel={시간 (s)},xmin=10,xmax=2e6,ymin=1e-8,ymax=1,log basis x=2]
+\addplot[black,mark=*,mark size=1.2pt] table[x=n,y=ins]{figures/03/sort.dat};
+\addlegendentry{삽입 정렬}
+\addplot[black,dashed,mark=square*,mark size=1.2pt] table[x=n,y=merge]{figures/03/sort.dat};
+\addlegendentry{병합 정렬}
+\addplot[black!45,domain=16:65536,samples=2] {6e-11*x^2};
+\addlegendentry{$n^2$}
+\addplot[black!45,dotted,thick,domain=16:2e6,samples=30] {2.84e-9*x*ln(x)/ln(2)};
+\addlegendentry{$n\log_2n$}
+\end{loglogaxis}
+\end{tikzpicture}
+\caption{직접 짠 삽입 정렬과 병합 정렬의 시간(무작위 \code{double}, Apple M4 Pro, 한 스레드, 반복 중 최솟값). 회색 선은 기준 기울기이다.}
+\label{fig:sort-growth}
+\end{figure}
+
+\begin{table}[htbp]
+\begin{sdtable}{colspec={lccc}, row{1}={font=\small\bfseries}}
+\toprule
+코드 & 이론 차수 & 쓴 크기 & 추정 기울기 $\hat\alpha$ \\
+\midrule
+삽입 정렬 & $n^2$ & $2^{13}$--$2^{16}$ & $1.92$ \\
+병합 정렬 & $n\log n$ & $2^{12}$--$2^{20}$ & $1.09$ (국소 기울기 $1+1/\ln n\approx1.07$--$1.12$) \\
+\bottomrule
+\end{sdtable}
+\caption{\cref{alg:loglog}로 추정한 증가 지수(\code{figures/03/growth\_split.py}).}
+\label{tab:growth-slopes}
+\end{table}
+
+점근 기호가 숨기는 상수는 때로 계산 모형 자체에서 온다. 연산 하나의 비용이 상수라는 가정은 메모리 계층에서 깨진다. \cref{fig:pointer-chase}에서는 크기 $S$인 배열을 무작위 순환 하나로 잇고 다음 칸을 따라가며 읽기 한 번의 시간을 쟀다. 앞 읽기가 끝나야 다음 주소를 알므로 이 시간은 메모리 지연 그 자체이다. 배열이 L1 캐시($128$KB)에 들면 $0.89$ns, L2(수 MB--$16$MB)에 들면 $4$--$11$ns, 그보다 크면 $120$ns 가까이로 백 배 넘게 뛴다. 같은 $O(n)$ 알고리즘도 데이터를 어떤 순서로 읽느냐에 따라 상수가 이만큼 달라진다. 캐시를 고려한 비용 모형은 16장에서 다룬다.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}
+\begin{loglogaxis}[sdplot,xlabel={배열 크기 (바이트)},ylabel={읽기 한 번 (ns)},xmin=2048,xmax=2e9,ymin=0.5,ymax=200,log basis x=2,xtick={4096,131072,4194304,134217728},xticklabels={4KB,128KB,4MB,128MB}]
+\addplot[black,mark=*,mark size=1.2pt] table[x=bytes,y=ns]{figures/03/chase.dat};
+\draw[black!40,dashed] (axis cs:131072,0.5) -- (axis cs:131072,200);
+\draw[black!40,dashed] (axis cs:16777216,0.5) -- (axis cs:16777216,200);
+\node[font=\scriptsize,anchor=south west] at (axis cs:2600,1.0) {L1};
+\node[font=\scriptsize,anchor=south west] at (axis cs:170000,6.5) {L2};
+\node[font=\scriptsize,anchor=north west] at (axis cs:3.5e7,12) {메모리};
+\end{loglogaxis}
+\end{tikzpicture}
+\caption{무작위 순환을 따라가는 읽기 한 번의 시간(\code{figures/03/growth.c}). 점선은 L1($128$KB)과 L2($16$MB)의 크기이다.}
+\label{fig:pointer-chase}
+\end{figure}
+
+stardust는 이 상수를 측정값으로 들고 다닌다. 특수함수마다 원소 하나의 계산 비용을 덧셈 몇 번어치인지로 적어 두고(\code{csrc/special/cost.hpp}, 값은 측정 기계에서 $10^6$개 원소로 잰 시간에서 나온다), 배열 연산이 스레드로 나눌지와 작업 하나를 몇 원소로 할지를 이 무게로 정한다. 비싼 함수는 더 작은 배열에서부터, 더 작은 조각으로 나뉜다. 무게가 두 배쯤 틀려도 나누기 시작하는 크기만 바뀌고 결과는 바뀌지 않으므로 상수를 대충 재도 안전하다. 병렬화의 규칙은 17장에서 본다.
+
+
+\section{Asymptotic Series}
+\label{sec:asym-series}
+
+\subsection{Definition and Uniqueness}
+
+해석학에서 급수라 하면 보통 수렴하는 급수를 뜻한다. 그런데 계산에 가장 쓸모 있는 급수 가운데 상당수는 모든 점에서 \textbf{발산}한다. 이 역설을 이해하려면 수렴과는 다른 기준, 곧 ``항을 유한하게 잘랐을 때 남는 오차가 얼마나 작은가''로 급수를 평가해야 한다.
+
+\begin{definition}[점근 급수]
+\label{def:asym-series}
+$x\to\infty$에서 수열 $c_0,c_1,\dots$에 대해 모든 $N\ge0$에서
+\[
+f(x)-\sum_{k=0}^{N-1}c_kx^{-k}=O(x^{-N})
+\]
+이면 $f$가 \term{점근 급수}{asymptotic series} $\sum_kc_kx^{-k}$를 갖는다고 하고 $f(x)\sim\sum_{k=0}^\infty c_kx^{-k}$로 쓴다.
+\end{definition}
+
+정의는 급수가 수렴하는지를 전혀 묻지 않는다. $x$를 고정하고 항을 끝없이 더하는 것이 아니라 항의 개수 $N$을 고정하고 $x$를 키울 때 오차가 마지막으로 더한 항보다 빨리 작아진다는 것만 요구한다. 그럼에도 점근 급수는 함수에서 유일하게 정해진다는 점에서 수렴하는 급수와 닮았다.
+
+\begin{proposition}
+\label{prop:asym-unique}
+$f$의 점근 급수의 계수는 유일하다. 곧 $c_N=\lim_{x\to\infty}x^N\bigl(f(x)-\sum_{k<N}c_kx^{-k}\bigr)$이다.
+\end{proposition}
+
+\begin{proof}
+정의를 $N+1$에 적용하면 $f(x)-\sum_{k\le N}c_kx^{-k}=O(x^{-N-1})$이므로 양변에 $x^N$을 곱하면 $x^N\bigl(f-\sum_{k<N}c_kx^{-k}\bigr)-c_N=O(x^{-1})\to0$이다. 계수가 $f$로 정해지므로 유일하다.
+\end{proof}
+
+다만 거꾸로는 성립하지 않는다. 예컨대 $e^{-x}$는 모든 $N$에서 $O(x^{-N})$이므로 점근 급수의 모든 계수가 $0$이다. 그러니 $f$와 $f+e^{-x}$는 같은 점근 급수를 갖는다. 점근 급수는 $x^{-k}$의 어떤 거듭제곱보다도 빨리 사라지는 부분을 볼 수 없다.
+
+\subsection{The Tail of the Error Function}
+
+점근 급수가 실제로 어떻게 생기고 왜 쓸모 있는지는 오차함수의 보수
+\[
+\operatorname{erfc}(x)=\frac{2}{\sqrt\pi}\int_x^\infty e^{-t^2}\,dt
+\]
+를 보면 알 수 있다. $x$가 크면 $\operatorname{erfc}(x)$는 $e^{-x^2}$처럼 아주 작아지므로 그 크기를 빼고 남는 부분 $\operatorname{erfcx}(x)=e^{x^2}\operatorname{erfc}(x)$, 곧 \term{척도를 맞춘 보오차함수}{scaled complementary error function}를 계산하는 것이 자연스럽다. $I_n(x)=\int_x^\infty t^{-n}e^{-t^2}\,dt$로 두고 $te^{-t^2}$이 $-e^{-t^2}/2$의 도함수라는 것을 써서 부분적분하면
+\[
+I_n=\frac{e^{-x^2}}{2x^{n+1}}-\frac{n+1}{2}I_{n+2}
+\]
+을 얻는다. 이 점화식을 $I_0$에서 시작해 $N$번 되풀이하면 다음 정리가 나온다.
+
+\begin{theorem}
+\label{thm:erfc-asym}
+$x>0$과 $N\ge0$에 대해
+\[
+\operatorname{erfcx}(x)=\frac{1}{x\sqrt\pi}\sum_{k=0}^{N-1}(-1)^k\frac{(2k-1)!!}{(2x^2)^k}+R_N(x)
+\]
+이다. 여기서 $(2k-1)!!=1\cdot3\cdots(2k-1)$이고 $(-1)!!=1$이며 나머지 $R_N(x)$는 첫 번째로 버린 항과 부호가 같고 크기가 그보다 크지 않다. 곧 급수는 참값을 위아래에서 번갈아 감싼다.
+\end{theorem}
+
+\begin{proof}
+점화식에 $n=0,2,4,\dots,2N-2$를 차례로 넣으면 귀납법으로
+\[
+I_0=\frac{e^{-x^2}}{2x}\sum_{k=0}^{N-1}(-1)^k\frac{(2k-1)!!}{(2x^2)^k}+(-1)^N\frac{(2N-1)!!}{2^N}I_{2N}
+\]
+을 얻는다. 실제로 $k$번째 단계에서 곱해지는 계수 $-(2k-1)/2$들이 쌓여 $(-1)^k(2k-1)!!/2^k$가 되고 앞의 항 $e^{-x^2}/(2x^{2k+1})$이 $x^{-2k}$를 더 준다. 양변에 $(2/\sqrt\pi)e^{x^2}$을 곱하면 정리의 꼴이 되고 나머지는
+\[
+R_N(x)=(-1)^N\frac{2e^{x^2}}{\sqrt\pi}\frac{(2N-1)!!}{2^N}I_{2N}(x)
+\]
+이다. $I_{2N}>0$이므로 $R_N$의 부호는 $(-1)^N$, 곧 첫 번째로 버린 항의 부호와 같다. 크기는 $t\ge x$에서 $t^{-2N}\le x^{-2N-1}t$라는 데서
+\[
+I_{2N}(x)\le x^{-2N-1}\int_x^\infty te^{-t^2}\,dt=\frac{e^{-x^2}}{2x^{2N+1}}
+\]
+이므로 $|R_N|\le(2N-1)!!/(x\sqrt\pi\,(2x^2)^N)$, 곧 첫 번째로 버린 항의 크기 이하이다.
+\end{proof}
+
+\subsection{Optimal Truncation}
+
+\cref{thm:erfc-asym}의 급수는 모든 $x$에서 발산한다. 이웃한 두 항의 비가 $(2k+1)/(2x^2)$이어서 $k$가 $x^2$을 넘으면 항이 다시 커지고 결국 무한히 자라기 때문이다. 그러나 정리는 \textbf{어디에서 멈추든} 오차가 버린 첫 항보다 작다고 보장하므로 항이 가장 작아지는 곳에서 멈추는 것이 가장 좋다. 이를 \term{최적 절단}{optimal truncation}이라 한다.
+
+\begin{proposition}
+\label{prop:erfc-optimal}
+$t_k(x)=(2k-1)!!/(2x^2)^k$은 $k<x^2-1/2$인 동안 줄고 그 뒤로 는다. 가장 작은 항은 정확히 $k=\lceil x^2-1/2\rceil$에 있고($x^2-1/2$가 정수이면 그 자리와 다음 자리의 두 항이 같다) 그 크기는 $\sqrt2\,e^{-x^2}$ 정도이다.
+\end{proposition}
+
+\begin{proof}
+$t_{k+1}/t_k=(2k+1)/(2x^2)$이 $1$보다 작을 필요충분조건이 $k<x^2-1/2$이므로 앞 주장이 나온다. 크기는 $(2k-1)!!=(2k)!/(2^kk!)$에 Stirling 공식(\cref{cor:stirling})을 쓰면 $(2k-1)!!\sim\sqrt2\,(2k/e)^k$이므로 $k=x^2$에서 $t_k\sim\sqrt2\,(2x^2/e)^{x^2}/(2x^2)^{x^2}=\sqrt2\,e^{-x^2}$이다.
+\end{proof}
+
+$x=2,3,4,8$에서 항의 크기를 정확한 유리수 산술로 계산해 \cref{fig:erfc-terms}와 \cref{tab:erfc-asym}에 실었다(\code{figures/03/erfc\_asym.py}). 가장 작은 항은 \cref{prop:erfc-optimal}이 말한 대로 $k=x^2$에 있고 크기는 $e^{-x^2}$을 따른다. $x=2$에서는 아무리 잘 잘라도 두 자리 정도밖에 얻지 못하므로 이 급수를 쓸 수 없지만 $x=8$에서는 배정밀도의 반올림 단위 $u=2^{-53}\approx1.1\times10^{-16}$보다 열두 자리나 작은 오차까지 내려간다. 그만큼 갈 필요도 없다. $x=8$에서 $t_{16}=3.7\times10^{-17}$은 이미 $u$보다 작다.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}
+\begin{semilogyaxis}[sdplot,xlabel={$k$},ylabel={$t_k(x)$},xmin=0,xmax=79,ymin=1e-30,ymax=1e3]
+\addplot[black,mark=*,mark size=0.9pt] table[x=k,y=x2]{figures/03/erfc_terms.dat};
+\addlegendentry{$x=2$}
+\addplot[black,dashed,mark=square*,mark size=0.9pt] table[x=k,y=x3]{figures/03/erfc_terms.dat};
+\addlegendentry{$x=3$}
+\addplot[black!60,mark=triangle*,mark size=1.1pt] table[x=k,y=x4]{figures/03/erfc_terms.dat};
+\addlegendentry{$x=4$}
+\addplot[black!60,dashed,mark=o,mark size=0.9pt] table[x=k,y=x8]{figures/03/erfc_terms.dat};
+\addlegendentry{$x=8$}
+\draw[black!40] (axis cs:0,1.11e-16) -- (axis cs:79,1.11e-16) node[pos=0.97,above,font=\scriptsize] {$u$};
+\end{semilogyaxis}
+\end{tikzpicture}
+\caption{$\operatorname{erfcx}$의 점근 급수에서 항의 크기 $t_k(x)=(2k-1)!!/(2x^2)^k$. 각 곡선은 $k\approx x^2$에서 바닥을 찍고 다시 오른다.}
+\label{fig:erfc-terms}
+\end{figure}
+
+\begin{table}[htbp]
+\begin{sdtable}{colspec={ccc}, row{1}={font=\small\bfseries}}
+\toprule
+$x$ & 가장 작은 항의 번호 $k$ & 그 항의 상대 크기 \\
+\midrule
+2 & 4 & $2.56\times10^{-2}$ \\
+3 & 9 & $1.74\times10^{-4}$ \\
+4 & 16 & $1.59\times10^{-7}$ \\
+8 & 64 & $2.27\times10^{-28}$ \\
+\bottomrule
+\end{sdtable}
+\caption{$\operatorname{erfcx}$의 점근 급수에서 항이 가장 작아지는 자리와 크기. \cref{thm:erfc-asym}에 따라 최적 절단의 오차는 이 크기를 넘지 않는다.}
+\label{tab:erfc-asym}
+\end{table}
+
+\subsection{Evaluating an Asymptotic Series}
+
+몇 항을 더할지는 쓰려는 영역의 가장 나쁜 점에서 정한다. 영역이 $x\ge x_0$이면 항 $t_k(x)$는 $x$에 대해 줄므로 $x_0$에서 필요한 항 수가 영역 전체에 충분하다. 이것이 \cref{def:uniform-o}의 균등성을 구현에서 쓰는 방식이다. 항을 더하는 순서도 중요하다. $v=1/(2x^2)$로 두면(반올림 단위 $u$와 구별한다) 잘린 급수는
+\[
+1-v\Bigl(1-3v\bigl(1-5v(\cdots(1-(2N-3)v)\cdots)\bigr)\Bigr)
+\]
+로 안쪽부터 겹쳐 쓸 수 있다. 항마다 계승을 따로 만들지 않으므로 곱셈과 뺄셈이 한 번씩이면 되고 크기가 작은 항이 먼저 모인다(\cref{alg:erfcx-asym}).
+
+\begin{algorithm}[htbp]
+\begin{algorithmic}[1]
+\Require $x\ge8$ (binary64)
+\Ensure $\operatorname{erfcx}(x)$
+\State $v\gets0.5/(x\cdot x)$ \Comment{$x^2$이 넘치면 $v=0$이고 합은 $1$}
+\State $s\gets1$
+\For{$k=17,16,\dots,1$} $s\gets1-(2k-1)\cdot v\cdot s$ \Comment{안쪽부터 겹친다}
+\EndFor
+\State \Return $(\pi^{-1/2}/x)\cdot s$ \Comment{$\pi^{-1/2}$은 상수 하나로 반올림된 값}
+\end{algorithmic}
+\caption{점근 급수로 계산하는 $\operatorname{erfcx}$ (stardust \code{Erfcx::asymptotic})}
+\label{alg:erfcx-asym}
+\end{algorithm}
+
+stardust의 \code{erfcx}는 정의역을 셋으로 나눈다(\code{csrc/special/ops/erf.hpp}). $|x|<1$에서는 $e^{x^2}(1-\operatorname{erf}(x))$로, $1\le x<8$에서는 미리 맞춘 유리함수로, $x\ge8$에서는 \cref{alg:erfcx-asym}로 계산하고 $x\le-1$이면 $\operatorname{erfcx}(x)=2e^{x^2}-\operatorname{erfcx}(-x)$로 양수 쪽에 돌린다. 경계 $8$에서 \cref{alg:erfcx-asym}는 $k=0,\dots,17$의 열여덟 항을 더하고 첫 번째로 버린 항은 $t_{18}(8)=2.6\times10^{-18}$으로 반올림 단위의 $0.023$배이다. $x$가 크면 항이 더 빨리 줄므로 절단 오차는 영역 전체에서 이 값 아래이다. 남은 문제는 반올림이다.
+
+\begin{proposition}
+\label{prop:erfcx-rounding}
+$x\ge8$에서 \cref{alg:erfcx-asym}의 결과는 참값과 상대오차 약 $4.1u$ 이내로 일치한다(결과가 정규수인 $x<2.5\times10^{307}$에서, $u^2$ 이하의 항은 무시한다).
+\end{proposition}
+
+\begin{proof}
+첫째 줄의 $v$는 곱셈과 나눗셈 두 번 반올림되어 상대오차가 $2u$ 이하이다($x>2^{510}$이면 $v$가 비정규수이지만 그때는 $33v<2^{-1015}$이어서 결과에 영향이 없다). 루프의 $k$번째 단계에서 정확한 값 $s_k=1-c_k\upsilon s_{k+1}$($c_k=2k-1$, $\upsilon=1/(2x^2)$)과 계산한 값 $\hat s_k$의 차를 $e_k$라 하자. 곱 두 번과 뺄셈 한 번이 각각 상대오차 $u$ 이하로 반올림되므로 일차까지
+\[
+|e_k|\le c_k\upsilon\bigl(|e_{k+1}|+4u\,s_{k+1}\bigr)+u\,s_k
+\]
+이다($4u$는 $v$의 $2u$와 두 곱셈의 $2u$이다). $x\ge8$이면 $c_k\upsilon\le33/128<0.26$이고 모든 $s_k$는 $[0.74,1]$에 있다. 따라서 $|e_k|\le0.26|e_{k+1}|+2.04u$이고 이 점화식의 고정점은 $2.04u/0.74<2.8u$이다. 마지막 단계는 $c_1\upsilon\le1/128$이므로 $|e_1|\le(2.8u+4u)/128+u<1.06u$이고 $s_1\ge1-1/128$에서 상대오차는 $1.07u$ 이하이다. 절단 오차 $t_{18}(8)/s_1<0.024u$와 상수 $\pi^{-1/2}$의 반올림, 나눗셈과 곱셈($3u$)을 더하면 $4.1u$ 안쪽이다. 결과의 한 ULP는 상대적으로 $u$와 $2u$ 사이이므로 이 한계는 $4.1$ULP 이하라는 뜻이다.
+\end{proof}
+
+명제의 한계는 넉넉한 쪽이다. \code{figures/03/erfc\_asym.py}는 \cref{alg:erfcx-asym}를 binary64로 그대로 계산하고 참값은 급수를 $2^{-120}$ 아래의 항까지 정확한 유리수로 더한 뒤 $\pi$를 $220$비트 고정소수점 정수로 구해 곱한다. 정리가 나머지를 첫 버린 항으로 누르므로 이 참값의 오차는 $2^{-120}$ 상대 아래로 보증된다. $x=8$부터 $1.2\times10^4$까지 $150$점에서 최대 오차는 $1.13$ULP였다(ULP는 결과 자리의 최소 단위, 10장). 공개 저장소를 따로 받아 빌드한 stardust의 \code{special.erfcx}도 같은 $150$점에서 이 옮긴 코드와 비트까지 같은 값을 냈다(\code{figures/03/library\_check.py}). 음의 쪽 $x\le-1$에서 쓰는 $2e^{x^2}-\operatorname{erfcx}(-x)$에서는 $x^2$의 반올림이 문제가 된다. $e^{x^2}$에서 $x^2$의 절대오차 $\epsilon$은 상대오차 $\epsilon$이 되는데 $x^2$이 크면 $\epsilon\approx ux^2$이 크다. 그래서 $h=\mathrm{fl}(x^2)$와 그 오차 $\ell=\operatorname{fma}(x,x,-h)$를 따로 구해 $e^{x^2}\approx e^h(1+\ell)$로 계산한다.
+
+
+\subsection{Adaptive Truncation}
+
+\cref{alg:erfcx-asym}는 항 수를 영역의 경계에서 미리 정했다. 항 수를 미리 정할 수 없으면 항을 더해 가며 멈출 곳을 고른다. 정리가 나머지를 첫 버린 항으로 누르는 경우라면 항이 다시 커지기 직전에 멈추는 것이 가장 좋다(최적 절단). \cref{alg:adaptive-trunc}가 그 일반형이다.
+
+\begin{algorithm}[htbp]
+\begin{algorithmic}[1]
+\Require 항을 만드는 점화식 $t_0,t_1,\dots$, 허용 오차 $\varepsilon$ (stardust는 $2^{-56}$), 받아들일 기준
+\Ensure 합 $S$, 또는 ``거부''
+\State $S\gets t_0$
+\For{$k=1,2,\dots,K$}
+  \State $t_k\gets$ 점화식으로 \Comment{항마다 곱셈 한두 번}
+  \If{$|t_k|\ge|t_{k-1}|$} \Comment{점근 급수의 항이 다시 커진다}
+    \State \textbf{if} $|t_{k-1}|\le$ 받아들일 기준 \textbf{then} \Return $S$ \textbf{else} \Return 거부
+  \EndIf
+  \State $S\gets S+t_k$
+  \State \textbf{if} $|t_k|\le\varepsilon|S|$ \textbf{then} \Return $S$ \Comment{충분히 작아졌다}
+\EndFor
+\State \Return 거부
+\end{algorithmic}
+\caption{적응형 최적 절단}
+\label{alg:adaptive-trunc}
+\end{algorithm}
+
+stardust에는 이 알고리즘의 두 변형이 있다. 지수 적분 $\operatorname{Ei}(x)$는 큰 $x$에서 점근 급수 $e^x/x\cdot\sum_kk!/x^k$의 항을 $t_k=t_{k-1}k/x$로 만들어 가다가 항이 커지기 시작하거나 합의 $2^{-56}$배 아래로 내려가면 멈추고 그 합을 그대로 받아들인다(\code{csrc/special/ops/expint.hpp}). Bessel 함수의 Hankel 점근 급수 $P(\nu,x)$, $Q(\nu,x)$는 더 조심스럽게 다룬다(\code{csrc/special/ops/bessel.hpp}의 \code{hankel\_pq}). 항 $\prod(4\nu^2-(2k-1)^2)/(8kx)$는 $4\nu^2>8kx$인 동안 커지다가 줄고 $k$가 $2x$쯤을 넘으면 다시 커진다. 그래서 한 번 줄기 시작한 뒤 다시 커지면(\cref{alg:adaptive-trunc}의 4행) 거부한다. 항이 $2$를 넘을 때도 주항 $1$과 상쇄하면서 반올림 오차가 커지므로 거부하고 다른 방법으로 넘긴다. 고정 항 수와 달리 이 방법은 결과를 거부할 수 있다. 그래서 점근 급수를 쓸 영역의 경계를 미리 정확히 그어 두지 않고 계산하면서 판정한다.
+
+\section{Laplace's Method}
+\label{sec:laplace}
+
+\subsection{The Theorem}
+
+통계와 특수함수에는 $\int e^{-\lambda h(x)}g(x)\,dx$ 꼴의 적분이 끊임없이 나온다. $\lambda$가 크면 지수함수 때문에 피적분함수는 $h$가 가장 작은 점 근처에서만 크고 나머지에서는 사라지다시피 하므로 그 점 근처에서 $h$를 이차식으로 바꾸면 적분을 가우스 적분으로 근사할 수 있다. 이것이 Laplace의 방법이다\cite{debruijn1958asymptotic}.
+
+\begin{theorem}[Laplace]
+\label{thm:laplace}
+구간 $(a,b)$(끝점은 무한일 수 있다)에서 $h$가 두 번 연속미분 가능하고 안쪽의 한 점 $x_0$에서만 최솟값을 가지며 $h''(x_0)>0$이라 하자. 또한 $x_0$의 모든 근방 $U$에 대해 $\inf_{x\notin U}h(x)>h(x_0)$이고 $g$는 $x_0$에서 연속이며 $g(x_0)\ne0$이고 어떤 $\lambda_0$에서 $\int_a^b|g|e^{-\lambda_0h}\,dx<\infty$라 하자. 그러면 $\lambda\to\infty$에서
+\[
+\int_a^bg(x)e^{-\lambda h(x)}\,dx\sim g(x_0)\,e^{-\lambda h(x_0)}\sqrt{\frac{2\pi}{\lambda h''(x_0)}}
+\]
+이다.
+\end{theorem}
+
+\begin{proof}
+$h(x_0)=0$이라 해도 된다. 양변에 $e^{\lambda h(x_0)}$을 곱하면 되기 때문이다. $c=h''(x_0)$이라 하고 $0<\varepsilon<c/2$를 고정하자. Taylor 정리와 연속성에서 $\delta>0$이 있어 $|x-x_0|<\delta$이면
+\[
+\Bigl(\frac c2-\varepsilon\Bigr)(x-x_0)^2\le h(x)\le\Bigl(\frac c2+\varepsilon\Bigr)(x-x_0)^2,\qquad |g(x)-g(x_0)|\le\varepsilon
+\]
+이다. 적분을 $|x-x_0|<\delta$인 안쪽과 나머지 바깥쪽으로 나누자.
+
+바깥쪽에서는 가정에서 $h\ge\eta$인 $\eta>0$이 있고 $\lambda>\lambda_0$이면 $e^{-\lambda h}=e^{-(\lambda-\lambda_0)h}e^{-\lambda_0h}\le e^{-(\lambda-\lambda_0)\eta}e^{-\lambda_0h}$이므로 바깥 적분의 크기는 $Ke^{-(\lambda-\lambda_0)\eta}$ 이하이다($K=\int|g|e^{-\lambda_0h}$). 이는 $\lambda^{-1/2}$보다 지수적으로 빨리 사라진다.
+
+안쪽에서는 $g=g(x_0)+(g-g(x_0))$로 나누어
+\begin{align*}
+\int_{|x-x_0|<\delta}e^{-\lambda(c/2+\varepsilon)(x-x_0)^2}\,dx
+&\le\int_{|x-x_0|<\delta}e^{-\lambda h}\,dx\\
+&\le\int_{-\infty}^{\infty}e^{-\lambda(c/2-\varepsilon)s^2}\,ds=\sqrt{\frac{2\pi}{\lambda(c-2\varepsilon)}}
+\end{align*}
+을 쓴다. 왼쪽 끝은 같은 가우스 적분에서 $|s|\ge\delta$인 부분, 곧 지수적으로 작은 양을 뺀 것이므로 $\sqrt{2\pi/(\lambda(c+2\varepsilon))}(1-o(1))$이다. 또 $(g-g(x_0))$가 기여하는 부분은 크기가 $\varepsilon\int e^{-\lambda h}$ 이하이다. 이를 모으면 적분을 $g(x_0)\sqrt{2\pi/(\lambda c)}$로 나눈 비율의 상극한과 하극한이 $\lambda\to\infty$에서 각각 $\sqrt{c/(c-2\varepsilon)}(1+\varepsilon/|g(x_0)|)$와 $\sqrt{c/(c+2\varepsilon)}(1-\varepsilon/|g(x_0)|)$ 사이에 놓인다. $\varepsilon$은 임의이므로 비율은 $1$로 간다.
+\end{proof}
+
+정리가 말하는 집중을 \cref{fig:laplace}에 그렸다. Stirling 공식에서 쓸 $h(s)=s-\ln s$(최소점 $s=1$, $h''(1)=1$)에 대해 $e^{-\lambda(h(s)-1)}$을 그리고 가우스 근사 $e^{-\lambda(s-1)^2/2}$를 겹쳤다. $\lambda$가 커질수록 피적분함수는 폭 $\lambda^{-1/2}$로 좁아지며 가우스 곡선과 구별하기 어려워진다. $\lambda=1$에서는 오른쪽 꼬리가 무겁다. $\lambda$가 커지면 꼬리의 차이는 지수적으로, 봉우리 근처의 차이는 $\lambda^{-1/2}$의 속도로 줄어든다.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}
+\begin{axis}[sdplot,xlabel={$s$},ylabel={$e^{-\lambda(h(s)-1)}$},xmin=0,xmax=3.2,ymin=0,ymax=1.08]
+\addplot[black,domain=0.02:3.2,samples=160] {exp(-1*(x-ln(x)-1))};
+\addlegendentry{$\lambda=1$}
+\addplot[black,dashed,domain=0.02:3.2,samples=160] {exp(-5*(x-ln(x)-1))};
+\addlegendentry{$\lambda=5$}
+\addplot[black!60,domain=0.3:3.2,samples=200] {exp(-25*(x-ln(x)-1))};
+\addlegendentry{$\lambda=25$}
+\addplot[black!40,dotted,thick,domain=0:3.2,samples=160] {exp(-1*(x-1)^2/2)};
+\addlegendentry{가우스 근사}
+\addplot[black!40,dotted,thick,domain=0:3.2,samples=160,forget plot] {exp(-5*(x-1)^2/2)};
+\addplot[black!40,dotted,thick,domain=0:3.2,samples=160,forget plot] {exp(-25*(x-1)^2/2)};
+\end{axis}
+\end{tikzpicture}
+\caption{$h(s)=s-\ln s$일 때 $e^{-\lambda(h(s)-1)}$(실선·파선)과 가우스 근사(점선). $\lambda$가 커지면 둘이 겹친다.}
+\label{fig:laplace}
+\end{figure}
+
+\subsection{Stirling's Formula}
+
+\cref{thm:laplace}의 가장 유명한 응용은 계승의 근사이다. 감마함수 $\Gamma(\lambda+1)=\int_0^\infty t^\lambda e^{-t}\,dt$에서 $t=\lambda s$로 바꾸면
+\[
+\Gamma(\lambda+1)=\lambda^{\lambda+1}\int_0^\infty e^{-\lambda(s-\ln s)}\,ds
+\]
+이다. $h(s)=s-\ln s$는 $s=1$에서만 최솟값 $h(1)=1$을 가지며 $h''(1)=1$이고 $s\to0$과 $s\to\infty$에서 모두 무한대로 가므로 \cref{thm:laplace}의 가정을 만족한다. 따라서 다음을 얻는다.
+
+\begin{corollary}[Stirling]
+\label{cor:stirling}
+$\lambda\to\infty$에서 $\Gamma(\lambda+1)\sim\sqrt{2\pi\lambda}\,(\lambda/e)^\lambda$이다. 특히 $n!\sim\sqrt{2\pi n}\,(n/e)^n$이다.
+\end{corollary}
+
+이 근사는 이미 $n=10$에서 참값 $3628800$의 $0.83\%$ 안에 들고(비율로 $1.0084$) 비율 $n!/(\sqrt{2\pi n}(n/e)^n)$은 대략 $1+1/(12n)$처럼 $1$로 다가간다(\code{figures/03/small\_checks.py}). 이 $1/(12n)$은 우연이 아니며 \cref{sec:euler-maclaurin,sec:stirling-series}에서 그 정체와 그 뒤의 모든 보정항을 밝힌다. 그 보정을 하나의 함수로 모아 두면 편하다.
+
+\begin{definition}
+\label{def:stirling-error}
+$z>0$에 대해 \term{Stirling 오차}{Stirling error}를
+\[
+\delta(z)=\ln\Gamma(z+1)-\Bigl[\Bigl(z+\frac12\Bigr)\ln z-z+\frac12\ln2\pi\Bigr]
+\]
+로 정의한다. \cref{cor:stirling}은 $\delta(z)\to0$이라는 말이다.
+\end{definition}
+
+\subsection{Watson's Lemma}
+
+\cref{thm:laplace}는 첫째 항만 준다. 보정항까지 체계적으로 얻으려면 최솟값이 구간의 끝에 있는 경우를 다룬 다음 결과가 기본이 된다\cite{olver1974asymptotics}.
+
+\begin{lemma}[Watson]
+\label{lem:watson}
+$\alpha>0$이고 $\varphi$가 $0$ 근처에서 $\varphi(t)=\sum_{k=0}^{N-1}\varphi_kt^k+O(t^N)$을 만족하며 어떤 $\lambda_0$에서 $\int_0^\infty t^{\alpha-1}|\varphi(t)|e^{-\lambda_0t}\,dt<\infty$라 하자. 그러면 $\lambda\to\infty$에서
+\[
+\int_0^\infty t^{\alpha-1}\varphi(t)e^{-\lambda t}\,dt=\sum_{k=0}^{N-1}\varphi_k\frac{\Gamma(k+\alpha)}{\lambda^{k+\alpha}}+O(\lambda^{-N-\alpha})
+\]
+이다.
+\end{lemma}
+
+\begin{proof}
+$0\le t\le\tau$에서 $|\varphi(t)-\sum_{k<N}\varphi_kt^k|\le Mt^N$인 $\tau,M$을 잡자. 각 단항식은 $\int_0^\infty t^{k+\alpha-1}e^{-\lambda t}\,dt=\Gamma(k+\alpha)\lambda^{-k-\alpha}$를 주고 이를 $[0,\tau]$로 자르는 데서 생기는 차는 $e^{-\lambda\tau/2}$ 정도로 지수적으로 작다. $[0,\tau]$에서 나머지의 기여는 $M\int_0^\infty t^{N+\alpha-1}e^{-\lambda t}\,dt=M\Gamma(N+\alpha)\lambda^{-N-\alpha}$ 이하이고 $[\tau,\infty)$에서 $\varphi$ 자신의 기여는 \cref{thm:laplace}의 증명에서처럼 $e^{-(\lambda-\lambda_0)\tau}$ 정도로 지수적으로 작다. 지수적으로 작은 양은 모두 $O(\lambda^{-N-\alpha})$에 흡수된다.
+\end{proof}
+
+\cref{thm:laplace}의 적분에서 $h(x)-h(x_0)=t$로 변수를 바꾸면 $x_0$의 양쪽이 각각 \cref{lem:watson}의 꼴이 되므로 Laplace 근사의 모든 보정항은 이 보조정리로 차례로 계산된다. 안장점 방법은 피적분함수를 복소평면으로 넓혀 같은 일을 하는데 5장에서 본다.
+
+\subsection{Binomial Probabilities in Saddle-Point Form}
+
+Stirling 공식이 계산에서 하는 일을 이항분포의 확률 $b(k;n,p)=\binom nkp^kq^{n-k}$($q=1-p$)로 보자. 가장 손쉬운 방법은 로그를 취해
+\[
+\ln b=\ln\Gamma(n+1)-\ln\Gamma(k+1)-\ln\Gamma(n-k+1)+k\ln p+(n-k)\ln q
+\]
+를 계산하고 지수를 취하는 것이다. 이 식의 항들은 크기가 $n\ln n$ 정도인데 결과 $\ln b$는 평균 근처에서 $-(\ln n)/2$ 정도로 작다. 크기 $n\ln n$의 수 다섯 개를 더해 작은 수를 얻으면 각 항의 반올림 오차 $u\,n\ln n$이 그대로 결과의 절대오차, 곧 $b$의 상대오차가 된다. $n=10^5$이면 $u\,n\ln n\approx10^{-10}$이다. Loader는 Stirling 오차로 이 상쇄를 식에서 미리 없앴다\cite{loader2000binomial}.
+
+\begin{theorem}[안장점 꼴]
+\label{thm:saddle-binomial}
+$0<k<n$, $m=n-k$, $0<p<1$이라 하고 $D=np-k$, $t_1=D/k$, $t_2=-D/m$, $\mu(t)=t-\ln(1+t)$로 두자. 그러면
+\[
+b(k;n,p)=\sqrt{\frac{n}{2\pi km}}\,\exp\bigl(\delta(n)-\delta(k)-\delta(m)-E\bigr),\qquad E=k\,\mu(t_1)+m\,\mu(t_2)
+\]
+이고 $E\ge0$이다.
+\end{theorem}
+
+\begin{proof}
+\cref{def:stirling-error}로 세 로그 감마를 바꾸면
+\[
+\ln\frac{n!}{k!\,m!}=n\ln n-k\ln k-m\ln m+\frac12\ln\frac{n}{2\pi km}+\delta(n)-\delta(k)-\delta(m)
+\]
+이다($-n+k+m=0$이고 $(\ln2\pi)/2$가 한 번 남는다). 여기에 $k\ln p+m\ln q$를 더하고 $n\ln n=k\ln n+m\ln n$으로 나누어 쓰면 주항이
+\[
+-k\ln\frac{k}{np}-m\ln\frac{m}{nq}
+\]
+가 된다. $np=k+D=k(1+t_1)$이고 $nq=n-np=m-D=m(1+t_2)$이므로 이 값은 $k\ln(1+t_1)+m\ln(1+t_2)$이다. 그런데 $kt_1+mt_2=D-D=0$이므로 이 값은 $-[k(t_1-\ln(1+t_1))+m(t_2-\ln(1+t_2))]=-E$이다. $\mu(t)\ge0$($\ln(1+t)\le t$)이므로 $E\ge0$이다.
+\end{proof}
+
+\cref{thm:saddle-binomial}의 모든 부분은 크기가 작다. $\delta(z)\le1/(12z)$이고(\cref{sec:stirling-series}) 제곱근은 $O(n^{-1/2})$, $E$는 평균에서 $0$이고 표준편차 몇 배 떨어진 곳에서도 몇 정도이다. 큰 수끼리의 상쇄가 식에서 사라졌으므로 각 부분을 상대오차 몇 $u$로 계산하면 $b$도 상대오차 몇 $u$로 나온다. 이제 $\mu$만 정확히 계산하면 된다. $t$가 작으면 $t-\ln(1+t)$는 두 수가 거의 같아 상쇄가 일어나므로 급수
+\[
+\mu(t)=t^2\Bigl(\frac12-\frac t3+\frac{t^2}4-\cdots\Bigr)=t^2P(t),\qquad P(t)=\frac12-tR(t),\quad R(t)=\sum_{j\ge0}\frac{(-t)^j}{j+3}
+\]
+을 쓴다. 급수는 $|t|<1$에서 수렴한다. $t>0$이면 교대 급수라 오차가 첫 버린 항 이하이고 $t<0$이면 항이 모두 양이라 $J$항 뒤의 꼬리가 $|t|^J/((J+3)(1-|t|))$ 이하이다. $|t|\le1/8$에서 $R$을 $17$항까지 더하면 첫 버린 항이 $(1/8)^{17}/20\approx0.8\cdot2^{-55}$이고 $t<0$에서도 꼬리가 $0.92\cdot2^{-55}$ 이하이므로 어느 쪽이든 $2^{-55}$ 아래이다.
+
+\begin{algorithm}[htbp]
+\begin{algorithmic}[1]
+\Require $13\le k\le n-13$, $n\le2^{53}$, $0<p<1$
+\Ensure $b(k;n,p)$, 또는 ``느린 경로로''
+\State $m\gets n-k$; $D\gets np-k$를 \textbf{정확히} (곱의 오차 없는 변환, 12장) \Comment{$D=d_h+d_\ell$}
+\State $t_1\gets d_h/k$, $t_2\gets-d_h/m$
+\If{$|t_1|>1/8$ \textbf{or} $|t_2|>1/8$} \Return 느린 경로 \Comment{급수의 범위 밖}
+\EndIf
+\State $E\gets D^2\bigl(P(t_1)/k+P(t_2)/m\bigr)$ \Comment{$k\mu(t_1)=D^2P(t_1)/k$; $R$은 $t^2$의 Horner 사슬 둘}
+\State $S\gets\delta(n)-\delta(k)-\delta(m)$ \Comment{$\delta(z)=A(1/z^2)/z$, $z\ge13$}
+\State \Return $\sqrt{n/(2\pi km)}\cdot\exp(S-E)$
+\end{algorithmic}
+\caption{이항 확률의 안장점 꼴 (stardust \code{saddle::binomial}의 빠른 경로를 줄인 것)}
+\label{alg:binom-saddle}
+\end{algorithm}
+
+\cref{alg:binom-saddle}의 각 줄을 보자. 1행의 $D=np-k$가 가장 섬세하다. $np$는 반올림되므로 그대로 빼면 평균에서 멀어질수록 $D$의 절대오차 $u\,np$가 $E\approx D^2/(2npq)$에 $2D\cdot u\,np/(2npq)$만큼 번진다. stardust는 곱의 반올림 오차를 \code{fma}로 정확히 얻는 변환(12장)으로 $D$를 두 \code{double}의 합으로 만들고 $E$의 곱과 합도 같은 방식으로 오차항을 들고 다닌다(\code{csrc/stats/dist/discrete\_basic.hpp}). 3행의 범위 $|t|\le1/8$은 $R$의 급수가 $17$항으로 끝나는 범위이고 그 밖은 같은 식을 double-double 로그로 계산하는 느린 경로가 맡는다. 5행은 $k\mu(t_1)=k\,t_1^2P(t_1)=D^2P(t_1)/k$를 쓴다. $R$은 짝수 차수와 홀수 차수를 $t^2$에 대한 Horner 사슬 둘로 나누어 지연 시간을 반으로 줄인다. 6행의 $\delta$는 \cref{sec:stirling-series}의 Stirling 급수이고 $z\ge13$에서만 쓰므로 $k$와 $m$이 $13$ 이상이어야 빠른 경로를 탄다. 빠른 경로를 어디까지 믿을지는 오차를 항목별로 더해 정한다.
+
+\begin{proposition}
+\label{prop:saddle-budget}
+$13\le k\le n-13$, $n\le2^{53}$, $|t_1|,|t_2|\le1/8$에서 stardust의 빠른 경로가 계산한 $X=S-E$는 참값과 절대오차 $0.5uE+1.1u$ 이내로 일치하고 확률 $b=\sqrt{r}\,e^X$($r=n/(2\pi km)$)의 상대오차는 $(0.5E+9.9)u$ 이하이다($u^2$ 이하의 항은 무시한다).
+\end{proposition}
+
+\begin{proof}
+$X$의 오차를 출처마다 센다. (i) $D=d_h+d_\ell$에서 곱과 합은 오차 없는 변환이고 낮은 부분들의 합만 반올림되어 절대오차가 $3u$ 이하이다. $E$를 $D$로 미분하면 $2DW$($W=P(t_1)/k+P(t_2)/m$)이고 $|D|W=|t_1|P(t_1)+|t_2|P(t_2)\le2\cdot(1/8)\cdot0.55<0.14$이므로 $E$로 번지는 양은 $2\cdot0.14\cdot3u<0.9u$이다. (ii) $t=d_h/a$는 상대오차 $2u$, $R$의 Horner 계산은 절단까지 합쳐 $2u$, $x=tR$은 $5u$이다. $|x|/P$는 $t=1/8$에서 $0.038/0.462$, $t=-1/8$에서 $0.046/0.546$으로 어느 쪽이든 $0.085$ 아래이므로 $P$의 상대오차는 $5u\cdot0.085<0.43u$이다. (iii) $P/a$는 나눗셈의 나머지를 \code{fma}로 구해 몫을 두 \code{double}로 만들고 두 몫의 합과 $D^2$의 곱도 오차 없는 변환으로 하므로 이 단계들은 $u^2$ 항만 남긴다. 따라서 $E$의 오차는 (ii)에서 온 상대오차 $0.5u$, 곧 절대오차 $0.5uE$이다. (iv) $S$의 세 Stirling 보정은 각각 $\delta(13)<1/156$ 이하이고 상대오차 $4u$로 계산되므로 합쳐 $3\cdot4u/156<0.08u$이다. (i)과 (iv)와 마지막 합의 반올림을 더하면 $X$의 오차는 $0.5uE+1.1u$ 안쪽이다. 확률로 가면 $e^{x_h}$의 벡터 지수 함수 $2.5u$, $(1+x_\ell)$을 곱하는 단계와 두 곱셈 $3u$, $\sqrt r$의 $3.25u$($r$을 만드는 네 연산의 $4.5u$의 반과 제곱근 $u$)가 더해져 $(0.5E+9.9)u$이다.
+\end{proof}
+
+분포 엔진은 원소마다 이 한계를 계산해 예산 $16u$($1.8\times10^{-15}$)를 넘는 원소를 느린 경로로 돌린다. $0.5E+9.9\le16$을 지키도록 빠른 경로는 $E\le12$에서만 쓴다. 로그 확률 \code{logpmf}는 $X$에 $(\ln r)/2$를 더하기만 하고 $e^X$를 거치지 않으므로 $E$를 제한할 필요가 없다. 구현은 원소를 $1024$개씩 묶어 처리한다. 묶음마다 먼저 모든 원소의 $(x_h,x_\ell,r)$과 빠른 경로 여부를 계산하고 빠른 원소들에 벡터화된 지수 함수를 한꺼번에 적용한 다음 나머지 원소만 double-double로 정의대로 계산한다(\code{pmf\_kernel}). 대부분의 원소가 평균 근처에 있는 보통의 호출에서는 묶음 전체가 벡터 경로를 탄다. 음이항분포와 Poisson 분포도 같은 꼴이다. 평균이 $\lambda$인 Poisson에서는 $D=\lambda-k$, $E=D^2P(D/k)/k$, $S=-\delta(k)$이고 앞 인수는 $1/\sqrt{2\pi k}$이다.
+
+$p=0.3$에서 $k$를 평균에서 표준편차 두 배 떨어진 곳에 두고 세 방법의 상대오차를 재어 \cref{fig:binom-pmf}에 그렸다. 참값은 $p$의 \code{double} 값을 정확한 유리수로 보고 $\binom nkp^kq^{n-k}$를 정확히 계산했다(\code{figures/03/binom\_pmf.py}). 로그 감마의 차로 구한 값은 $n$과 함께 오차가 자라 $n=10^5$에서 $10^{-10}$이다. \cref{alg:binom-saddle}를 그대로 \code{double}로 계산하면 $10^{-14}$까지 내려오지만 여전히 $n$과 함께 자라는데 그 원인이 1행의 $D$이다. $D$만 정확히 구하면 오차가 $n$과 무관하게 $2\times10^{-15}$ 아래에 머문다. 평균 바로 위($D\approx0$)에서는 $D$의 오차가 $E$에 거의 번지지 않아 두 안장점 계산 모두 $u$ 수준이다. 따로 빌드한 stardust의 \code{stats.Binomial(n=n, p=0.3).pmf}를 같은 점에서 재면 $n=10^2,\dots,10^5$에서 상대오차가 $1.4\times10^{-16}$ 이하였다(\code{figures/03/library\_check.py}). $E$에서도 오차항을 들고 다니는 덕에 그림의 세 번째 곡선보다도 작다.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}
+\begin{loglogaxis}[sdplot,xlabel={$n$},ylabel={상대오차},xmin=70,xmax=1.5e5,ymin=1e-17,ymax=1e-9]
+\addplot[black,mark=*,mark size=1.2pt] table[x=n,y=naive_tail]{figures/03/binom_pmf.dat};
+\addlegendentry{$\ln\Gamma$의 차}
+\addplot[black,dashed,mark=square*,mark size=1.2pt] table[x=n,y=saddle_tail]{figures/03/binom_pmf.dat};
+\addlegendentry{안장점 꼴}
+\addplot[black!55,mark=triangle*,mark size=1.4pt] table[x=n,y=saddleD_tail]{figures/03/binom_pmf.dat};
+\addlegendentry{안장점 꼴, $D$ 정확}
+\addplot[black!40,dotted,thick,domain=70:1.5e5,samples=2] {1.11e-16};
+\end{loglogaxis}
+\end{tikzpicture}
+\caption{$b(k;n,0.3)$의 상대오차, $k=\operatorname{round}(np+2\sqrt{npq})$. 점선은 반올림 단위 $u$이다.}
+\label{fig:binom-pmf}
+\end{figure}
+
+\subsection{The Prefix of the Incomplete Gamma Function}
+
+같은 생각이 연속분포에서도 쓰인다. 불완전 감마함수의 급수와 연분수(\cref{sec:continued-fractions})는 모두 앞 인수
+\[
+D(a,x)=\frac{x^ae^{-x}}{\Gamma(a+1)}
+\]
+에 곱해지는 꼴인데 $a$와 $x$가 크면 이 인수를 그대로 계산할 수 없다. $a\ln x-x-\ln\Gamma(a+1)$에서는 크기가 $a\ln a$인 항들이 상쇄해 작은 지수가 남는다. 상쇄한 항의 크기가 $a\ln a$이므로 지수의 절대오차는 $u\,a\ln a$ 정도가 되고, $e^{(\cdot)}$에서는 지수의 절대오차가 그대로 결과의 상대오차가 된다.
+
+\begin{proposition}[Temme의 꼴]
+\label{prop:gamma-prefix}
+$a,x>0$에 대해 $\Gamma^*(a)=\Gamma(a)/\bigl(\sqrt{2\pi/a}\,(a/e)^a\bigr)=e^{\delta(a)}$로 두면
+\[
+D(a,x)=\frac{e^{-E}}{\sqrt{2\pi a}\,\Gamma^*(a)},\qquad E=a\,\mu\Bigl(\frac xa-1\Bigr)=x-a-a\ln\frac xa\ge0
+\]
+이다.
+\end{proposition}
+
+\begin{proof}
+$\Gamma(a+1)=a\Gamma(a)=\sqrt{2\pi a}\,(a/e)^a\Gamma^*(a)$이므로 $x^ae^{-x}/\Gamma(a+1)=\exp\bigl(a\ln(x/a)-x+a\bigr)/(\sqrt{2\pi a}\,\Gamma^*(a))$이다. $\lambda=x/a$로 두면 지수는 $-(a(\lambda-1)-a\ln\lambda)=-a\mu(\lambda-1)$이다. $\ln\Gamma^*(a)=\ln\Gamma(a+1)-(a+1/2)\ln a+a-(\ln2\pi)/2=\delta(a)$는 \cref{def:stirling-error}에서 바로 나온다.
+\end{proof}
+
+구조는 \cref{thm:saddle-binomial}과 같다. 큰 부분은 모두 $E$ 하나에 모였고 $E$는 상쇄 없이 계산할 수 있으며 $\Gamma^*(a)=1+O(1/a)$는 아무 문제를 일으키지 않는다. \cref{alg:gamma-prefix}는 stardust의 \code{gamma\_prefix}이다(\code{csrc/special/prefix.hpp}). 이항 확률의 느린 경로도 같은 함수들을 쓴다.
+
+\begin{algorithm}[htbp]
+\begin{algorithmic}[1]
+\Require $a,x>0$
+\Ensure $D(a,x)$를 $m\cdot2^e$로 (넘침·아래넘침 없이)
+\If{$10^{-9}\le a<13$ \textbf{and} $2^{-1000}<x<2^{1000}$} \Comment{작은 $a$: Stirling 꼴이 이득이 없다}
+  \State $L\gets a\ln x-x$ (double-double); \Return $e^{L}/\Gamma(a+1)$ \Comment{$|L|\ge700$이면 $m\cdot2^e$로}
+\EndIf
+\State $\lambda\gets x/a$ (double-double)
+\If{$1/2\le\lambda\le2$} $E\gets a\cdot\mu(\lambda-1)$ \Comment{\cref{alg:log1pmx}}
+\Else\ $E\gets a(\lambda-1)-a\ln\lambda$ (double-double)
+\EndIf
+\State $\Gamma^*\gets\exp(A(1/a^2)/a)$ \Comment{$a\ge13$: Stirling 보정, \cref{sec:stirling-series}}
+\State \Return $e^{-E_h}(1-E_\ell)/(\sqrt{2\pi a}\,\Gamma^*)$ \Comment{$|E_h|\ge700$이면 $m\cdot2^e$로}
+\end{algorithmic}
+\caption{불완전 감마함수의 앞 인수 (stardust \code{gamma\_prefix})}
+\label{alg:gamma-prefix}
+\end{algorithm}
+
+\cref{alg:gamma-prefix}의 2행은 작은 $a$를 위한 길이다. $a<13$에서는 $\Gamma^*(a)$ 자체가 Stirling 급수로 계산되지 않아 또 하나의 지수가 필요하므로 $a\ln x-x$를 double-double로 직접 만들고 $\Gamma(a+1)$로 나눈다. 중심은 5--7행이다. $\lambda$가 $1$ 근처이면 $\mu(\lambda-1)=(\lambda-1)-\ln\lambda$의 두 항이 거의 같아 상쇄하므로 급수를 쓰고 그렇지 않으면 두 항을 double-double로 계산해 뺀다. 9행의 $e^{-E_h}(1-E_\ell)$은 $e^{-(E_h+E_\ell)}$의 일차 전개이고 $|E_\ell|\le u|E_h|$이므로 충분하다. $D$가 binary64의 범위를 벗어나도 뒤의 급수나 연분수와 곱한 최종 결과는 범위 안에 들 수 있다. 그래서 결과를 가수와 지수의 쌍 $m\cdot2^e$로 돌려준다.
+
+$1$ 근처의 $\mu$는 이항 확률의 $|t|\le1/8$보다 넓은 $t\in[-1/2,1]$에서 double-double 정확도로 필요하다. stardust는 거듭제곱 급수 대신 다음 꼴을 쓴다(\code{csrc/special/dd.hpp}의 \code{log1pmx\_series}).
+
+\begin{proposition}
+\label{prop:log1pmx}
+$s=t/(2+t)$이면 $t-2s=st$이고
+\[
+\mu(t)=st-\frac{2s^3}{3}-\frac{2s^5}{5}-2s^7\Bigl(\frac17+\frac{s^2}9+\frac{s^4}{11}+\cdots\Bigr)
+\]
+이다. $t\in[-1/2,1]$이면 $|s|\le1/3$이다.
+\end{proposition}
+
+\begin{proof}
+$1+t=(1+s)/(1-s)$이므로 $\ln(1+t)=2\operatorname{atanh}s=2(s+s^3/3+s^5/5+\cdots)$이다. 따라서 $\mu(t)=t-2s-2s^3/3-\cdots$이고 $t-2s=t-2t/(2+t)=t^2/(2+t)=st$이다. $s$는 $t$의 증가함수이고 $t=-1/2$, $1$에서 $s=-1/3$, $1/3$이다.
+\end{proof}
+
+\begin{algorithm}[htbp]
+\begin{algorithmic}[1]
+\Require $t=t_h+t_\ell\in[-1/2,1]$ (double-double)
+\Ensure $\mu(t)=t-\ln(1+t)\ge0$ (double-double)
+\State $s\gets t/(t+2)$, $s_2\gets s^2$, $s_3\gets s_2s$, $s_5\gets s_3s_2$ \Comment{모두 double-double}
+\State $\tau\gets1/45$; \textbf{for} $k=43,41,\dots,7$: $\tau\gets\tau\cdot s_{2,h}+1/k$ \Comment{꼬리는 \code{double}}
+\State \Return $st-s_3\cdot(2/3)-s_5\cdot(2/5)-s_5\cdot(2s_{2,h}\tau)$
+\end{algorithmic}
+\caption{double-double $\mu(t)$ (stardust \code{log1pmx\_series})}
+\label{alg:log1pmx}
+\end{algorithm}
+
+\cref{alg:log1pmx}에는 상쇄가 없다. 첫 항 $st$가 주항이고 나머지는 모두 같은 부호로 빼는 작은 항이다. 꼬리 $2s^7(\cdots)$는 $\mu$의 $2^{-10}$배 아래이다(끝점 $t=-1/2$에서 $2^{-10.4}$배, $t=1$에서 $2^{-11.1}$배; 코드의 주석은 $2^{-12}$로 적는다). 그래서 꼬리를 \code{double}로 계산해도 상대오차가 $2^{-63}$ 정도에 머물러, $E$를 binary64 하나로 쓸 때 필요한 정확도보다 넉넉하다. $|s|\le1/3$에서 $s^{45}$까지 가면 버린 부분은 꼬리의 $2^{-58}$배 아래이다. 상수 $2/3$과 $2/5$는 두 \code{double}의 합으로 저장해 둔다.
+
+
+\section{The Euler--Maclaurin Formula}
+\label{sec:euler-maclaurin}
+
+\subsection{Bernoulli Numbers and Bernoulli Polynomials}
+
+합 $\sum f(k)$와 적분 $\int f(x)\,dx$는 닮았지만 같지 않다. Euler--Maclaurin 공식은 그 차이를 $f$의 도함수들로 정확하게 적은 식이며 그 계수로 Bernoulli 수가 나온다.
+
+\begin{definition}[Bernoulli 수와 다항식]
+\label{def:bernoulli}
+$|t|<2\pi$에서
+\[
+\frac{t}{e^t-1}=\sum_{n=0}^\infty B_n\frac{t^n}{n!},\qquad\frac{te^{xt}}{e^t-1}=\sum_{n=0}^\infty B_n(x)\frac{t^n}{n!}
+\]
+로 정의한 $B_n$을 \term{Bernoulli 수}{Bernoulli number}, $B_n(x)$를 \term{Bernoulli 다항식}{Bernoulli polynomial}이라 한다.
+\end{definition}
+
+\begin{proposition}
+\label{prop:bernoulli}
+다음이 성립한다.
+\begin{enumerate}
+\item $B_0=1$, $B_1=-1/2$, $B_2=1/6$, $B_4=-1/30$, $B_6=1/42$이고 $3$ 이상의 홀수 $n$에서 $B_n=0$이다.
+\item $B_n(x)=\sum_{k=0}^n\binom nkB_kx^{n-k}$이고 $B_n(0)=B_n$이며 $n\ge1$에서 $B_n'(x)=nB_{n-1}(x)$와 $\int_0^1B_n(x)\,dx=0$이 성립한다.
+\item $n\ge2$이면 $B_n(1)=B_n(0)$이고 $B_1(0)=-1/2$, $B_1(1)=1/2$이다.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) $t/(e^t-1)+t/2=(t/2)(e^t+1)/(e^t-1)$은 짝함수이므로 $t$의 홀수 거듭제곱 계수는 $t^1$을 빼고 모두 $0$이고 $t^1$의 계수에서 $B_1=-1/2$이다. 나머지 값은 $t=(e^t-1)\sum B_nt^n/n!$의 계수를 비교해 얻는 점화식 $\sum_{k=0}^{n}\binom{n+1}kB_k=0$($n\ge1$)으로 차례로 계산된다. (ii) $te^{xt}/(e^t-1)$을 두 급수 $e^{xt}=\sum x^mt^m/m!$과 $\sum B_kt^k/k!$의 곱으로 보면 계수 비교로 첫 식이 나오고 $x=0$을 넣으면 $B_n(0)=B_n$이다. 생성함수를 $x$로 미분하면 $t$가 하나 곱해지므로 $B_n'=nB_{n-1}$이고 $x$에 대해 $0$에서 $1$까지 적분하면 $\int_0^1te^{xt}\,dx=e^t-1$이므로 생성함수의 적분이 $1$이 되어 $n\ge1$의 적분이 모두 $0$이다. (iii) 생성함수에서 $x=1$을 넣은 값과 $x=0$을 넣은 값의 차는 $t(e^t-1)/(e^t-1)=t$이므로 $B_n(1)-B_n(0)$은 $n=1$에서 $1$이고 나머지에서 $0$이다.
+\end{proof}
+
+\subsection{The Formula and Its Proof}
+
+\begin{theorem}[Euler--Maclaurin]
+\label{thm:euler-maclaurin}
+정수 $a<b$와 $m\ge1$, $[a,b]$에서 $2m$번 연속미분 가능한 $f$에 대해
+\[
+\sum_{k=a}^{b}f(k)=\int_a^bf(x)\,dx+\frac{f(a)+f(b)}{2}+\sum_{j=1}^m\frac{B_{2j}}{(2j)!}\bigl(f^{(2j-1)}(b)-f^{(2j-1)}(a)\bigr)+R_m
+\]
+이고 나머지는 $R_m=-\int_a^b\widetilde B_{2m}(x)f^{(2m)}(x)\,dx/(2m)!$이다. 여기서 $\widetilde B_n(x)=B_n(x-\lfloor x\rfloor)$은 주기가 $1$인 Bernoulli 함수이다.
+\end{theorem}
+
+\begin{proof}
+먼저 한 구간 $[0,1]$에서 보자. $J_k=\int_0^1B_k(x)f^{(k)}(x)\,dx/k!$로 두면 $J_0=\int_0^1f$이고 \cref{prop:bernoulli}의 $\bigl(B_{k+1}/(k+1)!\bigr)'=B_k/k!$를 써서 부분적분하면
+\[
+J_k=\Bigl[\frac{B_{k+1}(x)}{(k+1)!}f^{(k)}(x)\Bigr]_0^1-J_{k+1}
+\]
+이다. 이를 $k=0,1,\dots,2m-1$에 대해 되풀이하면
+\[
+J_0=\sum_{k=1}^{2m}(-1)^{k-1}\Bigl[\frac{B_k(x)}{k!}f^{(k-1)}(x)\Bigr]_0^1+J_{2m}
+\]
+을 얻는다. \cref{prop:bernoulli}의 (iii)에서 $k=1$의 괄호는 $(f(0)+f(1))/2$이고 $k\ge2$의 괄호는 $B_k(f^{(k-1)}(1)-f^{(k-1)}(0))/k!$이며 이는 $3$ 이상의 홀수 $k$에서 $0$이다. 짝수 $k=2j$의 부호는 $(-1)^{2j-1}=-1$이므로
+\begin{align*}
+\frac{f(0)+f(1)}{2}=\int_0^1f&+\sum_{j=1}^m\frac{B_{2j}}{(2j)!}\bigl(f^{(2j-1)}(1)-f^{(2j-1)}(0)\bigr)\\
+&-\int_0^1\frac{B_{2m}(x)}{(2m)!}f^{(2m)}(x)\,dx
+\end{align*}
+이다. 이 식을 $f(x+k)$에 적용해 $k=a,\dots,b-1$에 대해 더하면 도함수 항들은 이웃한 구간끼리 지워져 양 끝만 남고 왼쪽은 $\sum_{k=a}^bf(k)-(f(a)+f(b))/2$가 되며 나머지 적분들은 $\widetilde B_{2m}$의 적분 하나로 이어진다. 정리하면 주장한 식이다.
+\end{proof}
+
+나머지를 눌러 두려면 Bernoulli 함수의 크기가 필요하다. $\widetilde B_{2m}$의 Fourier 급수는
+\[
+\widetilde B_{2m}(x)=(-1)^{m+1}\frac{2\,(2m)!}{(2\pi)^{2m}}\sum_{k=1}^\infty\frac{\cos2\pi kx}{k^{2m}}
+\]
+이다\cite{dlmf}. 증명은 줄거리만 적는다. 오른쪽을 $F_{2m}$이라 하면 항별 미분으로 $F_{2m}'=2mF_{2m-1}$(홀수 쪽은 사인 급수)이 되고 $\int_0^1F_n=0$이므로 \cref{prop:bernoulli}의 (ii)와 같은 점화식과 적분 조건을 만족한다. $F_1$은 톱니 함수 $x-\lfloor x\rfloor-1/2$의 Fourier 급수이고 같은 점화식과 적분 조건을 만족하는 함수열은 하나뿐이므로 $F_n=\widetilde B_n$이다. 이 급수의 각 항은 $x=0$에서 가장 크므로 $|\widetilde B_{2m}(x)|\le|B_{2m}|$이고 $x=0$을 넣으면 $B_{2m}=(-1)^{m+1}2(2m)!\,\zeta(2m)/(2\pi)^{2m}$이다. 따라서 $f^{(2m)}$의 부호가 $[a,b]$에서 바뀌지 않으면
+\[
+|R_m|\le\frac{|B_{2m}|}{(2m)!}\int_a^b|f^{(2m)}|=\frac{|B_{2m}|}{(2m)!}\bigl|f^{(2m-1)}(b)-f^{(2m-1)}(a)\bigr|
+\]
+이다. 곧 나머지는 \textbf{마지막으로 더한} 보정항($j=m$)의 크기를 넘지 않는다. 조건을 하나 더 두면 보증이 더 강해진다. $f^{(2m+2)}$와 $f^{(2m+4)}$가 $[a,b]$에서 같은 부호로 일정하면 $R_m$은 첫 번째로 버린 항
+\[
+T_{m+1}=\frac{B_{2m+2}}{(2m+2)!}\bigl(f^{(2m+1)}(b)-f^{(2m+1)}(a)\bigr)
+\]
+과 부호가 같고 크기가 그 이하이다. 이 보증은 $\widetilde B_{2k}-B_{2k}$의 부호가 $(-1)^k$로 일정하다는 것(앞의 Fourier 급수에서 $\cos2\pi kx\le1$)과 $\int_0^1(\widetilde B_{2k}-B_{2k})=-B_{2k}$라는 것에서 나온다. 그러면 $\int_a^b\widetilde B_{2k}f^{(2k)}$에서 상수 $B_{2k}$를 떼어 낸 나머지가 $f^{(2k)}$의 부호만으로 부호가 정해지므로, $f^{(2k)}$의 부호가 일정할 때 $R_{k-1}$은 $T_k$와 부호가 같다. 이를 $k=m+1,m+2$에 쓰면 $R_m=T_{m+1}+R_{m+1}$에서 $R_{m+1}$은 $T_{m+1}$과 부호가 반대이므로 $|R_m|\le|T_{m+1}|$이다\cite[9.5절]{graham1994concrete}. $f(x)=x^{-s}$처럼 짝수 차 도함수가 모두 양이면 모든 $m$에서 성립하므로 \cref{thm:erfc-asym}과 같은 꼴의 보증을 얻는다. 예컨대 $\zeta(2)$, $N=10$, $m=1$의 오차는 $3.310\times10^{-7}$이고 다음 항은 $3.333\times10^{-7}$이다.
+
+\subsection{Summing Slowly Convergent Series}
+
+Euler--Maclaurin 공식은 수렴이 느린 급수를 빠르게 더하는 데 바로 쓰인다. $\zeta(2)=\sum_{k\ge1}k^{-2}=\pi^2/6$을 처음 $N-1$항까지 직접 더하고 $k\ge N$의 꼬리를 \cref{thm:euler-maclaurin}에서 $b\to\infty$로 보낸 꼴
+\[
+\sum_{k\ge N}f(k)\approx\int_N^\infty f+\frac{f(N)}2-\sum_{j=1}^m\frac{B_{2j}}{(2j)!}f^{(2j-1)}(N)
+\]
+로 바꾸어 보자. $N=10$이면 직접 합만으로는 오차가 $0.105$나 되지만 적분과 끝점 항을 더하면 $1.7\times10^{-4}$, 보정항 하나면 $3.3\times10^{-7}$, 셋이면 $3.3\times10^{-11}$, 다섯이면 $2.4\times10^{-14}$이다(\code{figures/03/euler\_maclaurin.py}, 정확한 유리수와 $300$비트 $\pi$).
+
+그런데 보정항을 끝없이 늘릴 수는 없다. 앞에서 본 대로 $|B_{2j}|$는 $2(2j)!/(2\pi)^{2j}$처럼 계승으로 자라므로 보정항 $B_{2j}f^{(2j-1)}(N)/(2j)!$은 처음에는 줄다가 언젠가 다시 커진다. $f(x)=x^{-2}$이면 $j$번째 보정항의 크기가 $|B_{2j}|/N^{2j+1}\approx2(2j)!/((2\pi N)^{2j}N)$이고 이웃 항의 비가 $(2j+1)(2j+2)/(2\pi N)^2$이므로 $2j\approx2\pi N$, 곧 $m\approx\pi N$에서 가장 작다. Euler--Maclaurin의 보정 급수도 발산하는 점근 급수이고 \cref{sec:asym-series}처럼 최적 절단이 있다. \cref{fig:em-zeta2}에서 $N=5$와 $N=10$의 오차는 $m=15$와 $m=31$에서 바닥을 찍는데 각각 $\pi N\approx15.7$, $31.4$와 맞는다. 바닥의 높이도 $N$에 대해 지수적으로 작아지므로($e^{-2\pi N}$ 정도) 실용적으로는 직접 더하는 항을 조금 늘리고 보정은 몇 개만 쓰는 것이 요령이다.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}
+\begin{semilogyaxis}[sdplot,xlabel={보정항의 수 $m$},ylabel={$\zeta(2)$의 오차},xmin=0,xmax=40,ymin=1e-52,ymax=1e-2]
+\addplot[black,mark=*,mark size=1pt] table[x=m,y=N5]{figures/03/em_zeta2.dat};
+\addlegendentry{$N=5$}
+\addplot[black,dashed,mark=square*,mark size=1pt] table[x=m,y=N10]{figures/03/em_zeta2.dat};
+\addlegendentry{$N=10$}
+\addplot[black!55,mark=triangle*,mark size=1.2pt] table[x=m,y=N20]{figures/03/em_zeta2.dat};
+\addlegendentry{$N=20$}
+\end{semilogyaxis}
+\end{tikzpicture}
+\caption{$\zeta(2)$를 처음 $N-1$항과 Euler--Maclaurin 꼬리로 계산할 때 보정항 수에 따른 오차(정확한 유리수 산술).}
+\label{fig:em-zeta2}
+\end{figure}
+
+\subsection{The Hurwitz Zeta Function}
+
+stardust의 Hurwitz 제타 $\zeta(s,q)=\sum_{k\ge0}(k+q)^{-s}$는 Cephes 라이브러리의 방법을 따른다(\code{csrc/special/ops/zeta.hpp}). 앞의 항들을 직접 더하다가 꼬리를 \cref{thm:euler-maclaurin}으로 바꾼다(\cref{alg:hurwitz}). 다감마 $\psi^{(n)}(x)=(-1)^{n+1}n!\,\zeta(n+1,x)$가 이 함수 위에 선다. Riemann 제타 $\zeta(s)$는 Boost의 근사와 짝수 정수의 표를 따로 쓴다.
+
+\begin{algorithm}[htbp]
+\begin{algorithmic}[1]
+\Require $s>1$, $s-1$의 정확한 값 $\sigma$, $q>0$; $A_j=(2j)!/B_{2j}$ ($j=1,\dots,12$)
+\Ensure $\zeta(s,q)$
+\State $S\gets q^{-s}$, $a\gets q$, $i\gets0$
+\While{$i<9$ \textbf{or} $a\le9$} \Comment{직접 합 $10$항, $w=q+9$}
+  \State $i\gets i+1$, $a\gets a+1$, $b\gets a^{-s}$, $S\gets S+b$
+  \State \textbf{if} $|b/S|<u$ \textbf{and} $|ba/(\sigma S)|<u$ \textbf{then} \Return $S$ \Comment{항과 꼬리 적분 모두 무시할 만하면}
+\EndWhile
+\State $w\gets a$; $S\gets S+bw/\sigma-b/2$ \Comment{적분 $w^{1-s}/(s-1)$, $b=w^{-s}$를 이미 다 더했으므로 반을 뺀다}
+\State $\phi\gets1$, $\kappa\gets0$
+\For{$j=1,\dots,12$}
+  \State $\phi\gets\phi\cdot(s+\kappa)$, $b\gets b/w$, $T\gets\phi\,b/A_j$, $S\gets S+T$ \Comment{$T=B_{2j}\,s(s+1)\cdots(s+2j-2)\,w^{-s-2j+1}/(2j)!$}
+  \State \textbf{if} $|T/S|<u$ \textbf{then break}
+  \State $\phi\gets\phi\cdot(s+\kappa+1)$, $b\gets b/w$, $\kappa\gets\kappa+2$
+\EndFor
+\State \Return $S$
+\end{algorithmic}
+\caption{Euler--Maclaurin으로 계산하는 Hurwitz 제타 (stardust \code{zeta\_detail::euler\_maclaurin}, Cephes \code{zeta.c})}
+\label{alg:hurwitz}
+\end{algorithm}
+
+\cref{alg:hurwitz}는 \cref{thm:euler-maclaurin}을 $f(x)=x^{-s}$, 아래 끝 $w=q+i$에 그대로 옮겼다. 직접 합의 마지막 항 $b=w^{-s}$는 이미 $S$에 들어 있는데 공식은 끝점을 반만 세므로 6행에서 $b/2$를 뺀다. 같은 줄의 $bw/\sigma=w^{1-s}/(s-1)$이 꼬리의 적분이다. 보정항은 $f^{(2j-1)}(w)=-s(s+1)\cdots(s+2j-2)\,w^{-s-2j+1}$이므로 $-B_{2j}f^{(2j-1)}(w)/(2j)!$가 9행의 $T$이다. 9행과 11행이 상승 계승 $\phi=s(s+1)\cdots$에 인수를 하나씩 곱하고 $b$를 $w$로 한 번씩 나누어 반복마다 차수를 둘씩 올린다. $A_j$는 Bernoulli 수의 역수에 계승을 곱한 유리수로 $A_1=12$, $A_2=-720$, $A_3=30240,\dots$이며 $j=6$부터는 $691$ 같은 분자 때문에 정수가 아니다($A_6=-1307674368000/691$). \code{figures/03/euler\_maclaurin.py}가 열두 개 모두를 정확한 $(2j)!/B_{2j}$와 견주어 확인한다.
+
+직접 합을 $9$항 더 끌고 가는 이유는 \cref{fig:em-zeta2}에 있다. $w=q+9$가 $9$보다 크면 $s=2$에서 보정항의 바닥이 $e^{-2\pi\cdot9}\approx10^{-25}$ 정도로 반올림 단위보다 훨씬 아래에 있으므로 $12$개 안에서 $|T/S|<u$에 이른다($s$가 크면 상승 계승 때문에 바닥이 높아지지만 항이 $w^{-s}$로 함께 작아진다). 2행의 둘째 조건 $a\le9$는 $q>0$이면 정확한 산술에서는 효력이 없어 루프는 일찍 끝나지 않는 한 정확히 $9$번 돈다. 이 조건이 쓸모 있는 것은 음의 $q$(\code{kDirectBelow}$=64$까지)를 직접 더할 때이다. 4행의 멈춤 조건은 항뿐 아니라 꼬리 적분 $ba/\sigma$까지 무시할 만해야 한다고 요구한다. $s$가 $1$에 가까우면 항은 작아도 꼬리가 크기 때문이다.
+
+구현은 $\sigma=s-1$을 따로 받는다. $s$가 $1$에 가까우면 꼬리 적분 $w^{1-s}/(s-1)$이 결과의 거의 전부이므로 $s-1$의 반올림이 그대로 결과의 오차가 된다. 공개 함수 \code{zeta(x, q)}는 \code{x - 1.0}을 넘기는데 $x\in[1/2,2]$이면 이 뺄셈은 Sterbenz의 보조정리로 정확하다. 다감마 $\psi^{(n)}$은 $s=n+1$이고 $\sigma=n$을 정수로 넘기며 Riemann 제타의 반사식도 $s-1$을 따로 아는 경로에서 그 값을 넘긴다. $q>10^8$이면 직접 합 없이 점근 급수의 세 항 $q^{1-s}\bigl(1/(s-1)+1/(2q)+s/(12q^2)\bigr)$를 쓰는데 $q^2$이 넘치지 않도록 $s/q$를 먼저 만든다. $q<0$이고 $s$가 정수인 경우는 $0$을 사이에 둔 항들을 두 합의 차로 바꾸어 계산한다.
+
+\cref{tab:hurwitz-accuracy}는 \cref{alg:hurwitz}를 binary64로 옮긴 코드의 오차이다. 따로 빌드한 stardust의 \code{special.zeta}도 같은 점들에서 최대 오차가 같았다(\code{figures/03/library\_check.py}). 참값은 정수 $s$에서 모든 항이 유리수라는 것을 써서 직접 합 $60$항과 Euler--Maclaurin 보정 $30$개를 정확한 유리수로 계산했고 나머지가 다음 보정항 이하라는 앞의 한계로 오차가 $10^{-60}$ 아래임을 보증한다. $s=10$에서는 직접 합의 \code{a += 1.0} 탓에 오차가 커진다. $q$가 정수가 아니면 $a=q+i$가 반올림되고 $a$의 상대오차 $\eta$는 $a^{-s}$에서 $s\eta$가 된다. 합의 낮은 부분을 오차 없는 덧셈(12장)으로 들고 다니며 $b\gets b(1-s\,a_\ell/a)$로 일차 보정하면 최대 오차가 $s=10$에서는 $9.11$ULP에서 $3.49$ULP로, $s=20$에서는 $8.08$ULP에서 $3.38$ULP로 준다(\code{figures/03/hurwitz\_fix.py}). 이 보정은 라이브러리의 개선 여지로 \code{LIBRARY-NOTES.md}에 적었다.
+
+$s$가 크고 $q$가 크면 첫 항 $q^{-s}$부터 아래로 넘친다. 다감마 $\psi^{(n)}(x)=(-1)^{n+1}n!\,\zeta(n+1,x)$에서 $n$이 크면 이런 일이 흔하다. stardust는 이때 모든 항을 첫 항에 대한 비 $(q/(q+k))^s=\exp\bigl(-s\operatorname{log1p}(k/q)\bigr)\le1$로 바꾸어 \cref{alg:hurwitz}를 돌리고 첫 항은 가수와 지수의 쌍 $m\cdot2^e$로 따로 들고 다니다 마지막에 한 번 곱한다(\code{hurwitz\_relative}, \code{hurwitz\_scaled}). 합은 $1$ 이상이고 대략 $q/(s-1)$을 넘지 않는 평범한 수이므로 넘침이 없다.
+
+\begin{table}[htbp]
+\begin{sdtable}{colspec={ccccc}, row{1}={font=\small\bfseries}}
+\toprule
+$s$ & $2$ & $3$ & $5$ & $10$ \\
+\midrule
+최대 오차 (ULP) & $3.5$ & $3.5$ & $3.9$ & $9.1$ \\
+\bottomrule
+\end{sdtable}
+\caption{\cref{alg:hurwitz}의 binary64 구현의 최대 오차($q\in(0.01,100]$에서 무작위 $300$점, \code{figures/03/euler\_maclaurin.py}).}
+\label{tab:hurwitz-accuracy}
+\end{table}
+
+
+\section{The Stirling Series}
+\label{sec:stirling-series}
+
+\subsection{Derivation}
+
+\cref{thm:euler-maclaurin}을 $f(x)=\ln x$에 적용하면 \cref{cor:stirling}의 보정항이 모두 나온다. $f^{(2j-1)}(x)=(2j-2)!\,x^{1-2j}$이므로 $\ln n!=\sum_{k=1}^n\ln k$에 공식을 쓰고 $n$과 무관한 항들을 상수 $C$로 모으면
+\[
+\ln n!=\Bigl(n+\frac12\Bigr)\ln n-n+C+\sum_{j=1}^{m}\frac{B_{2j}}{2j(2j-1)\,n^{2j-1}}+O(n^{-2m-1})
+\]
+을 얻는다. 상수 $C$는 Euler--Maclaurin 공식만으로는 정해지지 않지만 \cref{cor:stirling}과 비교하면 $C=(\ln2\pi)/2$여야 한다. 이렇게 두 방법이 만나 얻은 급수
+\[
+\ln\Gamma(z)\sim\Bigl(z-\frac12\Bigr)\ln z-z+\frac12\ln2\pi+\frac{1}{12z}-\frac{1}{360z^3}+\frac{1}{1260z^5}-\frac{1}{1680z^7}+\cdots
+\]
+를 \term{Stirling 급수}{Stirling series}라 한다. $\ln\Gamma(z+1)=\ln z+\ln\Gamma(z)$이므로 \cref{def:stirling-error}의 Stirling 오차는 정확히 이 급수의 보정 부분, 곧 $\delta(z)\sim\sum_{j\ge1}B_{2j}/(2j(2j-1)z^{2j-1})$이다. $n=10$에서 보정항 없이는 $\ln n!$의 오차가 $8.3\times10^{-3}$이지만 $1/(12n)$ 하나로 $2.8\times10^{-6}$, 셋까지 더하면 $5.9\times10^{-11}$로 줄어든다(\code{figures/03/small\_checks.py}).
+
+이 급수를 계산에 쓰려면 \cref{thm:erfc-asym}과 같은 보증이 필요하다.
+
+\begin{theorem}
+\label{thm:stirling-remainder}
+실수 $x>0$과 $m\ge0$에 대해
+\[
+\ln\Gamma(x)=\Bigl(x-\frac12\Bigr)\ln x-x+\frac12\ln2\pi+\sum_{j=1}^{m}\frac{B_{2j}}{2j(2j-1)\,x^{2j-1}}+R_m(x)
+\]
+라 쓰면 $R_m(x)$는 첫 번째로 버린 항 $B_{2m+2}/((2m+2)(2m+1)x^{2m+1})$과 부호가 같고 크기가 그보다 크지 않다. 특히 $0<\delta(x)<1/(12x)$이다.
+\end{theorem}
+
+증명은 줄거리만 보인다. 출발점은 Binet의 공식
+\[
+\ln\Gamma(x)-\Bigl[\Bigl(x-\frac12\Bigr)\ln x-x+\frac12\ln2\pi\Bigr]=\int_0^\infty\Bigl(\frac{1}{e^t-1}-\frac1t+\frac12\Bigr)\frac{e^{-xt}}{t}\,dt
+\]
+이다. 괄호 안의 함수는 $t^{-1}\bigl(t/(e^t-1)-1+t/2\bigr)$이고 \cref{def:bernoulli}에서 그 Taylor 전개는 $\sum_{j\ge1}B_{2j}t^{2j-1}/(2j)!$이다. 핵심 보조정리에 따르면 실수 $t>0$에서 이 전개를 어디서 자르든 나머지는 첫 버린 항과 부호가 같고 크기가 작다. 이는 부분분수 전개
+\[
+\frac{1}{e^t-1}-\frac1t+\frac12=\sum_{k\ge1}\frac{2t}{t^2+4\pi^2k^2}
+\]
+에서 나온다. $r_k=t^2/(4\pi^2k^2)$로 두고 모든 $r\ge0$에서 성립하는 유한 등식
+\[
+\frac{1}{1+r}=\sum_{i=0}^{m-1}(-r)^i+\frac{(-r)^m}{1+r}
+\]
+을 각 항에 쓰면 나머지는
+\[
+(-1)^m\sum_k\frac{2t}{4\pi^2k^2}\,\frac{r_k^m}{1+r_k}
+\]
+이다. 이 나머지는 부호가 $(-1)^m$이고 크기가 $\sum_k2t\,r_k^m/(4\pi^2k^2)=2\zeta(2m+2)\,t^{2m+1}/(2\pi)^{2m+2}=|B_{2m+2}|\,t^{2m+1}/(2m+2)!$보다 작다. $B_{2m+2}$의 부호도 $(-1)^m$이니 나머지는 첫 버린 항과 부호가 같고 절댓값은 그보다 작다. 이 부등식을 $e^{-xt}/t$와 곱해 적분하면 \cref{lem:watson}처럼 $t^{2j-2}$가 $(2j-2)!/x^{2j-1}$을 주고 $B_{2j}/(2j)!\cdot(2j-2)!=B_{2j}/(2j(2j-1))$이 되어 정리가 나온다. 자세한 증명은 Olver의 책 8장 4절에 있다\cite{olver1974asymptotics}. $m=0$과 $m=1$을 함께 쓰면 $0<R_0=\delta(x)<1/(12x)$이다.
+
+\subsection{Computing log Gamma}
+
+\cref{thm:stirling-remainder}에서 항 $B_{2j}/(2j(2j-1)x^{2j-1})$은 $x$가 클수록 빨리 작아지므로 Stirling 급수는 큰 인자에서만 쓰고 작은 인자는 $\Gamma(x+1)=x\Gamma(x)$로 키우거나 다른 근사로 보낸다. stardust의 \code{gammaln}(양의 실수)은 \cref{alg:lgamma}의 여섯 영역을 쓴다(\code{csrc/special/gamma\_core.hpp}의 \code{lgamma\_pos}).
+
+\begin{algorithm}[htbp]
+\begin{algorithmic}[1]
+\Require $x>0$
+\Ensure $\ln\Gamma(x)$
+\If{$x<2^{-30}$} \Return $-\ln x-\gamma x$ \Comment{$\gamma$: Euler 상수}
+\ElsIf{$x<1/2$} \Return $L(x)-\operatorname{log1p}(x)-\ln x$ \Comment{$L(e)=\ln\Gamma(2+e)$의 Taylor 다항식}
+\ElsIf{$x<3/2$} $e\gets x-1$ (정확); \Return $L(e)-\operatorname{log1p}(e)$
+\ElsIf{$x\le5/2$} \Return $L(x-2)$
+\ElsIf{$x<13$} $u\gets x$, $z\gets1$; \textbf{while} $u>5/2$: $u\gets u-1$, $z\gets zu$; \Return $\ln z+L(u-2)$
+\Else
+  \State $Q\gets(x-1/2)\ln x-x+(\ln2\pi)/2$ \Comment{$x>2.556\times10^{305}$이면 $+\infty$}
+  \State \textbf{if} $x>10^8$ \textbf{then} \Return $Q$ \Comment{보정 $<10^{-9}$이 $Q$의 반올림 아래}
+  \State $w\gets1/x$; \Return $Q+A(w^2)\,w$ \Comment{$A$: 맞춘 계수 다섯 개}
+\EndIf
+\end{algorithmic}
+\caption{양의 실수에서 $\ln\Gamma$ (stardust \code{lgamma\_pos})}
+\label{alg:lgamma}
+\end{algorithm}
+
+\cref{alg:lgamma}의 $L(e)$에는 맞춘 다항식 대신 다음 급수를 그대로 쓴다.
+
+\begin{proposition}
+\label{prop:lgamma-taylor}
+$|z|<1$에서 $\ln\Gamma(1+z)=-\gamma z+\sum_{k\ge2}(-1)^k\zeta(k)z^k/k$이고 따라서 $|e|<1$에서
+\[
+\ln\Gamma(2+e)=(1-\gamma)e+\sum_{k\ge2}\frac{(-1)^k(\zeta(k)-1)}{k}e^k
+\]
+이다.
+\end{proposition}
+
+\begin{proof}
+Weierstrass의 곱 $1/\Gamma(z)=ze^{\gamma z}\prod_{n\ge1}(1+z/n)e^{-z/n}$과 $\Gamma(1+z)=z\Gamma(z)$에서 $\ln\Gamma(1+z)=-\gamma z+\sum_{n\ge1}\bigl(z/n-\ln(1+z/n)\bigr)$이다. $|z|<1$이면 $z/n-\ln(1+z/n)=\sum_{k\ge2}(-1)^kz^k/(kn^k)$이고 이중 급수가 절대수렴하므로 합의 순서를 바꾸면 $\sum_n n^{-k}=\zeta(k)$가 나온다. 둘째 식은 $\ln\Gamma(2+e)=\ln(1+e)+\ln\Gamma(1+e)$에 $\ln(1+e)=\sum_{k\ge1}(-1)^{k+1}e^k/k$를 더한 것이다.
+\end{proof}
+
+$\zeta(k)-1\approx2^{-k}$이므로 $|e|\le1/2$에서 항이 $4^{-k}/k$처럼 줄어든다. stardust는 $28$항을 써서 나머지를 $2\times10^{-19}$ 아래로 누른다(\code{csrc/special/coeffs/lgamma\_taylor2.hpp}). 계수는 Arb로 계산해 반올림한 값이다. 급수에 상수항이 없어 $L(e)=e\cdot(\text{다항식})$의 꼴로 계산되므로 $e\to0$에서, 곧 $\ln\Gamma(2)=0$ 근처에서도 상대오차가 지켜진다.
+
+\cref{alg:lgamma}의 영역 나누기에는 이유가 하나씩 있다. $\ln\Gamma$는 $x=1$과 $x=2$에서 $0$이므로 그 근처에서는 상대오차를 지키기 어렵다. 이 때문에 $[1/2,5/2]$에서는 $\ln\Gamma(2+e)$의 Taylor 다항식 $L$을 $e=x-2$나 $e=x-1$에 대해 쓰고 $\ln\Gamma(1+e)=\ln\Gamma(2+e)-\ln(1+e)$의 둘째 항은 $\operatorname{log1p}$로 계산한다. $e=x-1$은 $x\in[1/2,3/2)$에서 정확한 뺄셈이므로(Sterbenz의 보조정리, 11장) 영점 근처에서도 모든 항이 작고 정확하다. 5행은 $x<13$을 $(3/2,5/2]$로 끌어내리며 곱 $z=(x-1)(x-2)\cdots$를 모은다. 곱은 $13!$보다 작아 넘치지 않고 로그는 한 번만 취한다. $x\ge13$에서는 Stirling 급수를 쓰는데 보정 부분 $A(1/x^2)/x$의 계수는 정확한 $B_{2j}/(2j(2j-1))$이 아니라 Cephes 라이브러리가 $x\ge13$에 맞춘 값이다.
+
+\cref{fig:stirling-err}가 그 차이를 보여 준다. 정확한 계수 $m$개로 자른 급수의 절단 오차와 Cephes의 다섯 계수의 오차를, 급수를 가장 작은 항에서 자른 참값(\cref{thm:stirling-remainder}로 오차가 보증된다)과 견주었다(\code{figures/03/stirling\_series.py}, 정확한 유리수). 정확한 계수 다섯 개는 $x=13$에서 절단 오차가 $1.0\times10^{-15}$으로 $\ln\Gamma(13)$의 한 ULP($3.6\times10^{-15}$)의 $0.3$배인데 맞춘 계수 다섯 개는 $7.6\times10^{-19}$로 천 배쯤 작다. 마지막 계수가 정확한 값 $1/1188=8.42\times10^{-4}$ 대신 $8.12\times10^{-4}$로 바뀌어 버린 꼬리 전체를 흡수했기 때문이다. 대신 맞춤 범위 밖인 $x=7$에서는 정확한 계수 쪽이 낫다. 맞춘 근사는 맞춘 구간에서만 믿는다.
+
+Stirling 보정 $\delta(x)=A(1/x^2)/x$는 \code{gammaln} 밖에서도 쓰인다. 큰 인자의 로그 베타 함수 $\ln B(a,b)=\ln\Gamma(a)+\ln\Gamma(b)-\ln\Gamma(a+b)$를 그대로 계산하면 크기가 $a\ln a$인 세 수가 상쇄한다. $c=a+b$로 두고 $\Gamma(a)$와 $\Gamma(c)$에 Stirling 꼴을 쓰면 큰 항들이 모여
+\[
+\ln B(a,b)=\ln\Gamma(b)+\Bigl(a-\frac12\Bigr)\operatorname{log1p}\Bigl(-\frac bc\Bigr)-b\ln c+b+\delta(a)-\delta(c)
+\]
+가 된다. $b\ge10$이면 $\Gamma(b)$에도 Stirling 꼴을 써서 $\ln\Gamma(b)$와 $-b\ln c$를 $(b-1/2)\ln(b/c)-(\ln c)/2+(\ln2\pi)/2+\delta(b)$로 합친다. 그러면 큰 항 $(b-1/2)\ln(b/c)$, $-(\ln c)/2$, $(a-1/2)\operatorname{log1p}(-b/c)$가 모두 음수여서 큰 수끼리의 상쇄가 없다(\code{csrc/special/ops/gamma.hpp}의 \code{lbeta\_large}). 통계 함수의 정의대로 계산하는 느린 경로에는 double-double $\ln\Gamma$가 있다(\code{dd::loggamma}). 인자를 $w\ge30$까지 $\Gamma(w)=(w-1)\Gamma(w-1)$로 올리며 곱을 double-double로 모은 뒤 $w\ln w-w-(\ln w)/2+(\ln2\pi)/2$의 큰 항을 모두 double-double로 계산하고 보정 $\delta(w)\approx1/(12w)$만 \code{double}로 더한다. $w\ge30$에서 보정의 크기가 $1/360$ 이하이므로 그 반올림은 절대오차 $10^{-19}$ 정도에 머문다.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}
+\begin{loglogaxis}[sdplot,xlabel={$x$},ylabel={절대오차},xmin=7,xmax=200,ymin=1e-32,ymax=1e-6,xtick={7,13,30,100,200},xticklabels={7,13,30,100,200}]
+\addplot[black,mark=none] table[x=x,y=m3]{figures/03/stirling_err.dat};
+\addlegendentry{정확한 계수 $3$개}
+\addplot[black,dashed,mark=none] table[x=x,y=m5]{figures/03/stirling_err.dat};
+\addlegendentry{정확한 계수 $5$개}
+\addplot[black!55,thick,mark=none] table[x=x,y=cephes]{figures/03/stirling_err.dat};
+\addlegendentry{Cephes 맞춤 $5$개}
+\addplot[black!40,dotted,thick,mark=none] table[x=x,y=ulp]{figures/03/stirling_err.dat};
+\addlegendentry{$\ln\Gamma(x)$의 1 ULP}
+\draw[black!30] (axis cs:13,1e-32) -- (axis cs:13,1e-6);
+\end{loglogaxis}
+\end{tikzpicture}
+\caption{Stirling 급수 보정 부분의 절단 오차. 세로선 $x=13$부터 stardust가 맞춘 계수를 쓴다.}
+\label{fig:stirling-err}
+\end{figure}
+
+복소 인자의 \code{loggamma}는 $\operatorname{Re}z>7$이거나 $|\operatorname{Im}z|>7$인 곳에서 정확한 계수 여덟 개의 Stirling 급수를 쓴다(\code{csrc/special/ops/loggamma.hpp}). $|z|=7$에서 첫 버린 항은 $B_{18}/(18\cdot17\cdot7^{17})=7.7\times10^{-16}$이고 $\ln\Gamma(7)=6.58$에 견주면 상대적으로 $10^{-16}$ 정도이다. 복소 평면에서는 \cref{thm:stirling-remainder}의 ``첫 버린 항 이하''가 그대로 성립하지 않고 인자의 편각에 따라 커지는 인수가 붙는다\cite{dlmf}. 다감마 $\psi(x)$도 $x\ge10$에서 같은 방식으로 $\ln x-1/(2x)-\sum B_{2j}/(2jx^{2j})$의 점근 급수를 쓴다. Stirling 급수를 미분하면 이 급수가 나온다.
+
+
+\section{Continued Fractions}
+\label{sec:continued-fractions}
+
+\subsection{Definition and Convergents}
+
+급수가 아닌 또 하나의 무한한 표현이 연분수이다.
+
+\begin{definition}[연분수]
+\label{def:cf}
+수열 $a_1,a_2,\dots$와 $b_0,b_1,\dots$에 대해
+\[
+f=b_0+\cfrac{a_1}{b_1+\cfrac{a_2}{b_2+\cfrac{a_3}{b_3+\cdots}}}
+\]
+를 \term{연분수}{continued fraction}라 하고 $n$번째 층에서 자른 값 $f_n$을 $n$번째 \term{근사분수}{convergent}라 한다. $f_n\to f$이면 연분수가 수렴한다고 한다.
+\end{definition}
+
+연분수는 지면에서 차지하는 모양과 달리 아주 규칙적인 점화식으로 계산된다.
+
+\begin{theorem}
+\label{thm:cf-recurrence}
+$A_{-1}=1$, $B_{-1}=0$, $A_0=b_0$, $B_0=1$로 두고 $n\ge1$에서
+\[
+A_n=b_nA_{n-1}+a_nA_{n-2},\qquad B_n=b_nB_{n-1}+a_nB_{n-2}
+\]
+로 정의하면 분모가 $0$이 되지 않는 한 $f_n=A_n/B_n$이다. 또한
+\[
+A_nB_{n-1}-A_{n-1}B_n=(-1)^{n-1}a_1a_2\cdots a_n
+\]
+이다.
+\end{theorem}
+
+\begin{proof}
+$n$에 대한 귀납법을 쓰되 주장을 모든 수열에 대해 한꺼번에 세운다. $n=0$이면 $f_0=b_0=A_0/B_0$이고 $n=1$이면 $f_1=b_0+a_1/b_1=(b_1b_0+a_1)/b_1=A_1/B_1$이다. $n\ge2$이고 $n-1$층까지는 성립한다고 하자. $n$번째 근사분수는 $n-1$번째 근사분수에서 $b_{n-1}$을 $b_{n-1}+a_n/b_n$으로 바꾼 것과 같다. 그런데 귀납 가정의 식에서 $A_{n-1}$과 $B_{n-1}$은 $b_{n-1}$의 일차식이고 $A_{n-2},B_{n-2}$는 $b_{n-1}$을 포함하지 않으므로 바꾼 뒤의 근사분수는
+\begin{align*}
+\frac{(b_{n-1}+a_n/b_n)A_{n-2}+a_{n-1}A_{n-3}}{(b_{n-1}+a_n/b_n)B_{n-2}+a_{n-1}B_{n-3}}
+&=\frac{A_{n-1}+(a_n/b_n)A_{n-2}}{B_{n-1}+(a_n/b_n)B_{n-2}}\\
+&=\frac{b_nA_{n-1}+a_nA_{n-2}}{b_nB_{n-1}+a_nB_{n-2}}
+\end{align*}
+이고 이는 $A_n/B_n$이다. 둘째 식은 점화식을 대입하면 $A_nB_{n-1}-A_{n-1}B_n=-a_n(A_{n-1}B_{n-2}-A_{n-2}B_{n-1})$이고 $n=0$에서 $A_0B_{-1}-A_{-1}B_0=-1$이므로 귀납으로 나온다.
+\end{proof}
+
+둘째 식을 $B_nB_{n-1}$로 나누면 $f_n-f_{n-1}=(-1)^{n-1}a_1\cdots a_n/(B_nB_{n-1})$이다. 근사분수의 차가 분모의 곱에 반비례하므로 $|B_n|$이 빨리 자라면 연분수가 빨리 수렴한다. 수렴의 충분조건 가운데 대표적인 것이 다음 정리이다\cite{cuyt2008cf}.
+
+\begin{theorem}[Śleszyński--Pringsheim]
+\label{thm:pringsheim}
+모든 $n\ge1$에서 $|b_n|\ge|a_n|+1$이면 $b_0=0$인 연분수는 수렴하고 $|f|\le1$이다.
+\end{theorem}
+
+줄거리는 이렇다. 점화식에서 $|B_n|\ge|b_n||B_{n-1}|-|a_n||B_{n-2}|\ge(|a_n|+1)|B_{n-1}|-|a_n||B_{n-2}|$이므로 $|B_n|-|B_{n-1}|\ge|a_n|(|B_{n-1}|-|B_{n-2}|)$이고 귀납으로 $|B_n|-|B_{n-1}|\ge|a_1\cdots a_n|$을 얻는다. 그러면 근사분수의 차의 합 $\sum|f_n-f_{n-1}|=\sum|a_1\cdots a_n|/(|B_n||B_{n-1}|)$이 $\sum(1/|B_{n-1}|-1/|B_n|)\le1$로 눌려 급수가 절대수렴하고 $|f|\le1$이 나온다(Cuyt 외의 책 3장).
+
+2장의 유클리드 알고리즘은 유리수 $a/b$를 $a_n=1$인 연분수 $q_1+1/(q_2+1/(q_3+\cdots))$로 펼치는 일이고 반복 횟수가 곧 연분수의 길이이다(\cref{thm:lame}). 간단한 예로 $\sqrt2=1+1/(2+1/(2+\cdots))$의 근사분수는 \cref{thm:cf-recurrence}에서 $1/1,3/2,7/5,17/12,41/29,99/70,\dots$이고 오차는 한 단계마다 약 $(1+\sqrt2)^2\approx5.8$배씩 준다. 연분수는 특수함수에서 진가를 보인다. 탄젠트의 연분수는 18세기에 Lambert가 $\pi$의 무리성을 증명하는 데 썼다. 이 연분수
+\[
+\tan x=\cfrac{x}{1-\cfrac{x^2}{3-\cfrac{x^2}{5-\cdots}}}
+\]
+는 $x=1$에서 층을 하나 더할 때마다 오차가 한 자리 반에서 두 자리 반씩, 갈수록 빠르게 줄어 분모 $15$까지 쓰면 오차가 $4.6\times10^{-14}$이다(\code{figures/03/small\_checks.py}). 불완전 감마함수, 불완전 베타함수, Bessel 함수의 비처럼 급수가 느린 영역에서 이런 연분수가 빠르게 수렴하는 경우가 많다\cite{cuyt2008cf}. 이 장에서 계속 쓸 예는 위쪽 불완전 감마함수의 연분수
+\[
+\Gamma(a,x)=\cfrac{e^{-x}x^a}{x+1-a-\cfrac{1\cdot(1-a)}{x+3-a-\cfrac{2\cdot(2-a)}{x+5-a-\cdots}}}
+\]
+이다. $a_n=-n(n-a)$, $b_n=x+2n+1-a$이다. 이 연분수는 Legendre가 얻은 것으로 $\Gamma(a,x)=e^{-x}U(1-a,1-a,x)$를 Kummer 함수 $U$의 인접 관계로 한 층씩 펼쳐 유도하며 모든 $x>0$에서 수렴한다(DLMF 8.9절, Cuyt 외의 책 12장\cite{dlmf,cuyt2008cf}). 수렴은 $x$가 $a$보다 클수록 빠르다. $x$가 $a$에 가깝거나 $a$가 크면 층이 많이 든다. \cref{fig:cf-errors}의 표본에서는 $x\in[a+1,3a+40]$, $a\le60$에서 대개 $20$층 안쪽이었고 $x\in[a+1,a+3\sqrt a]$, $a\le3000$에서는 $130$층까지 들었다. stardust는 $x<a+1$ 근처에서는 같은 함수를 급수나 Temme의 균등 점근 전개로 계산하고 이 연분수는 $x$가 충분히 큰 영역에만 쓴다(VIII권).
+
+\cref{fig:convergents}에 $\sqrt2$와 $\tan1$의 근사분수 오차를 층 수에 따라 그렸다(\code{figures/03/convergents.py}). $\sqrt2$는 직선, 곧 일정한 비율 $(1+\sqrt2)^{-2}$로 줄고 $\tan1$은 갈수록 가팔라진다. $\tan1$의 연분수에서 $b_n=2n+1$이 커져 $|B_n|$이 계승처럼 자라기 때문이다.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}
+\begin{semilogyaxis}[sdplot,xlabel={층의 수 $n$},ylabel={근사분수의 오차},xmin=0,xmax=11,ymin=1e-25,ymax=1]
+\addplot[black,mark=*,mark size=1.2pt] table[x=n,y=sqrt2]{figures/03/convergents.dat};
+\addlegendentry{$\sqrt2$}
+\addplot[black,dashed,mark=square*,mark size=1.2pt] table[x=n,y=tan1]{figures/03/convergents.dat};
+\addlegendentry{$\tan1$}
+\end{semilogyaxis}
+\end{tikzpicture}
+\caption{연분수의 $n$번째 근사분수의 오차(정확한 유리수).}
+\label{fig:convergents}
+\end{figure}
+
+\subsection{Forward Evaluation: Lentz's Algorithm}
+
+가장 단순하게는 몇 층에서 자를지 정한 뒤 연분수를 맨 아래부터 거꾸로 계산한다. 그러나 필요한 층의 수를 미리 알기 어렵고 층을 늘리면 처음부터 다시 계산해야 한다. \cref{thm:cf-recurrence}로 앞에서부터 계산하면 이 문제는 사라지지만 $A_n$과 $B_n$은 금세 넘치거나 아래로 넘쳐 부동소수점 수의 범위를 벗어난다. Lentz의 방법은 $A_n$과 $B_n$ 대신 그 비
+\[
+C_n=\frac{A_n}{A_{n-1}},\qquad D_n=\frac{B_{n-1}}{B_n}
+\]
+를 들고 다닌다\cite{lentz1976}. \cref{thm:cf-recurrence}의 $A_n$ 점화식을 $A_{n-1}$로 나누고 $B_n$ 점화식을 $B_{n-1}$로 나눈 뒤 역수를 취하면
+\[
+C_n=b_n+\frac{a_n}{C_{n-1}},\qquad D_n=\frac{1}{b_n+a_nD_{n-1}},\qquad f_n=f_{n-1}C_nD_n
+\]
+을 얻는다. 비는 넘치지 않으며 $C_nD_n$이 $1$에 충분히 가까워져 한 층을 더해도 값이 거의 바뀌지 않으면 멈춘다. 원래 방법에는 중간에 $C_n$이나 $D_n$의 분모가 $0$이 될 수 있다는 약점이 있다. 수정된 Lentz 방법은 $0$ 대신 아주 작은 수를 넣고 계속한다. 그 작은 수는 다음 단계에서 지워지므로 그렇게 해도 된다\cite{thompson1986coulomb,press2007nr}. \cref{alg:lentz}가 그 전체 과정이다.
+
+\begin{algorithm}[htbp]
+\begin{algorithmic}[1]
+\Require $b_0$, 항 $(a_n,b_n)$을 주는 함수, 허용 오차 $\varepsilon$, 아주 작은 수 $\tau$
+\Ensure 연분수의 값 $f$와 쓴 층의 수 $n$
+\State $f\gets b_0$; \textbf{if} $f=0$ \textbf{then} $f\gets\tau$
+\State $C\gets f$, $D\gets0$
+\For{$n\gets1,2,\dots$}
+  \State $D\gets b_n+a_nD$; \textbf{if} $D=0$ \textbf{then} $D\gets\tau$
+  \State $C\gets b_n+a_n/C$; \textbf{if} $C=0$ \textbf{then} $C\gets\tau$
+  \State $D\gets1/D$
+  \State $\Delta\gets CD$, $f\gets f\Delta$ \Comment{$f_n=f_{n-1}C_nD_n$}
+  \State \textbf{if} $|\Delta-1|\le\varepsilon$ \textbf{then} \Return $(f,n)$
+\EndFor
+\end{algorithmic}
+\caption{수정된 Lentz 알고리즘 (stardust \code{special/cf.hpp}의 \code{lentz})}
+\label{alg:lentz}
+\end{algorithm}
+
+stardust는 $\tau=2^{-1000}$, $\varepsilon=2^{-53}$을 쓰고 층 수의 상한을 $10^5$으로 둔다. 상한에 이르도록 멈춤 조건을 만족하지 못하면 값 대신 NaN을 돌려준다(\code{cf\_value}). 코드의 주석이 일러 두는 함정이 하나 있다. $b_0=0$이면 1행이 $b_0$ 자리에 $\tau$를 넣으므로 \cref{alg:lentz}는 사실상 $b_0=\tau$인 연분수, 곧 $\tau+f$를 계산하고 상대오차는 $\tau/|f|$이다. $|f|<\tau/u=2^{-947}$이면 정확도를 잃고 $|a_1|$이 $2^{24}$쯤을 넘으면 $C_1=b_1+a_1/\tau$가 넘친다. 이를 피하려고 $b_0=0$인 연분수는 꼬리 $b_1+a_2/(b_2+\cdots)$를 따로 계산한 뒤 $a_1$을 그것으로 나눈다. 위의 $\Gamma(a,x)$가 바로 그렇게 계산된다. 꼬리의 $b_0=x+1-a$를 넘기고 $e^{-x}x^a$를 그 결과로 나눈다(정규화한 $Q(a,x)$에서는 $\Gamma(a)$로 한 번 더 나눈다).
+
+\subsection{Backward Evaluation and Rounding}
+
+Lentz의 방법은 층마다 $f_n=f_{n-1}C_nD_n$을 곱하므로 층마다의 반올림 오차가 곱으로 쌓인다. $n$층이면 상대오차가 대략 $n$에 비례해 자란다. 맨 아래부터 거꾸로 $t_k=a_k/(b_k+t_{k+1})$을 계산하면 사정이 다르다. $t_{k+1}$의 상대오차 $\eta$는 $t_k$에 $\bigl|t_{k+1}/(b_k+t_{k+1})\bigr|\cdot|\eta|$로만 전해지는데 수렴하는 연분수에서는 이 인수가 대개 $1$보다 작아 앞 단계의 오차를 줄인다. 이 차이를 명제로 적어 두자.
+
+\begin{proposition}
+\label{prop:cf-rounding}
+$a_k,b_k$가 정확하고 $t_{n+1}=0$에서 $t_k=a_k/(b_k+t_{k+1})$을 binary64로 계산하면 $\hat t_k=t_k(1+\eta_k)$의 상대오차는 일차까지
+\[
+|\eta_k|\le2u+g_k|\eta_{k+1}|,\qquad g_k=\Bigl|\frac{t_{k+1}}{b_k+t_{k+1}}\Bigr|
+\]
+를 만족한다. 따라서 $|\eta_1|\le2u\sum_{k=1}^n\prod_{j<k}g_j$이고 모든 $g_j\le g<1$이면 $|\eta_1|\le2u/(1-g)$이다. 반면 \cref{alg:lentz}는 층마다 $f$에 반올림된 $C_nD_n$을 곱하므로 상대오차가 층마다 몇 $u$씩 더해져 $n$에 비례해 자랄 수 있다.
+\end{proposition}
+
+\begin{proof}
+$\hat t_{k+1}=t_{k+1}(1+\eta_{k+1})$이면 $b_k+\hat t_{k+1}=(b_k+t_{k+1})(1+t_{k+1}\eta_{k+1}/(b_k+t_{k+1}))$이고 덧셈과 나눗셈의 반올림이 각각 $(1+\delta)$를 곱하므로 $\hat t_k=t_k(1-t_{k+1}\eta_{k+1}/(b_k+t_{k+1})+\delta_1+\delta_2+O(u^2))$이다. 절댓값을 취하면 주장의 점화식이다. 풀면 합의 꼴이 나온다. Lentz 쪽에서는 $f_n=f_{n-1}\hat C_n\hat D_n(1+\delta)$에서 $\hat C_n$, $\hat D_n$의 오차가 앞 층에서 물려받은 것과 새 반올림의 합이고 이것이 곱으로 쌓인다.
+\end{proof}
+
+stardust는 이 성질을 살려 두 방법을 섞는다(\code{lentz\_backward}, \cref{alg:lentz-backward}). 먼저 \cref{alg:lentz}로 필요한 층의 수 $n$을 알아낸 뒤, 같은 연분수를 $n+4$층에서 맨 아래부터 다시 계산한다. 앞쪽 $64$층의 $(a_k,b_k)$는 첫 번째 계산에서 저장해 두어 다시 만들지 않는다. 불완전 베타함수처럼 항 하나에 나눗셈이 여럿 드는 연분수에서 이 저장이 두 번째 계산의 비용을 줄인다. Lentz의 멈춤 조건은 마지막 층의 변화만 보므로 잘림 오차가 남을 수 있다. 층을 $4$개 더 계산해 두면 이 오차가 \cref{prop:cf-rounding}의 인수 $\prod g_j$만큼 한 번 더 눌린다.
+
+\begin{algorithm}[htbp]
+\begin{algorithmic}[1]
+\Require $b_0$, 항 $(a_k,b_k)$, 층 수 상한 $K$
+\Ensure 연분수의 값 (수렴하지 않으면 NaN)
+\State $(f,n)\gets$ \cref{alg:lentz}를 돌리며 $k\le64$인 $(a_k,b_k)$를 배열에 저장 \Comment{층 수 찾기}
+\State \textbf{if} 수렴하지 않았다 \textbf{then} \Return NaN
+\State $t\gets0$
+\For{$k=n+4,n+3,\dots,1$}
+  \State $(a,b)\gets$ ($k\le64$이고 $k\le n$이면 저장한 값, 아니면 새로 계산)
+  \State $t\gets a/(b+t)$
+\EndFor
+\State \Return $b_0+t$
+\end{algorithmic}
+\caption{앞에서 층 수를 찾고 뒤에서 값을 구하는 연분수 (stardust \code{lentz\_backward})}
+\label{alg:lentz-backward}
+\end{algorithm}
+
+이 선택의 효과를 직접 재어 \cref{fig:cf-errors}에 그렸다(두 방법 모두 stardust의 코드를 Python의 binary64 산술로 그대로 옮겼다). $\Gamma(a,x)$의 꼬리 연분수를 $1700$개의 $(a,x)$에서 \cref{alg:lentz}와 뒤에서부터 계산으로 구하고 같은 연분수를 $3n+60$층까지 정확한 유리수로 거꾸로 계산한 참값과 견주었다(\code{figures/03/cf\_errors.py}, $40$층 더 계산한 값과의 차가 $2^{-90}$ 상대 아래인지 확인). Lentz의 오차는 층 수와 함께 자라 최대 $15.6$ULP이고 뒤에서부터 계산은 중앙값 $0.29$ULP, 최대 $4.8$ULP이다.
+
+\begin{figure}[htbp]
+\centering
+\begin{tikzpicture}
+\begin{semilogxaxis}[sdplot,xlabel={층의 수 $n$},ylabel={오차의 크기 (ULP)},xmin=5,xmax=150,ymin=0,ymax=16]
+\addplot[only marks,mark=*,mark size=0.6pt,black] table[x=n,y expr={abs(\thisrow{lentz})}]{figures/03/cf_errors.dat};
+\addlegendentry{Lentz}
+\addplot[only marks,mark=o,mark size=0.8pt,black!50] table[x=n,y expr={abs(\thisrow{backward})}]{figures/03/cf_errors.dat};
+\addlegendentry{뒤에서부터}
+\end{semilogxaxis}
+\end{tikzpicture}
+\caption{불완전 감마함수의 연분수를 앞에서부터(Lentz)와 뒤에서부터 계산한 오차($1700$개의 $(a,x)$).}
+\label{fig:cf-errors}
+\end{figure}
+
+\subsection{A Faster Two-Pass Scheme}
+
+\cref{alg:lentz}에서는 층마다 나눗셈 두 번($a_n/C$와 $1/D$)이 앞 층의 결과를 기다리는 사슬에 놓인다. 나눗셈은 곱셈보다 몇 배 느리므로 이 사슬이 속도를 정한다. stardust의 \code{cf\_fast}는 같은 두 단계를 나눗셈 없는 산술로 다시 짰다(\code{csrc/special/ops/cf\_fast.hpp}, \cref{alg:cf-fast}).
+
+\begin{algorithm}[htbp]
+\begin{algorithmic}[1]
+\Require $b_0$, 항 $(a_n,b_n)$, $\varepsilon=2^{-53}$
+\State $(A_{-1},A_0,B_{-1},B_0)\gets(1,b_0,0,1)$
+\For{$n=1,2,\dots$} \Comment{앞 단계: 층 수 찾기}
+  \State $A_n\gets\operatorname{fma}(b_n,A_{n-1},a_nA_{n-2})$, $B_n\gets\operatorname{fma}(b_n,B_{n-1},a_nB_{n-2})$
+  \State \textbf{if} $|A_nB_{n-1}-A_{n-1}B_n|\le\varepsilon|A_{n-1}B_n|$ \textbf{then break} \Comment{$|f_n/f_{n-1}-1|\le\varepsilon$}
+  \State 가장 큰 값이 $2^{\pm256}$을 벗어나면 넷을 같은 $2^e$로 나눈다 \Comment{정확한 척도 맞춤}
+\EndFor
+\State $P\gets0$, $Q\gets1$
+\For{$k=n+4,\dots,1$} \Comment{뒤 단계: $t_k=P/Q$}
+  \State $(P,Q)\gets(a_kQ,\ \operatorname{fma}(b_k,Q,P))$
+  \State $|Q|$가 $2^{\pm512}$을 벗어나면 $P,Q$를 같은 $2^e$로 나눈다
+\EndFor
+\State \Return $b_0+P/Q$ \Comment{나눗셈은 한 번}
+\end{algorithmic}
+\caption{나눗셈 없는 두 단계 연분수 계산 (stardust \code{cf\_fast})}
+\label{alg:cf-fast}
+\end{algorithm}
+
+앞 단계는 \cref{thm:cf-recurrence}의 점화식을 그대로 쓰되 넘침을 $2$의 거듭제곱으로 나누어 막는다. $A$와 $B$를 같은 수로 나누면 비 $A_n/B_n$은 변하지 않고 $2$의 거듭제곱으로 나누는 것은 지수만 바꾸므로 반올림이 없다. 4행은 Lentz의 멈춤 조건 $|C_nD_n-1|\le\varepsilon$을 곱의 꼴로 바꾸었다. 차 $A_nB_{n-1}-A_{n-1}B_n$은 \cref{thm:cf-recurrence}에서 $\pm a_1\cdots a_n$이어서 크기가 작은데 두 곱을 따로 반올림해 빼면 상쇄로 정확도를 잃는다. 이를 막으려고 4행은 곱 $A_{n-1}B_n$의 반올림 오차를 \code{fma}로 정확히 구해 빼서 차를 상대오차 $2u$ 이내로 얻는다(Kahan의 $2\times2$ 행렬식 계산법). 뒤 단계는 $t_k=a_k/(b_k+t_{k+1})$을 분수 $P_k/Q_k$로 들고 다니며 $P_k=a_kQ_{k+1}$, $Q_k=b_kQ_{k+1}+P_{k+1}$로 갱신하므로 마지막에 한 번만 나눈다. 단계마다 $P$와 $Q$가 한 번씩 반올림되어 나눗셈 꼴과 같은 크기의 오차가 같은 방식으로 줄어든다. \cref{fig:cf-errors}의 자료에서 이 $P/Q$ 꼴의 오차는 뒤에서부터 나누는 꼴과 중앙값과 최대가 같았다. 항의 크기가 $2^{200}$을 넘거나 멈춤 조건의 곱이 $2^{-900}$ 아래로 내려가면 척도 맞춤으로 감당할 수 없으므로 \code{lentz\_backward}로 넘긴다.
+
+
+\section{Testing Asymptotic Code}
+\label{sec:asym-testing}
+
+점근 근사를 시험하려면 무엇보다 오차가 보증된 참값이 있어야 한다. 이 장에서 나머지의 한계를 준 정리들이 그런 참값을 만들어 준다. \cref{thm:erfc-asym}, Euler--Maclaurin 나머지의 한계, \cref{thm:stirling-remainder}는 모두 ``나머지는 첫 버린 항(또는 다음 보정항) 이하''의 꼴이므로 급수를 정확한 유리수로 충분히 멀리 더하면 참값과 그 오차 한계를 함께 얻는다. 이 장의 측정은 모두 이 방법으로 참값을 만들었고 다중정밀도 부동소수점 라이브러리를 쓰지 않았다. 2장의 정수 시험(\cref{sec:int-testing})에서도 정해진 규칙을 큰 정수로 적은 느린 구현을 기준으로 삼았다. 그림의 자료는 알고리즘을 Python의 binary64 산술로 그대로 옮긴 코드로 만들었고 공개 저장소를 따로 받아 빌드한 stardust로 같은 점을 다시 재어 결과가 같은지 확인했다(\code{figures/03/library\_check.py}: \code{erfcx}는 비트까지 같고 \code{zeta}는 최대 오차가 같다). 무리수 상수 $\pi$는 Machin 공식 $\pi=16\arctan(1/5)-4\arctan(1/239)$을 정수 고정소수점으로 계산했다.
+
+참값이 마련되면 영역의 경계를 시험한다. 근사를 바꾸는 점($\operatorname{erfcx}$의 $x=1$과 $8$, $\ln\Gamma$의 $1/2$, $3/2$, $5/2$, $13$, $10^8$, Hurwitz 제타의 $q=10^8$)의 양쪽에서 두 근사가 모두 계약을 지키는지, 그리고 경계에서 값이 튀지 않는지를 본다. 극단값도 빼놓지 않는다. $x^2$이 넘치는 $\operatorname{erfcx}$(\cref{alg:erfcx-asym}의 $u=0$), $s-1$이 반올림으로 사라지는 제타, 항이 $2^{200}$을 넘는 연분수처럼 코드의 주석이 따로 다루는 경우마다 시험 하나를 둔다. 이 장의 측정은 \cref{tab:asym-tests}에 모았다.
+
+\begin{table}[htbp]
+\begin{sdtable}{colspec={lX}, row{1}={font=\small\bfseries}}
+\toprule
+대상 & 참값과 결과 \\
+\midrule
+$\operatorname{erfcx}$, $x\ge8$ & 급수를 $2^{-120}$까지 정확한 유리수로; $150$점에서 최대 $1.13$ULP(stardust와 비트까지 같음) \\
+이항 pmf & $\binom nkp^kq^{n-k}$를 정확한 유리수로; $n\le10^5$에서 안장점 꼴($D$ 정확) $2\times10^{-15}$ 이하, stardust $1.4\times10^{-16}$ 이하 \\
+Hurwitz 제타 & 정수 $s$에서 직접 합과 보정 $30$개를 정확한 유리수로; $s\le5$에서 $3.9$ULP, $s=10$에서 $9.1$ULP(stardust도 같음) \\
+Stirling 급수 & 가장 작은 항까지의 정확한 합; 맞춘 계수는 $x\ge13$에서 $10^{-18}$ 이하 \\
+연분수 & $3n+60$층의 정확한 유리수 역계산; Lentz $15.6$ULP, 뒤에서부터 $4.8$ULP \\
+증가 차수 & 직접 짠 정렬 둘의 시간, \cref{alg:loglog} \\
+\bottomrule
+\end{sdtable}
+\caption{이 장의 점근 근사를 시험한 방법과 결과(\code{figures/03/}의 스크립트).}
+\label{tab:asym-tests}
+\end{table}
+
+\section{APIs in This Chapter}
+\label{sec:asym-apis}
+
+이 장은 점근 해석의 도구와 그 도구를 옮긴 커널을 다루었다. 그 커널을 쓰는 stardust의 API와 설명한 곳은 \cref{tab:asym-apis}에 모았다. 각 특수함수의 나머지 영역과 전체 설계는 VIII권에서, 분포 함수의 나머지 경로는 X권에서 다룬다.
+
+\begin{table}[htbp]
+\begin{sdtable}{colspec={lXl}, row{1}={font=\small\bfseries}}
+\toprule
+API & 이 장에서 다룬 것 & 설명한 곳 \\
+\midrule
+\code{special.erfcx} & $x\ge8$의 점근 급수 $18$항, 겹친 계산 & \cref{alg:erfcx-asym} \\
+\code{special.gammaln}, \code{loggamma} & 영역 나누기, Stirling 급수(맞춘 계수, 복소 $8$항) & \cref{alg:lgamma} \\
+\code{special.digamma} & $x\ge10$의 점근 급수 & \cref{sec:stirling-series} \\
+\code{special.zeta}, \code{polygamma} & Hurwitz 제타의 Euler--Maclaurin, 비로 쓴 합 & \cref{alg:hurwitz} \\
+\code{special.gammainc}, \code{gammaincc}, \code{betainc} & 연분수: Lentz, 뒤에서부터, 나눗셈 없는 두 단계 & \cref{alg:lentz,alg:lentz-backward,alg:cf-fast} \\
+\code{stats.Binomial}, \code{NegativeBinomial}, \code{Poisson}의 \code{pmf} & 안장점 꼴, 오차 예산, $\mu(t)$의 급수 & \cref{alg:binom-saddle}, \cref{prop:saddle-budget} \\
+\code{special.gammainc}, \code{gammaincc}의 앞 인수 & Temme의 꼴, double-double $\mu$ & \cref{alg:gamma-prefix,alg:log1pmx} \\
+\code{special.betaln} & 큰 인자의 Stirling 꼴 & \cref{sec:stirling-series} \\
+\code{special.expi}, Bessel 함수의 Hankel 영역 & 적응형 최적 절단 & \cref{alg:adaptive-trunc} \\
+특수함수의 병렬 분할 & 측정한 원소당 비용 & \cref{sec:asym-notation} \\
+\bottomrule
+\end{sdtable}
+\caption{이 장의 근사를 쓰는 stardust API.}
+\label{tab:asym-apis}
+\end{table}
+
+\section{Concluding Remarks}
+
+이 장의 이론은 ``잘린 근사와 그 나머지''라는 한 가지 모양을 되풀이했다. 점근 급수, Laplace의 방법, Euler--Maclaurin 공식, Stirling 급수, 연분수의 근사분수가 모두 유한한 계산과 나머지의 한계로 이루어지고 좋은 정리는 나머지를 첫 버린 항처럼 계산할 수 있는 양으로 눌러 준다. 알고리즘은 그 한계에서 몇 항을 더할지, 어떤 순서로 더할지, 어디서 다른 근사로 넘어갈지를 정한다. 구현에서는 반올림과 계산 비용이 끼어든다. 겹친 계산은 작은 항부터 모아 오차를 묶어 둔다. 안장점 꼴은 큰 수끼리의 상쇄를 식에서 없애고 뒤에서부터 계산하는 연분수는 앞 층의 오차를 줄여 간다. 다음 장에서는 이 책의 선형대수 부분이 쓰는 행렬 해석의 도구를 정리한다.
+
+\chapterreferences

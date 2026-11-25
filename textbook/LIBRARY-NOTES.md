@@ -44,3 +44,9 @@
 
 - 위치: `csrc/random/random.cpp` `offset_of`(66행 근처): 원소 i마다 `i % shape[d]`, `i /= shape[d]`를 축마다 한다. 범위가 배열(브로드캐스트 뷰)인 `integers`가 원소마다 low와 high에 대해 두 번 부른다.
 - 제안(고치지 않음, 측정 전): shape은 호출 동안 고정이므로 축마다 마법수(2장 Algorithm alg:magic의 부호 없는 판)를 한 번 구해 쓰거나, 다차원 반복자로 오프셋을 누적하기. 이득은 재 보지 않았다.
+
+## special: Hurwitz 제타의 직접 합에서 a += 1의 반올림이 s배로 커진다 (2026-11-25, 3장 측정)
+
+- 위치: `csrc/special/ops/zeta.hpp` `euler_maclaurin`(그리고 같은 꼴의 `hurwitz_relative`, `hurwitz_scaled`)의 `a += 1.0; b = std::pow(a, -s);`. q가 정수가 아니면 q + i가 반올림되고, a의 상대오차 δ가 a^-s에서 sδ가 된다.
+- 관찰(`textbook/figures/03/hurwitz_fix.py`, 정확한 유리수 참값, q ∈ (0.01, 100] 무작위 300점; 공개 저장소 복제본의 `sd.special.zeta`도 같은 최대 오차): s = 10에서 9.11ULP, s = 20에서 8.08ULP. 합의 낮은 부분을 two_sum으로 들고 다니며 b ← b (1 − s·lo/a)로 일차 보정하면 3.49, 3.38ULP. s = 2, 3에서는 변화 없음.
+- 제안(고치지 않음): 위의 일차 보정, 또는 a를 double-double로 두기. 결과 비트가 바뀌므로 골든 갱신 필요.
