@@ -434,7 +434,7 @@ ab\le\frac{a^p}p+\frac{b^q}q .
 If $a=0$ or $b=0$ there is nothing to prove. Otherwise apply \cref{thm:weighted-amgm} to $x_1=a^p$, $x_2=b^q$ with the weights $1/p$ and $1/q$: $(a^p)^{1/p}(b^q)^{1/q}=ab$, by \cref{thm:exponent-laws}\,(ii).
 \end{proof}
 
-For $p=q=2$ Young's inequality is $ab\le(1/2)(a^2+b^2)$, which follows from $(a-b)^2\ge0$. In general it is the key step in the proof of H\"older's inequality $\sum|a_kb_k|\le(\sum|a_k|^p)^{1/p}(\sum|b_k|^q)^{1/q}$, which generalises the Cauchy--Schwarz inequality and underlies the $L^p$ spaces of Volume~II~\cite{hardy1952inequalities}.
+For $p=q=2$ Young's inequality is $ab\le(a^2+b^2)/2$, which follows from $(a-b)^2\ge0$. In general it is the key step in the proof of H\"older's inequality $\sum|a_kb_k|\le(\sum|a_k|^p)^{1/p}(\sum|b_k|^q)^{1/q}$, which generalises the Cauchy--Schwarz inequality and underlies the $L^p$ spaces of Volume~II~\cite{hardy1952inequalities}.
 
 \subsection{Growth with Real Exponents}
 
@@ -580,14 +580,14 @@ By \eqref{eq:exp-remainder}, the partial sum of degree $n$ of the exponential se
 
 \begin{proposition}[Argument reduction for $\exp$]
 \label{prop:exp-reduction}
-Every real $x$ can be written as $x=k\ln2+r$ with an integer $k$ and $|r|\le(1/2)\ln2=0.3465\ldots$, namely with $k$ an integer nearest to $x/\ln2$, and then $e^x=2^ke^r$. For $|r|\le(1/2)\ln2$,
+Every real $x$ can be written as $x=k\ln2+r$ with an integer $k$ and $|r|\le(\ln2)/2=0.3465\ldots$, namely with $k$ an integer nearest to $x/\ln2$, and then $e^x=2^ke^r$. For $|r|\le(\ln2)/2$,
 \[
 \Bigl|e^r-\sum_{j=0}^{13}\frac{r^j}{j!}\Bigr|<8.3\times10^{-18}\,e^r<u\,e^r .
 \]
 \end{proposition}
 
 \begin{proof}
-If $k$ is an integer nearest to $x/\ln2$, then $|x/\ln2-k|\le1/2$, so $r\coloneqq x-k\ln2$ satisfies $|r|\le(1/2)\ln2$, and $e^x=e^{k\ln2}e^r=2^ke^r$ by the functional equation and \cref{prop:power-consistent}. By \eqref{eq:exp-remainder} with $n=13$, the error is at most $e^{|r|}|r|^{14}/14!$, and $e^{|r|}\le e^{2|r|}e^r\le2e^r$ because $e^{2|r|}\le e^{\ln2}=2$. Hence the relative error is at most $2(\ln2/2)^{14}/14!=8.27\ldots\times10^{-18}$.
+If $k$ is an integer nearest to $x/\ln2$, then $|x/\ln2-k|\le1/2$, so $r\coloneqq x-k\ln2$ satisfies $|r|\le(\ln2)/2$, and $e^x=e^{k\ln2}e^r=2^ke^r$ by the functional equation and \cref{prop:power-consistent}. By \eqref{eq:exp-remainder} with $n=13$, the error is at most $e^{|r|}|r|^{14}/14!$, and $e^{|r|}\le e^{2|r|}e^r\le2e^r$ because $e^{2|r|}\le e^{\ln2}=2$. Hence the relative error is at most $2(\ln2/2)^{14}/14!=8.27\ldots\times10^{-18}$.
 \end{proof}
 
 In binary floating-point arithmetic the multiplication by $2^k$ is exact, apart from overflow and underflow: it only changes the exponent of the number (Volume~V). The whole computation of $e^x$ is thus reduced to a fixed polynomial of degree $13$ on a fixed short interval. \Cref{alg:exp} states the method; it evaluates the polynomial by Horner's scheme (\cref{ch:numbers}) in the nested form
@@ -601,7 +601,7 @@ In binary floating-point arithmetic the multiplication by $2^k$ is exact, apart 
 \Ensure an approximation of $e^x$ with relative error less than $u$, in exact arithmetic
 \Name{Exp}{x}
 \State $k\gets$ an integer nearest to $x/\ln2$
-\State $r\gets x-k\ln2$ \Comment{$|r|\le(1/2)\ln2$}
+\State $r\gets x-k\ln2$ \Comment{$|r|\le(\ln2)/2$}
 \State $s\gets1$
 \For{$j=13,12,\ldots,1$}
   \State $s\gets1+s\cdot r/j$ \Comment{Horner's scheme}
@@ -952,7 +952,7 @@ The line $u\tan x$ and the circle $\sqrt{1-u^2}$ cross at $u=\cos x$, because $u
 \[
 \int_0^1g=\int_0^{\cos x}u\tan x\,du+\int_{\cos x}^1\sqrt{1-u^2}\,du .
 \]
-The first integral is $(1/2)\cos^2x\tan x=(1/2)\sin x\cos x$. In the second, the substitution $u=\cos t$ with $t\in[0,x]$ and the double-angle formula $\sin^2t=(1/2)(1-\cos2t)$ give
+The first integral is $(\cos^2x\tan x)/2=(\sin x\cos x)/2$. In the second, the substitution $u=\cos t$ with $t\in[0,x]$ and the double-angle formula $\sin^2t=(1-\cos2t)/2$ give
 \[
 \int_{\cos x}^1\sqrt{1-u^2}\,du=\int_0^x\sin^2t\,dt=\frac x2-\frac{\sin2x}4=\frac x2-\frac12\sin x\cos x .
 \]
@@ -983,7 +983,7 @@ The sum is $x/2$. The same substitution with $x=\pi/2$ gives $\int_0^1\sqrt{1-u^
 \end{tikzpicture}}{The sector of the unit disc between the angles $0$ and $x$ (shaded) is the region under the graph of $g(u)=\min(u\tan x,\sqrt{1-u^2})$: the line through the origin and $P$ up to $u=\cos x$, and the circle from there to $u=1$. Its area is $x/2$, and the arc from $(1,0)$ to $P=(\cos x,\sin x)$ has length $x$ (\cref{prop:arc-length,prop:sector-area}); here $x=50^\circ$.\label{fig:sector}}
 \end{figure}
 
-\Cref{fig:sector} shows the decomposition. By the substitution $u=\rho v$, the disc of radius $\rho$ has area $\pi\rho^2$ and circumference $2\pi\rho$, so that the area of a disc equals that of a triangle whose height is the radius and whose base is the circumference, $(1/2)\cdot\rho\cdot2\pi\rho$; this is a theorem of Archimedes~\cite{heath1897archimedes}, and the two meanings of $\pi$, as the ratio of circumference to diameter and as the ratio of area to the square of the radius, agree. The geometric proof of \cref{lem:sin-bounds} is now rigorous as well: the triangle $OAP$, the sector and the triangle $OAT$ of \cref{fig:sin-area} are the regions under three graphs, each lying below the next, with integrals $(1/2)\sin x$, $(1/2)x$ and $(1/2)\tan x$, and the monotonicity of the integral (\cref{thm:integral-monotone}) compares them.
+\Cref{fig:sector} shows the decomposition. By the substitution $u=\rho v$, the disc of radius $\rho$ has area $\pi\rho^2$ and circumference $2\pi\rho$, so that the area of a disc equals that of a triangle whose height is the radius and whose base is the circumference, $\rho\cdot2\pi\rho/2$; this is a theorem of Archimedes~\cite{heath1897archimedes}, and the two meanings of $\pi$, as the ratio of circumference to diameter and as the ratio of area to the square of the radius, agree. The geometric proof of \cref{lem:sin-bounds} is now rigorous as well: the triangle $OAP$, the sector and the triangle $OAT$ of \cref{fig:sin-area} are the regions under three graphs, each lying below the next, with integrals $(\sin x)/2$, $x/2$ and $(\tan x)/2$, and the monotonicity of the integral (\cref{thm:integral-monotone}) compares them.
 
 \subsection{The Assumptions as Theorems}
 
@@ -1414,7 +1414,7 @@ for real $z$ these are the functions defined before, by \cref{cor:euler-conseque
 \[
 \cos(iz)=\cosh z,\qquad\sin(iz)=i\sinh z,\qquad\cosh(iz)=\cos z,\qquad\sinh(iz)=i\sin z .
 \]
-Every identity between the trigonometric functions that follows from the addition formulas therefore becomes an identity between the hyperbolic functions when $\cos$ is replaced by $\cosh$ and $\sin$ by $i\sinh$, so that a product of two sines changes its sign. \Cref{tab:trig-hyperbolic} sets the two families side by side. The formulas also show that the complex sine and cosine are unbounded: $\cos(iy)=\cosh y$ grows like $(1/2)e^{|y|}$, so the bound $|\sin x|\le1$ holds on the real line only.
+Every identity between the trigonometric functions that follows from the addition formulas therefore becomes an identity between the hyperbolic functions when $\cos$ is replaced by $\cosh$ and $\sin$ by $i\sinh$, so that a product of two sines changes its sign. \Cref{tab:trig-hyperbolic} sets the two families side by side. The formulas also show that the complex sine and cosine are unbounded: $\cos(iy)=\cosh y$ grows like $e^{|y|}/2$, so the bound $|\sin x|\le1$ holds on the real line only.
 
 \begin{table}
 \sdfloat{%
@@ -1470,7 +1470,7 @@ Let $t>0$, $P\coloneqq(\cosh t,\sinh t)$ and $P'\coloneqq(\cosh t,0)$. The regio
 \end{proposition}
 
 \begin{proof}
-The region is the triangle $OP'P$ without the region under the hyperbola $y=\sqrt{u^2-1}$ over $[1,\cosh t]$; the latter lies inside the triangle, because $u^2-1<u^2\tanh^2t$ is equivalent to $u^2<\cosh^2t$. The triangle has the area $(1/2)\cosh t\sinh t$. In the integral $\int_1^{\cosh t}\sqrt{u^2-1}\,du$, substitute $u=\cosh s$ with $s\in[0,t]$; since $\sqrt{\cosh^2s-1}=\sinh s$ for $s\ge0$ and $\sinh^2s=(1/2)(\cosh2s-1)$,
+The region is the triangle $OP'P$ without the region under the hyperbola $y=\sqrt{u^2-1}$ over $[1,\cosh t]$; the latter lies inside the triangle, because $u^2-1<u^2\tanh^2t$ is equivalent to $u^2<\cosh^2t$. The triangle has the area $(\cosh t\sinh t)/2$. In the integral $\int_1^{\cosh t}\sqrt{u^2-1}\,du$, substitute $u=\cosh s$ with $s\in[0,t]$; since $\sqrt{\cosh^2s-1}=\sinh s$ for $s\ge0$ and $\sinh^2s=(\cosh2s-1)/2$,
 \[
 \int_1^{\cosh t}\sqrt{u^2-1}\,du=\int_0^t\sinh^2s\,ds=\frac{\sinh2t}4-\frac t2=\frac12\sinh t\cosh t-\frac t2 .
 \]
@@ -1507,7 +1507,7 @@ The proposition explains the names of the functions and the analogy of \cref{tab
 \node[font=\scriptsize, anchor=south west] at (axis cs:2.17,0.02) {$\cosh t$};
 \end{axis}
 \end{tikzpicture}}
-\caption{The hyperbolic functions. (A) The hyperbolic cosine is even and at least $1$, the hyperbolic sine is odd and increasing, and the hyperbolic tangent (grey) increases from $-1$ to $1$ (dotted lines); for large $|x|$, $\cosh x$ and $|\sinh x|$ are both close to $(1/2)e^{|x|}$. (B) The point $P=(\cosh t,\sinh t)$ lies on the hyperbola $x^2-y^2=1$, and the shaded hyperbolic sector has the area $t/2$ (\cref{prop:hyperbolic-sector}); here $t=1.4$.}
+\caption{The hyperbolic functions. (A) The hyperbolic cosine is even and at least $1$, the hyperbolic sine is odd and increasing, and the hyperbolic tangent (grey) increases from $-1$ to $1$ (dotted lines); for large $|x|$, $\cosh x$ and $|\sinh x|$ are both close to $e^{|x|}/2$. (B) The point $P=(\cosh t,\sinh t)$ lies on the hyperbola $x^2-y^2=1$, and the shaded hyperbolic sector has the area $t/2$ (\cref{prop:hyperbolic-sector}); here $t=1.4$.}
 \label{fig:hyperbolic}
 \end{figure}
 

@@ -29,7 +29,7 @@ Some are defined \term{recursively}, each term being computed from the previous 
 x_0\coloneqq1,\qquad x_{k+1}\coloneqq\frac12\Bigl(x_k+\frac2{x_k}\Bigr)\quad(k\in\mathbb N)
 \label{eq:heron-def}
 \end{equation}
-produces $x_1=3/2$, $x_2=17/12$, $x_3=577/408$, and so on; the recursion theorem (\cref{thm:recursion}), applied to the set $X=(0,\infty)$ and the function $g(x)=(1/2)(x+2/x)$, which maps positive numbers to positive numbers, guarantees that such a rule defines exactly one sequence, and all its terms are positive, so that the division is always possible. Others are sums of a growing number of terms, such as the \term{partial sums} $s_n\coloneqq\sum_{k=1}^n1/k^2$ of an infinite series. Finally, every iterative algorithm defines a sequence: the approximations it produces after $1,2,3,\ldots$ steps.
+produces $x_1=3/2$, $x_2=17/12$, $x_3=577/408$, and so on; the recursion theorem (\cref{thm:recursion}), applied to the set $X=(0,\infty)$ and the function $g(x)=(x+2/x)/2$, which maps positive numbers to positive numbers, guarantees that such a rule defines exactly one sequence, and all its terms are positive, so that the division is always possible. Others are sums of a growing number of terms, such as the \term{partial sums} $s_n\coloneqq\sum_{k=1}^n1/k^2$ of an infinite series. Finally, every iterative algorithm defines a sequence: the approximations it produces after $1,2,3,\ldots$ steps.
 
 A sequence can be pictured in two ways. One may mark the terms $a_0,a_1,a_2,\ldots$ as points on the real line, which shows where the terms lie but not their order, or one may plot the points $(n,a_n)$ in the plane, the graph of the function $n\mapsto a_n$. The second picture is usually more informative, and \cref{fig:eps-band} uses it.
 
@@ -406,7 +406,7 @@ The recursion \eqref{eq:heron-def} is an ancient method for computing square roo
 
 \begin{proposition}[Heron's method]
 \label{prop:heron}
-Let $x_0>0$ and $x_{k+1}\coloneqq(1/2)(x_k+2/x_k)$ for $k\in\mathbb N$. Then $x_k>0$ for all $k$, the sequence $(x_k)_{k\ge1}$ is decreasing and bounded below by $\sqrt2$, and $x_k\to\sqrt2$. Moreover,
+Let $x_0>0$ and $x_{k+1}\coloneqq(x_k+2/x_k)/2$ for $k\in\mathbb N$. Then $x_k>0$ for all $k$, the sequence $(x_k)_{k\ge1}$ is decreasing and bounded below by $\sqrt2$, and $x_k\to\sqrt2$. Moreover,
 \begin{equation}
 x_{k+1}-\sqrt2=\frac{(x_k-\sqrt2)^2}{2x_k}\qquad(k\in\mathbb N).
 \label{eq:heron-error}
@@ -422,7 +422,7 @@ Its right side is nonnegative, so $x_k\ge\sqrt2$ for every $k\ge1$. (This is als
 \[
 x_k-x_{k+1}=x_k-\frac{x_k^2+2}{2x_k}=\frac{x_k^2-2}{2x_k}\ge0 ,
 \]
-so the sequence decreases from $k=1$ on. By the monotone convergence theorem, applied to $(x_k)_{k\ge1}$, it converges to some $L\ge\sqrt2$. By \cref{prop:seq-basic}\,(iii), the shifted sequence $(x_{k+1})$ converges to $L$ as well, and by the limit laws, $(1/2)(x_k+2/x_k)\to(1/2)(L+2/L)$, where $L\ne0$. Since the two sequences are the same, uniqueness of limits gives $L=(1/2)(L+2/L)$, that is, $L^2=2$. As $L>0$, $L=\sqrt2$.
+so the sequence decreases from $k=1$ on. By the monotone convergence theorem, applied to $(x_k)_{k\ge1}$, it converges to some $L\ge\sqrt2$. By \cref{prop:seq-basic}\,(iii), the shifted sequence $(x_{k+1})$ converges to $L$ as well, and by the limit laws, $(x_k+2/x_k)/2\to(L+2/L)/2$, where $L\ne0$. Since the two sequences are the same, uniqueness of limits gives $L=(L+2/L)/2$, that is, $L^2=2$. As $L>0$, $L=\sqrt2$.
 \end{proof}
 
 The proof has the structure of almost every convergence proof for an iteration $x_{k+1}=g(x_k)$: first show that the limit exists, then pass to the limit in the recursion to find an equation that the limit must satisfy, here $L=g(L)$. The first step cannot be skipped. The recursion $x_{k+1}=-x_k$ with $x_0=1$ has the equation $L=-L$, whose only solution is $L=0$, but the sequence $1,-1,1,\ldots$ does not converge; passing to the limit in a recursion only shows what the limit must be \emph{if} there is one.
@@ -777,7 +777,7 @@ Consequently $|\sin x|\le|x|$ for every real number $x$, with equality only for 
 \end{lemma}
 
 \begin{proof}
-Let $O=(0,0)$, $A=(1,0)$, $P=(\cos x,\sin x)$ and $T=(1,\tan x)$, as in \cref{fig:sin-area}. The point $P$ lies on the unit circle at angle $x$, and $T$ is the point where the ray from $O$ through $P$ meets the vertical line through $A$, since $T=P/\cos x$. The triangle $OAP$ lies inside the sector $OAP$, which lies inside the triangle $OAT$, and each region is strictly smaller than the next. The triangle $OAP$ has base $OA=1$ and height $\sin x$, the sector has area $x/2$ by \cref{asm:trig-geometry}\,(iii), and the triangle $OAT$ has base $1$ and height $\tan x$. Hence $(1/2)\sin x<(1/2)x<(1/2)\tan x$. (Besides \cref{asm:trig-geometry}\,(iii), the argument uses two further facts of school geometry: the area of a triangle is half its base times its height, and a region that lies inside another and misses part of it has the smaller area. \Cref{ch:transcendental} proves the inequality $\sin x<x<\tan x$ directly from the definitions.)
+Let $O=(0,0)$, $A=(1,0)$, $P=(\cos x,\sin x)$ and $T=(1,\tan x)$, as in \cref{fig:sin-area}. The point $P$ lies on the unit circle at angle $x$, and $T$ is the point where the ray from $O$ through $P$ meets the vertical line through $A$, since $T=P/\cos x$. The triangle $OAP$ lies inside the sector $OAP$, which lies inside the triangle $OAT$, and each region is strictly smaller than the next. The triangle $OAP$ has base $OA=1$ and height $\sin x$, the sector has area $x/2$ by \cref{asm:trig-geometry}\,(iii), and the triangle $OAT$ has base $1$ and height $\tan x$. Hence $(\sin x)/2<x/2<(\tan x)/2$. (Besides \cref{asm:trig-geometry}\,(iii), the argument uses two further facts of school geometry: the area of a triangle is half its base times its height, and a region that lies inside another and misses part of it has the smaller area. \Cref{ch:transcendental} proves the inequality $\sin x<x<\tan x$ directly from the definitions.)
 
 For the consequence, the case $0<x<\pi/2$ has just been shown, with strict inequality. If $x\ge\pi/2$, then $|\sin x|\le1<\pi/2\le x$ by \cref{asm:trig}\,(i) and $\pi>3$. For $x<0$ apply these cases to $-x$ and use $|\sin(-x)|=|\sin x|$; and $\sin0=0$.
 \end{proof}
@@ -802,7 +802,7 @@ For the consequence, the case $0<x<\pi/2$ has just been shown, with strict inequ
 \node[right] at (1,0.42) {$\tan x$};
 \node[left] at (0.766,0.24) {$\sin x$};
 \node[below] at (0.766,0) {$\cos x$};
-\end{tikzpicture}}{The inequality $\sin x<x<\tan x$ for $0<x<\pi/2$, here $x=40^\circ$. The triangle $OAP$, of area $(1/2)\sin x$, lies inside the circular sector $OAP$ (shaded), of area $(1/2)x$, which lies inside the triangle $OAT$, of area $(1/2)\tan x$.\label{fig:sin-area}}
+\end{tikzpicture}}{The inequality $\sin x<x<\tan x$ for $0<x<\pi/2$, here $x=40^\circ$. The triangle $OAP$, of area $(\sin x)/2$, lies inside the circular sector $OAP$ (shaded), of area $x/2$, which lies inside the triangle $OAT$, of area $(\tan x)/2$.\label{fig:sin-area}}
 \end{figure}
 
 \begin{proposition}
@@ -870,7 +870,7 @@ If $a$ is an accumulation point of $D$, they are also equivalent to
 The equivalence of (i) and (ii) is proved exactly as \cref{thm:sequential-limit}; the only difference is that the sequence may now take the value $a$, at which $|f(x_n)-f(a)|=0$. If $a$ is an accumulation point, (i) and (iii) are equivalent because \eqref{eq:continuity} and \eqref{eq:function-limit} with $L=f(a)$ differ only at $x=a$, where \eqref{eq:continuity} holds trivially.
 \end{proof}
 
-Form (ii) says that continuous functions commute with limits: $f(\lim x_n)=\lim f(x_n)$. This is how continuity is used most often. We used it already, without saying so, when we passed to the limit in Heron's recursion: the map $x\mapsto(1/2)(x+2/x)$ is continuous at $L>0$, by the results below.
+Form (ii) says that continuous functions commute with limits: $f(\lim x_n)=\lim f(x_n)$. This is how continuity is used most often. We used it already, without saying so, when we passed to the limit in Heron's recursion: the map $x\mapsto(x+2/x)/2$ is continuous at $L>0$, by the results below.
 
 Constant functions and the identity $x\mapsto x$ are continuous, with any $\delta$ and with $\delta=\varepsilon$. The absolute value is continuous, since $\bigl||x|-|a|\bigr|\le|x-a|$ by the reverse triangle inequality, so $\delta=\varepsilon$ works. The square root is continuous on $[0,\infty)$: at $a=0$ this was shown in \cref{sec:function-limits}, and for $a>0$,
 \[
@@ -927,7 +927,7 @@ The same argument gives a rule for limits of compositions: if $\lim_{x\to a}f(x)
 \end{equation}
 Continuity of $g$ at $b$ cannot be weakened to the existence of $\lim_{y\to b}g(y)$. Let $f(x)=0$ for all $x$, and let $g(0)=1$ and $g(y)=0$ for $y\ne0$. Then $\lim_{x\to0}f(x)=0$ and $\lim_{y\to0}g(y)=0$, but $g(f(x))=1$ for every $x$, so $\lim_{x\to0}g(f(x))=1$.
 
-With these rules, continuity can be read off from the way a function is built. The functions $\sqrt{1+x^2}$, $\sin(x^2)$, $|\sin x|$ and $1/(2+\cos x)$ are continuous on $\mathbb R$. The maximum $\max(f,g)=(1/2)(f+g+|f-g|)$ of two continuous functions is continuous, by \cref{prop:max}, and so is their minimum. The function $x\sin(1/x)$ is continuous on $\mathbb R\setminus\{0\}$, and since its limit at $0$ is $0$, the function defined as $x\sin(1/x)$ for $x\ne0$ and as $0$ at $0$ is continuous on all of $\mathbb R$, although its graph oscillates infinitely often near $0$.
+With these rules, continuity can be read off from the way a function is built. The functions $\sqrt{1+x^2}$, $\sin(x^2)$, $|\sin x|$ and $1/(2+\cos x)$ are continuous on $\mathbb R$. The maximum $\max(f,g)=(f+g+|f-g|)/2$ of two continuous functions is continuous, by \cref{prop:max}, and so is their minimum. The function $x\sin(1/x)$ is continuous on $\mathbb R\setminus\{0\}$, and since its limit at $0$ is $0$, the function defined as $x\sin(1/x)$ for $x\ne0$ and as $0$ at $0$ is continuous on all of $\mathbb R$, although its graph oscillates infinitely often near $0$.
 
 The following simple property of continuous functions is used repeatedly in later proofs.
 

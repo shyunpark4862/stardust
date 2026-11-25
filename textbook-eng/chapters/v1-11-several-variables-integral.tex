@@ -162,7 +162,7 @@ The rectangle is closed and bounded, so $f$ is bounded and attains its extreme v
 \[
 U(f,P)-L(f,P)=\sum_{j,k}(M_{jk}-m_{jk})\operatorname{vol}(R_{jk})<\frac\varepsilon{\operatorname{vol}(R)}\sum_{j,k}\operatorname{vol}(R_{jk})=\varepsilon ,
 \]
-and $f$ is integrable by \cref{thm:riemann-criterion-2d}. In the Lipschitz case, $M_{jk}-m_{jk}\le K\|\mathbf s-\mathbf t\|\le\sqrt2\,K\|P\|$, and the same computation gives the bound.
+and $f$ is integrable by \cref{thm:riemann-criterion-2d}. In the Lipschitz case, $M_{jk}-m_{jk}\le K\|\mathbf s-\mathbf t\|\le\sqrt2\,K\|P\|$, and the same computation yields the bound.
 \end{proof}
 
 The rules for computing with integrals also carry over. We collect them; the proofs of \cref{sec:integrable-functions,sec:integral-properties} apply with subrectangles in place of subintervals, and the oscillation of $f$ on a subrectangle in place of that on a subinterval.
@@ -262,7 +262,7 @@ L(f,P)\le L(\underline F,P_1)\le U(\underline F,P_1)\le U(\overline F,P_1)\le U(
 and in the same way $L(f,P)\le L(\overline F,P_1)\le U(\overline F,P_1)\le U(f,P)$. Since $f$ is integrable, \cref{thm:riemann-criterion-2d} provides, for every $\varepsilon>0$, a partition $P$ with $U(f,P)-L(f,P)<\varepsilon$, and then $U(\underline F,P_1)-L(\underline F,P_1)<\varepsilon$. So $\underline F$ is integrable by Riemann's criterion, and its integral lies between $L(f,P)$ and $U(f,P)$ for every $P$, as does $\iint_Rf$; hence the two are equal. The same holds for $\overline F$. This proves (i) and (ii). The argument is symmetric in $x$ and $y$, and a continuous function is integrable on $R$ by \cref{thm:continuous-integrable-2d}, with continuous, hence integrable, sections. This proves (iii).
 \end{proof}
 
-The theorem is named after Guido Fubini, who proved a general version for the Lebesgue integral in 1907~\cite{fubini1907}. For continuous functions the interchange of the order of integration had been used freely since the eighteenth century, and Cauchy observed in a memoir of 1814 that it can fail for integrands that are not bounded; Hawkins tells this history~\cite{hawkins1975}. Part~(ii) is needed only rarely, but it shows that the hypothesis on the sections in (i) is a convenience, not a restriction: an integrable function can have finitely many sections that are not integrable, and the theorem copes with them.
+The theorem is named after Guido Fubini, who proved a general version for the Lebesgue integral in 1907~\cite{fubini1907}. For continuous functions the interchange of the order of integration had been used freely since the eighteenth century, and Cauchy observed in a memoir of 1814 that it can fail for integrands that are not bounded; Hawkins tells this history~\cite{hawkins1975}. Part~(ii) is needed only rarely, but it shows that the hypothesis on the sections in (i) is a convenience, not a restriction: an integrable function can have sections that are not integrable, even infinitely many of them, and the theorem copes with them.
 
 The theorem reduces double integrals to single integrals, which the fundamental theorem of calculus evaluates. For $f(x,y)=x^2+xy$ on $R=[0,1]\times[0,2]$,
 \[
@@ -278,7 +278,7 @@ In the inner integral the other variable is a constant, which we indicate by wri
 \]
 whereas integrating first with respect to $x$ requires an integration by parts and leads to an inner integral, $e^y/y-(e^y-1)/y^2$, whose integral over $[0,1]$ is not obvious at all. The theorem guarantees that it is $e-2$ as well.
 
-When the integrand is a product of a function of $x$ and a function of $y$, the double integral is a product of single integrals. This simple fact is the key to the Gaussian integral of \cref{sec:gaussian}.
+When the integrand is a product of a function of $x$ and a function of $y$, the double integral is a product of single integrals. The evaluation of the Gaussian integral in \cref{sec:gaussian} rests on this simple fact.
 
 \begin{corollary}[Products]
 \label{cor:product-integral}
@@ -315,7 +315,7 @@ by \cref{prop:arctan-integral}. The value of the inner integral at the single po
 The two iterated integrals differ. There is no contradiction with Fubini's theorem: $f$ is unbounded near the origin, since $f(x,0)=1/x^2$, so it is not integrable on $[0,1]^2$ in the sense of \cref{def:double-integral}, whatever value is given to it at the origin. The positive values near the $x$-axis and the negative values near the $y$-axis are both so large that their total contributions are infinite, and the order of integration decides which of the two infinite quantities is cut off first. \Cref{sec:improper-multiple} returns to this example and shows that the trouble disappears for integrands whose absolute value has a finite integral.
 
 \begin{note}{The Lebesgue integral and the Fubini--Tonelli theorem}
-For the Lebesgue integral of Volume~II, Fubini's theorem takes a form that is both simpler and more general. Tonelli's theorem says that for every nonnegative measurable function on a product of two intervals, or of two $\sigma$-finite measure spaces, the double integral and the two iterated integrals are equal, the common value possibly being $+\infty$~\cite{tonelli1909}. Fubini's theorem says that the same holds for every function whose absolute value has a finite double integral~\cite{fubini1907}. Together they give a practical rule: to interchange the order of integration, first check, by integrating $|f|$ in either order, that $\iint|f|<\infty$. In the example above $\iint|f|=\infty$, and the rule correctly forbids the interchange. Folland~\cite[Sect.~2.5]{folland1999} gives a modern proof; the Riemann version above is a special case. The rule is equally important for sums, which are integrals with respect to counting measure: a double series of nonnegative terms, or an absolutely convergent one, may be summed in either order.
+For the Lebesgue integral of Volume~II, Fubini's theorem takes a form that is both simpler and more general. Tonelli's theorem says that for every nonnegative measurable function on a product of two intervals, or of two $\sigma$-finite measure spaces, the double integral and the two iterated integrals are equal, the common value possibly being $+\infty$~\cite{tonelli1909}. Fubini's theorem says that the same holds for every function whose absolute value has a finite double integral~\cite{fubini1907}. Together they give a practical rule: to interchange the order of integration, first check, by integrating $|f|$ in either order, that $\iint|f|<\infty$. In the example above $\iint|f|=\infty$, and the rule correctly forbids the interchange. A modern proof is in Folland~\cite[Sect.~2.5]{folland1999}; the Riemann version above is a special case. The rule is equally important for sums, which are integrals with respect to counting measure: a double series of nonnegative terms, or an absolutely convergent one, may be summed in either order.
 \end{note}
 
 \subsection{Differentiating under the Integral Sign}
@@ -692,7 +692,7 @@ Consequently, two such sets with $\operatorname{vol}_{n-1}(S_t)=\operatorname{vo
 \end{theorem}
 
 \begin{proof}
-Let $S\subseteq[a,b]\times B$ with a box $B\subseteq\mathbb R^{n-1}$. The section of $\mathbf 1_S$ at $t$ is $\mathbf 1_{S_t}$, which is integrable on $B$ with integral $\operatorname{vol}_{n-1}(S_t)$. \Cref{thm:fubini-n}, with $p=1$ and $q=n-1$, gives the claim.
+Let $S\subseteq[a,b]\times B$ with a box $B\subseteq\mathbb R^{n-1}$. The section of $\mathbf 1_S$ at $t$ is $\mathbf 1_{S_t}$, which is integrable on $B$ with integral $\operatorname{vol}_{n-1}(S_t)$. The claim is \cref{thm:fubini-n} with $p=1$ and $q=n-1$.
 \end{proof}
 
 \Cref{fig:slicing} illustrates the theorem as well as Fubini's: the volume is the integral of the areas of the slices. A slanted pile of coins has the same volume as a straight one, because each coin keeps its area when it is pushed sideways.
@@ -710,14 +710,14 @@ Let $f\ge0$ be continuous on $[a,b]$, and let $S\coloneqq\{(x,y,z): a\le x\le b,
 \end{proposition}
 
 \begin{proof}
-The set $S$ is the elementary region of \cref{cor:triple-elementary} over the closed region $D\coloneqq\{(x,y): a\le x\le b,\ -f(x)\le y\le f(x)\}$ of the $(x,y)$-plane, which is $y$-simple and hence Jordan measurable, between the graphs of the continuous functions $\mp\sqrt{f(x)^2-y^2}$; so $S$ is Jordan measurable. Its slice at $x=t$ is the closed disc of radius $f(t)$ in the $(y,z)$-plane, which is Jordan measurable with area $\pi f(t)^2$ by \cref{sec:general-regions} (a point if $f(t)=0$, with area $0$). Cavalieri's principle gives the formula.
+The set $S$ is the elementary region of \cref{cor:triple-elementary} over the closed region $D\coloneqq\{(x,y): a\le x\le b,\ -f(x)\le y\le f(x)\}$ of the $(x,y)$-plane, which is $y$-simple and hence Jordan measurable, between the graphs of the continuous functions $\mp\sqrt{f(x)^2-y^2}$; so $S$ is Jordan measurable. Its slice at $x=t$ is the closed disc of radius $f(t)$ in the $(y,z)$-plane, which is Jordan measurable with area $\pi f(t)^2$ by \cref{sec:general-regions} (a point if $f(t)=0$, with area $0$). The formula now follows from Cavalieri's principle.
 \end{proof}
 
 With $f(x)=\sqrt{r^2-x^2}$ on $[-r,r]$, the ball of radius $r$ has volume $\pi\int_{-r}^r(r^2-x^2)\,dx=4\pi r^3/3$, and with $f(x)=rx/H$ on $[0,H]$, the cone of radius $r$ and height $H$ has volume $\pi r^2H/3$, the values computed in \cref{sec:integral-applications}, which are now theorems. If a region $0\le\varphi_1(x)\le y\le\varphi_2(x)$, $a\le x\le b$, is rotated about the $x$-axis, the slices are annuli of areas $\pi(\varphi_2^2-\varphi_1^2)$, and the volume is $\pi\int_a^b(\varphi_2^2-\varphi_1^2)\,dx$. Comparing with
 \[
 \iint_Dy\,dA=\int_a^b\int_{\varphi_1(x)}^{\varphi_2(x)}y\,dy\,dx=\frac12\int_a^b\bigl(\varphi_2(x)^2-\varphi_1(x)^2\bigr)\,dx
 \]
-for the region $D$ shows that the volume equals $2\pi\bar y\operatorname{vol}(D)$, where $\bar y$ is the $y$-coordinate of the centroid of $D$: the area of the region times the length of the circle described by its centroid. This is the centroid theorem found in the \emph{Collection} of Pappus of Alexandria~\cite{heath1921}. For the half disc of \cref{sec:general-regions}, with $\bar y=4r/(3\pi)$, it gives $2\pi\cdot4r/(3\pi)\cdot\pi r^2/2=4\pi r^3/3$ once more.
+for the region $D$ shows that the volume equals $2\pi\bar y\operatorname{vol}(D)$, where $\bar y$ is the $y$-coordinate of the centroid of $D$: the area of the region times the length of the circle described by its centroid. This is the centroid theorem found in the \emph{Collection} of Pappus of Alexandria~\cite{heath1921}. For the half disc of \cref{sec:general-regions}, with $\bar y=4r/(3\pi)$, it yields $2\pi\cdot4r/(3\pi)\cdot\pi r^2/2=4\pi r^3/3$ once more.
 
 \subsection{The Volume of a Simplex}
 
@@ -809,7 +809,7 @@ and $\det A\det B=\det(AB)$ (\cref{thm:invertible-matrices}\,(ii), which for $n=
 \emph{Elementary matrices.} The following three kinds of invertible matrices have property (V).
 \begin{enumerate}
 \item The \emph{exchange} of two coordinates, with determinant $-1$. It maps every box onto a box of the same volume, and the subboxes of a partition $P$ of a box onto those of a partition of the image box. As in the proof of \cref{prop:scaling}, the lower and upper sums of $\mathbf 1_{A(S)}$ and of $\mathbf 1_S$ for corresponding partitions coincide, so the volumes agree.
-\item The \emph{scaling} of one coordinate by a factor $\lambda\ne0$, with determinant $\lambda$. It maps every box onto a box of $|\lambda|$ times the volume, and the same argument gives $\operatorname{vol}(A(S))=|\lambda|\operatorname{vol}(S)$.
+\item The \emph{scaling} of one coordinate by a factor $\lambda\ne0$, with determinant $\lambda$. It maps every box onto a box of $|\lambda|$ times the volume, and the same argument shows $\operatorname{vol}(A(S))=|\lambda|\operatorname{vol}(S)$.
 \item The \emph{shear} $(x_1,x_2)\mapsto(x_1+cx_2,x_2)$, with determinant $1$, and its counterpart with the roles of the coordinates exchanged. For fixed $x_2$, the section of $A(S)$ along the $x_1$-direction is the section of $S$ translated by $cx_2$. Translating a function of one variable does not change its lower integral, since partitions can be translated with it. By Fubini's theorem in the form with lower integrals (\cref{thm:fubini}\,(ii), with $x_1$ as the inner variable), the volumes of $A(S)$ and $S$ are the integrals over $x_2$ of these lower integrals, and they are equal.
 \end{enumerate}
 
@@ -902,11 +902,11 @@ In particular, $\operatorname{vol}(\mathbf g(S))=\int_S|\det D\mathbf g(\mathbf 
 \end{theorem}
 
 \begin{proof}
-We describe the structure of the proof; complete proofs are given by Spivak~\cite[Thm.~3-13]{spivak1965manifolds} and Munkres~\cite[Chap.~4]{munkres1991}, and a short one by Lax~\cite{lax1999}.
+We describe the structure of the proof. Complete proofs are given by Spivak~\cite[Thm.~3-13]{spivak1965manifolds} and Munkres~\cite[Chap.~4]{munkres1991}, for a map that is injective with nonzero Jacobian determinant on an open set; the version stated here follows by applying their theorem to the interior of $S$, since $\partial S$ and $\mathbf g(\partial S)$ have content zero, as the first step below shows. Lax~\cite{lax1999} gives a short proof of a related version, for maps that agree with the identity outside a bounded set, in which injectivity is not assumed.
 
 \emph{The image is Jordan measurable.} $\mathbf g(S)$ is closed and bounded as the continuous image of a closed bounded set. By the inverse function theorem (\cref{thm:inverse-function}), $\mathbf g$ maps a neighbourhood of every interior point of $S$ onto an open set, so interior points of $S$ go to interior points of $\mathbf g(S)$, and the boundary of $\mathbf g(S)$ lies in $\mathbf g(\partial S)$. On a neighbourhood of the closed bounded set $\partial S$, the map $\mathbf g$ is Lipschitz continuous, by the mean value inequality (\cref{thm:mean-value-inequality}) applied on small balls, and \cref{lem:lipschitz-content} shows that $\mathbf g(\partial S)$ has content zero.
 
-\emph{The key estimate.} Let $\mathbf u_0$ be an interior point and $A\coloneqq D\mathbf g(\mathbf u_0)$. The map $\mathbf h\coloneqq A^{-1}\circ\mathbf g$ has the derivative $I$ at $\mathbf u_0$, and by the continuity of $D\mathbf g$ its derivative is within $\varepsilon$ of $I$ in norm on a small ball around $\mathbf u_0$. By the mean value inequality, $\mathbf h$ maps every cube $Q$ of half-side $s$ centred at a point $\mathbf c$ of this ball into the cube of half-side $(1+\varepsilon\sqrt n)s$ centred at $\mathbf h(\mathbf c)$, so $\operatorname{vol}(\mathbf h(Q))\le(1+\varepsilon\sqrt n)^n\operatorname{vol}(Q)$, and by \cref{thm:linear-volume}
+\emph{The local estimate.} Let $\mathbf u_0$ be an interior point and $A\coloneqq D\mathbf g(\mathbf u_0)$. The map $\mathbf h\coloneqq A^{-1}\circ\mathbf g$ has the derivative $I$ at $\mathbf u_0$, and by the continuity of $D\mathbf g$ its derivative is within $\varepsilon$ of $I$ in norm on a small ball around $\mathbf u_0$. By the mean value inequality, $\mathbf h$ maps every cube $Q$ of half-side $s$ centred at a point $\mathbf c$ of this ball into the cube of half-side $(1+\varepsilon\sqrt n)s$ centred at $\mathbf h(\mathbf c)$, so $\operatorname{vol}(\mathbf h(Q))\le(1+\varepsilon\sqrt n)^n\operatorname{vol}(Q)$, and by \cref{thm:linear-volume}
 \[
 \operatorname{vol}\bigl(\mathbf g(Q)\bigr)=|\det A|\operatorname{vol}\bigl(\mathbf h(Q)\bigr)\le(1+\varepsilon\sqrt n)^n\,|\det D\mathbf g(\mathbf u_0)|\operatorname{vol}(Q).
 \]
@@ -915,7 +915,7 @@ By the uniform continuity of $D\mathbf g$ on closed bounded subsets of the inter
 \emph{Summation.} For $f\ge0$, cut a closed bounded subset of the interior of $S$ into small cubes $Q$, apply the estimate on each, and add: the images $\mathbf g(Q)$ overlap only in sets of content zero, by injectivity, and the sum of the bounds is an upper sum of $(f\circ\mathbf g)|\det D\mathbf g|$ up to the factor $(1+\varepsilon\sqrt n)^n$. Letting the cubes shrink gives $\int_{\mathbf g(S)}f\le\int_S(f\circ\mathbf g)|\det D\mathbf g|$, apart from contributions near $\partial S$, which tend to zero because $\partial S$ and its image have content zero. The same argument for the inverse map, which exists and is continuously differentiable on $\mathbf g$ of the interior of $S$ by the inverse function theorem, gives the reverse inequality. A general continuous $f$ is the difference of the nonnegative functions $\max(f,0)$ and $\max(-f,0)$.
 \end{proof}
 
-For $n=1$ and an increasing $g$, the theorem is the substitution rule $\int_{g(\alpha)}^{g(\beta)}f(x)\,dx=\int_\alpha^\beta f(g(t))\,g'(t)\,dt$ of \cref{thm:substitution}; for a decreasing $g$ the absolute value $|g'|=-g'$ compensates for the reversed order of $g(\alpha)>g(\beta)$. In several variables there is no orientation of the limits to absorb a sign, and the absolute value is essential. The injectivity is essential as well: the polar coordinate map below, applied to $[0,1]\times[0,4\pi]$, covers the unit disc twice, and the right side of the formula with $f=1$ gives $2\pi$, twice the area of the disc. The exceptions allowed on the boundary of $S$ are what make the theorem usable: the coordinate maps below fail to be injective, or have vanishing Jacobian determinant, exactly on the boundaries of their natural domains.
+For $n=1$ and an increasing $g$, the theorem is the substitution rule $\int_{g(\alpha)}^{g(\beta)}f(x)\,dx=\int_\alpha^\beta f(g(t))\,g'(t)\,dt$ of \cref{thm:substitution}; for a decreasing $g$ the absolute value $|g'|=-g'$ compensates for the reversed order of $g(\alpha)>g(\beta)$. In several variables there is no orientation of the limits to absorb a sign, and the absolute value is essential. Injectivity matters as well: the polar coordinate map below, applied to $[0,1]\times[0,4\pi]$, covers the unit disc twice, and the right side of the formula with $f=1$ gives $2\pi$, twice the area of the disc. The exceptions allowed on the boundary of $S$ are what make the theorem usable: the coordinate maps below fail to be injective, or have vanishing Jacobian determinant, exactly on the boundaries of their natural domains.
 
 The theorem for $n=2$ goes back to Euler, who changed variables in double integrals in 1769, and for $n=3$ to Lagrange in 1773; Jacobi stated it in general, with the functional determinant, in 1841~\cite{jacobi1841,katz1982}.
 
@@ -979,7 +979,7 @@ A linear change of variables can simplify the region rather than the integrand. 
 
 \subsection{The Value of \texorpdfstring{$\int e^{-x^2}dx$}{the Gaussian Integral}}
 
-The function $e^{-x^2}$ has no elementary antiderivative (\cref{thm:liouville}), so the fundamental theorem of calculus cannot evaluate $\int_{-\infty}^\infty e^{-x^2}dx$. A double integral can. The idea is to square the integral: by \cref{cor:product-integral} the square is a double integral of $e^{-x^2}e^{-y^2}=e^{-(x^2+y^2)}$, a function of the distance from the origin, and in polar coordinates the factor $r$ supplies exactly the derivative that the single integral lacks. Laplace evaluated the integral in 1774, in his first work on probability, and the normal distribution of de Moivre, Laplace and Gauss has made it the most important integral of probability and statistics~\cite{stigler1986}.
+The function $e^{-x^2}$ has no elementary antiderivative (\cref{thm:liouville}), so the fundamental theorem of calculus cannot evaluate $\int_{-\infty}^\infty e^{-x^2}dx$. A double integral can. The idea is to square the integral: by \cref{cor:product-integral} the square is a double integral of $e^{-x^2}e^{-y^2}=e^{-(x^2+y^2)}$, a function of the distance from the origin, and in polar coordinates the factor $r$ supplies exactly the derivative that the single integral lacks. Laplace evaluated the integral in 1774, in a memoir on the probability of causes, and the normal distribution of de Moivre, Laplace and Gauss has made it the most important integral of probability and statistics~\cite{stigler1986}.
 
 \begin{theorem}[Gaussian integral]
 \label{thm:gaussian}
@@ -1079,7 +1079,7 @@ Part~(ii) says that the function $e^{-(x-\mu)^2/(2\sigma^2)}/(\sigma\sqrt{2\pi})
 
 \subsection{Gaussian Integrals in Several Variables}
 
-In $n$ variables the Gaussian function is $e^{-\|\mathbf x\|^2}=e^{-x_1^2}\cdots e^{-x_n^2}$, a product of one-variable functions, and its integral over a cube is a product of single integrals. Integrals over all of $\mathbb R^n$ are improper, and \cref{sec:improper-multiple} shows that for a nonnegative continuous integrand they may be computed as limits of integrals over any increasing family of closed bounded regions that fills out $\mathbb R^n$, such as cubes or balls; we use this here in advance.
+In $n$ variables the Gaussian function is $e^{-\|\mathbf x\|^2}=e^{-x_1^2}\cdots e^{-x_n^2}$, a product of one-variable functions, and its integral over a cube is a product of single integrals. Integrals over all of $\mathbb R^n$ are improper, and \cref{sec:improper-multiple} shows that for a nonnegative continuous integrand they may be computed as limits of integrals over any increasing sequence of closed bounded regions, each in the interior of the next, that fills out $\mathbb R^n$, such as cubes or balls; we use this here in advance.
 
 \begin{proposition}
 \label{prop:gaussian-n}
@@ -1141,7 +1141,7 @@ V_n&=\iint_{\|\mathbf z\|\le1}V_{n-2}\bigl(1-\|\mathbf z\|^2\bigr)^{(n-2)/2}\,dA
 &=V_{n-2}\int_0^{2\pi}\int_0^1(1-r^2)^{(n-2)/2}\,r\,dr\,d\theta=\frac{2\pi}n\,V_{n-2},
 \end{aligned}
 \]
-since $-(1-r^2)^{n/2}/n$ is an antiderivative of $(1-r^2)^{(n-2)/2}r$. The formula of the theorem satisfies the same recursion, because $\Gamma(n/2+1)=(n/2)\Gamma(n/2)$, and it gives $\pi^{1/2}/\Gamma(3/2)=2$ for $n=1$, by \cref{cor:gaussian-consequences}\,(iii), and $\pi/\Gamma(2)=\pi$ for $n=2$. By induction it gives $V_n$ for every $n$.
+since $-(1-r^2)^{n/2}/n$ is an antiderivative of $(1-r^2)^{(n-2)/2}r$. The formula of the theorem satisfies the same recursion, because $\Gamma(n/2+1)=(n/2)\Gamma(n/2)$, and it gives $\pi^{1/2}/\Gamma(3/2)=2$ for $n=1$, by \cref{cor:gaussian-consequences}\,(iii), and $\pi/\Gamma(2)=\pi$ for $n=2$. By induction the two agree for every $n$.
 \end{proof}
 
 For even $n=2k$ the formula reads $V_{2k}=\pi^k/k!$; for odd $n$, \cref{cor:gaussian-consequences}\,(iii) gives $V_3=4\pi/3$, $V_5=8\pi^2/15$, and so on. \Cref{tab:ball-volumes} and \cref{fig:ball-volumes} show the first values. They grow up to $n=5$, where $V_5=5.2638\ldots$, and then decrease to zero faster than any geometric sequence, since $\pi^{n/2}$ grows only geometrically while $\Gamma(n/2+1)$ grows like a factorial. The unit ball of $\mathbb R^{20}$ has volume $0.0258$, although it contains points at distance $1$ from the origin in every direction.
@@ -1180,7 +1180,7 @@ $n$ & $V_n$ & value & $V_n/2^n$ \\
 \addplot[black, line width=0.4pt, mark=*, mark size=1.2pt] coordinates {(1,1.0000e+00) (2,7.8540e-01) (3,5.2360e-01) (4,3.0843e-01) (5,1.6449e-01) (6,8.0746e-02) (7,3.6912e-02) (8,1.5854e-02) (9,6.4424e-03) (10,2.4904e-03) (11,9.1997e-04) (12,3.2599e-04) (13,1.1116e-04) (14,3.6576e-05) (15,1.1641e-05) (16,3.5909e-06) (17,1.0756e-06) (18,3.1336e-07) (19,8.8924e-08) (20,2.4611e-08)};
 \end{axis}
 \end{tikzpicture}}
-\caption{Balls in high dimensions. (A) The volume $V_n$ of the unit ball in $\mathbb R^n$ is largest for $n=5$ and tends to $0$. (B) The fraction of the cube $[-1,1]^n$ filled by the inscribed unit ball, on a logarithmic scale, falls below one in a hundred million at $n=20$.}
+\caption{Balls in high dimensions. (A) The volume $V_n$ of the unit ball in $\mathbb R^n$ is largest for $n=5$ and tends to $0$. (B) The fraction of the cube $[-1,1]^n$ filled by the inscribed unit ball, on a logarithmic scale, falls to about one in forty million at $n=20$.}
 \label{fig:ball-volumes}
 \end{figure}
 
@@ -1245,7 +1245,7 @@ For a nonnegative integrand, then, the improper integral is unambiguous, and it 
 \[
 \int_a^1\int_b^1f(x,y)\,dy\,dx=\frac\pi4-\arctan a-\arctan\frac1b+\arctan\frac ab .
 \]
-Let the rectangles $[a,1]\times[b,1]$ grow to fill the square. If $a=b\to0$, the value tends to $\pi/4-\pi/2+\pi/4=0$; if $a=1/j$ and $b=1/j^2$, so that $a/b=j\to\infty$, it tends to $\pi/4-\pi/2+\pi/2=\pi/4$; and if $a=1/j^2$ and $b=1/j$, it tends to $-\pi/4$. Different ways of filling out the square give different limits, so the integral has no value, and $\iint|f|=\infty$ by \cref{thm:absolute-multiple}. On the line there is essentially only one way of letting an interval grow to $[a,\infty)$, which is why conditionally convergent integrals such as $\int_0^\infty(\sin x/x)\,dx$ make sense in one variable; in several variables they do not.
+Let the rectangles $[a,1]\times[b,1]$ grow to fill the square. If $a=b\to0$, the value tends to $\pi/4-\pi/2+\pi/4=0$; if $a=1/j$ and $b=1/j^2$, so that $a/b=j\to\infty$, it tends to $\pi/4-\pi/2+\pi/2=\pi/4$; and if $a=1/j^2$ and $b=1/j$, it tends to $-\pi/4$. Different ways of filling out the square give different limits, so the integral has no value. This also shows that $\iint|f|=\infty$: if $|f|$ had a finite integral, \cref{thm:absolute-multiple} would give the same limit along every exhaustion of the open square, and the rectangles above differ from such an exhaustion only by thin strips along the edges $x=1$ and $y=1$, where $f$ is bounded. On the line there is essentially only one way of letting an interval grow to $[a,\infty)$, which is why conditionally convergent integrals such as $\int_0^\infty(\sin x/x)\,dx$ make sense in one variable; in several variables they do not.
 
 \subsection{Radial Integrands}
 
@@ -1271,7 +1271,7 @@ With $g(r)=e^{-r^2}$ and the exhaustion of $\mathbb R^n$ by balls, the propositi
 \[
 \int_{\mathbb R^n}e^{-\|\mathbf x\|^2}d\mathbf x=nV_n\int_0^\infty r^{n-1}e^{-r^2}dr=nV_n\cdot\frac12\Gamma\Bigl(\frac n2\Bigr),
 \]
-by the substitution $t=r^2$ in the definition of $\Gamma(n/2)$. Comparing with $\pi^{n/2}$ from \cref{prop:gaussian-n} gives $V_n=2\pi^{n/2}/(n\Gamma(n/2))=\pi^{n/2}/\Gamma(n/2+1)$, a second proof of \cref{thm:ball-volume}. The proposition also decides the convergence of the integrals of powers of $\|\mathbf x\|$, the counterpart of \cref{prop:p-integrals}.
+by the substitution $t=r^2$ in the definition of $\Gamma(n/2)$. Comparison with the value $\pi^{n/2}$ of \cref{prop:gaussian-n} yields $V_n=2\pi^{n/2}/(n\Gamma(n/2))=\pi^{n/2}/\Gamma(n/2+1)$, a second proof of \cref{thm:ball-volume}. The proposition also decides the convergence of the integrals of powers of $\|\mathbf x\|$, the counterpart of \cref{prop:p-integrals}.
 
 \begin{corollary}[Integrals of powers of the norm]
 \label{cor:power-integrals-rn}
@@ -1404,11 +1404,11 @@ It is strictly convex, and it has a unique minimum on $(0,\infty)$, which lies b
 \end{proposition}
 
 \begin{proof}
-The partial derivative of $t^{s-1}(\ln t)^ke^{-t}=e^{(s-1)\ln t}(\ln t)^ke^{-t}$ with respect to $s$ is $t^{s-1}(\ln t)^{k+1}e^{-t}$, so by induction on $k$ and \cref{thm:parameter-improper} it suffices to dominate $t^{s-1}|\ln t|^ke^{-t}$, for $s$ in a closed interval $[s_0,s_1]\subseteq(0,\infty)$, by an integrable function of $t$ alone. For $t\ge1$, $t^{s-1}|\ln t|^ke^{-t}\le t^{s_1+k-1}e^{-t}$, since $\ln t\le t$, and the right side is integrable on $[1,\infty)$, because $\Gamma(s_1+k)$ converges. For $0<t\le1$, $t^{s-1}\le t^{s_0-1}$; choose a rational $p$ with $0<pk<s_0/2$. Then $t^{p}|\ln t|\to0$ as $t\to0^+$ by \cref{prop:ln-growth}, so $t^p|\ln t|\le C$ on $(0,1]$, and
+The partial derivative of $t^{s-1}(\ln t)^ke^{-t}=e^{(s-1)\ln t}(\ln t)^ke^{-t}$ with respect to $s$ is $t^{s-1}(\ln t)^{k+1}e^{-t}$, so by induction on $k$ and \cref{thm:parameter-improper} it suffices to dominate $t^{s-1}|\ln t|^ke^{-t}$, for $s$ in a closed interval $[s_0,s_1]\subseteq(0,\infty)$, by an integrable function of $t$ alone. For $t\ge1$, $t^{s-1}|\ln t|^ke^{-t}\le t^{s_1+k-1}e^{-t}$, since $\ln t\le t$, and the right side is integrable on $[1,\infty)$, because $\Gamma(s_1+k)$ converges. For $0<t\le1$, $t^{s-1}\le t^{s_0-1}$; choose a rational $p>0$ with $pk<s_0/2$. Then $t^{p}|\ln t|\to0$ as $t\to0^+$ by \cref{prop:ln-growth}, so $t^p|\ln t|\le C$ on $(0,1]$, and
 \[
 t^{s-1}|\ln t|^ke^{-t}\le t^{s_0-1-pk}\bigl(t^p|\ln t|\bigr)^k\le C^kt^{s_0/2-1},
 \]
-which is integrable on $(0,1]$ because $s_0/2-1>-1$. This proves the formula. For $k=2$ the integrand $t^{s-1}(\ln t)^2e^{-t}$ is nonnegative, continuous and not identically zero, so $\Gamma''(s)>0$ by \cref{prop:positive-integral} applied on a subinterval, and $\Gamma$ is strictly convex. Since $\Gamma(1)=\Gamma(2)=1$, Rolle's theorem gives a point $s^*\in(1,2)$ with $\Gamma'(s^*)=0$; as $\Gamma'$ is strictly increasing, $\Gamma'<0$ to the left of $s^*$ and $\Gamma'>0$ to the right, so $s^*$ is the unique minimum.
+which is integrable on $(0,1]$ because $s_0/2-1>-1$. This proves the formula. For $k=2$ the integrand $t^{s-1}(\ln t)^2e^{-t}$ is nonnegative, continuous and not identically zero, so $\Gamma''(s)>0$ by \cref{prop:positive-integral} applied on a subinterval, and $\Gamma$ is strictly convex. Since $\Gamma(1)=\Gamma(2)=1$, Rolle's theorem provides a point $s^*\in(1,2)$ with $\Gamma'(s^*)=0$; as $\Gamma'$ is strictly increasing, $\Gamma'<0$ to the left of $s^*$ and $\Gamma'>0$ to the right, so $s^*$ is the unique minimum.
 \end{proof}
 
 The minimum, at $s^*=1.4616\ldots$ with $\Gamma(s^*)=0.8856\ldots$, is visible in \cref{fig:gamma}. More is true: $\ln\Gamma$ is convex as well, and the Bohr--Mollerup theorem says that $\Gamma$ is the only function on $(0,\infty)$ with $\Gamma(1)=1$, $\Gamma(s+1)=s\Gamma(s)$ and a convex logarithm, which makes it the natural interpolation of the factorials~\cite{artin1964gamma}. One can also show that $\Gamma'(1)=\int_0^\infty\ln t\,e^{-t}dt=-\gamma$, where $\gamma=0.5772\ldots$ is Euler's constant of \cref{thm:euler-constant}~\cite{havil2003gamma}. The logarithmic derivative $\Gamma'/\Gamma$, the digamma function, is one of the special functions of Volume~X.
@@ -1532,7 +1532,7 @@ For a function $g$ on $[a,b]$ write $I(g)\coloneqq\int_a^bg$, and similarly $I'$
 &\quad+\sum_{l=0}^{m'}kc'_l\Bigl(I\bigl(f(\cdot,y_l)\bigr)-T_m\bigl(f(\cdot,y_l)\bigr)\Bigr),
 \end{aligned}
 \]
-as one sees by expanding: the first term is $\iint_Rf-\int_a^b\sum_lkc'_lf(x,y_l)\,dx$, and the second is $\sum_lkc'_l\int_a^bf(x,y_l)\,dx-T_{m,m'}(f)$. By \cref{thm:quadrature-errors}, the expression in the first integral is at most $(d-c)k^2\max|\partial_y^2f|/12$ in absolute value for every $x$, and each difference in the second sum is at most $(b-a)h^2\max|\partial_x^2f|/12$; the weights $kc'_l$ are positive and add up to $d-c$. Adding the two bounds gives the claim. In $d$ variables the same splitting, applied one variable at a time, gives one term for each variable.
+as one sees by expanding: the first term is $\iint_Rf-\int_a^b\sum_lkc'_lf(x,y_l)\,dx$, and the second is $\sum_lkc'_l\int_a^bf(x,y_l)\,dx-T_{m,m'}(f)$. By \cref{thm:quadrature-errors}, the expression in the first integral is at most $(d-c)k^2\max|\partial_y^2f|/12$ in absolute value for every $x$, so the first term is at most $\operatorname{vol}(R)\,k^2\max|\partial_y^2f|/12$. Each difference in the second sum is at most $(b-a)h^2\max|\partial_x^2f|/12$, and the weights $kc'_l$ are positive and add up to $d-c$, so the second term is at most $\operatorname{vol}(R)\,h^2\max|\partial_x^2f|/12$. Adding the two bounds proves the claim. In $d$ variables the same splitting, applied one variable at a time, produces one term for each variable.
 \end{proof}
 
 The trapezoidal rule therefore keeps its order $2$ in each variable: halving all the steps divides the error by about $4$. But the number of nodes is multiplied by $2^d$. With $N=(m+1)^d$ nodes the step is about $N^{-1/d}$, and the error behaves like $N^{-2/d}$; for Simpson's rule it behaves like $N^{-4/d}$. In one variable, doubling the number of function values divides the error of the trapezoidal rule by $4$; in ten variables, by $2^{1/5}=1.15$.
@@ -1564,7 +1564,7 @@ A different idea avoids grids altogether. The integral of $f$ over the unit cube
 \[
 Q_N(f)\coloneqq\frac1N\sum_{i=1}^Nf(\mathbf X_i).
 \]
-This is the \term{Monte Carlo} estimate of $\int_{[0,1]^d}f$, named after the casino by the physicists who used it at Los Alamos in the 1940s~\cite{metropolis1949}. Its error is random. Volume~III proves, with the tools of probability theory, that $Q_N(f)$ is correct on average and that its typical error, the root mean square of $Q_N(f)-\int f$ over all possible samples, is exactly
+This is the \term{Monte Carlo} estimate of $\int_{[0,1]^d}f$. The method was developed at Los Alamos in the 1940s, and its name, an allusion to the casino, was introduced in print by Metropolis and Ulam~\cite{metropolis1949}. Its error is random. Volume~III proves, with the tools of probability theory, that $Q_N(f)$ is correct on average and that its typical error, the root mean square of $Q_N(f)-\int f$ over all possible samples, is exactly
 \begin{equation}
 \frac\sigma{\sqrt N},\qquad\sigma^2\coloneqq\int_{[0,1]^d}f^2-\Bigl(\int_{[0,1]^d}f\Bigr)^2 ,
 \label{eq:monte-carlo-error}
@@ -1592,7 +1592,7 @@ where $\sigma^2$ is the variance of $f$ over the cube. The rate $N^{-1/2}$ is sl
 \label{fig:cubature-nodes}
 \end{figure}
 
-\Cref{tab:monte-carlo} compares the two methods on the integral of $f(\mathbf x)=e^{-\|\mathbf x\|^2}$ over $[0,1]^d$, whose exact value $\bigl(\int_0^1e^{-x^2}dx\bigr)^d=0.746824\ldots^{\,d}$ follows from Fubini's theorem; the variance in \eqref{eq:monte-carlo-error} is computed in the same way, since $f^2(\mathbf x)=e^{-2\|\mathbf x\|^2}$. For each dimension the two rules use about the same number $N$ of function values, about a million except where the grid allows only coarser choices. In two variables the product rule is a thousand times more accurate than Monte Carlo. In four variables the two are comparable. In eight variables the product rule can afford only $m=4$ subintervals per direction and is wrong by $4\,\%$, while Monte Carlo, with fewer points, is accurate to $0.13\,\%$; in sixteen variables the coarsest product rule, which evaluates $f$ only at the $2^{16}$ corners of the cube, is useless. The observed Monte Carlo errors agree with the prediction $\sigma/\sqrt N$; with only ten repetitions, the root mean square of the errors is itself only a rough estimate, accurate to perhaps a quarter.
+\Cref{tab:monte-carlo} compares the two methods on the integral of $f(\mathbf x)=e^{-\|\mathbf x\|^2}$ over $[0,1]^d$, whose exact value $\bigl(\int_0^1e^{-x^2}dx\bigr)^d=0.746824\ldots^{\,d}$ follows from Fubini's theorem; the variance in \eqref{eq:monte-carlo-error} is computed in the same way, since $f^2(\mathbf x)=e^{-2\|\mathbf x\|^2}$. In each dimension the two rules use the same number $N=(m+1)^d$ of function values: a thousand in one variable, about a million in two to four variables, and fewer in eight and sixteen variables, where the next finer grid would already need $6^8\approx1.7$ million and $3^{16}\approx43$ million points. In two variables the product rule is more than a thousand times as accurate as Monte Carlo. In four variables the two are comparable. In eight variables the product rule can afford only $m=4$ subintervals per direction and is wrong by $4\,\%$, while Monte Carlo, with the same $390\,625$ points, is accurate to $0.13\,\%$; in sixteen variables the coarsest product rule, which evaluates $f$ only at the $2^{16}$ corners of the cube, is useless. The observed Monte Carlo errors are consistent with the prediction $\sigma/\sqrt N$, within the accuracy that ten repetitions allow: the root mean square of ten errors is itself a random quantity, which typically deviates from its expected value by about a fifth and occasionally by more. The largest deviation, in sixteen variables, where the observed error is a third below the prediction, is of this kind: the seeds $11,\ldots,20$, for instance, give $6.1\times10^{-3}$ instead of $3.6\times10^{-3}$.
 
 \begin{table}
 \sdfloat{%
@@ -1607,12 +1607,12 @@ $d$ & $m$ & $N$ & product trapezoid & Monte Carlo & $\sigma/(I\sqrt N)$ \\
 8 & 4 & 390\,625 & $4.0\times10^{-2}$ & $1.3\times10^{-3}$ & $1.4\times10^{-3}$ \\
 16 & 1 & 65\,536 & $7.6\times10^{-1}$ & $3.6\times10^{-3}$ & $5.6\times10^{-3}$ \\
 \bottomrule
-\end{sdtable}}{Relative errors for $I=\int_{[0,1]^d}e^{-\|\mathbf x\|^2}d\mathbf x$ with $N=(m+1)^d$ function values. Product trapezoid: the rule with $m$ subintervals per direction. Monte Carlo: the root mean square of the relative errors of ten runs with $N$ points each, using the Mersenne Twister generator of the Python standard library with the seeds $1,\ldots,10$. Last column: the predicted relative error \eqref{eq:monte-carlo-error}.\label{tab:monte-carlo}}
+\end{sdtable}}{Relative errors for $I=\int_{[0,1]^d}e^{-\|\mathbf x\|^2}d\mathbf x$ with $N=(m+1)^d$ function values. Product trapezoid: the rule with $m$ subintervals per direction. Monte Carlo: the root mean square of the relative errors of ten runs with $N$ points each, using the Mersenne Twister generator of the Python standard library (\texttt{random.random}) with the seeds $1,\ldots,10$, each point taking $d$ consecutive numbers as its coordinates. Last column: the predicted relative error \eqref{eq:monte-carlo-error}.\label{tab:monte-carlo}}
 \end{table}
 
 \subsection{Two Algorithms}
 
-\Cref{alg:product-trapezoid} implements the product trapezoidal rule on the cube $[0,1]^d$ by running through all multi-indices $(i_1,\ldots,i_d)\in\{0,\ldots,m\}^d$, like an odometer whose wheels have $m+1$ positions; the weight of a node is the product of the one-dimensional weights. \Cref{alg:monte-carlo} implements the Monte Carlo rule and returns, together with the estimate, an estimate of its error from the sample itself: the sample variance $s^2$ estimates $\sigma^2$, and $s/\sqrt N$ estimates the error \eqref{eq:monte-carlo-error}. The product rule has no comparably cheap error estimate.
+\Cref{alg:product-trapezoid} implements the product trapezoidal rule on the cube $[0,1]^d$ by running through all multi-indices $(i_1,\ldots,i_d)\in\{0,\ldots,m\}^d$, like an odometer whose wheels have $m+1$ positions; the weight of a node is the product of the one-dimensional weights. \Cref{alg:monte-carlo} implements the Monte Carlo rule and returns, together with the estimate, an estimate of its error from the sample itself: the sample variance of the values $f(\mathbf X_i)$ estimates $\sigma^2$, and its square root divided by $\sqrt N$ estimates the error \eqref{eq:monte-carlo-error}. The product rule has no comparably cheap error estimate.
 
 \begin{algorithm}
 \begin{algorithmic}[1]
@@ -1642,7 +1642,7 @@ $d$ & $m$ & $N$ & product trapezoid & Monte Carlo & $\sigma/(I\sqrt N)$ \\
 
 \begin{algorithm}
 \begin{algorithmic}[1]
-\Require a function $f$ on $[0,1]^d$; a number $N\ge2$ of sample points; a source of independent uniform random numbers in $[0,1)$
+\Require a function $f$ on $[0,1]^d$; the dimension $d\ge1$; a number $N\ge2$ of sample points; a source of independent uniform random numbers in $[0,1)$
 \Ensure an estimate $Q$ of $\int_{[0,1]^d}f$ and an estimate $e$ of its root mean square error
 \Name{MonteCarlo}{f,d,N}
 \State $s\gets0$;\quad $q\gets0$
@@ -1652,7 +1652,7 @@ $d$ & $m$ & $N$ & product trapezoid & Monte Carlo & $\sigma/(I\sqrt N)$ \\
   \State $s\gets s+y$;\quad $q\gets q+y^2$
 \EndFor
 \State $Q\gets s/N$
-\State $e\gets\sqrt{(q-NQ^2)/((N-1)N)}$ \Comment{$s/\sqrt N$ with the sample variance}
+\State $e\gets\sqrt{(q-NQ^2)/((N-1)N)}$ \Comment{sample standard deviation over $\sqrt N$}
 \State \Return $(Q,e)$
 \end{algorithmic}
 \caption{Monte Carlo integration over the unit cube. The cost is $N$ evaluations of $f$ whatever the dimension. Accumulating $q$ as a sum of squares can lose accuracy when the mean is large compared with the spread; Volume~V discusses stable updating formulas.}
@@ -1672,6 +1672,6 @@ The integral of a function of several variables is defined by boxes in the same 
 
 The integral of a function of several variables was used long before it was defined: Euler changed variables in double integrals in 1769, Lagrange in triple integrals in 1773, and Jacobi gave the general rule with the functional determinant in 1841~\cite{jacobi1841}; Katz~\cite{katz1982} tells this history. The definition by upper and lower sums over regions with a boundary of content zero goes back to Peano and Jordan~\cite{jordan1893}, and Hawkins~\cite{hawkins1975} describes how the theory of content led to Lebesgue's measure. Fubini's theorem for the Lebesgue integral is due to Fubini~\cite{fubini1907} and its form for nonnegative functions to Tonelli~\cite{tonelli1909}; Folland~\cite{folland1999} gives a modern account. Cavalieri's principle and the ancient volumes of the cone, the ball and the paraboloid are discussed by Edwards~\cite{edwards1979} and, in Archimedes' own words, by Heath~\cite{heath1897archimedes}. Laplace's evaluation of the Gaussian integral and the origins of the normal distribution are described by Stigler~\cite{stigler1986}; Davis~\cite{davis1959gamma} tells the history of the gamma and beta functions and Artin~\cite{artin1964gamma} proves the Bohr--Mollerup theorem. Dirichlet's integral over the simplex comes from~\cite{dirichlet1839}.
 
-Among textbooks at the level of this chapter, Apostol's second volume~\cite{apostol1969calculus} develops multiple integrals with step functions and proves the change of variables formula in two dimensions, Marsden and Tromba~\cite{marsden2012vector} emphasise the geometry and the coordinate systems, with many worked examples, and Hubbard and Hubbard~\cite{hubbard2015vector} give a careful treatment of the change of variables in $n$ dimensions. Spivak's \emph{Calculus on Manifolds}~\cite{spivak1965manifolds} gives a concise rigorous account of integration over Jordan measurable sets, Fubini's theorem and the change of variables, and Munkres~\cite{munkres1991} a more detailed one; Lax~\cite{lax1999} gives a short proof of the change of variables formula. For integrals depending on a parameter and uniform convergence, see Apostol~\cite{apostol1969calculus} and Rudin~\cite{rudin1976}. For cubature, Davis and Rabinowitz~\cite{davis1984} survey the classical rules, Bellman~\cite{bellman1957} named the curse of dimensionality, Metropolis and Ulam~\cite{metropolis1949} introduced the Monte Carlo method under that name, Smolyak~\cite{smolyak1963} sparse grids, and Niederreiter~\cite{niederreiter1992} is the standard account of quasi-Monte Carlo methods.
+Among textbooks at the level of this chapter, Apostol's second volume~\cite{apostol1969calculus} develops multiple integrals with step functions and proves the change of variables formula in two dimensions, Marsden and Tromba~\cite{marsden2012vector} emphasise the geometry and the coordinate systems, with many worked examples, and Hubbard and Hubbard~\cite{hubbard2015vector} give a careful treatment of the change of variables in $n$ dimensions. Spivak's \emph{Calculus on Manifolds}~\cite{spivak1965manifolds} is a concise rigorous account of integration over Jordan measurable sets, Fubini's theorem and the change of variables, and Munkres~\cite{munkres1991} a more detailed one; Lax~\cite{lax1999} gives a short proof of a version of the change of variables formula that does not need injectivity. For integrals depending on a parameter and uniform convergence, see Apostol~\cite{apostol1969calculus} and Rudin~\cite{rudin1976}. For cubature, Davis and Rabinowitz~\cite{davis1984} survey the classical rules, Bellman~\cite{bellman1957} named the curse of dimensionality, Metropolis and Ulam~\cite{metropolis1949} introduced the Monte Carlo method under that name, Smolyak~\cite{smolyak1963} sparse grids, and Niederreiter~\cite{niederreiter1992} is the standard account of quasi-Monte Carlo methods.
 
 \chapterreferences

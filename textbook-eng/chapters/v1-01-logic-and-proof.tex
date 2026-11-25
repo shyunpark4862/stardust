@@ -939,14 +939,14 @@ Cases also appear in formulas that avoid them. The following identity expresses 
 
 \begin{proposition}
 \label{prop:max}
-For all real numbers $a$ and $b$, $\max(a,b)=(1/2)\bigl(a+b+|a-b|\bigr)$, where $\max(a,b)$ is $a$ if $a\ge b$ and $b$ otherwise.
+For all real numbers $a$ and $b$, $\max(a,b)=\bigl(a+b+|a-b|\bigr)/2$, where $\max(a,b)$ is $a$ if $a\ge b$ and $b$ otherwise.
 \end{proposition}
 
 \begin{proof}
-If $a\ge b$, then $|a-b|=a-b$ and the right side is $(1/2)(a+b+a-b)=a=\max(a,b)$. If $a<b$, then $|a-b|=-(a-b)=b-a$ and the right side is $(1/2)(a+b+b-a)=b=\max(a,b)$.
+If $a\ge b$, then $|a-b|=a-b$ and the right side is $(a+b+a-b)/2=a=\max(a,b)$. If $a<b$, then $|a-b|=-(a-b)=b-a$ and the right side is $(a+b+b-a)/2=b=\max(a,b)$.
 \end{proof}
 
-The expression $(1/2)(a+b+|a-b|)$ is symmetric in $a$ and $b$, and so is $\max(a,b)$. In such a situation one often writes ``without loss of generality, $a\ge b$'' and treats only the first case: the second case is the first with the names $a$ and $b$ exchanged, and exchanging the names changes neither side of the identity.
+The expression $(a+b+|a-b|)/2$ is symmetric in $a$ and $b$, and so is $\max(a,b)$. In such a situation one often writes ``without loss of generality, $a\ge b$'' and treats only the first case: the second case is the first with the names $a$ and $b$ exchanged, and exchanging the names changes neither side of the identity.
 
 \section{Contrapositive and Contradiction}
 \label{sec:contradiction}

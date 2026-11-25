@@ -495,7 +495,7 @@ Throughout, $P$ is a partition, $I_k$ its subintervals, and $\operatorname{osc}_
 
 (i) For $x,y\in I_k$, $|(f+g)(x)-(f+g)(y)|\le|f(x)-f(y)|+|g(x)-g(y)|$, so $\operatorname{osc}_k(f+g)\le\operatorname{osc}_k(f)+\operatorname{osc}_k(g)$, and $U(f+g,P)-L(f+g,P)<2\varepsilon$. Similarly $\operatorname{osc}_k(cf)=|c|\operatorname{osc}_k(f)$.
 
-(ii) By the reverse triangle inequality, $\bigl||f(x)|-|f(y)|\bigr|\le|f(x)-f(y)|$, so $\operatorname{osc}_k(|f|)\le\operatorname{osc}_k(f)$, and $|f|$ is integrable. Then $\max(f,g)=(1/2)(f+g+|f-g|)$ and $\min(f,g)=(1/2)(f+g-|f-g|)$ are integrable by (i) and what was just shown.
+(ii) By the reverse triangle inequality, $\bigl||f(x)|-|f(y)|\bigr|\le|f(x)-f(y)|$, so $\operatorname{osc}_k(|f|)\le\operatorname{osc}_k(f)$, and $|f|$ is integrable. Then $\max(f,g)=(f+g+|f-g|)/2$ and $\min(f,g)=(f+g-|f-g|)/2$ are integrable by (i) and what was just shown.
 
 (iii) Let $|f|\le K$ and $|g|\le K$. For $x,y\in I_k$,
 \begin{align*}
@@ -766,7 +766,7 @@ So the difference quotient tends to $f(c)$.
 \label{fig:area-function}
 \end{figure}
 
-Continuity of $f$ at $c$ cannot be dropped. For the step function of \cref{fig:area-function}B, $F(x)=x/2$ for $x\le1$ and $F(x)=1/2+(3/2)(x-1)$ for $x\ge1$, so $F'_-(1)=1/2$ and $F'_+(1)=3/2$, the two one-sided values of $f$: the jump of $f$ becomes a corner of $F$, and $F$ is not differentiable at $1$. At every other point $f$ is continuous and $F'=f$. Thus integrating turns jumps into corners, as differentiating turns corners into jumps.
+Continuity of $f$ at $c$ cannot be dropped. For the step function of \cref{fig:area-function}B, $F(x)=x/2$ for $x\le1$ and $F(x)=1/2+3(x-1)/2$ for $x\ge1$, so $F'_-(1)=1/2$ and $F'_+(1)=3/2$, the two one-sided values of $f$: the jump of $f$ becomes a corner of $F$, and $F$ is not differentiable at $1$. At every other point $f$ is continuous and $F'=f$. Thus integrating turns jumps into corners, as differentiating turns corners into jumps.
 
 A function $F$ with $F'=f$ is called an antiderivative of $f$, and the first part of the theorem shows that continuous functions always have one.
 
@@ -1060,7 +1060,7 @@ For a mixed case, the decomposition
 \[
 \frac1{(x+1)(x^2+1)}=\frac12\cdot\frac1{x+1}+\frac12\cdot\frac{1-x}{x^2+1}
 \]
-is found as follows. Multiplying the ansatz $A/(x+1)+(Bx+C)/(x^2+1)$ by $x+1$ and putting $x=-1$ gives $A=1/((-1)^2+1)=1/2$; then $(1/2)(x^2+1)+(Bx+C)(x+1)=1$ for all $x$, and comparing the coefficients of $x^2$ and of $1$ gives $B=-1/2$ and $C=1/2$. Integrating,
+is found as follows. Multiplying the ansatz $A/(x+1)+(Bx+C)/(x^2+1)$ by $x+1$ and putting $x=-1$ gives $A=1/((-1)^2+1)=1/2$; then $(x^2+1)/2+(Bx+C)(x+1)=1$ for all $x$, and comparing the coefficients of $x^2$ and of $1$ gives $B=-1/2$ and $C=1/2$. Integrating,
 \[
 \int_0^1\frac{dx}{(x+1)(x^2+1)}=\frac12\ln2-\frac14\ln2+\frac12\arctan1=\frac14\ln2+\frac\pi8=0.56598\ldots
 \]
@@ -1304,7 +1304,7 @@ As $c\to0^+$, $c^se^{-c}\to0$ because $s>0$; as $R\to\infty$, $R^se^{-R}\to0$. P
 (iii) $\Gamma(1)=\lim_{R\to\infty}\int_0^Re^{-t}\,dt=\lim_{R\to\infty}(1-e^{-R})=1$, and then $\Gamma(n+1)=n\Gamma(n)=\cdots=n!\,\Gamma(1)$ by induction.
 \end{proof}
 
-So $\Gamma(n+1)=n!$ interpolates the factorials, and the recursion $\Gamma(s+1)=s\Gamma(s)$ continues the recursion $(n+1)!=(n+1)\,n!$ to real arguments (\cref{fig:gamma}). The function is due to Euler, who interpolated the factorials, first by an infinite product and then by an integral, in two letters to Goldbach of 1729 and 1730; the notation $\Gamma$ and the shift by one, $\Gamma(n+1)=n!$, are Legendre's~\cite{davis1959gamma}. A value at a non-integer argument is $\Gamma(1/2)=\sqrt\pi$, which follows from the Gaussian integral $\int_{-\infty}^\infty e^{-x^2}dx=\sqrt\pi$ of \cref{ch:multiple-integrals}; then the recursion gives $\Gamma(3/2)=(1/2)\sqrt\pi$, $\Gamma(5/2)=(3/4)\sqrt\pi$, and so on. The gamma function is everywhere in probability and statistics, where it normalises the gamma, chi-squared and Student distributions (Volume~III), and Volume~X studies it and its relatives as special functions.
+So $\Gamma(n+1)=n!$ interpolates the factorials, and the recursion $\Gamma(s+1)=s\Gamma(s)$ continues the recursion $(n+1)!=(n+1)\,n!$ to real arguments (\cref{fig:gamma}). The function is due to Euler, who interpolated the factorials, first by an infinite product and then by an integral, in two letters to Goldbach of 1729 and 1730; the notation $\Gamma$ and the shift by one, $\Gamma(n+1)=n!$, are Legendre's~\cite{davis1959gamma}. A value at a non-integer argument is $\Gamma(1/2)=\sqrt\pi$, which follows from the Gaussian integral $\int_{-\infty}^\infty e^{-x^2}dx=\sqrt\pi$ of \cref{ch:multiple-integrals}; then the recursion gives $\Gamma(3/2)=\sqrt\pi/2$, $\Gamma(5/2)=3\sqrt\pi/4$, and so on. The gamma function is everywhere in probability and statistics, where it normalises the gamma, chi-squared and Student distributions (Volume~III), and Volume~X studies it and its relatives as special functions.
 
 \begin{figure}
 \sdfloat{%
@@ -1347,7 +1347,7 @@ with the weight $4$ at the odd and $2$ at the even interior nodes.
 
 All five rules are old. The area of a trapezoid under a graph was used long before the calculus: between 350 and 50 BC, Babylonian astronomers computed the distance travelled by Jupiter along the ecliptic as the area of the trapezoid under a graph of its daily motion, which they took to decrease linearly in time, against time~\cite{ossendrijver2016}. Simpson's rule is named after Thomas Simpson, who published it in 1743, although it was known before him. The trapezoidal and Simpson's rules belong to the family of Newton--Cotes rules, which integrate the polynomial that interpolates $f$ at equally spaced nodes~\cite{goldstine1977,davis1984}.
 
-We write simply $T_n$, $M_n$, and so on, when the function is clear. The rectangle and midpoint rules are the Riemann sums with left, right and middle tags. The trapezoidal rule is the average of the two rectangle rules, $T_n=(1/2)(R^{\mathrm{left}}_n+R^{\mathrm{right}}_n)$, and it has a geometric meaning of its own: on the $k$th subinterval, the term $(h/2)(f_{k-1}+f_k)$ is the area of the trapezoid under the chord from $(x_{k-1},f_{k-1})$ to $(x_k,f_k)$ (\cref{fig:rules-geometry}A). So $T_n$ is the exact integral of the broken line that joins the points of the graph above the nodes, the \term{piecewise linear interpolant} of $f$. The midpoint rule has a similar meaning: the rectangle of height $f(m_k)$ has the same area as every trapezoid whose top is a line through $(m_k,f(m_k))$, because such a line lies above the rectangle on one half of the subinterval by exactly as much as it lies below it on the other. In particular, if $f$ is differentiable, $hf(m_k)$ is the integral of the tangent at the midpoint (\cref{fig:rules-geometry}B).
+We write simply $T_n$, $M_n$, and so on, when the function is clear. The rectangle and midpoint rules are the Riemann sums with left, right and middle tags. The trapezoidal rule is the average of the two rectangle rules, $T_n=(R^{\mathrm{left}}_n+R^{\mathrm{right}}_n)/2$, and it has a geometric meaning of its own: on the $k$th subinterval, the term $(h/2)(f_{k-1}+f_k)$ is the area of the trapezoid under the chord from $(x_{k-1},f_{k-1})$ to $(x_k,f_k)$ (\cref{fig:rules-geometry}A). So $T_n$ is the exact integral of the broken line that joins the points of the graph above the nodes, the \term{piecewise linear interpolant} of $f$. The midpoint rule has a similar meaning: the rectangle of height $f(m_k)$ has the same area as every trapezoid whose top is a line through $(m_k,f(m_k))$, because such a line lies above the rectangle on one half of the subinterval by exactly as much as it lies below it on the other. In particular, if $f$ is differentiable, $hf(m_k)$ is the integral of the tangent at the midpoint (\cref{fig:rules-geometry}B).
 
 \begin{figure}
 \sdpanel{A}{\begin{tikzpicture}
@@ -1393,7 +1393,7 @@ For every polynomial $p$ of degree at most $3$ and every $c\in\mathbb R$, $h>0$,
 \end{lemma}
 
 \begin{proof}
-By the translation rule \eqref{eq:linear-substitution}, we may assume $c=0$. Both sides are linear in $p$, so it suffices to check the formula for $p=1,x,x^2,x^3$. For $1$: $2h=(h/3)\cdot6$. For $x$ and $x^3$: both sides are $0$, by oddness. For $x^2$: $(2/3)h^3=(h/3)(h^2+0+h^2)$.
+By the translation rule \eqref{eq:linear-substitution}, we may assume $c=0$. Both sides are linear in $p$, so it suffices to check the formula for $p=1,x,x^2,x^3$. For $1$: $2h=(h/3)\cdot6$. For $x$ and $x^3$: both sides are $0$, by oddness. For $x^2$: $2h^3/3=(h/3)(h^2+0+h^2)$.
 \end{proof}
 
 The parabola through the three points has degree at most $2$, so its integral over $[x_{k-1},x_{k+1}]$ is $(h/3)(f_{k-1}+4f_k+f_{k+1})$; adding these over the pairs $[x_0,x_2],[x_2,x_4],\ldots$ gives $S_n$, which is why $n$ must be even. The lemma reveals a bonus: the rule is exact not only for quadratics but also for cubics. A rule is said to have \term{degree of exactness} $d$ if it integrates all polynomials of degree at most $d$ exactly but not all of degree $d+1$. The rectangle rules have degree $0$; the midpoint and the trapezoidal rule have degree $1$, being exact for lines but not for $x^2$; and Simpson's rule has degree $3$.
@@ -1403,7 +1403,7 @@ The rules are related by simple identities. The midpoints of the partition with 
 T_{2n}=\frac12\bigl(T_n+M_n\bigr),\qquad S_{2n}=\frac13\bigl(T_n+2M_n\bigr)=\frac13\bigl(4T_{2n}-T_n\bigr).
 \label{eq:rule-relations}
 \end{equation}
-For the second identity, note that $S_{2n}$ has step $h/2$, the weight $(h/6)\cdot4=(2/3)h$ at every midpoint and $(h/6)\cdot2=(1/3)h$ at every interior node $x_k$. The first identity means that halving the step of the trapezoidal rule costs only the $n$ new function values at the midpoints; all previous values are reused.
+For the second identity, note that $S_{2n}$ has step $h/2$, the weight $(h/6)\cdot4=2h/3$ at every midpoint and $(h/6)\cdot2=h/3$ at every interior node $x_k$. The first identity means that halving the step of the trapezoidal rule costs only the $n$ new function values at the midpoints; all previous values are reused.
 
 \subsection{Errors}
 
@@ -1512,7 +1512,7 @@ If $f$ is convex and differentiable on $[a,b]$, then $M_n\le\int_a^bf\le T_n$ fo
 On each subinterval, the chord through the end points of the graph lies on or above the graph, by \cref{def:convex}, and the tangent at the midpoint lies on or below it, by \cref{prop:tangent-below}. The integral of the chord is the trapezoid $(h/2)(f_{k-1}+f_k)$, and that of the tangent is $hf(m_k)$, by the remark after \cref{def:quadrature-rules}. Monotonicity of the integral gives the inequalities on each subinterval, and adding them gives the claim.
 \end{proof}
 
-For a convex function, therefore, a midpoint sum and a trapezoidal sum enclose the integral, just as a lower and an upper sum do, but the enclosure is far tighter. The relation between the two errors also explains Simpson's rule. If the error of $T_n$ is about $-2\epsilon$ and that of $M_n$ about $\epsilon$, then the combination $(1/3)(T_n+2M_n)$ cancels the leading errors, and this combination is $S_{2n}$ by \eqref{eq:rule-relations}. The following corollary makes the leading error terms precise.
+For a convex function, therefore, a midpoint sum and a trapezoidal sum enclose the integral, just as a lower and an upper sum do, but the enclosure is far tighter. The relation between the two errors also explains Simpson's rule. If the error of $T_n$ is about $-2\epsilon$ and that of $M_n$ about $\epsilon$, then the combination $(T_n+2M_n)/3$ cancels the leading errors, and this combination is $S_{2n}$ by \eqref{eq:rule-relations}. The following corollary makes the leading error terms precise.
 
 \begin{corollary}[Asymptotic errors]
 \label{cor:asymptotic-errors}
@@ -1524,7 +1524,7 @@ If $f\in C^4[a,b]$, then $\bigl(\int_a^bf-S_n\bigr)/h^4\to-\bigl(f'''(b)-f'''(a)
 \end{corollary}
 
 \begin{proof}
-By the proof of \cref{thm:quadrature-errors}, $(\int_a^bf-T_n)/h^2=-(1/12)\sum_{k=1}^nf''(\eta_k)\,h$ with $\eta_k\in[x_{k-1},x_k]$. The sum is a Riemann sum of the continuous function $f''$ for a partition of mesh $h$, so it tends to $\int_a^bf''=f'(b)-f'(a)$, by \cref{thm:riemann-sums,thm:ftc2}. The other two limits are obtained in the same way; for Simpson's rule the Riemann sum is $\sum_jf^{(4)}(\eta_j)\cdot2h$ over the panels.
+By the proof of \cref{thm:quadrature-errors}, $(\int_a^bf-T_n)/h^2=-\sum_{k=1}^nf''(\eta_k)\,h/12$ with $\eta_k\in[x_{k-1},x_k]$. The sum is a Riemann sum of the continuous function $f''$ for a partition of mesh $h$, so it tends to $\int_a^bf''=f'(b)-f'(a)$, by \cref{thm:riemann-sums,thm:ftc2}. The other two limits are obtained in the same way; for Simpson's rule the Riemann sum is $\sum_jf^{(4)}(\eta_j)\cdot2h$ over the panels.
 \end{proof}
 
 The corollary shows that the orders of \cref{thm:quadrature-errors} are attained unless $f'(b)=f'(a)$, or $f'''(b)=f'''(a)$ for Simpson's rule. When they coincide the leading error term vanishes and the rule converges faster than its order suggests, a phenomenon that the note at the end of this section explores.
@@ -1603,11 +1603,11 @@ The ratios in the table approach $2$, $4$ and $16$, the factors predicted when $
 \label{alg:trapezoid}
 \end{algorithm}
 
-In practice one rarely knows in advance how many subintervals are needed for a given accuracy, since the derivatives in \cref{thm:quadrature-errors} are seldom known. The identity $T_{2n}=(1/2)(T_n+M_n)$ of \eqref{eq:rule-relations} suggests a better strategy: start with one subinterval and halve the step repeatedly, reusing all previous function values, until the approximations agree to the desired accuracy. The stopping test needs an estimate of the error, and \cref{cor:asymptotic-errors} provides one. If $\int f-T_n\approx Ch^2$, then $\int f-T_{2n}\approx Ch^2/4$, and subtracting,
+In practice one rarely knows in advance how many subintervals are needed for a given accuracy, since the derivatives in \cref{thm:quadrature-errors} are seldom known. The identity $T_{2n}=(T_n+M_n)/2$ of \eqref{eq:rule-relations} suggests a better strategy: start with one subinterval and halve the step repeatedly, reusing all previous function values, until the approximations agree to the desired accuracy. The stopping test needs an estimate of the error, and \cref{cor:asymptotic-errors} provides one. If $\int f-T_n\approx Ch^2$, then $\int f-T_{2n}\approx Ch^2/4$, and subtracting,
 \[
 T_{2n}-T_n\approx\frac34Ch^2\approx3\Bigl(\int_a^bf-T_{2n}\Bigr).
 \]
-So the computable quantity $(T_{2n}-T_n)/3$ estimates the error of $T_{2n}$, and adding it to $T_{2n}$ gives $(1/3)(4T_{2n}-T_n)=S_{2n}$, Simpson's rule once more. \Cref{alg:trapezoid-halving} implements this strategy.
+So the computable quantity $(T_{2n}-T_n)/3$ estimates the error of $T_{2n}$, and adding it to $T_{2n}$ gives $(4T_{2n}-T_n)/3=S_{2n}$, Simpson's rule once more. \Cref{alg:trapezoid-halving} implements this strategy.
 
 \begin{algorithm}
 \begin{algorithmic}[1]
@@ -1680,7 +1680,7 @@ Let $g\coloneqq\sqrt{1+(f')^2}$, a continuous function, hence integrable. For an
 a Riemann sum of $g$. Let $I\coloneqq\int_a^bg$ and $\varepsilon>0$, and let $\delta$ be as in \cref{thm:riemann-sums}. If $\|P\|<\delta$, then $\ell(f,P)<I+\varepsilon$. For an arbitrary partition $P$, choose any partition $Q$ with $\|Q\|<\delta$; then $P\cup Q$ has mesh less than $\delta$ and refines $P$, so $\ell(f,P)\le\ell(f,P\cup Q)<I+\varepsilon$. Hence $\sup_P\ell(f,P)\le I$. Conversely, $\ell(f,Q)>I-\varepsilon$ for every $Q$ with $\|Q\|<\delta$, so the supremum is at least $I-\varepsilon$ for every $\varepsilon$, and it equals $I$.
 \end{proof}
 
-The formula has a simple meaning: over a short interval of length $dx$ the curve is nearly a straight segment of slope $f'(x)$, whose length is $\sqrt{dx^2+(f'(x)\,dx)^2}=\sqrt{1+f'(x)^2}\,dx$ by Pythagoras. For $f(x)=x^{3/2}$ on $[0,1]$, $f'(x)=(3/2)x^{1/2}$, and the substitution $u=1+(9/4)x$ gives the length
+The formula has a simple meaning: over a short interval of length $dx$ the curve is nearly a straight segment of slope $f'(x)$, whose length is $\sqrt{dx^2+(f'(x)\,dx)^2}=\sqrt{1+f'(x)^2}\,dx$ by Pythagoras. For $f(x)=x^{3/2}$ on $[0,1]$, $f'(x)=3x^{1/2}/2$, and the substitution $u=1+9x/4$ gives the length
 \[
 \int_0^1\sqrt{1+\tfrac94x}\,dx=\frac8{27}\Bigl(1+\frac94x\Bigr)^{3/2}\Big|_0^1=\frac{13\sqrt{13}-8}{27}=1.4397\ldots
 \]
@@ -1704,7 +1704,7 @@ A random quantity $X$ that can take any real value, such as a measurement error,
 \[
 P(a\le X\le b)=\int_a^bp(x)\,dx .
 \]
-Probabilities are thus areas under the graph of $p$, and the total area is $1$. The uniform density on $[0,1]$ is $\mathbf 1_{[0,1]}$; the density $p(x)=1/(\pi(1+x^2))$, the \term{Cauchy density}, has total area $1$ by the computation of \cref{sec:improper}, and $P(-1\le X\le1)=(1/\pi)(\arctan1-\arctan(-1))=1/2$. Improper integrals are unavoidable in this setting. The expected value of $X$ is $\int_{-\infty}^\infty xp(x)\,dx$, provided this integral converges absolutely, and for the Cauchy density it does not: $\int_0^Rx\,dx/(1+x^2)=(1/2)\Lambda(1+R^2)\to\infty$, by the substitution $u=1+x^2$ and \cref{prop:log-additive}. So a Cauchy-distributed quantity has no mean, a fact with consequences for the statistics of heavy-tailed data. The most important density, the normal density $e^{-x^2/2}/\sqrt{2\pi}$, involves the integral $\int_{-\infty}^\infty e^{-x^2/2}dx=\sqrt{2\pi}$, whose integrand has no elementary antiderivative, by \cref{thm:liouville} and the substitution $x=\sqrt2\,t$, but which can be evaluated with a double integral in \cref{ch:multiple-integrals}. Volume~III builds probability theory on these ideas, with the Lebesgue integral of Volume~II in place of the Riemann integral.
+Probabilities are thus areas under the graph of $p$, and the total area is $1$. The uniform density on $[0,1]$ is $\mathbf 1_{[0,1]}$; the density $p(x)=1/(\pi(1+x^2))$, the \term{Cauchy density}, has total area $1$ by the computation of \cref{sec:improper}, and $P(-1\le X\le1)=(1/\pi)(\arctan1-\arctan(-1))=1/2$. Improper integrals are unavoidable in this setting. The expected value of $X$ is $\int_{-\infty}^\infty xp(x)\,dx$, provided this integral converges absolutely, and for the Cauchy density it does not: $\int_0^Rx\,dx/(1+x^2)=\Lambda(1+R^2)/2\to\infty$, by the substitution $u=1+x^2$ and \cref{prop:log-additive}. So a Cauchy-distributed quantity has no mean, a fact with consequences for the statistics of heavy-tailed data. The most important density, the normal density $e^{-x^2/2}/\sqrt{2\pi}$, involves the integral $\int_{-\infty}^\infty e^{-x^2/2}dx=\sqrt{2\pi}$, whose integrand has no elementary antiderivative, by \cref{thm:liouville} and the substitution $x=\sqrt2\,t$, but which can be evaluated with a double integral in \cref{ch:multiple-integrals}. Volume~III builds probability theory on these ideas, with the Lebesgue integral of Volume~II in place of the Riemann integral.
 
 \bigskip
 With the derivative and the integral in hand, and the fundamental theorem linking them, the basic machinery of calculus is complete. \Cref{ch:series} turns to infinite sums: it uses the integral test of \cref{sec:improper} to decide the convergence of series, and integration by parts to prove Taylor's theorem with an integral form of the remainder, which measures how well a function is approximated by polynomials. \Cref{ch:transcendental} then constructs the exponential function, the logarithm and the trigonometric functions rigorously, and shows that the function $\Lambda$ of this chapter is the natural logarithm.

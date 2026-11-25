@@ -127,7 +127,7 @@ Since $1/(k(k+1))=1/k-1/(k+1)$ and $1/k\to0$,
 \[
 \sum_{k=1}^\infty\frac1{k(k+1)}=\frac12+\frac16+\frac1{12}+\frac1{20}+\cdots=1 .
 \]
-The same idea gave the bound $\sum_{k=1}^n1/k^2<2$ in \cref{sec:completeness}. Partial fractions often produce telescoping sums: $1/(k(k+2))=(1/2)\bigl(1/k-1/(k+2)\bigr)$, and writing the right side as
+The same idea gave the bound $\sum_{k=1}^n1/k^2<2$ in \cref{sec:completeness}. Partial fractions often produce telescoping sums: $1/(k(k+2))=\bigl(1/k-1/(k+2)\bigr)/2$, and writing the right side as
 \[
 \frac12\Bigl(\Bigl(\frac1k-\frac1{k+1}\Bigr)+\Bigl(\frac1{k+1}-\frac1{k+2}\Bigr)\Bigr)
 \]
@@ -503,7 +503,7 @@ The test is due to Leibniz, who stated it in letters of 1705 and 1714~\cite{knop
 \]
 which converges by the theorem but not absolutely, since the harmonic series diverges. Its sum is $\Lambda(2)=\ln2$, as \cref{sec:expansions} proves. The same theorem shows the convergence of the series $1-1/3+1/5-1/7+\cdots$, whose sum is $\pi/4$ (\cref{sec:expansions}), and of $\sum_k(-1)^k/k!$, whose sum is $1/e$; for the last one it also proves the claim of \cref{sec:ie-pigeonhole} about the fraction of derangements, as \cref{sec:expansions} explains.
 
-The bound $|s-s_n|\le b_{n+1}$ also shows how slowly a conditionally convergent alternating series may converge. For the alternating harmonic series it gives $|\Lambda(2)-s_n|\le1/(n+1)$, and this is nearly sharp: the error after $1000$ terms is $5.0\times10^{-4}$. Averaging two consecutive partial sums is much better, because the errors have opposite signs and nearly equal size: $(1/2)(s_{999}+s_{1000})$ differs from $\Lambda(2)$ by $2.5\times10^{-7}$. Systematic versions of this idea are the subject of \cref{sec:summing}.
+The bound $|s-s_n|\le b_{n+1}$ also shows how slowly a conditionally convergent alternating series may converge. For the alternating harmonic series it gives $|\Lambda(2)-s_n|\le1/(n+1)$, and this is nearly sharp: the error after $1000$ terms is $5.0\times10^{-4}$. Averaging two consecutive partial sums is much better, because the errors have opposite signs and nearly equal size: $(s_{999}+s_{1000})/2$ differs from $\Lambda(2)$ by $2.5\times10^{-7}$. Systematic versions of this idea are the subject of \cref{sec:summing}.
 
 \subsection{Rearrangements}
 
@@ -579,7 +579,7 @@ The $j$th group of three terms is
 \[
 \frac1{2j-1}-\frac1{4j-2}-\frac1{4j}=\frac1{4j-2}-\frac1{4j}=\frac12\Bigl(\frac1{2j-1}-\frac1{2j}\Bigr),
 \]
-so the partial sum after $3m$ terms is half the partial sum $s_{2m}$ of the original series, and it tends to $(1/2)\Lambda(2)$. The partial sums after $3m+1$ and $3m+2$ terms differ from it by terms that tend to zero. The rearranged series therefore converges to $(1/2)\Lambda(2)$, half the sum of the original series, although it consists of exactly the same terms.
+so the partial sum after $3m$ terms is half the partial sum $s_{2m}$ of the original series, and it tends to $\Lambda(2)/2$. The partial sums after $3m+1$ and $3m+2$ terms differ from it by terms that tend to zero. The rearranged series therefore converges to $\Lambda(2)/2$, half the sum of the original series, although it consists of exactly the same terms.
 
 The lesson for computation is that a conditionally convergent series is a fragile object. Its sum is a property of the terms together with their order, and any method that reorders terms, such as summing in parallel blocks, or sorting by size to reduce rounding errors, may change the result unless the series converges absolutely. For absolutely convergent series every order gives the same sum, and the order may be chosen to suit the computation.
 
@@ -1597,11 +1597,11 @@ Euler did not hesitate to assign the value $F(x)$ to the divergent series $\sum(
 
 \subsection{Sums and Integrals: The Euler--Maclaurin Formula}
 
-\Cref{thm:integral-test} bracketed a sum $\sum f(k)$ between two integrals, with a difference of up to $f(1)$. A much more precise comparison follows from the error of the trapezoidal rule. On $[k,k+1]$, the trapezoidal approximation of $\int_k^{k+1}f$ is $(1/2)(f(k)+f(k+1))$, and adding these over $k=a,\ldots,b-1$ gives $\sum_{k=a}^bf(k)-(1/2)(f(a)+f(b))$. So a sum equals an integral plus end corrections plus the total trapezoidal error, which \cref{lem:local-errors} showed to be about $-(1/12)\sum_kf''(\eta_k)\approx-(1/12)(f'(b)-f'(a))$. The following theorem makes this exact, with a remainder that involves the third derivative. Its proof integrates by parts three times, against the periodic functions
+\Cref{thm:integral-test} bracketed a sum $\sum f(k)$ between two integrals, with a difference of up to $f(1)$. A much more precise comparison follows from the error of the trapezoidal rule. On $[k,k+1]$, the trapezoidal approximation of $\int_k^{k+1}f$ is $(f(k)+f(k+1))/2$, and adding these over $k=a,\ldots,b-1$ gives $\sum_{k=a}^bf(k)-(f(a)+f(b))/2$. So a sum equals an integral plus end corrections plus the total trapezoidal error, which \cref{lem:local-errors} showed to be about $-\sum_kf''(\eta_k)/12\approx-(f'(b)-f'(a))/12$. The following theorem makes this exact, with a remainder that involves the third derivative. Its proof integrates by parts three times, against the periodic functions
 \[
 p_1(x)\coloneqq t-\tfrac12,\qquad p_2(x)\coloneqq\tfrac12\bigl(t^2-t+\tfrac16\bigr),\qquad p_3(x)\coloneqq\tfrac16\,t\bigl(t-\tfrac12\bigr)(t-1),\qquad t\coloneqq x-\lfloor x\rfloor .
 \]
-On each interval $[k,k+1)$ they are polynomials in $x$ with $p_2'=p_1$ and $p_3'=p_2$; moreover $p_2$ and $p_3$ are continuous on $\mathbb R$, because $P_2(t)\coloneqq(1/2)(t^2-t+1/6)$ takes the value $1/12$ at both $t=0$ and $t=1$, and $P_3(t)\coloneqq(1/6)t(t-1/2)(t-1)$ vanishes at both. Elementary calculus shows that $|P_3(t)|\le\sqrt3/216=0.0080\ldots$ on $[0,1]$, the maximum being attained at $t=1/2\pm1/(2\sqrt3)$.
+On each interval $[k,k+1)$ they are polynomials in $x$ with $p_2'=p_1$ and $p_3'=p_2$; moreover $p_2$ and $p_3$ are continuous on $\mathbb R$, because $P_2(t)\coloneqq(t^2-t+1/6)/2$ takes the value $1/12$ at both $t=0$ and $t=1$, and $P_3(t)\coloneqq t(t-1/2)(t-1)/6$ vanishes at both. Elementary calculus shows that $|P_3(t)|\le\sqrt3/216=0.0080\ldots$ on $[0,1]$, the maximum being attained at $t=1/2\pm1/(2\sqrt3)$.
 
 \begin{theorem}[Euler--Maclaurin formula, first terms]
 \label{thm:euler-maclaurin}
@@ -1828,7 +1828,7 @@ Let $f$ be positive, decreasing, convex and differentiable on $[n,\infty)$, with
 \end{proposition}
 
 \begin{proof}
-By \cref{prop:convex-quadrature} with a single subinterval, the midpoint rule underestimates and the trapezoidal rule overestimates the integral of a convex function: $f(k)\le\int_{k-1/2}^{k+1/2}f$ and $\int_k^{k+1}f\le(1/2)(f(k)+f(k+1))$. Adding the first inequality over $k>n$ gives the upper bound. Adding the second over $k\ge n+1$ gives $\int_{n+1}^\infty f\le\sum_{k>n}f(k)-(1/2)f(n+1)$, the lower bound.
+By \cref{prop:convex-quadrature} with a single subinterval, the midpoint rule underestimates and the trapezoidal rule overestimates the integral of a convex function: $f(k)\le\int_{k-1/2}^{k+1/2}f$ and $\int_k^{k+1}f\le(f(k)+f(k+1))/2$. Adding the first inequality over $k>n$ gives the upper bound. Adding the second over $k\ge n+1$ gives $\int_{n+1}^\infty f\le\sum_{k>n}f(k)-f(n+1)/2$, the lower bound.
 \end{proof}
 
 For $\sum1/k^2$, with $f(x)=1/x^2$, the proposition gives
@@ -1884,7 +1884,7 @@ $t^pA(h/t)=t^pA+ch^p+O(h^q)$, and subtracting $A(h)=A+ch^p+O(h^q)$ gives $(t^p-1
 
 The constant $c$ need not be known, only the exponent $p$. If the error has an expansion with several powers, the extrapolation can be repeated, each time removing the leading term. The idea is due to Richardson~\cite{richardson1911}.
 
-Three applications illustrate the proposition. (i) For the trapezoidal rule, $T_n=\int_a^bf+ch^2+O(h^3)$ by the Euler--Maclaurin formula, and extrapolation with $t=2$ and $p=2$ gives $(1/3)(4T_{2n}-T_n)$, which is Simpson's rule $S_{2n}$ by \eqref{eq:rule-relations}: the observation at the end of \cref{sec:quadrature} is an instance of the proposition. (ii) For the central difference quotient, \cref{prop:difference-taylor}\,(iv) gives $D_h^0f(x)=f'(x)+(h^2/6)f'''(x)+O(h^4)$, and $(1/3)(4D_{h/2}^0f(x)-D_h^0f(x))=f'(x)+O(h^4)$. For $f=\sin$ at $x=1$ and $h=0.1$, the errors of $D_{0.1}^0$ and $D_{0.05}^0$ are $-9.0\times10^{-4}$ and $-2.3\times10^{-4}$, and that of the extrapolated value is $-1.1\times10^{-7}$; halving $h$ divides this last error by about $16$, as the order $4$ predicts. (iii) For $\sum1/k^2$, the Euler--Maclaurin formula gives $s_n=\pi^2/6-1/n+1/(2n^2)+O(n^{-3})$, an expansion in $h=1/n$ with $p=1$. With $t=2$, $2s_{2n}-s_n=\pi^2/6+O(1/n^2)$: for $n=100$ its error is $2.5\times10^{-5}$, while $s_{200}$ is off by $5.0\times10^{-3}$.
+Three applications illustrate the proposition. (i) For the trapezoidal rule, $T_n=\int_a^bf+ch^2+O(h^3)$ by the Euler--Maclaurin formula, and extrapolation with $t=2$ and $p=2$ gives $(4T_{2n}-T_n)/3$, which is Simpson's rule $S_{2n}$ by \eqref{eq:rule-relations}: the observation at the end of \cref{sec:quadrature} is an instance of the proposition. (ii) For the central difference quotient, \cref{prop:difference-taylor}\,(iv) gives $D_h^0f(x)=f'(x)+(h^2/6)f'''(x)+O(h^4)$, and $(4D_{h/2}^0f(x)-D_h^0f(x))/3=f'(x)+O(h^4)$. For $f=\sin$ at $x=1$ and $h=0.1$, the errors of $D_{0.1}^0$ and $D_{0.05}^0$ are $-9.0\times10^{-4}$ and $-2.3\times10^{-4}$, and that of the extrapolated value is $-1.1\times10^{-7}$; halving $h$ divides this last error by about $16$, as the order $4$ predicts. (iii) For $\sum1/k^2$, the Euler--Maclaurin formula gives $s_n=\pi^2/6-1/n+1/(2n^2)+O(n^{-3})$, an expansion in $h=1/n$ with $p=1$. With $t=2$, $2s_{2n}-s_n=\pi^2/6+O(1/n^2)$: for $n=100$ its error is $2.5\times10^{-5}$, while $s_{200}$ is off by $5.0\times10^{-3}$.
 
 Extrapolation has a cost, which the examples hide. It assumes the form of the error, which holds only if the function is smooth enough, and it combines approximations with coefficients of opposite signs, which amplifies their rounding errors. For difference quotients, where rounding errors limit the useful $h$ from below (\cref{sec:conditioning}), extrapolation raises the attainable accuracy but does not remove this limit. Volume~XI develops extrapolation systematically, for differentiation and in Romberg's integration method, and treats the summation of series by more powerful transformations.
 
