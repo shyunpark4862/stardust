@@ -8,7 +8,7 @@
 
 The chapter has three parts. The first, \cref{sec:sets,sec:set-operations,sec:products}, treats sets themselves: what a set is, when two sets are equal, how new sets are built from old ones by union, intersection, complement, power set and Cartesian product, and why the laws of these operations mirror the laws of logic. The second part, \cref{sec:functions,sec:injections}, treats functions: their images and preimages, their composition, and the three properties (being injective, surjective or bijective) that decide whether a function can be undone. The third part, \cref{sec:relations,sec:equivalence,sec:orders}, treats relations between elements of a set. Two kinds stand out. Equivalence relations express that two objects are ``the same in some respect'' and cut a set into classes; orders express that one object ``comes before'' another and are what sorting is about. The last section, \cref{sec:cardinality}, uses functions to compare the sizes of sets. It shows that the sizes of infinite sets can be compared too, and that they are not all equal.
 
-Most of the material consists of definitions and short proofs, and the proofs use the techniques of \cref{ch:logic} directly. The definitions deserve slow reading: a large part of the later mathematics in this series consists of applying them, and a misread definition causes errors that no amount of later care repairs. We give many examples, and we draw pictures of sets, functions and relations wherever a picture helps. The number systems $\mathbb N$, $\mathbb Z$, $\mathbb Q$ and $\mathbb R$ are used as in \cref{ch:logic}, with the properties listed in \cref{asm:numbers}; Chapter~3 builds them up properly.
+Most of the material consists of definitions and short proofs, and the proofs use the techniques of \cref{ch:logic} directly. The definitions deserve slow reading: a large part of the later mathematics in this series consists of applying them, and a misread definition causes errors that no amount of later care repairs. We give many examples, and we draw pictures of sets, functions and relations wherever a picture helps. The number systems $\mathbb N$, $\mathbb Z$, $\mathbb Q$ and $\mathbb R$ are used as in \cref{ch:logic}, with the properties listed in \cref{asm:numbers}; \cref{ch:numbers} builds them up properly.
 
 \section{Sets}
 \label{sec:sets}
@@ -95,7 +95,7 @@ The familiar number systems are the sets
 \mathbb Z=\{\ldots,-2,-1,0,1,2,\ldots\},\quad
 \mathbb Q=\Bigl\{\frac pq: p,q\in\mathbb Z,\ q\ne0\Bigr\},
 \]
-and the set $\mathbb R$ of real numbers, which cannot be described by a list or by a simple formula and is characterised by axioms in Chapter~3. Each of these sets is a proper subset of the next one,
+and the set $\mathbb R$ of real numbers, which cannot be described by a list or by a simple formula and is characterised by axioms in \cref{ch:numbers}. Each of these sets is a proper subset of the next one,
 \[
 \mathbb N\subset\mathbb Z\subset\mathbb Q\subset\mathbb R,
 \]
@@ -256,7 +256,7 @@ If $n\in6\mathbb Z$, say $n=6k$, then $n=2(3k)=3(2k)$ lies in both $2\mathbb Z$ 
 \[
 n=3n-2n=3\cdot2a-2\cdot3b=6(a-b),
 \]
-so $n\in6\mathbb Z$. The product of the two numbers is not always the right answer: $4\mathbb Z\cap6\mathbb Z$ is not $24\mathbb Z$, since $12$ lies in both $4\mathbb Z$ and $6\mathbb Z$ but is not a multiple of $24$. In fact $4\mathbb Z\cap6\mathbb Z=12\mathbb Z$, as Chapter~3 shows with the least common multiple.
+so $n\in6\mathbb Z$. The product of the two numbers is not always the right answer: $4\mathbb Z\cap6\mathbb Z$ is not $24\mathbb Z$, since $12$ lies in both $4\mathbb Z$ and $6\mathbb Z$ but is not a multiple of $24$. In fact $4\mathbb Z\cap6\mathbb Z=12\mathbb Z$, as \cref{ch:numbers} shows with the least common multiple.
 
 The definitions translate each set operation into a connective. \Cref{tab:logic-sets} lists the dictionary. Its last column underlies every proof in this section: to establish an identity between sets, translate membership in each side into a formula of logic, and compare the formulas.
 
@@ -421,7 +421,7 @@ Some examples with $I=\mathbb N$ or $I=\{1,2,3,\ldots\}$:
 \qquad
 \bigcap_{n\ge1}\Bigl(-\frac1n,\frac1n\Bigr)=\{0\}.
 \end{gather*}
-The first holds because every $k\in\mathbb N$ lies in the set with index $n=k$. The second holds because a natural number $k$ fails to lie in the set with index $n=k+1$, although every single set of the family is infinite, and every finite intersection $\{k: k\ge n_1\}\cap\cdots\cap\{k: k\ge n_m\}$ is infinite too. Infinite intersections can thus behave quite differently from finite ones. The last two identities use, in addition, the Archimedean property of the real numbers proved in Chapter~3: for every real number $x>0$ there is an integer $n\ge1$ with $1/n<x$. For example, if $x\ne0$, choosing $n$ with $1/n<|x|$ shows that $x\notin(-1/n,1/n)$, so only $0$ lies in every interval of the last family.
+The first holds because every $k\in\mathbb N$ lies in the set with index $n=k$. The second holds because a natural number $k$ fails to lie in the set with index $n=k+1$, although every single set of the family is infinite, and every finite intersection $\{k: k\ge n_1\}\cap\cdots\cap\{k: k\ge n_m\}$ is infinite too. Infinite intersections can thus behave quite differently from finite ones. The last two identities use, in addition, the Archimedean property of the real numbers proved in \cref{ch:numbers}: for every real number $x>0$ there is an integer $n\ge1$ with $1/n<x$. For example, if $x\ne0$, choosing $n$ with $1/n<|x|$ shows that $x\notin(-1/n,1/n)$, so only $0$ lies in every interval of the last family.
 
 The laws of \cref{thm:set-algebra} and \cref{prop:de-morgan-sets} extend to families, with the quantifiers $\exists$ and $\forall$ in the role of $\vee$ and $\wedge$.
 
@@ -935,7 +935,7 @@ The definition identifies a relation with its truth set, in the sense of \cref{d
 \item the orders $\le$ and $<$ on $\mathbb N$, $\mathbb Z$, $\mathbb Q$ and $\mathbb R$;
 \item divisibility $\mid$ on $\mathbb Z$ (\cref{def:even-odd});
 \item inclusion $\subseteq$ on the power set $\mathcal P(X)$ of a set $X$;
-\item \term{congruence modulo} $n$, for a fixed integer $n\ge1$: integers $a$ and $b$ are congruent modulo $n$, written $a\equiv b\pmod n$, if $n\mid a-b$. Thus $17\equiv2\pmod5$ and $-1\equiv3\pmod4$. Chapter~3 studies this relation in detail;
+\item \term{congruence modulo} $n$, for a fixed integer $n\ge1$: integers $a$ and $b$ are congruent modulo $n$, written $a\equiv b\pmod n$, if $n\mid a-b$. Thus $17\equiv2\pmod5$ and $-1\equiv3\pmod4$. \Cref{ch:numbers} studies this relation in detail;
 \item a relation from a set of people to a set of cities, ``$p$ has lived in $c$'', and in general any table with two columns, each row of which records one related pair.
 \end{itemize}
 
@@ -1107,7 +1107,7 @@ When several equivalence relations are in play we write $[a]_\sim$. According to
 [1]&=\{\ldots,-5,-2,1,4,7,\ldots\}=\{3k+1: k\in\mathbb Z\},\\
 [2]&=\{\ldots,-4,-1,2,5,8,\ldots\}=\{3k+2: k\in\mathbb Z\},
 \end{align*}
-and every integer lies in exactly one of them; for example $[7]=[1]=[-2]$. That these three classes are all of them, and that they are different, follows from division with remainder, which Chapter~3 proves: every integer is $3k$, $3k+1$ or $3k+2$ for a unique choice of $k$ and of the remainder. The quotient set $\mathbb Z/{\equiv}$ for this relation is written $\mathbb Z/3\mathbb Z$; it has three elements, each of which is an infinite set of integers. For $n=2$ the two classes are the even and the odd integers, and \cref{prop:parity} is the statement that they cover $\mathbb Z$ without overlap.
+and every integer lies in exactly one of them; for example $[7]=[1]=[-2]$. That these three classes are all of them, and that they are different, follows from division with remainder, which \cref{ch:numbers} proves: every integer is $3k$, $3k+1$ or $3k+2$ for a unique choice of $k$ and of the remainder. The quotient set $\mathbb Z/{\equiv}$ for this relation is written $\mathbb Z/3\mathbb Z$; it has three elements, each of which is an infinite set of integers. For $n=2$ the two classes are the even and the odd integers, and \cref{prop:parity} is the statement that they cover $\mathbb Z$ without overlap.
 
 The example suggests that distinct classes never overlap. This is true for every equivalence relation, and it is the basic fact about classes.
 
@@ -1143,7 +1143,7 @@ A \term{partition} of a set $A$ is a set $\mathcal B$ of subsets of $A$, called 
 \end{enumerate}
 \end{definition}
 
-Conditions (ii) and (iii) together say that every element of $A$ lies in exactly one block. The even and the odd integers form a partition of $\mathbb Z$ with two blocks; the singletons $\{a\}$, $a\in A$, form a partition of $A$; and the intervals $[k,k+1)$, $k\in\mathbb Z$, form a partition of $\mathbb R$ into infinitely many blocks. (That every real number $x$ lies in one of these intervals, namely the one whose $k$ is the largest integer not exceeding $x$, rests on the Archimedean property of the real numbers proved in Chapter~3.) The next theorem shows that equivalence relations and partitions are two descriptions of the same thing~\cite{halmos1960naive,enderton1977sets}. \Cref{fig:partition} shows the correspondence.
+Conditions (ii) and (iii) together say that every element of $A$ lies in exactly one block. The even and the odd integers form a partition of $\mathbb Z$ with two blocks; the singletons $\{a\}$, $a\in A$, form a partition of $A$; and the intervals $[k,k+1)$, $k\in\mathbb Z$, form a partition of $\mathbb R$ into infinitely many blocks. (That every real number $x$ lies in one of these intervals, namely the one whose $k$ is the largest integer not exceeding $x$, rests on the Archimedean property of the real numbers proved in \cref{ch:numbers}.) The next theorem shows that equivalence relations and partitions are two descriptions of the same thing~\cite{halmos1960naive,enderton1977sets}. \Cref{fig:partition} shows the correspondence.
 
 \begin{theorem}[Equivalence relations and partitions]
 \label{thm:partition}
@@ -1256,7 +1256,7 @@ The proof used the hypothesis $s\ne0$, and this is why pairs with second compone
 \[
 [(p,q)]+[(r,s)]\coloneqq[(ps+qr,qs)],\qquad[(p,q)]\cdot[(r,s)]\coloneqq[(pr,qs)],
 \]
-after checking that these definitions are well defined. Chapter~3 returns to this construction.
+after checking that these definitions are well defined. \Cref{ch:numbers} returns to this construction.
 
 \section{Orders}
 \label{sec:orders}
@@ -1392,9 +1392,9 @@ In $\mathbb R$ with its usual order, $\sup{[0,1)}=1$, although $[0,1)$ has no gr
 The number $1$ is an upper bound of $[0,1)$. Let $u$ be any upper bound; we show $1\le u$. Suppose, for a contradiction, that $u<1$. Since $0\in[0,1)$, we have $u\ge0$. The number $x\coloneqq(u+1)/2$ satisfies $0\le u<x<1$, so $x\in[0,1)$, and $x>u$ contradicts the assumption that $u$ is an upper bound. Hence $1$ is the least upper bound. We showed above that $[0,1)$ has no greatest element.
 \end{proof}
 
-In other posets the supremum takes other forms. In $\mathcal P(X)$ ordered by inclusion, $\sup\{A,B\}=A\cup B$ and $\inf\{A,B\}=A\cap B$, because $A\cup B$ contains both $A$ and $B$ and is contained in every set that contains both, and dually for $A\cap B$. In $\mathbb N$ ordered by divisibility, $\inf\{4,6\}=2$ and $\sup\{4,6\}=12$: the lower bounds of $\{4,6\}$ are the common divisors $1$ and $2$, and the upper bounds are the common multiples $0,12,24,\ldots$, among which $12$ divides all the others. In general the infimum and supremum of two natural numbers under divisibility are their greatest common divisor and least common multiple, as Chapter~3 shows. In this order $0$ is the greatest element of $\mathbb N$, since every natural number divides $0$.
+In other posets the supremum takes other forms. In $\mathcal P(X)$ ordered by inclusion, $\sup\{A,B\}=A\cup B$ and $\inf\{A,B\}=A\cap B$, because $A\cup B$ contains both $A$ and $B$ and is contained in every set that contains both, and dually for $A\cap B$. In $\mathbb N$ ordered by divisibility, $\inf\{4,6\}=2$ and $\sup\{4,6\}=12$: the lower bounds of $\{4,6\}$ are the common divisors $1$ and $2$, and the upper bounds are the common multiples $0,12,24,\ldots$, among which $12$ divides all the others. In general the infimum and supremum of two natural numbers under divisibility are their greatest common divisor and least common multiple, as \cref{ch:numbers} shows. In this order $0$ is the greatest element of $\mathbb N$, since every natural number divides $0$.
 
-A supremum need not exist. In $\mathbb Q$ with its usual order, the set $\{q\in\mathbb Q: q^2<2\}$ is bounded above, for instance by $2$, but it has no least upper bound in $\mathbb Q$: the candidate would be $\sqrt2$, which is not rational. The property that distinguishes $\mathbb R$ from $\mathbb Q$ is precisely that every nonempty subset of $\mathbb R$ that is bounded above has a supremum in $\mathbb R$. This is the completeness axiom, on which Chapter~3 bases the theory of the real numbers and much of calculus rests.
+A supremum need not exist. In $\mathbb Q$ with its usual order, the set $\{q\in\mathbb Q: q^2<2\}$ is bounded above, for instance by $2$, but it has no least upper bound in $\mathbb Q$: the candidate would be $\sqrt2$, which is not rational. The property that distinguishes $\mathbb R$ from $\mathbb Q$ is precisely that every nonempty subset of $\mathbb R$ that is bounded above has a supremum in $\mathbb R$. This is the completeness axiom, on which \cref{ch:numbers} bases the theory of the real numbers and much of calculus rests.
 
 \subsection{Lexicographic Order}
 
@@ -1755,7 +1755,7 @@ $|\mathbb R|=|\mathcal P(\mathbb N)|$.
 \end{corollary}
 
 \begin{proof}
-The map $S\mapsto x(\mathbf 1_S)$ is an injection from $\mathcal P(\mathbb N)$ to $\mathbb R$, by \cref{lem:decimal-injective} and the correspondence between subsets and indicator sequences. In the other direction, the map $y\mapsto\{q\in\mathbb Q: q<y\}$ from $\mathbb R$ to $\mathcal P(\mathbb Q)$ is injective: if $y<y'$, then there is a rational number $q$ with $y<q<y'$ (a property of the real numbers proved in Chapter~3), and $q$ belongs to the set of $y'$ but not to that of $y$. Finally, a bijection $\varphi\colon\mathbb Q\to\mathbb N$, which exists by \cref{thm:q-countable}, induces the bijection $S\mapsto\varphi(S)$ from $\mathcal P(\mathbb Q)$ to $\mathcal P(\mathbb N)$, with inverse $T\mapsto\varphi^{-1}(T)$. Composing, we obtain an injection from $\mathbb R$ to $\mathcal P(\mathbb N)$, and \cref{thm:schroeder-bernstein} gives the claim.
+The map $S\mapsto x(\mathbf 1_S)$ is an injection from $\mathcal P(\mathbb N)$ to $\mathbb R$, by \cref{lem:decimal-injective} and the correspondence between subsets and indicator sequences. In the other direction, the map $y\mapsto\{q\in\mathbb Q: q<y\}$ from $\mathbb R$ to $\mathcal P(\mathbb Q)$ is injective: if $y<y'$, then there is a rational number $q$ with $y<q<y'$ (a property of the real numbers proved in \cref{ch:numbers}), and $q$ belongs to the set of $y'$ but not to that of $y$. Finally, a bijection $\varphi\colon\mathbb Q\to\mathbb N$, which exists by \cref{thm:q-countable}, induces the bijection $S\mapsto\varphi(S)$ from $\mathcal P(\mathbb Q)$ to $\mathcal P(\mathbb N)$, with inverse $T\mapsto\varphi^{-1}(T)$. Composing, we obtain an injection from $\mathbb R$ to $\mathcal P(\mathbb N)$, and \cref{thm:schroeder-bernstein} gives the claim.
 \end{proof}
 
 Together with Cantor's theorem, the corollary gives $|\mathbb N|<|\mathbb R|$ once more, now as an instance of $|A|<|\mathcal P(A)|$. One more question about the comparison of sizes remains, namely whether any two sets are comparable, that is, whether $|A|\le|B|$ or $|B|\le|A|$ always holds. This is true, but only with the help of the axiom of choice, and the comparability of all sets is equivalent to that axiom. Zermelo deduced from the axiom of choice that every set can be well-ordered~\cite{zermelo1904}, and two well-ordered sets are always comparable; conversely, Hartogs showed that if any two sets are comparable, then every set can be well-ordered~\cite{hartogs1915}, and a well-ordering of the union of a family of nonempty sets selects the least element of each member of the family.

@@ -6,7 +6,7 @@
 
 Most readers of this book have met proofs only in passing, perhaps as a derivation in a calculus lecture that was to be followed rather than reproduced. This chapter starts from the beginning and assumes nothing beyond school algebra and the calculus of one variable. It has two parts. The first part, \cref{sec:statements,sec:implication,sec:quantifiers}, describes the language in which mathematical claims are written: statements and the connectives that combine them, the conditional ``if \ldots, then \ldots'', and the quantifiers ``for every'' and ``there exists''. Much of this part is close to mechanical, and its purpose is precision. Everyday language tolerates words such as ``or'' and ``if'' with several meanings, whereas a proof needs each word to have exactly one. The second part, \cref{sec:anatomy,sec:direct,sec:contradiction,sec:induction,sec:existence}, explains what a proof is and presents the standard techniques: direct proof, proof by cases, proof by contrapositive, proof by contradiction and mathematical induction, together with the proofs of existence and uniqueness, the refutation of a claim by a counterexample, and the errors that most often spoil an argument.
 
-Throughout the chapter we use the familiar number systems: the natural numbers $\mathbb N=\{0,1,2,\ldots\}$ (in this book zero is a natural number), the integers $\mathbb Z$, the rational numbers $\mathbb Q$ and the real numbers $\mathbb R$. Their arithmetic and their ordering are used freely; the facts that we rely on are listed in \cref{asm:numbers}, and Chapter~3 builds them up properly. We also speak informally of sets: $x\in S$ means that $x$ is an element of the set $S$, and $\{x\in S: P(x)\}$ denotes the set of those elements of $S$ that have the property $P$. Sets are the subject of the next chapter.
+Throughout the chapter we use the familiar number systems: the natural numbers $\mathbb N=\{0,1,2,\ldots\}$ (in this book zero is a natural number), the integers $\mathbb Z$, the rational numbers $\mathbb Q$ and the real numbers $\mathbb R$. Their arithmetic and their ordering are used freely; the facts that we rely on are listed in \cref{asm:numbers}, and \cref{ch:numbers} builds them up properly. We also speak informally of sets: $x\in S$ means that $x$ is an element of the set $S$, and $\{x\in S: P(x)\}$ denotes the set of those elements of $S$ that have the property $P$. Sets are the subject of the next chapter.
 
 A proof is not read like a story. It is best read with a pencil, checking each step, asking which earlier fact justifies it, and trying the claim on a small example when a step seems obscure. The examples in this chapter are chosen to be easy so that the reader's attention can go to the form of the argument rather than to its content.
 
@@ -635,7 +635,7 @@ A mathematical text consists mainly of three kinds of statements.
 
 A \term{definition} gives a precise meaning to a word or a symbol. ``An integer $n$ is \emph{even} if $n=2k$ for some integer $k$'' is a definition. Once it is made, ``even'' means exactly this and nothing more, whatever associations the word may have in everyday language. A definition is always an ``if and only if'', even when, by long-standing custom, it is written with ``if'': an integer that is not of the form $2k$ is not even. In this book the word being defined is set in italics.
 
-An \term{axiom} is a statement that is accepted without proof as a starting point. Every chain of reasoning must start somewhere, and the axioms are where it starts. In this chapter the axioms are the familiar properties of numbers, which we now list. They are taken for granted here and examined in Chapter~3, where the real numbers are characterised by a short list of axioms and the other facts are derived from them.
+An \term{axiom} is a statement that is accepted without proof as a starting point. Every chain of reasoning must start somewhere, and the axioms are where it starts. In this chapter the axioms are the familiar properties of numbers, which we now list. They are taken for granted here and examined in \cref{ch:numbers}, where the real numbers are characterised by a short list of axioms and the other facts are derived from them.
 
 \begin{assumption}[Arithmetic and order of numbers]
 \label{asm:numbers}
@@ -1298,7 +1298,7 @@ Every integer $n\ge2$ is a product of one or more primes.
 We use strong induction with $n_0=2$. The number $2$ is prime, hence a product of one prime. Let $n\ge2$ and assume that each of $2,\ldots,n$ is a product of primes. If $n+1$ is prime, there is nothing to prove. Otherwise $n+1=de$ with $1<d<n+1$, and then $e=(n+1)/d$ is an integer with $1<e<n+1$, because $d>1$ gives $e<n+1$ and $d<n+1$ gives $e>1$. By the inductive hypothesis, $d$ and $e$ are products of primes, and so is their product $n+1$.
 \end{proof}
 
-That the factorisation is unique apart from the order of the factors is the fundamental theorem of arithmetic, whose proof requires more number theory and is given in Chapter~3~\cite{hardywright2008}.
+That the factorisation is unique apart from the order of the factors is the fundamental theorem of arithmetic, whose proof requires more number theory and is given in \cref{ch:numbers}~\cite{hardywright2008}.
 
 \subsection{The Well-Ordering Principle}
 
@@ -1368,7 +1368,7 @@ m\coloneqq\frac{n-b_0}{2}=\sum_{i=1}^{k}b_i2^{i-1}=\sum_{i=1}^{l}c_i2^{i-1}.
 Here $m\ge2^{k-1}\ge1$ and $m<n$, so by the inductive hypothesis the two representations of $m$ coincide: $k-1=l-1$ and $b_i=c_i$ for $1\le i\le k$. Together with $b_0=c_0$ this proves $P(n)$.
 \end{proof}
 
-The existence proof is constructive: it tells us how to find the digits. The last digit is $n\bmod2$, and the remaining digits are those of $(n-b_0)/2$. Repeating this until nothing is left produces the digits from the lowest to the highest, as \cref{tab:binary37} shows for $n=37$. Nothing in the proofs depends on the base being $2$: with \cref{prop:parity} replaced by division with remainder, which is proved in Chapter~3, the same arguments show that every positive integer has a unique representation in any base $\beta\ge2$, with digits $0,1,\ldots,\beta-1$. The decimal system is the case $\beta=10$. Volume~IV builds the representations of integers and of floating-point numbers in a computer on this theorem.
+The existence proof is constructive: it tells us how to find the digits. The last digit is $n\bmod2$, and the remaining digits are those of $(n-b_0)/2$. Repeating this until nothing is left produces the digits from the lowest to the highest, as \cref{tab:binary37} shows for $n=37$. Nothing in the proofs depends on the base being $2$: with \cref{prop:parity} replaced by division with remainder, which is proved in \cref{ch:numbers}, the same arguments show that every positive integer has a unique representation in any base $\beta\ge2$, with digits $0,1,\ldots,\beta-1$. The decimal system is the case $\beta=10$. Volume~IV builds the representations of integers and of floating-point numbers in a computer on this theorem.
 
 \begin{table}
 \sdfloat{%
@@ -1471,7 +1471,7 @@ There is an irrational number between $0$ and $1$.
 Let $a\coloneqq\sqrt2/2$. First, $1<\sqrt2<2$. Indeed, if $\sqrt2\le1$, multiplying this inequality by the nonnegative number $\sqrt2$ would give $2=\sqrt2\cdot\sqrt2\le\sqrt2\le1$, and if $\sqrt2\ge2$, multiplying by $\sqrt2$ would give $2\ge2\sqrt2\ge4$; both conclusions are false. Hence $0<a<1$. If $a$ were rational, then $\sqrt2=2a$ would be rational, contradicting \cref{thm:sqrt2}. So $a$ is irrational.
 \end{proof}
 
-An existence proof may also simply display a solution that has been found by any means at all; the proof does not need to explain how. For example, there are integers $x$ and $y$ with $7x+4y=1$, because $x=-1$ and $y=2$ work. How such solutions are found in general is the subject of Euclid's algorithm in Chapter~3~\cite{hardywright2008}.
+An existence proof may also simply display a solution that has been found by any means at all; the proof does not need to explain how. For example, there are integers $x$ and $y$ with $7x+4y=1$, because $x=-1$ and $y=2$ work. How such solutions are found in general is the subject of Euclid's algorithm in \cref{ch:numbers}~\cite{hardywright2008}.
 
 A \term{nonconstructive} proof shows that an object exists without exhibiting it, typically by cases or by contradiction. The following example is well known~\cite{jarden1953}.
 
