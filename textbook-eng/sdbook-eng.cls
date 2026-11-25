@@ -141,6 +141,7 @@
   % legend pos / legend style={at=..., anchor=...}.
   sdplot/.style={
     axis x line*=bottom, axis y line*=left,
+    axis on top,   % axis lines and ticks are drawn over fills and curves (2026-11-25)
     tick align=outside, tick style={black, line width=0.4pt},
     major tick length=2.5pt, minor tick length=0pt,
     axis line style={black, line width=0.5pt},
@@ -158,6 +159,7 @@
   % diagrams: axes with arrow heads, no grid
   sddiagram/.style={
     axis lines=middle, axis line style={-{Latex[length=1.6mm]}, line width=0.4pt},
+    axis on top,
     xlabel style={anchor=west, font=\scriptsize},
     ylabel style={anchor=south, font=\scriptsize},
     every tick label/.append style={font=\scriptsize},
@@ -304,6 +306,11 @@
 \pretocmd{\@makechapterhead}{\vspace*{48\p@}}{}{\ClassError{sdbook-eng}{patch failed}{}}
 \pretocmd{\@makeschapterhead}{\vspace*{48\p@}}{}{\ClassError{sdbook-eng}{patch failed}{}}
 
+% The chapter abstract is set off from the text: a blank line's worth of space follows it
+% and the first paragraph of the text is not indented (2026-11-25).
+\def\@abstract#1{\noindent\textbf{\abstractname}\enskip #1\par
+  \addvspace{\baselineskip}\@afterindentfalse\@afterheading}
+
 % ---------------------------------------------------------------------------
 % 8b. Lists (2026-11-25): itemize keeps SNmono's labels (bullet, then en dash); enumerate
 % numbers (i), (ii), ... and then (a), (b), ... Indentation is SNmono's own (labels set
@@ -334,14 +341,24 @@
 % ---------------------------------------------------------------------------
 % 8. Title page: SNmono's, without the publisher line
 % ---------------------------------------------------------------------------
+% \volume{1}{Calculus, Linear Algebra, and Differential Equations} sets the two lines
+% under the title: "Volume 1", then the volume's own title in smaller type. The series
+% title is set in italics (2026-11-25).
+\newcommand\volume[2]{\gdef\sd@volno{#1}\gdef\sd@voltitle{#2}}
+\def\sd@volno{}\def\sd@voltitle{}
 \def\@maketitle{\newpage\null\vskip 2em
 \begingroup
   \def\and{\unskip, }\parindent=\z@\pretolerance=10000\rightskip=\z@ \@plus 3cm
   {\LARGE\lineskip .5em \@author\par}%
   \vskip 2cm
-  {\Huge \@title \par}%
+  {\Huge\itshape \@title \par}%
   \vskip 1cm
-  \if!\@subtitle!\else{\LARGE\ignorespaces\@subtitle \par}\vskip 1cm\fi
+  \ifx\sd@volno\@empty
+    \if!\@subtitle!\else{\LARGE\ignorespaces\@subtitle \par}\vskip 1cm\fi
+  \else
+    {\LARGE Volume \sd@volno\par}\vskip 6\p@
+    {\Large \sd@voltitle\par}\vskip 1cm
+  \fi
   \ifx\@date\@empty\else{\large \@date}\par\vskip 1.5em\fi
   \vfill
 \endgroup}

@@ -2,7 +2,7 @@
 \chapter{Logic and Proof}
 \label{ch:logic}
 
-\abstract{A program that has passed a thousand tests may still fail on the next input, and even the arithmetic we learned as children is not safe from surprises: in almost every programming language the comparison \code{0.1 + 0.2 == 0.3} comes out false, although every calculation we have ever done by hand says that it should be true. When a claim concerns every input of an algorithm, every real number or every size of a matrix, no amount of checking individual cases can settle it, because the cases never run out. What can settle it is an argument that covers all the cases at once, and such an argument is called a proof. This book makes many claims of that kind (that an error stays below a stated bound, that an iteration converges, that a factorisation exists), and it justifies each of them by a proof. This chapter provides the means of reading and writing those proofs: a precise language for statements, and a small number of techniques that, in various combinations, account for almost every argument in the chapters that follow.}
+\abstract{A program that has passed a thousand tests may still fail on the next input, and even school arithmetic holds surprises: in most programming languages \mbox{\code{0.1 + 0.2 == 0.3}} is false. A claim about every input of an algorithm, every real number or every matrix size cannot be settled by checking cases, because the cases never run out. Only an argument covering all cases at once can settle it, and such an argument is a proof. This book supports its claims of this kind, such as error bounds and the convergence of iterations, by proofs. This chapter provides the means of reading and writing them: a precise language for statements and a few techniques that account for almost every argument that follows.}
 
 Most readers of this book have met proofs only in passing, perhaps as a derivation in a calculus lecture that was to be followed rather than reproduced. This chapter starts from the beginning and assumes nothing beyond school algebra and the calculus of one variable. It has two parts. The first part, \cref{sec:statements,sec:implication,sec:quantifiers}, describes the language in which mathematical claims are written: statements and the connectives that combine them, the conditional ``if \ldots, then \ldots'', and the quantifiers ``for every'' and ``there exists''. Much of this part is close to mechanical, and its purpose is precision. Everyday language tolerates words such as ``or'' and ``if'' with several meanings, whereas a proof needs each word to have exactly one. The second part, \cref{sec:anatomy,sec:direct,sec:contradiction,sec:induction,sec:existence}, explains what a proof is and presents the standard techniques: direct proof, proof by cases, proof by contrapositive, proof by contradiction and mathematical induction, together with the proofs of existence and uniqueness, the refutation of a claim by a counterexample, and the errors that most often spoil an argument.
 
@@ -154,7 +154,7 @@ by the first distributive law (read from right to left) and parts (vii) and (vii
 
 \subsection{A Picture of the Connectives}
 
-The connectives also have a geometric picture. Imagine all possible situations as the points of a rectangle, and represent a statement $P$ by the region of situations in which it is true. Then $\neg P$ is represented by the part of the rectangle outside that region, $P\wedge Q$ by the overlap of the two regions, and $P\vee Q$ by their combined extent. Two formulas are logically equivalent exactly when they are represented by the same region. \Cref{fig:venn} shows the connectives in this form, which is known as a \term{Venn diagram}. Panel~D shows the region of $\neg(P\wedge Q)$: everything except the overlap. This is visibly the region covered by the outside of $P$ together with the outside of $Q$, that is, the region of $\neg P\vee\neg Q$, and so the picture displays the first of De Morgan's laws.
+The connectives also have a geometric picture. Imagine all possible situations as the points of a rectangle, and represent a statement $P$ by the region of situations in which it is true. Then $\neg P$ is represented by the part of the rectangle outside that region, $P\wedge Q$ by the overlap of the two regions, and $P\vee Q$ by their combined extent. Two formulas are logically equivalent exactly when they are represented by the same region. \Cref{fig:venn} shows the connectives in this form, which is known as a \term{Venn diagram}, after John Venn, who introduced diagrams of this kind in 1880~\cite{venn1880}. Panel~D shows the region of $\neg(P\wedge Q)$: everything except the overlap. This is visibly the region covered by the outside of $P$ together with the outside of $Q$, that is, the region of $\neg P\vee\neg Q$, and so the picture displays the first of De Morgan's laws.
 
 \begin{figure}
 \tikzset{venn/.pic={
@@ -442,7 +442,7 @@ By \cref{def:quantifiers}, $\forall x\in S,\ P(x)$ is false exactly when $P(a)$ 
 For the second equivalence, $\exists x\in S,\ P(x)$ is false exactly when there is no element $a$ of $S$ for which $P(a)$ is true, that is, when $P(a)$ is false, and $\neg P(a)$ true, for every $a\in S$; this is the condition for $\forall x\in S,\ \neg P(x)$ to be true.
 \end{proof}
 
-For a finite domain, \cref{thm:quantifier-negation} is just De Morgan's law applied to the long conjunction and disjunction displayed above, and for this reason it is sometimes called De Morgan's law for quantifiers. In ordinary language the theorem guards against a common slip: the negation of ``every student passed the examination'' is ``some student did not pass'', and not ``every student failed''.
+For a finite domain, \cref{thm:quantifier-negation} is just De Morgan's law applied to the long conjunction and disjunction displayed above. In ordinary language the theorem guards against a common slip: the negation of ``every student passed the examination'' is ``some student did not pass'', and not ``every student failed''.
 
 Combining \cref{thm:quantifier-negation} with De Morgan's laws and \cref{prop:implication-laws}\,(iii), any quantified statement can be negated by a mechanical procedure: move the negation inwards step by step, exchanging $\forall$ and $\exists$ each time it passes a quantifier, exchanging $\wedge$ and $\vee$ each time it passes one of them, and replacing $\neg(P\Rightarrow Q)$ by $P\wedge\neg Q$. As an example, consider the true statement that every positive real number has a real square root,
 \[
@@ -765,7 +765,7 @@ Proofs use a small vocabulary of set phrases, each with a precise logical role.
 \end{itemize}
 
 \begin{note}{Formal proofs and the limits of proof}
-In mathematical logic a proof is a formal object: a finite sequence of formulas in a fixed symbolic language, each obtained from earlier ones by a fixed list of rules, so that checking a proof is a purely mechanical task~\cite{enderton2001}. Computer programs called proof assistants perform this check, and substantial parts of mathematics have been formalised with them. Two theorems of Kurt G\"odel describe what formal proof can and cannot do. The completeness theorem~\cite{godel1930} states that in first-order logic, the logic of the quantifiers $\forall$ and $\exists$ over a single domain, every statement that is true in every structure satisfying a set of axioms has a formal proof from those axioms. The incompleteness theorem~\cite{godel1931}, in the form later strengthened by Rosser~\cite{rosser1936}, states that any consistent system of axioms that can be listed by a computer program and that includes the basic arithmetic of $\mathbb N$ leaves some statements about natural numbers that it can neither prove nor refute. Neither theorem affects the everyday practice of mathematics described in this chapter, but together they show that ``true'' and ``provable'' are different notions.
+In mathematical logic a proof is a formal object: a finite sequence of formulas in a fixed symbolic language, each obtained from earlier ones by a fixed list of rules, so that checking a proof is a purely mechanical task~\cite{enderton2001}. Computer programs called proof assistants perform this check, and substantial parts of mathematics have been formalised with them: complete machine-checked proofs exist, for example, of the odd order theorem of finite group theory~\cite{gonthier2013oddorder} and of the Kepler conjecture on the densest packing of spheres~\cite{hales2017kepler}, and the library mathlib of the Lean proof assistant collects a large body of formalised mathematics~\cite{mathlib2020}. Two theorems of Kurt G\"odel describe what formal proof can and cannot do. The completeness theorem~\cite{godel1930} states that in first-order logic, the logic of the quantifiers $\forall$ and $\exists$ over a single domain, every statement that is true in every structure satisfying a set of axioms has a formal proof from those axioms. The incompleteness theorem~\cite{godel1931}, in the form later strengthened by Rosser~\cite{rosser1936}, states that any consistent system of axioms that can be listed by a computer program and that includes the basic arithmetic of $\mathbb N$ leaves some statements about natural numbers that it can neither prove nor refute. Neither theorem affects the everyday practice of mathematics described in this chapter, but together they show that ``true'' and ``provable'' are different notions.
 \end{note}
 
 \section{Direct Proof and Proof by Cases}
@@ -1101,7 +1101,7 @@ Imagine an endless row of dominoes standing on end, numbered $0$, $1$, $2$, \ldo
   hit/.style={-{Latex[length=1.4mm]}, line width=0.4pt, bend left=50}}
 \sdpanel{A}{\begin{tikzpicture}[font=\scriptsize]
 \draw[line width=0.4pt] (-0.5,0) -- (10.6,0);
-\begin{scope}[shift={(0.2,0)}, rotate around={-24:(0.2,0)}]\draw[domino] (0,0) rectangle (0.2,1.05);\end{scope}
+\begin{scope}[rotate around={-24:(0.4,0)}]\draw[domino] (0.2,0) rectangle (0.4,1.05);\end{scope}
 \foreach \i in {1,...,8} {\draw[domino] (\i*1.2,0) rectangle (\i*1.2+0.2,1.05);}
 \foreach \i in {0,...,8} {\node[below] at (\i*1.2+0.3,0) {$P(\i)$};}
 \foreach \i in {1,...,7} {\draw[hit] (\i*1.2+0.25,1.12) to (\i*1.2+1.15,1.12);}
@@ -1113,7 +1113,7 @@ Imagine an endless row of dominoes standing on end, numbered $0$, $1$, $2$, \ldo
 \sdpanelrow
 \sdpanel{B}{\begin{tikzpicture}[font=\scriptsize]
 \draw[line width=0.4pt] (-0.5,0) -- (10.6,0);
-\begin{scope}[shift={(0.2,0)}, rotate around={-24:(0.2,0)}]\draw[domino] (0,0) rectangle (0.2,1.05);\end{scope}
+\begin{scope}[rotate around={-24:(0.4,0)}]\draw[domino] (0.2,0) rectangle (0.4,1.05);\end{scope}
 \foreach \i in {1,2,3} {\draw[domino] (\i*1.2,0) rectangle (\i*1.2+0.2,1.05);}
 \foreach \i in {4,...,7} {\draw[domino, fill=white] (\i*1.2+0.9,0) rectangle (\i*1.2+1.1,1.05);}
 \foreach \i in {0,...,3} {\node[below] at (\i*1.2+0.3,0) {$P(\i)$};}
@@ -1130,7 +1130,7 @@ Imagine an endless row of dominoes standing on end, numbered $0$, $1$, $2$, \ldo
 \label{fig:dominoes}
 \end{figure}
 
-For the natural numbers, the dominoes are the statements $P(n)$ and falling is being true. The following principle is not among the properties listed in \cref{asm:numbers}, and we do not derive it from them; it expresses what it means that the natural numbers are exactly $0$, $1$, $2$, \ldots, reached from $0$ by adding $1$ again and again, and nothing else. It was made one of the axioms of the natural numbers by Peano~\cite{peano1889}, and we adopt it as an axiom too.
+For the natural numbers, the dominoes are the statements $P(n)$ and falling is being true. The following principle is not among the properties listed in \cref{asm:numbers}, and we do not derive it from them; it expresses what it means that the natural numbers are exactly $0$, $1$, $2$, \ldots, reached from $0$ by adding $1$ again and again, and nothing else. It is part of Dedekind's characterisation of the natural numbers~\cite{dedekind1888}, Peano made it one of his axioms for them~\cite{peano1889}, and we adopt it as an axiom too.
 
 \begin{assumption}[Principle of mathematical induction]
 \label{asm:induction}
@@ -1220,7 +1220,7 @@ A typical consequence is the formula for an arithmetic progression with first te
 
 \subsection{Inequalities}
 
-Induction proves inequalities as well as identities. The following inequality, named after Jacob Bernoulli, is a basic tool of analysis.
+Induction proves inequalities as well as identities. The following inequality, named after Jacob Bernoulli~\cite{mitrinovic1993bernoulli}, is a basic tool of analysis.
 
 \begin{theorem}[Bernoulli's inequality]
 \label{thm:bernoulli}
