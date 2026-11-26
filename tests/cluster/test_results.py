@@ -164,7 +164,7 @@ def test_rows_and_nan_policy():
     assert C.rows(C.points([[1.0], [2.0]], "f"), "f", "raise")[2] is None
     with pytest.raises(ValueError, match="contains infinity"):
         C.rows(C.points([[math.inf]], "f"), "f", "omit")
-    with pytest.raises(ValueError, match=r"no row is left without NaN"):
+    with pytest.raises(ValueError, match=r"no point is left without NaN"):
         C.rows(C.points([[math.nan]], "f"), "f", "omit")
     with pytest.raises(ValueError, match=r"'nan_policy' must be 'raise' or 'omit', not 'propagate'"):
         C.rows(X, "f", "propagate")
@@ -209,11 +209,11 @@ def test_precomputed_distances():
 def test_metric_names():
     assert C.metric("cityblock", "f") == "cityblock"
     assert C.metric("precomputed", "f") == "precomputed"
-    with pytest.raises(ValueError, match=r"unknown metric 'precomputed'"):
+    with pytest.raises(ValueError, match=r"'metric' must be 'euclidean', .* not 'precomputed'"):
         C.metric("precomputed", "f", precomputed=False)
-    with pytest.raises(ValueError, match=r"unknown metric 'l2'"):
+    with pytest.raises(ValueError, match=r"'metric' must be 'euclidean', .* not 'l2'"):
         C.metric("l2", "f")
-    with pytest.raises(TypeError, match=r"'metric' must be a metric name \(str\), not int"):
+    with pytest.raises(TypeError, match=r"'metric' must be 'euclidean', .* not int"):
         C.metric(2, "f")
     assert set(C.METRICS) <= set(__import__("stardust.spatial._common", fromlist=["x"]).METRICS)
 
@@ -227,8 +227,8 @@ def test_rng_takes_two_words():
     assert a.random() == b.random()
     with pytest.raises(TypeError, match=r"^f\(\): 'rng' must be an sd.random.Generator"):
         C.check_rng(3, "f")
-    with pytest.raises(ValueError, match=r"^f\(\): 'rng' is not used with method='pam'$"):
-        C.no_rng(sd.random.default_rng(0), "f", "method='pam'")
+    with pytest.raises(ValueError, match=r"^f\(\): 'rng' is only used with method='clara'$"):
+        C.no_rng(sd.random.default_rng(0), "f", "method='clara'")
 
 
 def test_numbers():
@@ -240,3 +240,52 @@ def test_numbers():
     with pytest.raises(TypeError, match=r"'k' must be an int, not float"):
         C.positive_int(2.0, "f", "k")
     assert C.condensed_size(6, "f", "y") == 4
+
+
+def test_messages_and_checks_across_areas():
+    # CL101: the forms of the regression, smooth and spatial areas, and the checks a refused call makes first
+    CL = sd.cluster
+    X = np.random.default_rng(3).standard_normal((40, 3)) * [1.0, 10.0, 100.0]
+    r = CL.kmeans(X, 3, rng=sd.random.default_rng(0))
+    with pytest.raises(ValueError, match=r"^predict\(\): 'X_new' must have 3 columns like the fit's 'X', not 2$"):
+        r.predict(np.zeros((2, 2)))
+    with pytest.raises(ValueError, match=r"^predict\(\): 'X_new' contains NaN$"):
+        r.predict(np.array([[np.nan, 0.0, 0.0]]))
+    with pytest.raises(ValueError, match=r"^predict\(\): 'X_new' contains infinity$"):
+        r.predict(np.array([[np.inf, 0.0, 0.0]]))
+    with pytest.raises(ValueError, match=r"^linkage\(\): 'y' contains NaN$"):
+        CL.linkage(np.array([[0.0, 1.0], [np.nan, 2.0], [3.0, 4.0]]))
+    with pytest.raises(ValueError, match=r"^dbscan\(\): metric='haversine' needs 2 columns"):
+        CL.dbscan(X, metric="haversine")
+    # a refused gaussian_mixture leaves rng as it was (the distinct-point check comes before the two words)
+    a, b = sd.random.default_rng(5), sd.random.default_rng(5)
+    with pytest.raises(ValueError, match=r"larger than the number of distinct points"):
+        CL.gaussian_mixture(np.zeros((5, 2)), 2, rng=a)
+    assert a.random() == b.random()
+    # the fraction sizes of OPTICS are checked against n
+    with pytest.raises(ValueError, match=r"^optics\(\): 'min_samples' \(2 points from 0.5\) must be at most"):
+        CL.optics([[1.0, 2.0]], min_samples=0.5)
+    # nan_policy is checked with precomputed inputs too
+    D = np.array([[0.0, 1.0, 2.0], [1.0, 0.0, 1.5], [2.0, 1.5, 0.0]])
+    for f in (lambda: CL.kmedoids(D, 2, metric="precomputed", nan_policy="bogus"),
+              lambda: CL.affinity_propagation(-D, affinity="precomputed", nan_policy="bogus")):  # fmt: skip
+        with pytest.raises(ValueError, match=r"'nan_policy' must be 'raise' or 'omit', not 'bogus'"):
+            f()
+    with pytest.raises(ValueError, match=r"^kmedoids\(\): 'sample_size' is only used with method='clara'$"):
+        CL.kmedoids(X, 3, sample_size=10)
+    # numpy object arrays of integers are labels like integers
+    lab = np.array([0, 1, 1, 2], dtype=object)
+    assert CL.adjusted_rand_score(lab, [0, 1, 1, 2]) == 1.0
+    # kmedoids' predict measures with the fit's V and VI: the fitted points get their labels
+    for metric in ("seuclidean", "mahalanobis"):
+        m = CL.kmedoids(X, 3, metric=metric)
+        assert np.array_equal(np.asarray(m.predict(X)), np.asarray(m.labels)), metric
+    # dendrogram's p is an int
+    Z = CL.linkage(X)
+    with pytest.raises(TypeError, match=r"^dendrogram\(\): 'p' must be an int, not float$"):
+        CL.dendrogram(Z, p=2.5)
+    # the results' dir() shows their public fields only
+    hidden = {"_fields"}  # the instance's own slot
+    assert not [
+        k for k in dir(r) if k.startswith("_") and not k.startswith("__") and k not in set(dir(type(r))) | hidden
+    ]

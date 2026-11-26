@@ -1,7 +1,6 @@
-"""docs/api/cluster.md and the module agree: every module-level name its signature blocks define belongs to the
-milestone that makes it public (§8 of docs/design/cluster.md), the names public so far are exactly
+"""docs/api/cluster.md and the module agree: the module-level names its signature blocks define are exactly
 sd.cluster.__all__ with the documented signatures, and the documented signatures follow the area's rules
-(decisions CL1-CL50 in docs/design/cluster.md §1.1).
+(decisions in docs/design/cluster.md §1.1).
 
 A block line is a module function (`name(...)`), a result class (`Name`) or a result's method
 (`Name.method(...)`)."""
@@ -201,6 +200,7 @@ def test_shared_options_have_one_spelling():
         "KMedoidsResult",
         "FuzzyCMeansResult",
         "GaussianMixtureResult",
+        "AffinityPropagationResult",
     ):
         assert tree[(cls, "predict")] == "X_new, /", cls
 
@@ -245,7 +245,7 @@ def test_module_is_wired():
 
 
 def test_wrong_call_shapes_start_with_the_name_called():
-    """API.md §2.1 for every exported function (none yet at CL0; test_results.py checks the results' base)."""
+    """API.md §2.1 for every exported function (test_results.py checks the results' base)."""
     for name in sd.cluster.__all__:
         f = getattr(sd.cluster, name)
         if inspect.isfunction(f):

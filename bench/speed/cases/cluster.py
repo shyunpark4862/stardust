@@ -734,6 +734,131 @@ def _mixed(n, seed=20261127):
     return setup
 
 
+def _larger_specs():
+    """CL7: the kernels' larger shapes against the comparators (docs/design/cluster.md §5): k-means where the filter
+    (CL49, CL95) carries the scans, the full mixture where the E step's quadratic form grows as p^2 (§9's 40th
+    question), the density methods at p = 10 (the KD tree's last dimensions: CL72) and OPTICS at n = 2 x 10^4
+    (scikit-learn's Python loop over the steps takes minutes there, so no comparator)."""
+
+    def rng():
+        return __import__("stardust").random.default_rng(0)
+
+    start = _gm_start(5)
+    return [
+        Spec(
+            "CL7",
+            "partition",
+            "kmeans p=50 k=100",
+            ("kmeans",),
+            count(10**5),
+            _blobs(10**5, 50, 100),
+            lambda d: lambda: _cl().kmeans(d["sX"], 100, rng=rng(), init=_first(d["sX"], 100)),
+            (
+                Ref(
+                    "sklearn",
+                    lambda d: (
+                        lambda: (
+                            __import__("sklearn.cluster", fromlist=["KMeans"])
+                            .KMeans(100, init=d["X"][:100].copy(), n_init=1, max_iter=300, tol=1e-4)
+                            .fit(d["X"])
+                        )
+                    ),
+                    threads="follow",
+                ),
+            ),
+            note="the same start (the data's first 100 rows)",
+            check=Check(sd=lambda r: float(r.inertia), ref=lambda label, r: float(r.inertia_), rtol=1e-9),
+        ),
+        Spec(
+            "CL7",
+            "mixture",
+            "gaussian_mixture full p=50 k=5 same start",
+            ("gaussian_mixture",),
+            "20000",
+            _blobs(2 * 10**4, 50, 5),
+            lambda d: (
+                lambda: _cl().gaussian_mixture(d["sX"], 5, rng=rng(), covariance_type="full", **start(d, True, "full"))
+            ),
+            (
+                Ref(
+                    "sklearn",
+                    lambda d: (
+                        lambda: (
+                            __import__("sklearn.mixture", fromlist=["GaussianMixture"])
+                            .GaussianMixture(5, covariance_type="full", **start(d, False, "full"))
+                            .fit(d["X"])
+                        )
+                    ),
+                    threads="follow",
+                ),
+            ),
+            note="the same start on both sides: the same EM iterations",
+            check=Check(
+                sd=lambda r: np.array([r.lower_bound, r.n_iter], float),
+                ref=lambda label, r: np.array([r.lower_bound_, r.n_iter_], float),
+                rtol=1e-10,
+            ),
+        ),
+        Spec(
+            "CL7",
+            "density",
+            "dbscan p=10 eps=0.9",
+            ("dbscan",),
+            "20000",
+            _points(2 * 10**4, 10),
+            lambda d: lambda: _cl().dbscan(d["sX"], eps=0.9, min_samples=5),
+            (
+                Ref(
+                    "sklearn",
+                    lambda d: (
+                        lambda: (
+                            __import__("sklearn.cluster", fromlist=["DBSCAN"])
+                            .DBSCAN(eps=0.9, min_samples=5)
+                            .fit(d["X"])
+                        )
+                    ),
+                    differs="border points join the first cluster that reaches them (sd: the nearest core point's)",
+                ),
+            ),
+            check=Check(skip="border points: the clusters' sizes differ by the points scikit-learn gives away"),
+        ),
+        Spec(
+            "CL7",
+            "density",
+            "hdbscan p=10",
+            ("hdbscan",),
+            "20000",
+            _points(2 * 10**4, 10),
+            lambda d: lambda: _cl().hdbscan(d["sX"]),
+            (
+                Ref(
+                    "sklearn",
+                    lambda d: (
+                        lambda: __import__("sklearn.cluster", fromlist=["HDBSCAN"]).HDBSCAN(copy=True).fit(d["X"])
+                    ),
+                ),
+            ),
+            check=Check(skip="equal mutual reachabilities: scikit-learn's tree follows its Prim's order"),
+        ),
+        Spec(
+            "CL7",
+            "density",
+            "optics p=2",
+            ("optics",),
+            "20000",
+            _points(2 * 10**4, 2),
+            lambda d: lambda: _cl().optics(d["sX"]),
+            note="no comparator: scikit-learn's step loop in Python takes minutes at this size",
+        ),
+    ]
+
+
+def _first(sX, k):
+    import stardust as sd
+
+    return sd.asarray(np.asarray(sX)[:k].copy())
+
+
 SPECS = (
     _hierarchy_specs()
     + _kmeans_specs()
@@ -742,6 +867,7 @@ SPECS = (
     + _mixture_specs()
     + _metrics_specs()
     + _affinity_specs()
+    + _larger_specs()
 )
 
 
@@ -751,6 +877,22 @@ def _public(names) -> bool:
     return all(n in sd.cluster.__all__ for n in names)
 
 
+def _loaded(setup):
+    """The setup, after loading the comparators' libraries: threadpoolctl limits the OpenMP pools it finds when a
+    measurement starts, so scikit-learn imported lazily inside the first measurement of a worker ran its OpenMP
+    threads unlimited at "1 thread" (k-means 14.5 ms against 30.3 ms on one thread, milestone CL7)."""
+
+    def run():
+        import scipy.cluster.hierarchy  # noqa: F401
+        import sklearn.cluster  # noqa: F401
+        import sklearn.metrics  # noqa: F401
+        import sklearn.mixture  # noqa: F401
+
+        return setup()
+
+    return run
+
+
 def cases() -> list[Case]:
     return [
         Case(
@@ -758,7 +900,7 @@ def cases() -> list[Case]:
             group=s.group,
             name=s.name,
             size=s.size,
-            setup=s.setup,
+            setup=_loaded(s.setup),
             sd=s.sd,
             refs=s.refs,
             quick=s.quick,

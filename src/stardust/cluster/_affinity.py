@@ -17,7 +17,18 @@ import numbers
 from .. import _calls
 from .. import _core as _sd
 from .._calls import function
-from ._common import _array, check_alloc, choice, contiguous, labels_back, points, positive_int, real
+from ._common import (
+    _array,
+    check_alloc,
+    choice,
+    contiguous,
+    labels_back,
+    new_points,
+    points,
+    policy,
+    positive_int,
+    real,
+)
 from ._common import rows as _rows
 from ._results import ClusterResult
 
@@ -47,12 +58,8 @@ class AffinityPropagationResult(ClusterResult):
         func = "predict"
         if self.exemplar_points is None:
             raise ValueError(f"{func}(): a fit on precomputed similarities cannot place new points")
-        Xn = points(X_new, func, "X_new")
         p = self.exemplar_points.shape[1]
-        if Xn.shape[1] != p:
-            raise ValueError(f"{func}(): 'X_new' must have {p} columns (the fit's), not {Xn.shape[1]}")
-        if not bool(_sd.all(_sd.isfinite(Xn))):
-            raise ValueError(f"{func}(): 'X_new' must be finite (no NaN or infinity)")
+        Xn = new_points(X_new, func, p)
         m = Xn.shape[0]
         if self.n_clusters == 0:
             return _sd.full((m,), -1, dtype=_sd.int64)
@@ -77,9 +84,12 @@ def _preference(v, func, n):
         return x
     a = _array(v, func, "preference")
     if a.ndim != 1 or a.shape[0] != n:
-        raise ValueError(f"{func}(): an array 'preference' must have one value per point ({n})")
-    if not bool(_sd.all(_sd.isfinite(a))):
-        raise ValueError(f"{func}(): 'preference' must be finite")
+        got = a.shape[0] if a.ndim == 1 else a.size
+        raise ValueError(f"{func}(): an array 'preference' must have one value per point ({n}), not {got}")
+    if bool(_sd.any(_sd.isnan(a))):
+        raise ValueError(f"{func}(): 'preference' contains NaN")
+    if bool(_sd.any(_sd.isinf(a))):
+        raise ValueError(f"{func}(): 'preference' contains infinity")
     return contiguous(a)
 
 
@@ -114,14 +124,17 @@ def affinity_propagation(
     conv = positive_int(convergence_iter, func, "convergence_iter")
     omitted = None
     if affinity == "precomputed":
+        policy(nan_policy, func)  # checked though only observations have rows to leave out
         S = _array(X, func, "X")
         if S.ndim != 2 or S.shape[0] != S.shape[1]:
             raise ValueError(f"{func}(): with affinity='precomputed', 'X' must be a square (n, n) similarity matrix")
         n = S.shape[0]
         if n == 0:
             raise ValueError(f"{func}(): 'X' must have at least 1 point")
-        if not bool(_sd.all(_sd.isfinite(S))):
-            raise ValueError(f"{func}(): the similarities 'X' must be finite")
+        if bool(_sd.any(_sd.isnan(S))):
+            raise ValueError(f"{func}(): the similarities 'X' contain NaN")
+        if bool(_sd.any(_sd.isinf(S))):
+            raise ValueError(f"{func}(): the similarities 'X' contain infinity")
         S = contiguous(S)
         n_input = n
         order = _sd.arange(n, dtype=_sd.int64)

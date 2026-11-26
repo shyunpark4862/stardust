@@ -10,7 +10,7 @@ import math
 from .. import _calls
 from .. import _core as _sd
 from .._calls import function
-from ._common import check_rng, contiguous, key, labels_back, points, positive_int, real
+from ._common import check_rng, contiguous, key, labels_back, new_points, points, positive_int, real
 from ._common import rows as _rows
 from ._kmeans import _distinct_check, _init, _k, _tol
 from ._results import ClusterResult
@@ -42,12 +42,7 @@ class FuzzyCMeansResult(ClusterResult):
     def predict_proba(self, X_new, /):
         """The memberships of new points to the centres ((m, k), rows summing to 1)."""
         func = "predict_proba"
-        Xn = points(X_new, func, "X_new")
-        p = self.centers.shape[1]
-        if Xn.shape[1] != p:
-            raise ValueError(f"{func}(): 'X_new' must have {p} columns (the fit's), not {Xn.shape[1]}")
-        if not bool(_sd.all(_sd.isfinite(Xn))):
-            raise ValueError(f"{func}(): 'X_new' must be finite (no NaN or infinity)")
+        Xn = new_points(X_new, func, self.centers.shape[1])
         return _core.fuzzy_memberships(Xn, self.centers, self.m)
 
 
@@ -73,7 +68,7 @@ def fuzzy_cmeans(X, k, /, *, rng, m=2.0, init="random", max_iter=100, tol=1e-05,
         raise ValueError(f"{func}(): 'm' must be finite and > 1, not {m!r}")
     if isinstance(init, str) and init != "random":
         raise ValueError(f"{func}(): 'init' must be 'random' or a (k, p) array, not {init!r}")
-    kind, C0 = _init(init, func, k, p)
+    kind, C0 = _init(init, func, k, p, ("random",))
     max_iter = positive_int(max_iter, func, "max_iter")
     tol = _tol(tol, func)
     order = _core.lex_order(X)

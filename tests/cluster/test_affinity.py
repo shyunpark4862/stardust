@@ -138,7 +138,7 @@ def test_predict():
     rp = CL.affinity_propagation(A(_similarity(X)[0]), affinity="precomputed")
     with pytest.raises(ValueError, match=r"^predict\(\): a fit on precomputed similarities cannot place new points$"):
         rp.predict(new)
-    with pytest.raises(ValueError, match=r"^predict\(\): 'X_new' must have 2 columns \(the fit's\), not 3$"):
+    with pytest.raises(ValueError, match=r"^predict\(\): 'X_new' must have 2 columns like the fit's 'X', not 3$"):
         r.predict(np.zeros((2, 3)))
 
 
@@ -180,7 +180,8 @@ def test_errors():
     ):
         CL.affinity_propagation(X, affinity="precomputed")
     with pytest.raises(
-        ValueError, match=r"^affinity_propagation\(\): an array 'preference' must have one value per point \(90\)$"
+        ValueError,
+        match=r"^affinity_propagation\(\): an array 'preference' must have one value per point \(90\), not 2$",
     ):
         CL.affinity_propagation(X, preference=[1.0, 2.0])
     with pytest.raises(TypeError, match=r"^affinity_propagation\(\): unexpected keyword argument 'metric'$"):

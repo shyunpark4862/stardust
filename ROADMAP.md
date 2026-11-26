@@ -1,6 +1,6 @@
 # stardust 로드맵
 
-> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6 완료·승인, G7a 완료·승인, G7b 완료·승인), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0 완료·승인, O1 완료·승인, O2 완료·승인, O3 완료·승인, O4 완료·승인, O5 완료·승인, O6 완료·승인), 그 뒤 [가설검정 (sd.htest)](#가설검정-영역-sdhtest)(H0 완료·승인, H1 완료·승인, H2 완료·승인, H3 완료·승인, H4 완료·승인, H5 완료·승인, H6 완료·승인(위임), H7 완료·승인(위임), H8 완료·승인(위임), H9 완료·승인(위임), H10 완료·승인(위임)), 그 뒤 [희소 (sd.sparse)](#희소-영역-sdsparse)(SP0 완료·승인, SP1 완료·승인, SP2 완료·승인, SP3 완료·승인, SP4 완료·승인(위임), SP5 완료·승인(위임), SP6 완료·승인(위임), SP7 완료·승인(위임), SP8 완료·승인(위임)), 그 뒤 [수치 미적분 (sd.integrate, sd.differentiate)](#수치-미적분-영역-sdintegrate-sddifferentiate)(C0 완료·승인(위임), C1 완료·승인(위임), C2 완료·승인(위임), C3 완료·승인(위임), C4 완료·승인(위임), C5 완료·승인(위임), C6 완료·승인(위임), C7 완료·승인(위임), C8 완료·승인(위임)), 그 뒤 [공간 (sd.spatial)](#공간-영역-sdspatial)(SPT0 완료·승인(위임), SPT1 완료·승인(위임), SPT2 완료·승인(위임), SPT3 완료·승인(위임), SPT4 완료·승인(위임), SPT6 완료·승인(위임), SPT7 완료·승인(위임); 계산 기하 SPT8·SPT9·SPT10·SPT11·SPT12·SPT13·SPT14 완료·승인(위임), 흩어진 점 보간 IP9는 나중), 그리고 [그림 (sd.plot)](#그림-영역-sdplot)(PL0–PL9 완료·승인), 그 뒤 [그래프 (sd.graph)](#그래프-영역-sdgraph)(GR0·GR1·GR2·GR3·GR4·GR5·GR6·GR7 마일스톤 완료·승인(위임)), 그 뒤 [보간 (sd.interpolate)](#보간-영역-sdinterpolate)(IP0·IP1·IP2·IP3·IP4·IP5·IP6·IP7·IP8 마일스톤 완료·승인(위임)), 그 뒤 [푸리에 변환 (sd.fft)](#푸리에-변환-영역-sdfft)(FT0·FT1·FT2·FT3·FT4·FT5·FT6·FT7 마일스톤 완료·승인(위임)), 그 뒤 [평활 (sd.smooth)](#평활-영역-sdsmooth)(SM0·SM1·SM2·SM3·SM4·SM5·SM6·SM7·SM8 마일스톤 완료·승인(위임)), 그 뒤 [군집 (sd.cluster)](#군집-영역-sdcluster)(CL0·CL1 마일스톤 완료)이다.
+> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6 완료·승인, G7a 완료·승인, G7b 완료·승인), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0 완료·승인, O1 완료·승인, O2 완료·승인, O3 완료·승인, O4 완료·승인, O5 완료·승인, O6 완료·승인), 그 뒤 [가설검정 (sd.htest)](#가설검정-영역-sdhtest)(H0 완료·승인, H1 완료·승인, H2 완료·승인, H3 완료·승인, H4 완료·승인, H5 완료·승인, H6 완료·승인(위임), H7 완료·승인(위임), H8 완료·승인(위임), H9 완료·승인(위임), H10 완료·승인(위임)), 그 뒤 [희소 (sd.sparse)](#희소-영역-sdsparse)(SP0 완료·승인, SP1 완료·승인, SP2 완료·승인, SP3 완료·승인, SP4 완료·승인(위임), SP5 완료·승인(위임), SP6 완료·승인(위임), SP7 완료·승인(위임), SP8 완료·승인(위임)), 그 뒤 [수치 미적분 (sd.integrate, sd.differentiate)](#수치-미적분-영역-sdintegrate-sddifferentiate)(C0 완료·승인(위임), C1 완료·승인(위임), C2 완료·승인(위임), C3 완료·승인(위임), C4 완료·승인(위임), C5 완료·승인(위임), C6 완료·승인(위임), C7 완료·승인(위임), C8 완료·승인(위임)), 그 뒤 [공간 (sd.spatial)](#공간-영역-sdspatial)(SPT0 완료·승인(위임), SPT1 완료·승인(위임), SPT2 완료·승인(위임), SPT3 완료·승인(위임), SPT4 완료·승인(위임), SPT6 완료·승인(위임), SPT7 완료·승인(위임); 계산 기하 SPT8·SPT9·SPT10·SPT11·SPT12·SPT13·SPT14 완료·승인(위임), 흩어진 점 보간 IP9는 나중), 그리고 [그림 (sd.plot)](#그림-영역-sdplot)(PL0–PL9 완료·승인), 그 뒤 [그래프 (sd.graph)](#그래프-영역-sdgraph)(GR0·GR1·GR2·GR3·GR4·GR5·GR6·GR7 마일스톤 완료·승인(위임)), 그 뒤 [보간 (sd.interpolate)](#보간-영역-sdinterpolate)(IP0·IP1·IP2·IP3·IP4·IP5·IP6·IP7·IP8 마일스톤 완료·승인(위임)), 그 뒤 [푸리에 변환 (sd.fft)](#푸리에-변환-영역-sdfft)(FT0·FT1·FT2·FT3·FT4·FT5·FT6·FT7 마일스톤 완료·승인(위임)), 그 뒤 [평활 (sd.smooth)](#평활-영역-sdsmooth)(SM0·SM1·SM2·SM3·SM4·SM5·SM6·SM7·SM8 마일스톤 완료·승인(위임)), 그 뒤 [군집 (sd.cluster)](#군집-영역-sdcluster)(CL0–CL8 마일스톤 완료)이다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -1260,7 +1260,7 @@
 
 # 군집 영역 (sd.cluster)
 
-> 상태: **CL1 마일스톤 완료** (2026-11-27; CL0 2026-11-24). 설계는 [docs/design/cluster.md](docs/design/cluster.md)(확정), API는 [docs/api/cluster.md](docs/api/cluster.md)(확정)다. 결정은 CL1–CL49이다. 공개 이름은 아직 없다(CL1 마일스톤부터). k-평균의 거리 꼴은 사용자가 정했다(CL49: 차의 꼴 + 증명된 거르기, 2026-11-26).
+> 상태: **완료** (CL0–CL8 마일스톤, 2026-11-27). 공개 이름 61개(계층 `linkage`·`agglomerative`·`divisive`와 scipy 이름의 도구 열여섯, 분할 `kmeans`·`minibatch_kmeans`·`bisecting_kmeans`·`kmedoids`·`fuzzy_cmeans`, 밀도 `dbscan`·`hdbscan`·`optics`, 혼합 `gaussian_mixture`, sklearn 이름의 지표 열여섯과 `gap_statistic`·`gower_distance`, `affinity_propagation`, 결과 클래스와 결과 namedtuple 열넷)가 모두 구현되어 있다. 설계는 [docs/design/cluster.md](docs/design/cluster.md)(확정), API는 [docs/api/cluster.md](docs/api/cluster.md)(확정)다. 결정은 CL1–CL105이다. k-평균의 거리 꼴은 사용자가 정했다(CL49: 차의 꼴 + 증명된 거르기, 2026-11-26). 1스레드에서 자체 커널이 Accelerate보다 1.5배 넘게 느린 두 경로(설계 §9의 39·40번)는 CL7 마일스톤의 잰 값과 함께 묻는다.
 
 ## 진행 원칙
 - 다른 영역과 같다: 마일스톤마다 시작 전에 물을 것을 정하고, 구현하고, 정확도·속도를 재고, 커밋하고, 결과를 전달한다. 해설과 안내서는 쓰지 않는다. 결정 번호와 마일스톤 이름이 같은 머리글자라서 마일스톤은 "CL1 마일스톤"처럼 적는다. 마일스톤 에이전트는 한 번에 하나다.
@@ -1273,13 +1273,13 @@
 |---|---|
 | CL0 준비: API 문서의 손질, 영역 등록, 시험 자료, 참값, sklearn·scipy·R 기록, 시제품의 측정, 결과의 공통 기반, 속도 사례와 골든의 틀 | 완료 (2026-11-24) |
 | CL1 계층: `linkage`, `agglomerative`, `divisive`, `HierarchyResult`, scipy의 계층 도구, `dendrogram`의 자료, 행렬 없는 길 | 완료 (2026-11-27; CL50–CL58) |
-| CL2 분할: `kmeans`, `minibatch_kmeans`, `bisecting_kmeans`, `kmedoids`(PAM·CLARA), `fuzzy_cmeans` | 시작 전 |
-| CL3 밀도: `dbscan`, `hdbscan`, `optics` | 시작 전 |
-| CL4 혼합: `gaussian_mixture`(네 공분산 꼴) | 시작 전 |
-| CL5 지표와 k 고르기: 내부·외부 지표, `gap_statistic`, `gower_distance` | 시작 전 |
-| CL6 그 밖: `affinity_propagation` | 시작 전 |
-| CL7 성능과 일관성 점검 (CL1에서 넘긴 것: 10스레드 목표에 못 미친 `linkage`의 complete·average·weighted·centroid·median·ward) | 시작 전 |
-| CL8 문서 | 시작 전 |
+| CL2 분할: `kmeans`, `minibatch_kmeans`, `bisecting_kmeans`, `kmedoids`(PAM·CLARA), `fuzzy_cmeans` | 완료 (2026-11-27; CL59–CL66) |
+| CL3 밀도: `dbscan`, `hdbscan`, `optics` | 완료 (2026-11-27; CL67–CL74) |
+| CL4 혼합: `gaussian_mixture`(네 공분산 꼴) | 완료 (2026-11-27; CL75–CL81) |
+| CL5 지표와 k 고르기: 내부·외부 지표, `gap_statistic`, `gower_distance` | 완료 (2026-11-27; CL82–CL90) |
+| CL6 그 밖: `affinity_propagation` | 완료 (2026-11-27; CL91–CL94) |
+| CL7 성능과 일관성 점검 | 완료 (2026-11-27; CL95–CL105) |
+| CL8 문서 | 완료 (2026-11-27) |
 
 ## 마일스톤
 
@@ -1287,3 +1287,36 @@
 - 결정(추천안, 사용자 위임 2026-11-24): docs/design/cluster.md §1.1 CL41–CL48(난수의 원소 번호 r·2⁴⁰ + t; 경계 가속의 여유 γ = 2(p + 4)u; 범위 밖 자료의 2의 거듭제곱 척도; 결과의 공통 기반 `ClusterResult`와 `summary`; 높이는 최종 트리 위의 Lance–Williams 재귀; NN-chain의 동점은 이웃 찾기의 정확한 동점으로 검출; Prim과 Borůvka의 초안 문턱; k-평균 중심의 합은 열쇠 순서의 4096점 덩이). k-평균의 거리 꼴은 CL9의 규칙(Accelerate보다 1.5배 넘게 느린 경로)에 걸려 사용자에게 물었고, (a) 차의 꼴 + 증명된 거르기로 정했다(CL49, 사용자 결정 2026-11-26).
 - 결과: src/stardust/cluster/(`sd.cluster`, 공개 이름은 아직 없다; `_results.py`의 공통 기반, `_common.py`의 입력·`nan_policy`·무게·미리 계산한 거리·`metric`·`rng` 검사), 시험 자료 tests/cluster/samples.py(점 집합 35개, 라벨 짝 13개, 혼합 6개), 참값 tools/cluster_ref.py(정확한 유리수와 Arb, 6묶음 → tests/cluster/ref/, 0.5 MB), 탐침 tools/cluster_probe.py(시제품 측정 → prototype.json, scipy·scikit-learn·R의 기록 → tests/cluster/data/, §5의 시간), 시제품 csrc/cluster/prototype.cpp·csrc/bind/cluster_bind.cpp(`_core.cluster._proto_*`; CL1·CL2 마일스톤이 지운다), 측정 등록 bench/areas.py·bench/speed/cases/cluster.py(마일스톤마다의 사례 계획)·bench/accuracy/cluster.py·bench/cluster/accuracy.md·tests/golden/cases_cluster.py(아직 비었다, 기록 tests/golden/data/cluster.json), 테스트 tests/cluster/(test_api_surface.py, test_reference_data.py, test_results.py).
 - 찾은 것(docs/design/cluster.md §5): k-평균의 차의 꼴은 1스레드에서 Accelerate 전개식보다 1.76–8.28배 느리고 10스레드에서 0.29–0.96배다. 전개식(sklearn)은 10⁸ 평행 이동에서 2100점 중 308점을 틀린다. Hamerly 경계 가속은 여유와 무관하게 Lloyd와 같은 비트이고 1스레드 1.4–2.6배 빠르다. 높이를 정의대로의 합으로 다시 계산하면 ward에서 5.2×10⁸ ULP까지 틀려 트리 위의 Lance–Williams 재귀로 바꿨다(2 ULP 안). NN-chain이 정의의 트리와 다른 경우는 모두 이웃 찾기의 정확한 동점을 만났다. Borůvka는 p ≤ 5에서 n = 10⁴부터 Prim보다 1.5–6배 빠르고 p = 16에서는 15배 느리다. sklearn은 비정상 수 좌표에서 모든 점을 한 군집에 넣고 평행 이동한 자료의 실루엣을 0.21 틀리며, scipy·R의 `linkage`·`hclust`는 비정상 수 좌표의 높이가 0, R `hclust`는 10¹⁵⁰ 좌표의 ward·centroid·median에서 넘친다. 같은 시작에서 R의 Hartigan–Wong은 Lloyd보다 낮은 극소에 닿았다(probe/300: 573.897 대 574.888).
+
+### CL1 마일스톤. 계층 — 완료(2026-11-27)
+- 결정(추천안, 사용자 위임 2026-11-26–27; CL58은 메인 결정): docs/design/cluster.md §1.1 CL50–CL58(단일 연결의 동점은 묶음마다 정의대로, 행은 최종 높이 위의 primitive 차례와 단조 연결법의 누적 최댓값, R `diana`의 나누기, Bar-Joseph의 정확한 최적 잎 순서, KD 트리 Borůvka와 길의 문턱, 높이 계약 \|Ĥ − H*\| ≤ γ·V⁺, 길의 선택, scipy 도구의 세부, `CophenetResult`의 공개).
+- 결과: `linkage`, `agglomerative`, `divisive`, `HierarchyResult`, scipy의 계층 도구(`fcluster`, `cut_tree`, `cophenet`, `cophenet_correlation`, `leaves_list`, `optimal_leaf_ordering`, `dendrogram`, `inconsistent` 등)(csrc/cluster/hierarchy.cpp·mst.cpp, src/stardust/cluster/_hierarchy.py), 테스트, 골든, 정확도 스윕, 속도 사례.
+- 찾은 것(docs/design/cluster.md §5): 트리는 모든 참값 집합에서 정의의 트리이고 1–10스레드에서 같은 바이트다. 1스레드는 모든 연결법이 scipy보다 빠르고, 10스레드의 scipy 1/3 목표는 single만 이르렀다(CL7 마일스톤의 점검거리).
+
+### CL2 마일스톤. 분할 — 완료(2026-11-27)
+- 결정(추천안, 사용자 위임 2026-11-27): CL59–CL66(k-평균의 거리와 동점, 경계와 거르기의 길, 열쇠 순서의 사본, 빈 군집의 옮기기, 난수의 원소, 미니배치·이분의 세부, k-medoids의 세부(`max_iter` = 1000), 퍼지 c-평균의 `tol` = 10⁻⁵).
+- 결과: `kmeans`, `minibatch_kmeans`, `bisecting_kmeans`, `kmedoids`(PAM·CLARA), `fuzzy_cmeans`와 결과들(csrc/cluster/kmeans.cpp·kmedoids.cpp·fuzzy.cpp·partition.hpp), 시제품 prototype.cpp를 지웠다.
+- 찾은 것: 경계와 거르기가 Lloyd와 같은 비트이고 같은 시작에서 sklearn과 같은 고정점이다. 배정 한 번의 1스레드가 Accelerate 전개식의 1.3–2.5배라 §9의 39번으로 물었다.
+
+### CL3 마일스톤. 밀도 — 완료(2026-11-27)
+- 결정(추천안, 사용자 위임 2026-11-27): CL67–CL74(상호 도달 거리의 트리, 같은 높이를 한꺼번에 줄이는 HDBSCAN의 줄인 트리, GLOSH·지속성·중심, OPTICS의 차례와 추출, 밀도 방법의 길, DBSCAN의 세부, 결과의 필드).
+- 결과: `dbscan`, `hdbscan`, `optics`와 결과들(csrc/cluster/density.cpp, graph의 합집합–찾기를 csrc/graph/unionfind.hpp로 꺼냄; graph의 골든이 그대로).
+- 찾은 것: HDBSCAN은 입력 순서와 무관하고 같은 높이가 없는 트리에서 sklearn과 같다(sklearn은 섞은 순서에서 80가지 중 50가지의 라벨이 달랐다). §5 첫 표의 목표에 이른다.
+
+### CL4 마일스톤. 혼합 — 완료(2026-11-27)
+- 결정(추천안, 사용자 위임 2026-11-27): CL75–CL81(차의 꼴 이차형식과 평균을 뺀 2차 모멘트의 EM, 시작과 난수, 척도의 격자, 입력, 거의 특이한 공분산, 표본, 결과의 필드).
+- 결과: `gaussian_mixture`, `GaussianMixtureResult`(`predict`, `predict_proba`, `score_samples`, `sample`)(csrc/cluster/mixture.cpp).
+- 찾은 것: 같은 시작에서 sklearn과 같은 반복 수로 같은 고정점에 닿는다. 큰 p의 1스레드 E 단계가 같은 정의의 Accelerate 꼴보다 1.5배 넘게 느려 §9의 40번으로 물었다.
+
+### CL5·CL6 마일스톤. 지표와 k 고르기, 그 밖 — 완료(2026-11-27)
+- 결정(추천안, 사용자 위임 2026-11-27): CL82–CL94(지표의 라벨, 정확한 외부 지표, 정보 지표와 기대 MI의 점화식, 실루엣의 길, CH·DB의 평행 이동, gap의 이름·계산, Gower의 세부, 하위 호출의 두 단어, Affinity Propagation의 유사도 입력·계산·멈춤·메모리).
+- 결과: sklearn 이름의 지표 열여섯과 `HomogeneityResult`, `gap_statistic`·`GapResult`, `gower_distance`, `affinity_propagation`·`AffinityPropagationResult`(csrc/cluster/metrics.cpp·affinity.cpp).
+- 찾은 것: ARI·RI·FM이 올바른 반올림이고 AMI는 n = 10⁶에서 sklearn보다 40배 빠르다. gap은 PAM이면 R과 같은 log W, Affinity Propagation은 잡음이 0인 sklearn과 같은 exemplar·라벨·반복 수다.
+
+### CL7 마일스톤. 성능과 일관성 점검 — 완료(2026-11-27)
+- 결정(추천안, 사용자 위임 2026-11-27): docs/design/cluster.md §1.1 CL95–CL105(k-평균의 자체 NEON 판과 끝 중심의 좁은 판, 거르기의 후보 하나 지름길, 경계의 아래 한계는 읽을 때만, 거르기 p ≥ 10·p·k ≥ 400과 경계 k(p + 4) ≥ 100의 문턱, Elkan은 넣지 않음; NN-chain의 산 칸 목록과 정사각 사본; OPTICS 단계의 나누기 문턱; 1스레드 실루엣의 짝 한 번; `lex_order`의 기수 정렬; Affinity Propagation의 열 합을 행 쓰기와 함께; 메시지와 입력 규칙의 영역 간 일관성과 고친 버그; 밀도 문턱의 다시 잼과 HDBSCAN medoid; 속도 사례의 비교 대상 스레드; k-medoids 배정의 타일과 CLARA 표본의 문턱; `cophenet`의 행 차례 쓰기). 모두 결과의 비트를 바꾸지 않는다(골든은 메시지 9건만 다시 기록).
+- 결과: csrc/cluster/(kmeans.cpp, partition.hpp, hierarchy.cpp, common.hpp, density.cpp, metrics.cpp, affinity.cpp, kmedoids.cpp), src/stardust/cluster/(모든 모듈의 메시지와 검사, `_common.new_points`·`metric_columns`), 테스트(tests/cluster의 두 사본 비교, 실루엣의 1 대 3스레드, 메시지와 검사), bench/speed/cases/cluster.py(큰 크기의 사례 다섯과 비교 대상 라이브러리를 먼저 부르기), 속도 기준선 bench/speed/results/cluster.json과 표 bench/cluster/speed.md, 정확도 기준선.
+- 찾은 것(docs/design/cluster.md §5): k-평균 배정 한 번의 1스레드는 Accelerate 전개식의 0.40–2.0배(k ≤ 20이고 p = 10–50만 1.5배를 넘는다)이고 맞춤 전체는 모든 크기에서 sklearn보다 빠르다(1스레드 1.2–7.8배). sklearn의 Elkan보다 2.5–6배 빠르다. 혼합 E 단계는 NEON에서 계산에 묶여 바꾸지 않았다(p = 50에서 Accelerate 꼴의 1.75배). `linkage` complete n = 5000이 1 / 10스레드 109 / 101 → 80 / 63 ms, 실루엣 1스레드 527 → 307 ms, Affinity Propagation 1스레드 1514 → 985 ms, OPTICS n = 2×10⁴ 10스레드 245 → 143 ms. 속도 측정의 sklearn "1스레드"는 늦게 불러오면 OpenMP가 묶이지 않았다(k-평균 14.5 대 30.3 ms; 다른 영역의 사례도 겪을 수 있다). 남은 것: §9의 39·40번(사용자에게 묻는다), `linkage`의 10스레드 scipy 1/3 목표(complete·average·weighted·ward·centroid·median; NN-chain과 일반 알고리즘이 차례), 큰 p의 `gaussian_mixture` 1스레드(sklearn의 1.17배).
+
+### CL8 마일스톤. 문서 — 완료(2026-11-27)
+- docs/api/cluster.md 확정(상태, 마일스톤 문구를 뺌, `X_new`와 `rng`·`sample_size`의 규칙, 바뀐 메시지), docs/design/cluster.md를 구현대로(상태, §1.1 CL95–CL105와 바뀐 결정의 표시, §3.2·§3.10·§3.11의 길과 메모리, §5의 CL7 마일스톤 측정과 목표의 확인, §8, §9의 39·40번의 잰 값), 등록 문서(README.md, API.md, ARCHITECTURE.md, tests/README.md, bench/README.md, 이 문서).

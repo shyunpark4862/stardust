@@ -24,6 +24,7 @@ from ._common import (
     distances,
     integer,
     labels_back,
+    metric_columns,
     points,
     policy,
     positive_int,
@@ -80,6 +81,7 @@ def _data(X, func, metric, nan_policy, w=None):
         return Xr, None, _ON_THE_FLY[metric], order, Xp, wk, omitted, n_input
     from .. import spatial as _spatial
 
+    metric_columns(metric, Xr.shape[1], func)
     check_alloc(8 * (n * (n - 1) // 2), func)
     D = contiguous(_spatial.pdist(Xr, metric=metric)) if n > 1 else _sd.empty((0,), dtype=_sd.float64)
     return None, D, -1, order, Xp, wk, omitted, n_input
@@ -114,7 +116,10 @@ def _fraction_or_int(v, func, arg, n, low):
         f = float(v)
         if not 0.0 < f <= 1.0:
             raise ValueError(f"{func}(): a float '{arg}' must be in (0, 1] (a fraction of the points), not {f!r}")
-        return max(2, int(f * n))
+        k = max(2, int(f * n))
+        if k > n:
+            raise ValueError(f"{func}(): '{arg}' ({k} points from {f!r}) must be at most the number of points ({n})")
+        return k
     if isinstance(v, bool) or (numpy and kind == "bool") or not hasattr(v, "__index__"):
         raise TypeError(f"{func}(): '{arg}' must be an int or a float in (0, 1], not {type_name(v)}")
     k = integer(v, func, arg)
@@ -139,9 +144,6 @@ class DBSCANResult(ClusterResult):
     _METHOD = "DBSCAN"
     _TUNING = (("Eps:", "eps"), ("Min samples:", "min_samples"), ("Metric:", "metric"))
     _REPR = ("nobs", "n_clusters", "eps", "min_samples")
-
-
-_calls.methods(DBSCANResult)
 
 
 @function
@@ -261,7 +263,7 @@ def hdbscan(
     Xk, D, code, order, Xp, _, omitted, n_input = _data(X, func, metric, nan_policy)
     n = order.shape[0]
     if n < 2:
-        raise ValueError(f"{func}(): 'X' must have at least 2 points")
+        raise ValueError(f"{func}(): 'X' must have at least 2 points, not {n}")
     if ms > n:
         raise ValueError(f"{func}(): 'min_samples' ({ms}) must be at most the number of points ({n})")
     lab_key, prob_key, out_key, Z, cond, stability, selected, persistence = _core.hdbscan(
@@ -311,7 +313,7 @@ def _centres(Xr, lab_key, prob_key, k, number, metric):
                 for j in range(k):
                     members = contiguous(_sd.nonzero(lab_key == j)[0])
                     pts = contiguous(Xr[members])
-                    check_alloc(8 * (len(members) * (len(members) - 1) // 2), "medoids")
+                    check_alloc(8 * (len(members) * (len(members) - 1) // 2), "hdbscan")
                     Dj = contiguous(_spatial.pdist(pts, metric=metric)) if len(members) > 1 else _sd.empty((0,))
                     med[j] = int(members[_core.weighted_medoid(Dj, contiguous(prob_key[members]))])
             cache["c"] = (C, med)

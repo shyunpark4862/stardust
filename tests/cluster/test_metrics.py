@@ -312,6 +312,18 @@ def test_threads_and_input_order():
     assert CL.calinski_harabasz_score(X[perm], lab[perm]) == out[0][2]
     # relabeling the clusters does not change the values
     assert bits_equal(_np(CL.silhouette_samples(X, (lab + 1) % 3)), out[0][0])
+    # one thread takes each pair once (CL98): the same bits as the scan of every pair, for every metric and for
+    # clusters of sizes 1-3 (the chains a cluster does not fill) and of uneven sizes
+    Y = rng.standard_normal((211, 5)) * 1e3
+    labs = rng.integers(0, 7, 211)
+    labs[:3] = [7, 8, 8]  # a cluster of one and one of two
+    for metric in ("euclidean", "sqeuclidean", "cityblock", "chebyshev"):
+        got = []
+        for t in (1, 3):
+            sd.set_num_threads(t)
+            got.append(_np(CL.silhouette_samples(Y, labs, metric=metric)))
+        sd.set_num_threads(10)
+        assert bits_equal(got[0], got[1]), metric
     a = rng.integers(0, 30, 200000)
     b = np.where(rng.random(200000) < 0.7, a, rng.integers(0, 40, 200000))
     vals = []
@@ -336,10 +348,10 @@ def test_scale_and_far_from_the_origin():
 def test_internal_errors():
     X = np.array([[0.0], [1.0], [5.0], [6.0]])
     with pytest.raises(
-        ValueError, match=r"^silhouette_score\(\): the number of clusters must be between 2 and n - 1 \(got 1\)$"
+        ValueError, match=r"^silhouette_score\(\): the number of clusters must be between 2 and n - 1 \(3\), not 1$"
     ):
         CL.silhouette_score(X, [0, 0, 0, 0])
-    with pytest.raises(ValueError, match=r"between 2 and n - 1 \(got 4\)"):
+    with pytest.raises(ValueError, match=r"between 2 and n - 1 \(3\), not 4"):
         CL.calinski_harabasz_score(X, [0, 1, 2, 3])
     with pytest.raises(
         ValueError, match=r"^davies_bouldin_score\(\): 'labels' must have one label per point \(4\), not 3$"
@@ -347,7 +359,7 @@ def test_internal_errors():
         CL.davies_bouldin_score(X, [0, 1, 1])
     with pytest.raises(ValueError, match=r"^silhouette_samples\(\): 'X' contains NaN$"):
         CL.silhouette_samples(np.array([[0.0], [np.nan], [5.0]]), [0, 0, 1])
-    with pytest.raises(ValueError, match=r"^silhouette_samples\(\): unknown metric 'foo'"):
+    with pytest.raises(ValueError, match=r"^silhouette_samples\(\): 'metric' must be 'euclidean', .* not 'foo'"):
         CL.silhouette_samples(X, [0, 0, 1, 1], metric="foo")
     with pytest.raises(ValueError, match=r"^silhouette_samples\(\): the distance matrix 'X' must be symmetric$"):
         CL.silhouette_samples(

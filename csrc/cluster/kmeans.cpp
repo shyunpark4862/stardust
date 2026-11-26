@@ -72,19 +72,23 @@ inline double norm2_any(const double* x, int64_t p) {
 struct Centres {
     int64_t k = 0, p = 0;
     const double* C = nullptr;
-    std::vector<double> panels;  // packed by 8 for spatial's tile
+    std::vector<double> panels;  // full panels of 8 centres, then the tail's panel of tw (scan_direct)
+    int64_t full = 0, tw = 0;    // full panels, the tail's width (0, 2, 4 or 8 centres)
     std::vector<double> norm2;   // computed ||c||^2 (filter)
     std::vector<double> radius;  // >= ||c||^2 (filter)
     std::vector<double> half;    // <= half the true distance to the nearest other centre (bounds)
 
     void set(const double* c, int64_t kk, int64_t pp, bool filter, bool bounds, const Margin& M) {
         C = c, k = kk, p = pp;
-        const int64_t np = (k + kPanel - 1) / kPanel;
-        panels.assign(static_cast<size_t>(np * p * kPanel), 0.0);
-        for (int64_t b = 0; b < np; ++b)
-            spatial::pack_panel(
-                C + b * kPanel * p, p, std::min<int64_t>(kPanel, k - b * kPanel), p, panels.data() + b * p * kPanel
-            );
+        full = k / kPanel;
+        const int64_t t = k - full * kPanel;
+        tw = t == 0 ? 0 : t <= 2 ? 2 : t <= 4 ? 4 : kPanel;
+        panels.assign(static_cast<size_t>((full * kPanel + tw) * p), 0.0);
+        for (int64_t b = 0; b < full; ++b)
+            spatial::pack_panel(C + b * kPanel * p, p, kPanel, p, panels.data() + b * p * kPanel);
+        double* tp = panels.data() + full * kPanel * p;  // the tail: panel[d * tw + c] = C[full * 8 + c][d]
+        for (int64_t d = 0; d < p; ++d)
+            for (int64_t c = 0; c < tw; ++c) tp[d * tw + c] = c < t ? C[(full * kPanel + c) * p + d] : 0.0;
         if (filter) {
             norm2.resize(static_cast<size_t>(k));
             radius.resize(static_cast<size_t>(k));
@@ -135,16 +139,18 @@ struct Data {
     }
 };
 
-// The filter pays (CL49) where the scan's products are many: by shape alone (§5's measurements).
-bool filter_shape(int64_t p, int64_t k) { return p >= 20 && p * k >= 500; }
+// The filter pays (CL49) where the scan's products are many: by shape alone (CL95, §5's measurements).
+bool filter_shape(int64_t p, int64_t k) { return p >= 10 && p * k >= 400; }
 
 // ---- scans ---------------------------------------------------------------------------------------------------
 
-// A scan's result for one point: its nearest centre, that centre's sqd and a lower bound of the true distance to
-// every other centre (infinity with one centre).
+// A scan's result for one point: its nearest centre and that centre's sqd, and what bounds the true distance to every
+// other centre below (lower(); infinity with one centre): b2 the second smallest sqd among the centres scanned by the
+// difference form, le the smallest v - E of the centres the filter ruled out (infinity for none). The bound is made
+// only where Hamerly's bounds read it (its square roots cost about as much as a small scan).
 struct Scan {
     int64_t a;
-    double s1, lo;
+    double s1, b2, le;
 };
 
 // One point's scan by sqd alone (the careful finish on every centre): the slow path below 2^-968.
@@ -157,36 +163,105 @@ Scan scan_one(const Data& D, const Centres& Cs, const double* x) {
         a = v < b1 ? j : a;
         b1 = std::min(b1, v);
     }
-    return {a, b1, Cs.k > 1 ? D.M.down(b2) : kInfD};
+    return {a, b1, b2, kInfD};
 }
 
-// direct: spatial's tile kernel, 4 points against panels of 8 centres. The running smallest and second smallest
-// are kept without branches; a point whose two smallest sums are not both above 2^-968 is scanned again by sqd
-// (only sums below it change in the careful finish, so above it the tile's sums are sqd's).
+// direct (CL95): the difference form in spatial's tile order (each lane one pair's chain: blocks of 32 terms, each a
+// sequential fma chain from 0, the block sums added in block order; the bits of pair_scalar and of spatial::tile)
+// for R points against a panel of 2C centres (R C = 16 accumulators): groups of 16 points take the full panels of 8
+// centres four points at a time and the tail's 2 or 4 centres sixteen or eight points at a time, so no lane is spent
+// on a missing centre but in a tail of 5-7. The running smallest, second smallest and its centre are kept lane by
+// lane on NEON (strict <: a lane keeps its first centre on a tie) and the two lanes met at the end (the smaller
+// value, the smaller centre on a tie): the smallest (sqd, centre) and the second smallest of the scalar scan. A point
+// whose two smallest sums are not both above 2^-968 is scanned again by sqd (only sums below it change in the
+// careful finish, so above it the lanes' sums are sqd's).
+struct Best {
+    float64x2_t b1, b2;
+    uint64x2_t a;
+};
+
+template <int R, int C>
+inline void direct_panel(
+    const double* const* x, const double* panel, int64_t p, int64_t c0, int64_t valid, Best* best
+) {
+    constexpr int W = 2 * C;
+    double s[R][W];
+    for (int64_t b = 0; b < p; b += spatial::kBlock) {
+        float64x2_t t[R][C];
+        for (int r = 0; r < R; ++r)
+            for (int c = 0; c < C; ++c) t[r][c] = vdupq_n_f64(0.0);
+        const int64_t e = std::min(p, b + spatial::kBlock);
+        for (int64_t i = b; i < e; ++i) {
+            float64x2_t yv[C];
+            for (int c = 0; c < C; ++c) yv[c] = vld1q_f64(panel + i * W + 2 * c);
+            for (int r = 0; r < R; ++r) {
+                const float64x2_t xv = vld1q_dup_f64(x[r] + i);
+                for (int c = 0; c < C; ++c) {
+                    const float64x2_t z = vsubq_f64(xv, yv[c]);
+                    t[r][c] = vfmaq_f64(t[r][c], z, z);
+                }
+            }
+        }
+        for (int r = 0; r < R; ++r)
+            for (int c = 0; c < C; ++c)
+                vst1q_f64(s[r] + 2 * c, b == 0 ? t[r][c] : vaddq_f64(vld1q_f64(s[r] + 2 * c), t[r][c]));
+    }
+    const float64x2_t inf = vdupq_n_f64(kInfD);
+    for (int c = 0; c < C; ++c) {
+        const uint64x2_t idx = {static_cast<uint64_t>(c0 + 2 * c), static_cast<uint64_t>(c0 + 2 * c + 1)};
+        const uint64x2_t ok = vcltq_u64(
+            vsubq_u64(idx, vdupq_n_u64(static_cast<uint64_t>(c0))), vdupq_n_u64(static_cast<uint64_t>(valid))
+        );
+        for (int r = 0; r < R; ++r) {
+            const float64x2_t v = vbslq_f64(ok, vld1q_f64(s[r] + 2 * c), inf);
+            Best& B = best[r];
+            const uint64x2_t lt = vcltq_f64(v, B.b1);
+            B.b2 = vminq_f64(B.b2, vmaxq_f64(B.b1, v));
+            B.a = vbslq_u64(lt, idx, B.a);
+            B.b1 = vminq_f64(B.b1, v);
+        }
+    }
+}
+
+template <int R>
+inline void direct_reset(Best* best) {
+    for (int r = 0; r < R; ++r) best[r] = {vdupq_n_f64(kInfD), vdupq_n_f64(kInfD), vdupq_n_u64(0)};
+}
+
+// the two lanes of a row met: (smallest, second smallest, its centre)
+inline void direct_meet(const Best& B, double& b1, double& b2, int64_t& a) {
+    const double v0 = vgetq_lane_f64(B.b1, 0), v1 = vgetq_lane_f64(B.b1, 1);
+    const auto a0 = static_cast<int64_t>(vgetq_lane_u64(B.a, 0)), a1 = static_cast<int64_t>(vgetq_lane_u64(B.a, 1));
+    const bool second = (v1 < v0) | ((v1 == v0) & (a1 < a0));  // no branch: either lane wins half the time
+    b1 = second ? v1 : v0;
+    a = second ? a1 : a0;
+    b2 = std::min(std::min(vgetq_lane_f64(B.b2, 0), vgetq_lane_f64(B.b2, 1)), std::max(v0, v1));
+}
+
 void scan_direct(const Data& D, const Centres& Cs, const int64_t* idx, int64_t m, Scan* out) {
     const int64_t p = D.p, k = Cs.k;
-    const int64_t np = (k + kPanel - 1) / kPanel;
-    double buf[4 * kPanel];
-    for (int64_t q = 0; q < m; q += 4) {
-        const int R = static_cast<int>(std::min<int64_t>(4, m - q));
-        const double* xr[4];
-        for (int r = 0; r < 4; ++r) xr[r] = D.X + idx[q + std::min(r, R - 1)] * p;
-        double b1[4], b2[4];
-        int64_t arg[4];
-        for (int r = 0; r < 4; ++r) b1[r] = b2[r] = kInfD, arg[r] = 0;
-        for (int64_t b = 0; b < np; ++b) {
-            spatial::tile<spatial::SqOp, 4, false>(xr, Cs.panels.data() + b * p * kPanel, nullptr, p, buf);
-            const int64_t cmax = std::min<int64_t>(kPanel, k - b * kPanel);
-            for (int r = 0; r < 4; ++r)
-                for (int64_t c = 0; c < cmax; ++c) {
-                    const double v = buf[r * kPanel + c];
-                    b2[r] = std::min(b2[r], std::max(b1[r], v));
-                    arg[r] = v < b1[r] ? b * kPanel + c : arg[r];
-                    b1[r] = std::min(b1[r], v);
-                }
-        }
+    const int64_t tail = k - Cs.full * kPanel;
+    const double* tp = Cs.panels.data() + Cs.full * kPanel * p;
+    constexpr int G = 16;
+    for (int64_t q = 0; q < m; q += G) {
+        const int R = static_cast<int>(std::min<int64_t>(G, m - q));
+        const double* xr[G];
+        for (int r = 0; r < G; ++r) xr[r] = D.X + idx[q + std::min(r, R - 1)] * p;
+        Best best[G];
+        direct_reset<G>(best);
+        for (int g = 0; g < R; g += 4)
+            for (int64_t b = 0; b < Cs.full; ++b)
+                direct_panel<4, 4>(xr + g, Cs.panels.data() + b * p * kPanel, p, b * kPanel, kPanel, best + g);
+        if (Cs.tw == 2) direct_panel<16, 1>(xr, tp, p, Cs.full * kPanel, tail, best);
+        else if (Cs.tw == 4)
+            for (int g = 0; g < R; g += 8) direct_panel<8, 2>(xr + g, tp, p, Cs.full * kPanel, tail, best + g);
+        else if (Cs.tw == kPanel)
+            for (int g = 0; g < R; g += 4) direct_panel<4, 4>(xr + g, tp, p, Cs.full * kPanel, tail, best + g);
         for (int r = 0; r < R; ++r) {
-            if (b1[r] >= spatial::kTiny && b2[r] >= spatial::kTiny) out[q + r] = {arg[r], b1[r], D.M.down(b2[r])};
+            double b1, b2;
+            int64_t a;
+            direct_meet(best[r], b1, b2, a);
+            if (b1 >= spatial::kTiny && b2 >= spatial::kTiny) out[q + r] = {a, b1, b2, kInfD};
             else out[q + r] = scan_one(D, Cs, xr[r]);
         }
     }
@@ -195,6 +270,15 @@ void scan_direct(const Data& D, const Centres& Cs, const int64_t* idx, int64_t m
 // a lower bound of the true d^2's square root from A, a computed v - E of a ruled-out centre (§4.2)
 inline double lower_from_expanded(double A) {
     return A > 0x1p-950 ? down2(std::sqrt(A * (1.0 - 4.0 * kU)) * (1.0 - 2.0 * kU)) : 0.0;
+}
+
+// The lower bound of a scan (k > 1): from b2 by the difference form's bound and from le by the expanded form's; a
+// missing one (infinity) adds nothing (down(inf) and lower_from_expanded(inf) are both the double below the largest,
+// above any bound from a finite value: the bits of min(lower_from_expanded(le), down(b2))).
+inline double scan_lower(const Margin& M, const Scan& r, int64_t k) {
+    if (k <= 1) return kInfD;
+    const double a = r.b2 < kInfD ? M.down(r.b2) : kInfD, b = r.le < kInfD ? lower_from_expanded(r.le) : kInfD;
+    return a < kInfD || b < kInfD ? std::min(a, b) : M.down(kInfD);
 }
 
 // filtered (CL49): the expanded form rules out centres, the difference form decides among the rest. The expanded
@@ -241,53 +325,78 @@ void scan_filtered(
         const double* x = D.X + i * p;
         double* v = G.data() + q * k;  // x.c, then A = v - E
         const double nx = D.xn2[static_cast<size_t>(i)], rx = D.xrad[static_cast<size_t>(i)];
-        // pass 1: v = (||x||^2 - 2 x.c) + ||c||^2, E = cE (rx + rc); keep A = v - E and the smallest v + E
+        // pass 1: v = (||x||^2 - 2 x.c) + ||c||^2, E = cE (rx + rc), A = v - E: A is stored over x.c, and the
+        // smallest v + E, the smallest A with its centre and the second smallest A are kept lane by lane
         const float64x2_t nxv = vdupq_n_f64(nx), rxv = vdupq_n_f64(rx);
-        float64x2_t umin = infv;
-        for (int64_t j = 0; j < k2; j += 2) {
+        float64x2_t umin = infv, a1 = infv, a2 = infv;
+        uint64x2_t aj = vdupq_n_u64(0), jv = {0, 1};
+        const uint64x2_t two = vdupq_n_u64(2);
+        for (int64_t j = 0; j < k2; j += 2, jv = vaddq_u64(jv, two)) {
             const float64x2_t g = vld1q_f64(v + j);
             const float64x2_t vv = vaddq_f64(vsubq_f64(nxv, vaddq_f64(g, g)), vld1q_f64(nc + j));
             const float64x2_t e = vmulq_f64(cEv, vaddq_f64(rxv, vld1q_f64(rc + j)));
             umin = vminq_f64(umin, vaddq_f64(vv, e));
-            vst1q_f64(v + j, vsubq_f64(vv, e));
+            const float64x2_t A = vsubq_f64(vv, e);
+            vst1q_f64(v + j, A);
+            const uint64x2_t lt = vcltq_f64(A, a1);
+            a2 = vminq_f64(a2, vmaxq_f64(a1, A));
+            aj = vbslq_u64(lt, jv, aj);
+            a1 = vminq_f64(a1, A);
         }
         double um = vminvq_f64(umin);
+        double A1, A2;
+        int64_t J1;
+        {
+            const double l0 = vgetq_lane_f64(a1, 0), l1 = vgetq_lane_f64(a1, 1);
+            const auto j0 = static_cast<int64_t>(vgetq_lane_u64(aj, 0)),
+                       j1 = static_cast<int64_t>(vgetq_lane_u64(aj, 1));
+            const bool second = (l1 < l0) | ((l1 == l0) & (j1 < j0));
+            A1 = second ? l1 : l0, J1 = second ? j1 : j0;
+            A2 = std::min(std::min(vgetq_lane_f64(a2, 0), vgetq_lane_f64(a2, 1)), std::max(l0, l1));
+        }
         for (int64_t j = k2; j < k; ++j) {
             const double vv = (nx - (v[j] + v[j])) + nc[j], e = cE * (rx + rc[j]);
             um = std::min(um, vv + e);
-            v[j] = vv - e;
+            const double A = vv - e;
+            v[j] = A;
+            A2 = std::min(A2, std::max(A1, A));
+            J1 = A < A1 ? j : J1;
+            A1 = std::min(A1, A);
         }
-        // pass 2: a centre with A > lim is ruled out (the smallest A among them bounds their distances below)
+        // a centre with A > lim is ruled out (the smallest A among them bounds their distances below). The usual
+        // case: the second smallest A is above lim, so the one kept centre is that of the smallest A (it is the
+        // centre of smallest v + E or has its A at most that) and the ruled-out centres' smallest A is the second
+        // smallest; otherwise pass 2 walks the stored A.
         const double lim = um * kappa + tau;
-        double lo = kInfD;
-        const size_t at = cand.size();
-        cand.resize(at + static_cast<size_t>(k));
-        size_t cnt = at;
-        for (int64_t j = 0; j < k; ++j) {  // without branches: a kept centre is written and counted
-            const double A = v[j];
-            const bool out_ = A > lim;
-            cand[cnt] = {q, j};
-            cnt += out_ ? 0 : 1;
-            lo = std::min(lo, out_ ? A : kInfD);
+        double lo;
+        if (A2 > lim) {
+            cand.push_back({q, J1});
+            lo = A2;
+        } else {
+            lo = kInfD;
+            for (int64_t j = 0; j < k; ++j) {
+                const double A = v[j];
+                if (A > lim) lo = std::min(lo, A);
+                else cand.push_back({q, j});
+            }
         }
-        cand.resize(cnt);
         lows[static_cast<size_t>(q)] = lo;
     }
-    // the kept centres by the difference form, four pairs side by side (sqd4: sqd's bits), then each point's
+    // the kept centres by the difference form, eight pairs side by side (sqdN: sqd's bits), then each point's
     // smallest (sqd, centre) and second smallest in centre order
     const size_t nc_ = cand.size();
     std::vector<double> sv(nc_);
-    for (size_t c = 0; c < nc_; c += 4) {
-        const double* xr[4];
-        const double* cr[4];
-        for (size_t r = 0; r < 4; ++r) {
+    for (size_t c = 0; c < nc_; c += 8) {
+        const double* xr[8];
+        const double* cr[8];
+        for (size_t r = 0; r < 8; ++r) {
             const Cand& cc = cand[std::min(c + r, nc_ - 1)];
             xr[r] = D.X + idx[cc.q] * p;
             cr[r] = Cs.C + cc.j * p;
         }
-        double o4[4];
-        sqd4(xr, cr, p, o4);
-        for (size_t r = 0; r < 4 && c + r < nc_; ++r) sv[c + r] = o4[r];
+        double o8[8];
+        sqdN<8>(xr, cr, p, o8);
+        for (size_t r = 0; r < 8 && c + r < nc_; ++r) sv[c + r] = o8[r];
     }
     size_t c = 0;
     for (int64_t q = 0; q < m; ++q) {
@@ -299,8 +408,7 @@ void scan_filtered(
             a = s < b1 ? cand[c].j : a;
             b1 = std::min(b1, s);
         }
-        const double lo = lows[static_cast<size_t>(q)];
-        out[q] = {a, b1, k > 1 ? std::min(lower_from_expanded(lo), D.M.down(b2)) : kInfD};
+        out[q] = {a, b1, b2, lows[static_cast<size_t>(q)]};
     }
 }
 
@@ -383,7 +491,7 @@ bool assign(const Data& D, const Centres& Cs, std::vector<int64_t>& lab, Bounds*
             const Scan& r = B.res[q];
             ch |= static_cast<char>(r.a != lab[ii]);
             lab[ii] = r.a;
-            if (Bd) Bd->U[ii] = D.M.up(r.s1), Bd->L[ii] = r.lo;
+            if (Bd) Bd->U[ii] = D.M.up(r.s1), Bd->L[ii] = scan_lower(D.M, r, Cs.k);
         }
         changed[static_cast<size_t>(t)] = ch;
     };
@@ -401,9 +509,20 @@ void label_sums(const Data& D, const int64_t* lab, int64_t k, std::vector<double
         chunks_of(n), width,
         [&](int64_t c, double* out) {
             std::fill(out, out + width, 0.0);
-            for (int64_t i = c * kChunk; i < std::min(n, (c + 1) * kChunk); ++i) {
+            const int64_t i1 = std::min(n, (c + 1) * kChunk);
+            if (!D.w) {  // weight 1: w x is x exactly
+                for (int64_t i = c * kChunk; i < i1; ++i) {
+                    const int64_t j = lab[i];
+                    out[k * p + j] += 1.0;
+                    const double* x = D.X + i * p;
+                    double* s = out + j * p;
+                    for (int64_t d = 0; d < p; ++d) s[d] += x[d];
+                }
+                return;
+            }
+            for (int64_t i = c * kChunk; i < i1; ++i) {
                 const int64_t j = lab[i];
-                const double wi = D.weight(i);
+                const double wi = D.w[i];
                 out[k * p + j] += wi;
                 const double* x = D.X + i * p;
                 double* s = out + j * p;
@@ -719,11 +838,15 @@ double tolerance(const Data& D, double tol) {
     return s / static_cast<double>(p) * tol;
 }
 
-// The path by shape: bounds unless k is tiny; the filter by filter_shape. Forced paths (tests): 1 Lloyd direct,
-// 2 Lloyd filtered, 3 bounds direct, 4 bounds filtered.
+// The path by shape: Hamerly's bounds where a scan costs more than their check (k (p + 4) >= 100: below it the
+// check of a point's two bounds, with its roundings, costs about what its scan does; CL95 and the measurements in
+// docs/design/cluster.md §5), the filter by filter_shape. Forced paths (tests): 1 Lloyd direct, 2 Lloyd filtered,
+// 3 bounds direct, 4 bounds filtered.
+bool bounds_shape(int64_t p, int64_t k) { return k >= 2 && k * (p + 4) >= 100; }
+
 void choose_path(int path, int64_t p, int64_t k, bool& bounds, bool& filter) {
     if (path == 0) {
-        bounds = k >= 2;
+        bounds = bounds_shape(p, k);
         filter = filter_shape(p, k);
         return;
     }

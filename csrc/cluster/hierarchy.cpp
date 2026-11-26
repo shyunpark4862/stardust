@@ -16,13 +16,16 @@
 //         complete, average, weighted (on D), ward (on X or D)
 //                   the nearest-neighbour chain, the neighbour of smallest (value, key); a scan that meets
 //                   another candidate exactly equal to its minimum (the chain's previous cluster too) flags
-//                   the input, which the generic algorithm then solves (CL46; flags bit 0).
+//                   the input, which the generic algorithm then solves (CL46; flags bit 0). On D the chain
+//                   works on a square copy when 8 n^2 bytes are at most a quarter of the memory, else on a
+//                   condensed one (the same scans and updates: the same tree; CL96).
 //         centroid, median (and the flagged inputs)
 //                   Muellner's generic algorithm with an indexed heap of (value, key) (CL17).
 //       On D the values are the Lance-Williams updates (ward, centroid and median on squared distances); on X
 //       (ward, centroid, median: the matrix-free path, CL18) the clusters' centres and sizes. path 0 picks by
 //       shape; 1 forces the matrix built from X (ward, centroid, median: squared sums), 3 the generic
-//       algorithm, 4 Prim and 5 Boruvka (single on X) -- for the tests' two-path comparisons.
+//       algorithm, 4 Prim and 5 Boruvka (single on X), 6 the condensed copy of the chain -- for the tests'
+//       two-path comparisons.
 //       The heights (CL45, CL55): single and complete the chosen distances; the others the Lance-Williams recurrence
 //       on the final tree (recurrence() below), so every path gives the same bits for the same tree. Rows in
 //       the primitive order on the final heights: of the merges whose children exist, the smallest (height,
@@ -33,6 +36,7 @@
 //   optimal_leaf_ordering(Z, D, key) -> Z   Bar-Joseph et al. (2001), ties by key (CL53)
 //   _mst(X, method) -> (edges (n - 1, 2), weights)  the spanning trees for tools/cluster_probe.py proto.mst
 #include "array/ndarray.hpp"
+#include "base/buffer.hpp"
 #include "bind/errors.hpp"
 #include "bind/pyutil.hpp"
 #include "cluster/cluster.hpp"
@@ -190,21 +194,60 @@ void update(
     }
 }
 
-// D: the working copy (condensed, keys), overwritten. Returns false when a scan met an exact tie (CL46).
+// The Lance-Williams update of the NN-chain after merging b into a (a < b), over the live slots only (live: sorted,
+// b still in it): D(a, k) for every live k other than a and b, each from the same three values as update_of.
+template <int Mth>
+void update_live(
+    double* D,
+    int64_t n,
+    int64_t a,
+    int64_t b,
+    double ab,
+    const std::vector<int64_t>& size,
+    const std::vector<int32_t>& live
+) {
+    const double na = static_cast<double>(size[static_cast<size_t>(a)]);
+    const double nb = static_cast<double>(size[static_cast<size_t>(b)]);
+    for (const int32_t k32 : live) {
+        const int64_t k = k32;
+        if (k == a || k == b) continue;
+        const int64_t ia = cpair(n, a, k), ib = cpair(n, b, k);
+        D[ia] = lance_williams(Mth, D[ia], D[ib], ab, na, nb, static_cast<double>(size[static_cast<size_t>(k)]));
+    }
+}
+
+void update_live(
+    std::vector<double>& D,
+    int64_t n,
+    int method,
+    int64_t a,
+    int64_t b,
+    double ab,
+    const std::vector<int64_t>& size,
+    const std::vector<int32_t>& live
+) {
+    switch (method) {
+        case kComplete: update_live<kComplete>(D.data(), n, a, b, ab, size, live); break;
+        case kAverage: update_live<kAverage>(D.data(), n, a, b, ab, size, live); break;
+        case kWeighted: update_live<kWeighted>(D.data(), n, a, b, ab, size, live); break;
+        default: update_live<kWard>(D.data(), n, a, b, ab, size, live);
+    }
+}
+
+// D: the working copy (condensed, keys), overwritten. Returns false when a scan met an exact tie (CL46). The live
+// slots are a sorted list, so a scan and an update touch the live clusters alone (no test of a dead slot, whose
+// outcome a branch could not learn); a scan offers the live slots in increasing order: the smallest value, its first
+// (smallest) slot and the number of slots at it, as the scan from the chain's previous cluster finds them.
 bool nnchain_matrix(std::vector<double>& D, int64_t n, int method, Merges& M) {
     const double* Dp = D.data();
     std::vector<int64_t> size(static_cast<size_t>(n), 1), node(static_cast<size_t>(n));
     std::iota(node.begin(), node.end(), int64_t{0});
-    std::vector<char> alive(static_cast<size_t>(n), 1);
+    std::vector<int32_t> live(static_cast<size_t>(n));
+    std::iota(live.begin(), live.end(), 0);
     std::vector<int64_t> chain;
     chain.reserve(static_cast<size_t>(n));
-    int64_t first = 0;
-    auto d = [&](int64_t i, int64_t j) -> double& { return D[static_cast<size_t>(cpair(n, i, j))]; };
     for (int64_t step = 0; step < n - 1; ++step) {
-        if (chain.empty()) {
-            while (!alive[static_cast<size_t>(first)]) ++first;
-            chain.push_back(first);
-        }
+        if (chain.empty()) chain.push_back(live[0]);
         int64_t x, y;
         double best;
         while (true) {
@@ -213,22 +256,26 @@ bool nnchain_matrix(std::vector<double>& D, int64_t n, int method, Merges& M) {
             best = kInf;
             y = -1;
             int64_t count = 0;
-            if (prev >= 0) best = d(x, prev), y = prev, count = 1;
-            auto offer = [&](int64_t j, double v) {
-                if (v < best || y < 0) {
-                    best = v, y = j, count = 1;
-                } else if (v == best) {
-                    ++count;
-                    if (j < y) y = j;
+            const size_t mid = static_cast<size_t>(std::lower_bound(live.begin(), live.end(), x) - live.begin());
+            // live slots below x: column x above the diagonal, (j, x) at n j - j (j + 1) / 2 + x - j - 1
+            for (size_t q = 0; q < mid; ++q) {
+                const int64_t j = live[q];
+                const double v = Dp[n * j - j * (j + 1) / 2 + x - j - 1];
+                if (v <= best || y < 0) {  // rare: the branch is learnt
+                    if (v < best || y < 0) best = v, y = j, count = 1;
+                    else if (v == best) ++count;
                 }
-            };
-            // column x above the diagonal (strided), then row x (contiguous)
-            int64_t idx = x - 1;
-            for (int64_t j = 0; j < x; idx += n - j - 2, ++j)
-                if (alive[static_cast<size_t>(j)] && j != prev) offer(j, Dp[idx]);
+            }
+            // live slots above x: row x (contiguous)
             const double* row = Dp + (x + 1 < n ? cidx(n, x, x + 1) - (x + 1) : 0);
-            for (int64_t j = x + 1; j < n; ++j)
-                if (alive[static_cast<size_t>(j)] && j != prev) offer(j, row[j]);
+            for (size_t q = mid + 1; q < live.size(); ++q) {
+                const int64_t j = live[q];
+                const double v = row[j];
+                if (v <= best || y < 0) {  // rare: the branch is learnt
+                    if (v < best || y < 0) best = v, y = j, count = 1;
+                    else if (v == best) ++count;
+                }
+            }
             if (count > 1) return false;
             if (y == prev) break;
             chain.push_back(y);
@@ -238,8 +285,115 @@ bool nnchain_matrix(std::vector<double>& D, int64_t n, int method, Merges& M) {
         const int64_t a = std::min(x, y), b = std::max(x, y);
         const auto aa = static_cast<size_t>(a), bb = static_cast<size_t>(b);
         node[aa] = M.add(node[aa], node[bb], best);
-        update(D, n, method, a, b, best, size, alive);
-        alive[bb] = 0;
+        update_live(D, n, method, a, b, best, size, live);
+        live.erase(std::lower_bound(live.begin(), live.end(), static_cast<int32_t>(b)));
+        size[aa] += size[bb];
+    }
+    return true;
+}
+
+// The square working copy of the NN-chain (S[i n + j] = S[j n + i] = the value of i and j; f squares D for ward on
+// given distances): a scan reads row x contiguously and an update writes row a and column a, where the condensed copy
+// reads column x with a stride. Tiles of 64 x 64 keep a tile's transposed writes in L1; the row blocks are tasks
+// (each writes its own entries).
+std::vector<double> square_of(const double* D, int64_t n, bool sq) {
+    std::vector<double> S(static_cast<size_t>(n * n));
+    constexpr int64_t B = 64;
+    const int64_t nb = (n + B - 1) / B;
+    auto body = [&](int64_t bi) {
+        const int64_t i0 = bi * B, i1 = std::min(n, i0 + B);
+        for (int64_t i = i0; i < i1; ++i) S[static_cast<size_t>(i * n + i)] = 0.0;
+        for (int64_t bj = bi; bj < nb; ++bj) {
+            const int64_t j0 = bj * B, j1 = std::min(n, j0 + B);
+            for (int64_t i = i0; i < i1; ++i) {
+                const int64_t js = std::max(j0, i + 1);
+                if (js >= j1) continue;
+                const double* d = D + cidx(n, i, js);
+                for (int64_t j = js; j < j1; ++j) {
+                    double v = d[j - js];
+                    if (sq) v = v * v;
+                    S[static_cast<size_t>(i * n + j)] = v;
+                    S[static_cast<size_t>(j * n + i)] = v;
+                }
+            }
+        }
+    };
+    if (nb > 1 && n * n >= kSplitWork) parallel::parallel_for(nb, body, B * n);
+    else
+        for (int64_t b = 0; b < nb; ++b) body(b);
+    return S;
+}
+
+template <int Mth>
+void update_square(
+    double* S,
+    int64_t n,
+    int64_t a,
+    int64_t b,
+    double ab,
+    const std::vector<int64_t>& size,
+    const std::vector<int32_t>& live
+) {
+    const double na = static_cast<double>(size[static_cast<size_t>(a)]);
+    const double nb = static_cast<double>(size[static_cast<size_t>(b)]);
+    double* ra = S + a * n;
+    const double* rb = S + b * n;
+    for (const int32_t k32 : live) {
+        const int64_t k = k32;
+        if (k == a || k == b) continue;
+        const double v =
+            lance_williams(Mth, ra[k], rb[k], ab, na, nb, static_cast<double>(size[static_cast<size_t>(k)]));
+        ra[k] = v;
+        S[k * n + a] = v;
+    }
+}
+
+// nnchain_matrix on the square copy: the same scans (live slots in increasing order) and the same updates (each value
+// from the same three values), so the same tree, merge values and ties.
+bool nnchain_square(std::vector<double>& S, int64_t n, int method, Merges& M) {
+    const double* Sp = S.data();
+    std::vector<int64_t> size(static_cast<size_t>(n), 1), node(static_cast<size_t>(n));
+    std::iota(node.begin(), node.end(), int64_t{0});
+    std::vector<int32_t> live(static_cast<size_t>(n));
+    std::iota(live.begin(), live.end(), 0);
+    std::vector<int64_t> chain;
+    chain.reserve(static_cast<size_t>(n));
+    for (int64_t step = 0; step < n - 1; ++step) {
+        if (chain.empty()) chain.push_back(live[0]);
+        int64_t x, y;
+        double best;
+        while (true) {
+            x = chain.back();
+            const int64_t prev = chain.size() >= 2 ? chain[chain.size() - 2] : -1;
+            best = kInf;
+            y = -1;
+            int64_t count = 0;
+            const double* row = Sp + x * n;
+            for (const int32_t j32 : live) {
+                const int64_t j = j32;
+                const double v = row[j];
+                if (j == x) continue;
+                if (v <= best || y < 0) {  // rare: the branch is learnt
+                    if (v < best || y < 0) best = v, y = j, count = 1;
+                    else if (v == best) ++count;
+                }
+            }
+            if (count > 1) return false;
+            if (y == prev) break;
+            chain.push_back(y);
+        }
+        chain.pop_back();
+        chain.pop_back();
+        const int64_t a = std::min(x, y), b = std::max(x, y);
+        const auto aa = static_cast<size_t>(a), bb = static_cast<size_t>(b);
+        node[aa] = M.add(node[aa], node[bb], best);
+        switch (method) {
+            case kComplete: update_square<kComplete>(S.data(), n, a, b, best, size, live); break;
+            case kAverage: update_square<kAverage>(S.data(), n, a, b, best, size, live); break;
+            case kWeighted: update_square<kWeighted>(S.data(), n, a, b, best, size, live); break;
+            default: update_square<kWard>(S.data(), n, a, b, best, size, live);
+        }
+        live.erase(std::lower_bound(live.begin(), live.end(), static_cast<int32_t>(b)));
         size[aa] += size[bb];
     }
     return true;
@@ -1288,17 +1442,35 @@ Linkage run_linkage(
                 W.assign(D, D + n * (n - 1) / 2);
             }
         };
-        fresh();
         bool done = false;
-        if ((method == kComplete || method == kAverage || method == kWeighted || method == kWard) && path != 3) {
-            done = nnchain_matrix(W, n, method, M);
+        const bool chain =
+            (method == kComplete || method == kAverage || method == kWeighted || method == kWard) && path != 3;
+        // the square copy when it takes at most a quarter of the memory (the same tree; CL96)
+        const bool square =
+            chain && D && !(X && squared_method(method)) && path != 6 &&
+            static_cast<double>(n) * static_cast<double>(n) * 8.0 <= static_cast<double>(physical_memory()) / 4.0;
+        if (square) {
+            std::vector<double> S = square_of(D, n, squared_method(method));
+            done = nnchain_square(S, n, method, M);
             if (!done) {
                 out.flags |= 1;
                 M = Merges(n);
-                fresh();
+            }
+        } else {
+            fresh();
+            if (chain) {
+                done = nnchain_matrix(W, n, method, M);
+                if (!done) {
+                    out.flags |= 1;
+                    M = Merges(n);
+                    fresh();
+                }
             }
         }
-        if (!done) generic_matrix(W, n, method, M);
+        if (!done) {
+            if (W.empty()) fresh();
+            generic_matrix(W, n, method, M);
+        }
     }
     std::vector<double> h;
     if (method == kComplete) {
@@ -1494,46 +1666,42 @@ nb::object cophenet_py(nb::handle Zo) {
         const parallel::Unlocked unlocked(n * n >= kSplitWork);
         std::vector<int64_t> a, b;
         z_children(z, m, a, b);
-        // each cluster's points as a linked list, joined in row order
-        std::vector<int64_t> head(static_cast<size_t>(n + m)), tail(static_cast<size_t>(n + m)),
-            nxt(static_cast<size_t>(n), -1), sz(static_cast<size_t>(n + m), 1);
-        for (int64_t i = 0; i < n; ++i) head[static_cast<size_t>(i)] = tail[static_cast<size_t>(i)] = i;
-        // the start of each point's row in the condensed vector: (i, j), i < j, is at row[i] + j
+        // each cluster's points as a sorted list (two lists merged per row), so that a merge writes its pairs row by
+        // row: (i, j) with i < j at row[i] + j, the columns of a row in increasing order
+        std::vector<std::vector<int64_t>> pts(static_cast<size_t>(n + m));
+        for (int64_t i = 0; i < n; ++i) pts[static_cast<size_t>(i)] = {i};
         std::vector<int64_t> row(static_cast<size_t>(n));
         for (int64_t i = 0; i < n; ++i) row[static_cast<size_t>(i)] = cidx(n, i, std::min(i + 1, n - 1)) - (i + 1);
-        std::vector<int64_t> A, B;
-        auto members = [&](int64_t v, std::vector<int64_t>& out) {
-            out.clear();
-            for (int64_t i = head[static_cast<size_t>(v)]; i >= 0; i = nxt[static_cast<size_t>(i)]) {
-                out.push_back(i);
-                if (i == tail[static_cast<size_t>(v)]) break;
+        // the pairs of u's points with the larger points of the other list, row u's run
+        auto rows_of = [&](const std::vector<int64_t>& P, const std::vector<int64_t>& Q, int64_t q0, int64_t q1,
+                           double h) {
+            for (int64_t q = q0; q < q1; ++q) {
+                const int64_t u = P[static_cast<size_t>(q)];
+                double* r = c + row[static_cast<size_t>(u)];
+                for (auto it = std::upper_bound(Q.begin(), Q.end(), u); it != Q.end(); ++it) r[*it] = h;
             }
         };
         for (int64_t t = 0; t < m; ++t) {
-            const int64_t x = a[static_cast<size_t>(t)], y = b[static_cast<size_t>(t)];
+            std::vector<int64_t>& A = pts[static_cast<size_t>(a[static_cast<size_t>(t)])];
+            std::vector<int64_t>& B = pts[static_cast<size_t>(b[static_cast<size_t>(t)])];
             const double h = z[4 * t + 2];
-            members(x, A);
-            members(y, B);
             const int64_t la = static_cast<int64_t>(A.size()), lb = static_cast<int64_t>(B.size());
-            auto body = [&](int64_t q) {
-                const int64_t i = A[static_cast<size_t>(q)];
-                const int64_t ri = row[static_cast<size_t>(i)];
-                for (const int64_t j : B) c[j > i ? ri + j : row[static_cast<size_t>(j)] + i] = h;
-            };
-            if (la * lb >= kSplitWork && la > 1) {
-                const int64_t chunk = std::max<int64_t>(1, (int64_t{1} << 14) / lb);
-                const int64_t nt = (la + chunk - 1) / chunk;
-                parallel::parallel_for(nt, [&](int64_t tt) {
-                    for (int64_t q = tt * chunk; q < std::min(la, (tt + 1) * chunk); ++q) body(q);
+            if (la * lb >= kSplitWork && la + lb > 2) {
+                const int64_t chunk = std::max<int64_t>(1, (int64_t{1} << 14) / std::max(la, lb));
+                const int64_t na = (la + chunk - 1) / chunk, nb = (lb + chunk - 1) / chunk;
+                parallel::parallel_for(na + nb, [&](int64_t tt) {
+                    if (tt < na) rows_of(A, B, tt * chunk, std::min(la, (tt + 1) * chunk), h);
+                    else rows_of(B, A, (tt - na) * chunk, std::min(lb, (tt - na + 1) * chunk), h);
                 });
             } else {
-                for (int64_t q = 0; q < la; ++q) body(q);
+                rows_of(A, B, 0, la, h);
+                rows_of(B, A, 0, lb, h);
             }
-            const auto v = static_cast<size_t>(n + t);
-            nxt[static_cast<size_t>(tail[static_cast<size_t>(x)])] = head[static_cast<size_t>(y)];
-            head[v] = head[static_cast<size_t>(x)];
-            tail[v] = tail[static_cast<size_t>(y)];
-            sz[v] = sz[static_cast<size_t>(x)] + lb;
+            std::vector<int64_t>& V = pts[static_cast<size_t>(n + t)];
+            V.resize(static_cast<size_t>(la + lb));
+            std::merge(A.begin(), A.end(), B.begin(), B.end(), V.begin());
+            std::vector<int64_t>().swap(A);
+            std::vector<int64_t>().swap(B);
         }
     }
     return wrap(std::move(out));

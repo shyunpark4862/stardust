@@ -452,7 +452,7 @@ def test_result_methods_errors():
     r = CL.gaussian_mixture(X, 2, rng=_rng())
     with pytest.raises(ValueError, match=r"predict\(\): 'X_new' must have 2 columns"):
         r.predict(np.zeros((3, 3)))
-    with pytest.raises(ValueError, match=r"score_samples\(\): 'X_new' must be finite"):
+    with pytest.raises(ValueError, match=r"score_samples\(\): 'X_new' contains NaN"):
         r.score_samples(np.array([[np.nan, 0.0]]))
     with pytest.raises(TypeError, match=r"sample\(\): missing 1 required keyword-only argument: 'rng'"):
         r.sample(3)

@@ -149,14 +149,14 @@ def test_result_predict_and_nan_policy():
     "call, err, msg",
     [
         (lambda: CL.kmedoids(np.eye(4), 2, rng=sd.random.default_rng()), ValueError,
-         r"^kmedoids\(\): 'rng' is not used with method='pam'"),
+         r"^kmedoids\(\): 'rng' is only used with method='clara'"),
         (lambda: CL.kmedoids(np.eye(4), 2, method="clara"), TypeError, r"^kmedoids\(\): 'rng' must be an sd.random"),
         (lambda: CL.kmedoids(np.eye(4), 2, method="fasterpam"), ValueError, r"^kmedoids\(\): 'method' must be"),
         (lambda: CL.kmedoids(np.eye(4), 5), ValueError, r"'k' \(5\) is larger than the number of points \(4\)"),
         (lambda: CL.kmedoids(np.eye(4), 2, max_iter=-1), ValueError, r"'max_iter' must be >= 0"),
         (lambda: CL.kmedoids(np.eye(8), 2, method="clara", rng=sd.random.default_rng(), sample_size=2), ValueError,
          r"'sample_size' must be between k \+ 1 \(3\) and n \(8\)"),
-        (lambda: CL.kmedoids(np.eye(4), 2, metric="manhattan"), ValueError, r"unknown metric 'manhattan'"),
+        (lambda: CL.kmedoids(np.eye(4), 2, metric="manhattan"), ValueError, r"'metric' must be .* not 'manhattan'"),
         (lambda: CL.kmedoids(np.ones((3, 3)), 2, metric="precomputed"), ValueError, r"zero diagonal"),
     ],
 )  # fmt: skip

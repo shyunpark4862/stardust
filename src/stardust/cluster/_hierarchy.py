@@ -32,7 +32,9 @@ from ._common import (
     distances,
     integer,
     labels_back,
+    metric_columns,
     points,
+    policy,
     real,
     type_name,
 )
@@ -87,17 +89,18 @@ def _pdist(X, metric, func):
     from .. import spatial as _spatial
 
     n = X.shape[0]
+    metric_columns(metric, X.shape[1], func)
     check_alloc(16 * (n * (n - 1) // 2), func)  # the distances and the algorithm's working copy
     return contiguous(_spatial.pdist(X, metric=metric))
 
 
-def _tree(X, D, order, method, func, path=0):
+def _tree(X, D, order, method, path=0):
     """Z of observations X in key order (or None) and/or condensed distances D in key order (or None)."""
     Z, _ = _core.linkage(X, D, order, _CODE[method], path)
     return Z
 
 
-def _fit(y, method, metric, optimal_ordering, func, path=0, condensed_1d=True, nan_policy="raise"):
+def _fit(y, method, metric, optimal_ordering, func, path=0, condensed_1d=True, nan_policy=None):
     """(Z, nobs, omitted) of the data y: observations (2-D, or 1-D for agglomerative) or distances."""
     method = _method(method, func)
     metric = _metric(metric, func)
@@ -107,26 +110,27 @@ def _fit(y, method, metric, optimal_ordering, func, path=0, condensed_1d=True, n
     omitted = None
     if metric == "precomputed" or (condensed_1d and a.ndim == 1):
         if metric not in ("euclidean", "precomputed"):
-            raise ValueError(f"{func}(): a 1-D 'y' holds condensed distances; 'metric' does not apply (got {metric!r})")
+            raise ValueError(f"{func}(): a 1-D 'y' holds condensed distances; 'metric' does not apply, not {metric!r}")
         D, n = distances(a, func, "y" if condensed_1d else "X")
         order = _sd.arange(n, dtype=_sd.int64)
-        check_alloc(8 * D.shape[0], func)
-        Z = _tree(None, D, order, method, func, path)
+        check_alloc(8 * D.shape[0], func)  # the algorithm's working copy
+        Z = _tree(None, D, order, method, path)
         if optimal_ordering:
             Z = _olo(Z, D, order, n, func)
         return Z, n, omitted
-    X = points(a, func, "y" if condensed_1d else "X")
-    X, _, omitted = _rows(X, func, nan_policy, None, "y" if condensed_1d else "X")
+    arg = "y" if condensed_1d else "X"
+    X = points(a, func, arg)
+    X, _, omitted = _rows(X, func, nan_policy, None, arg)
     n = X.shape[0]
     if n < 2:
-        raise ValueError(f"{func}(): at least 2 points are needed, not {n}")
+        raise ValueError(f"{func}(): '{arg}' must have at least 2 points, not {n}")
     order = _core.lex_order(X)
     Xr = contiguous(X[order])
     if method in _MATRIX_FREE and metric == "euclidean" and path != 1:
-        Z = _tree(Xr, None, order, method, func, path)
+        Z = _tree(Xr, None, order, method, path)
     else:
         D = _pdist(Xr, metric, func)
-        Z = _tree(Xr if (method in _CENTROID or path == 1) else None, D, order, method, func, path)
+        Z = _tree(Xr if (method in _CENTROID or path == 1) else None, D, order, method, path)
     if optimal_ordering:
         D = _pdist(X, metric, func)
         key = _sd.empty((n,), dtype=_sd.int64)
@@ -310,6 +314,7 @@ class HierarchyResult(ClusterResult):
     """
 
     _TITLE = "Hierarchical Clustering Results"
+    _REPR = ("method", "nobs", "metric", "coefficient")
 
     def cut(self, *, k=None, height=None):
         """The partition into k clusters (the last k - 1 merges undone, R's cutree(k=)) or at a height (the
@@ -379,12 +384,6 @@ class HierarchyResult(ClusterResult):
         table = _summary.Table(["Height", "Size"], rows, stub_head="clusters")
         return _summary.render(self._TITLE, header=(left, right), tables=(table,))
 
-    def __repr__(self):
-        return _summary.one_line(
-            "HierarchyResult",
-            [("method", self.method), ("nobs", self.nobs), ("metric", self.metric), ("coefficient", self.coefficient)],
-        )
-
 
 _calls.methods(HierarchyResult)
 
@@ -421,7 +420,7 @@ def agglomerative(X, /, *, method="single", metric="euclidean", optimal_ordering
     'omit' (the rows with a NaN left out of the tree: cut() labels them -1).
     """
     func = "agglomerative"
-    choice(nan_policy, func, "nan_policy", ("raise", "omit"))
+    policy(nan_policy, func)
     Z, nobs, omitted = _fit(X, method, metric, optimal_ordering, func, condensed_1d=False, nan_policy=nan_policy)
     return _result(Z, method, metric, nobs, omitted, nobs if omitted is None else omitted.shape[0])
 
@@ -438,7 +437,7 @@ def divisive(X, /, *, metric="euclidean", nan_policy="raise"):
     """
     func = "divisive"
     metric = _metric(metric, func)
-    choice(nan_policy, func, "nan_policy", ("raise", "omit"))
+    policy(nan_policy, func)
     a = _array(X, func, "X")
     if metric == "precomputed":
         D, n = distances(a, func, "X")
@@ -450,7 +449,7 @@ def divisive(X, /, *, metric="euclidean", nan_policy="raise"):
         P, _, omitted = _rows(P, func, nan_policy, None, "X")
         n = P.shape[0]
         if n < 2:
-            raise ValueError(f"{func}(): at least 2 points are needed, not {n}")
+            raise ValueError(f"{func}(): 'X' must have at least 2 points, not {n}")
         order = _core.lex_order(P)
         D = _pdist(contiguous(P[order]), metric, func)
     Z = _core.diana(D, order)
@@ -686,8 +685,10 @@ def cophenet_correlation(Z, y, /):
         raise ValueError(f"{func}(): 'y' must be a condensed distance vector (1-D), not {a.ndim}-D")
     if a.shape[0] != r.n * (r.n - 1) // 2:
         raise ValueError(f"{func}(): 'y' must have n (n - 1) / 2 = {r.n * (r.n - 1) // 2} values, not {a.shape[0]}")
-    if not bool(_sd.all(_sd.isfinite(a))):
-        raise ValueError(f"{func}(): 'y' must be finite")
+    if bool(_sd.any(_sd.isnan(a))):
+        raise ValueError(f"{func}(): 'y' contains NaN")
+    if bool(_sd.any(_sd.isinf(a))):
+        raise ValueError(f"{func}(): 'y' contains infinity")
     c = cophenet(Z)
     dc = c - _sd.mean(c)
     dy = a - _sd.mean(a)
@@ -725,14 +726,14 @@ def optimal_leaf_ordering(Z, y, /, *, metric="euclidean"):
     metric = _metric(metric, func)
     a = _array(y, func, "y")
     if a.ndim == 1:
-        if metric != "euclidean":
-            raise ValueError(f"{func}(): a 1-D 'y' holds condensed distances; 'metric' does not apply")
+        if metric not in ("euclidean", "precomputed"):
+            raise ValueError(f"{func}(): a 1-D 'y' holds condensed distances; 'metric' does not apply, not {metric!r}")
         D, n = distances(a, func, "y")
     elif metric == "precomputed":
         D, n = distances(a, func, "y")
     else:
         X = points(a, func, "y")
-        _rows(X, func, "raise", None, "y")
+        _rows(X, func, None, None, "y")
         n = X.shape[0]
         D = _pdist(X, metric, func)
     if n != r.n:
@@ -813,7 +814,9 @@ def leaders(Z, T, /):
     r = _linkage(Z, func)
     a = _array(T, func, "T")
     if a.ndim != 1 or a.shape[0] != r.n:
-        raise ValueError(f"{func}(): 'T' must have one label per point ({r.n})")
+        raise ValueError(
+            f"{func}(): 'T' must have one label per point ({r.n}), not {a.shape[0] if a.ndim == 1 else a.size}"
+        )
     labels = a.tolist()
     if any(not float(v).is_integer() for v in labels):
         raise ValueError(f"{func}(): 'T' must hold integer labels")
@@ -904,7 +907,7 @@ def is_isomorphic(T1, T2, /):
         out.append(a.tolist())
     a, b = out
     if len(a) != len(b):
-        raise ValueError(f"{func}(): 'T1' and 'T2' must have the same length ({len(a)} != {len(b)})")
+        raise ValueError(f"{func}(): 'T1' and 'T2' must have the same length, not {len(a)} and {len(b)}")
     ab, ba = {}, {}
     for x, y in zip(a, b):
         if ab.setdefault(x, y) != y or ba.setdefault(y, x) != x:
@@ -920,9 +923,7 @@ def _dendrogram(
 ):
     r = _linkage(Z, func)
     n = r.n
-    if isinstance(p, bool) or not isinstance(p, numbers.Real):
-        raise TypeError(f"{func}(): 'p' must be an int, not {type_name(p)}")
-    p = int(p)
+    p = integer(p, func, "p")
     if truncate_mode is not None:
         choice(truncate_mode, func, "truncate_mode", TRUNCATE)
     choice(orientation, func, "orientation", ORIENTATIONS)

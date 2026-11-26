@@ -21,7 +21,7 @@ import numbers
 
 from .. import _core as _sd
 from .._calls import function
-from ._common import check_alloc, choice, contiguous, distances, points, real, type_name
+from ._common import check_alloc, choice, contiguous, distances, metric_columns, points, real, type_name
 from ._common import metric as _metric
 
 _core = _sd.cluster
@@ -39,12 +39,15 @@ HomogeneityResult = collections.namedtuple("HomogeneityResult", ["homogeneity", 
 
 
 def _strings(values, func, arg):
-    if not all(isinstance(v, str) for v in values):
-        bad = next(v for v in values if not isinstance(v, str))
-        raise TypeError(f"{func}(): '{arg}' must hold integers, bools or strings, not {type_name(bad)}")
-    uniq = sorted(set(values))
+    # the distinct values in first-seen order (a str never equals another type, so the first value that is not a
+    # str is the first such key), then their sorted numbering mapped over the values at C speed
+    first = dict.fromkeys(values)
+    for v in first:
+        if not isinstance(v, str):
+            raise TypeError(f"{func}(): '{arg}' must hold integers, bools or strings, not {type_name(v)}")
+    uniq = sorted(first)
     code = {u: i for i, u in enumerate(uniq)}
-    return _sd.asarray([code[v] for v in values], dtype=_sd.int64), len(uniq), uniq
+    return _sd.asarray(list(map(code.__getitem__, values)), dtype=_sd.int64), len(uniq), uniq
 
 
 def _labels(v, func, arg):
@@ -66,7 +69,10 @@ def _labels(v, func, arg):
     elif mod == "numpy" and getattr(v, "dtype", None) is not None and v.dtype.kind in "USO":
         if v.ndim != 1:
             raise ValueError(f"{func}(): '{arg}' must be 1-D, not {v.ndim}-D")
-        return _strings(v.tolist(), func, arg)
+        vals = v.tolist()
+        if v.dtype.kind != "O" or all(isinstance(x, str) for x in vals):
+            return _strings(vals, func, arg)
+        v = vals  # an object array of numbers: as a list
     if not isinstance(v, _sd.ndarray):
         try:
             v = _sd.asarray(v)
@@ -93,7 +99,7 @@ def _two(labels_true, labels_pred, func):
     b, kb, ub = _labels(labels_pred, func, "labels_pred")
     n, m = int(a.shape[0]), int(b.shape[0])
     if n != m:
-        raise ValueError(f"{func}(): 'labels_true' and 'labels_pred' must have the same length ({n} and {m})")
+        raise ValueError(f"{func}(): 'labels_true' and 'labels_pred' must have the same length, not {n} and {m}")
     if n == 0:
         raise ValueError(f"{func}(): the labelings must have at least 1 point")
     if n > _MAX_N:
@@ -319,10 +325,11 @@ def _internal(X, labels, func, metric=None):
         else:
             from .. import spatial as _spatial
 
+            metric_columns(metric, Xk.shape[1], func)
             check_alloc(8 * (n * (n - 1) // 2), func)
             data = (None, contiguous(_spatial.pdist(Xk, metric=metric)))
     if not 2 <= K <= n - 1:
-        raise ValueError(f"{func}(): the number of clusters must be between 2 and n - 1 (got {K})")
+        raise ValueError(f"{func}(): the number of clusters must be between 2 and n - 1 ({n - 1}), not {K}")
     return data, codes, K, order
 
 

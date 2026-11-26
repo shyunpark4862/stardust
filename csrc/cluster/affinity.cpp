@@ -99,7 +99,9 @@ Out propagate(std::vector<double>& S, int64_t n, double d, int64_t max_iter, int
     // One row's A update (with the previous iteration's R and column sums) and R update. Signed zeros aside (NEON's
     // max gives +0.0 where numpy's maximum may keep -0.0), these are scikit-learn's operations; a zero's sign never
     // changes a comparison or a nonzero value here, so the exemplars, labels and iterations are the same.
-    auto rows = [&](int64_t t, bool update_a) {
+    // cnext (one thread; CL100): the new R's column sums made row by row as R's rows are written, the same additions in the
+    // same row order as cols() below (block by block, its pairs and its tail), so R is not read a second time
+    auto rows = [&](int64_t t, bool update_a, double* cnext) {
         const float64x2_t vd = vdupq_n_f64(d), vo = vdupq_n_f64(omd), z = vdupq_n_f64(0.0);
         const double ninf = -std::numeric_limits<double>::infinity();
         std::vector<double> tmpv(static_cast<size_t>(n) + 2);
@@ -131,27 +133,35 @@ Out propagate(std::vector<double>& S, int64_t n, double d, int64_t max_iter, int
                 for (; k + 2 <= n; k += 2) vst1q_f64(v + k, vaddq_f64(vld1q_f64(a + k), vld1q_f64(s + k)));
                 for (; k < n; ++k) v[k] = a[k] + s[k];
             }
-            // Y = max (A + S), its first place I, Y2 = the largest of the others (scikit-learn: tmp[I] = -inf)
-            float64x2_t mv = vdupq_n_f64(ninf);
-            for (k = 0; k + 2 <= n; k += 2) mv = vmaxq_f64(mv, vld1q_f64(v + k));
-            double best = vmaxvq_f64(mv);
-            for (; k < n; ++k) best = std::max(best, v[k]);
-            int64_t at = 0;
+            // Y = max (A + S), its first place I, Y2 = the largest of the others (scikit-learn: tmp[I] = -inf): one pass,
+            // lane by lane the largest, its first place (strict >) and the second largest of the values seen, the
+            // two lanes met at the end (the larger, the first place on a tie)
+            double best, second;
+            int64_t at;
             {
-                const float64x2_t vb = vdupq_n_f64(best);
-                int64_t q = 0;
-                for (; q + 2 <= n; q += 2)
-                    if (vmaxvq_u32(vreinterpretq_u32_u64(vceqq_f64(vld1q_f64(v + q), vb)))) break;
-                while (!(v[q] == best)) ++q;
-                at = q;
+                float64x2_t b1 = vdupq_n_f64(ninf), b2 = b1;
+                uint64x2_t a1 = vdupq_n_u64(0), kv = {0, 1};
+                const uint64x2_t two = vdupq_n_u64(2);
+                for (k = 0; k + 2 <= n; k += 2, kv = vaddq_u64(kv, two)) {
+                    const float64x2_t x = vld1q_f64(v + k);
+                    const uint64x2_t gt = vcgtq_f64(x, b1);
+                    b2 = vmaxq_f64(b2, vminq_f64(b1, x));
+                    a1 = vbslq_u64(gt, kv, a1);
+                    b1 = vmaxq_f64(b1, x);
+                }
+                const double l0 = vgetq_lane_f64(b1, 0), l1 = vgetq_lane_f64(b1, 1);
+                const auto j0 = static_cast<int64_t>(vgetq_lane_u64(a1, 0)),
+                           j1 = static_cast<int64_t>(vgetq_lane_u64(a1, 1));
+                const bool other = (l1 > l0) | ((l1 == l0) & (j1 < j0));
+                best = other ? l1 : l0, at = other ? j1 : j0;
+                second = std::max(std::max(vgetq_lane_f64(b2, 0), vgetq_lane_f64(b2, 1)), std::min(l0, l1));
+                for (; k < n; ++k) {  // the odd last value
+                    const double x = v[k];
+                    second = std::max(second, std::min(best, x));
+                    at = x > best ? k : at;
+                    best = std::max(best, x);
+                }
             }
-            const double vat = v[at];
-            v[at] = ninf;
-            mv = vdupq_n_f64(ninf);
-            for (k = 0; k + 2 <= n; k += 2) mv = vmaxq_f64(mv, vld1q_f64(v + k));
-            double second = vmaxvq_f64(mv);
-            for (; k < n; ++k) second = std::max(second, v[k]);
-            v[at] = vat;
             const double rat = r[at];
             const float64x2_t vb = vdupq_n_f64(best);
             for (k = 0; k + 2 <= n; k += 2)
@@ -160,6 +170,21 @@ Out propagate(std::vector<double>& S, int64_t n, double d, int64_t max_iter, int
                 );
             for (; k < n; ++k) r[k] = r[k] * d + (s[k] - best) * omd;
             r[at] = rat * d + (s[at] - second) * omd;
+            if (cnext) {
+                const double ci = cnext[i];
+                for (int64_t k0 = 0; k0 < n; k0 += kColBlock) {
+                    const int64_t k1 = std::min(n, k0 + kColBlock);
+                    int64_t q = k0;
+                    if (i == 0) {
+                        for (; q < k1; ++q) cnext[q] = q == 0 ? r[q] : (r[q] >= 0.0 ? r[q] : 0.0);
+                        continue;
+                    }
+                    for (; q + 2 <= k1; q += 2)
+                        vst1q_f64(cnext + q, vaddq_f64(vld1q_f64(cnext + q), vmaxq_f64(vld1q_f64(r + q), z)));
+                    for (; q < k1; ++q) cnext[q] = cnext[q] + (r[q] >= 0.0 ? r[q] : 0.0);
+                }
+                if (i > 0) cnext[i] = ci + r[i];
+            }
         }
     };
     auto cols = [&](int64_t t) {
@@ -181,14 +206,17 @@ Out propagate(std::vector<double>& S, int64_t n, double d, int64_t max_iter, int
         }
     };
     int64_t it = 0;
+    std::vector<double> cn(static_cast<size_t>(n));
     for (; it < max_iter; ++it) {
         const bool upd = it > 0;
-        if (nt > 1 && split) parallel::parallel_for(nt, [&](int64_t t) { rows(t, upd); }, kRowTask * n * 8);
-        else
-            for (int64_t t = 0; t < nt; ++t) rows(t, upd);
-        if (nc > 1 && split) parallel::parallel_for(nc, cols, kColBlock * n * 2);
-        else
-            for (int64_t t = 0; t < nc; ++t) cols(t);
+        if (nt > 1 && split && parallel::available()) {
+            parallel::parallel_for(nt, [&](int64_t t) { rows(t, upd, nullptr); }, kRowTask * n * 8);
+            if (nc > 1) parallel::parallel_for(nc, cols, kColBlock * n * 2);
+            else cols(0);
+        } else {
+            for (int64_t t = 0; t < nt; ++t) rows(t, upd, cn.data());
+            col.swap(cn);
+        }
         int64_t K = 0;
         const int64_t slot = it % conv;
         for (int64_t k = 0; k < n; ++k) {

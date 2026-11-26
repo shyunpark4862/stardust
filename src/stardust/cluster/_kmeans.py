@@ -27,6 +27,7 @@ from ._common import (
     integer,
     key,
     labels_back,
+    new_points,
     points,
     positive_int,
     real,
@@ -53,12 +54,13 @@ def _k(v, func, n):
     return k
 
 
-def _init(v, func, k, p):
-    """('k-means++' | 'random', None) or ('array', the (k, p) float64 centres)."""
+def _init(v, func, k, p, names=INITS):
+    """('k-means++' | 'random', None) or ('array', the (k, p) float64 centres); names: the init names allowed."""
     if isinstance(v, str):
-        return choice(v, func, "init", INITS), None
+        return choice(v, func, "init", names), None
     if v is None or isinstance(v, (bool, numbers.Number)):
-        raise TypeError(f"{func}(): 'init' must be 'k-means++', 'random' or a (k, p) array, not {type_name(v)}")
+        listed = ", ".join(f"'{c}'" for c in names)
+        raise TypeError(f"{func}(): 'init' must be {listed} or a (k, p) array, not {type_name(v)}")
     from ._common import _array
 
     a = _array(v, func, "init")
@@ -66,8 +68,10 @@ def _init(v, func, k, p):
         a = _sd.reshape(a, (a.shape[0], 1))
     if a.ndim != 2 or tuple(a.shape) != (k, p):
         raise ValueError(f"{func}(): an array 'init' must have shape (k, p) = ({k}, {p}), not {tuple(a.shape)}")
-    if not bool(_sd.all(_sd.isfinite(a))):
-        raise ValueError(f"{func}(): 'init' must be finite")
+    if bool(_sd.any(_sd.isnan(a))):
+        raise ValueError(f"{func}(): 'init' contains NaN")
+    if bool(_sd.any(_sd.isinf(a))):
+        raise ValueError(f"{func}(): 'init' contains infinity")
     return "array", contiguous(a)
 
 
@@ -147,12 +151,7 @@ class KMeansResult(ClusterResult):
         return _spatial.cdist(self._rows_of(X_new, "transform"), self.centers)
 
     def _rows_of(self, X_new, func):
-        Xn = points(X_new, func, "X_new")
-        p = self.centers.shape[1]
-        if Xn.shape[1] != p:
-            raise ValueError(f"{func}(): 'X_new' must have {p} columns (the fit's), not {Xn.shape[1]}")
-        if not bool(_sd.all(_sd.isfinite(Xn))):
-            raise ValueError(f"{func}(): 'X_new' must be finite (no NaN or infinity)")
+        Xn = new_points(X_new, func, self.centers.shape[1])
         return Xn
 
 
@@ -374,7 +373,7 @@ def bisecting_kmeans(
     """
     func = "bisecting_kmeans"
     if not isinstance(init, str):
-        raise TypeError(f"{func}(): 'init' must be 'random' or 'k-means++', not {type_name(init)}")
+        raise TypeError(f"{func}(): 'init' must be 'k-means++' or 'random', not {type_name(init)}")
     X, w, omitted, n_input, order, k, kind, C0 = _prepare(X, k, func, weights, nan_policy, init)
     n_init = positive_int(n_init, func, "n_init")
     max_iter = positive_int(max_iter, func, "max_iter")

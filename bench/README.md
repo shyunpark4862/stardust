@@ -21,7 +21,7 @@
 
 ## 1. 속도 (`bench/speed`)
 
-속도의 기준선(`bench/speed/results/<영역>.json`)은 htest, sparse, special, stats에만 있고, 표(`bench/<영역>/speed.md`)는 htest, sparse, special, stats, integrate, differentiate에만 있다(표의 머리가 만든 실행 파일을 적는다). 나머지 영역은 전체 측정을 한 번 하면 생긴다(§1.9). 그 전까지 C++ 비용표는 §1.6의 값을 둔다.
+속도의 기준선(`bench/speed/results/<영역>.json`)은 htest, sparse, special, stats, cluster에만 있고, 표(`bench/<영역>/speed.md`)는 htest, sparse, special, stats, integrate, differentiate, cluster에만 있다(표의 머리가 만든 실행 파일을 적는다). 나머지 영역은 전체 측정을 한 번 하면 생긴다(§1.9). 그 전까지 C++ 비용표는 §1.6의 값을 둔다.
 
 ### 1.1 명령
 
@@ -63,7 +63,7 @@ Case(area="stats", group="continuous", name="Normal.cdf", size="10^5", n=100_000
 ```
 
 - `threads`: sd의 스레드 수들. 기본 `(1, 10)`(10은 이 기계의 성능 코어 수이자 sd의 기본값).
-- `Ref(label, make, threads=...)`: Python 비교 대상. `"fixed"`(기본)는 라운드마다 한 번, 그 라이브러리의 기본 스레드로 잰다(numpy·scipy의 원소별 계산은 1스레드). `"follow"`는 sd의 스레드 수마다 BLAS 스레드를 같게 묶어 잰다. BLAS·LAPACK이 일의 대부분인 비교는 모두 `"follow"`다: array의 matmul·cov·corrcoef·tensordot, linalg 전체, regression, optimize.
+- `Ref(label, make, threads=...)`: Python 비교 대상. `"fixed"`(기본)는 라운드마다 한 번, 그 라이브러리의 기본 스레드로 잰다(numpy·scipy의 원소별 계산은 1스레드). `"follow"`는 sd의 스레드 수마다 BLAS 스레드를 같게 묶어 잰다. BLAS·LAPACK이 일의 대부분인 비교는 모두 `"follow"`다: array의 matmul·cov·corrcoef·tensordot, linalg 전체, regression, optimize. threadpoolctl은 묶기를 시작할 때 이미 불러온 풀만 묶는다: 첫 측정 안에서 처음 불러오는 라이브러리(scikit-learn의 OpenMP)는 "1스레드"에도 모든 스레드로 돈다(k-평균 14.5 대 30.3 ms). 그래서 cluster의 사례는 준비(`setup`)에서 scipy·scikit-learn을 먼저 불러온다(`bench/speed/cases/cluster.py`의 `_loaded`; 늦게 불러오는 다른 영역의 사례도 같은 일을 겪을 수 있다).
 - `RRef(label, expr, data, setup, packages, sets)`: R 비교 대상. 실행 전체가 R 프로세스 하나를 쓰고, 꾸러미는 한 번만 불러온다. `data`의 배열은 float64 원시 파일로 넘어가고 시간은 R 안에서 같은 규칙으로 잰다. R은 1스레드다(`OMP_NUM_THREADS=1`, `OPENBLAS_NUM_THREADS=1`로 띄운다; 이 기계의 R은 OpenMP판 OpenBLAS를 쓰고 그 변수만 듣는다). `sets`는 입력을 돌려 쓰는 사례의 입력 묶음 목록(사례 데이터의 키)이고, R도 다른 쪽처럼 호출마다 다음 묶음을 쓴다.
 - `differs`(`Ref`, `RRef`): 비교 대상이 이 입력에서 원래 다른 계산을 할 때 그 까닭(R의 `choose`는 정수가 아닌 k를 반올림한다 등). 결과 확인에서 빼고, 표의 비고에 붙는다.
 - `check`(`Check`): 결과 확인 방법(§1.4). 기본은 sd와 첫 Python 비교 대상의 값을 그대로 견준다. 결과의 꼴이 다르면 견줄 값을 고르는 함수(`sd`, `ref`)를, 값을 견줄 수 없으면 까닭을 `skip`에 둔다(두 난수 흐름, 대입문 등).

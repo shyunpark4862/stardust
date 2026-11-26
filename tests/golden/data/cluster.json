@@ -710,7 +710,7 @@
 "GaussianMixtureResult error predict columns": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "predict(): 'X_new' must have 2 columns (the fit's), not 3"
+"msg": "predict(): 'X_new' must have 2 columns like the fit's 'X', not 3"
 }
 },
 "GaussianMixtureResult error sample no rng": {
@@ -2506,7 +2506,7 @@
 "KMeansResult error predict columns": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "predict(): 'X_new' must have 2 columns (the fit's), not 3"
+"msg": "predict(): 'X_new' must have 2 columns like the fit's 'X', not 3"
 }
 },
 "KMeansResult predict": {
@@ -22519,7 +22519,7 @@ false
 "adjusted_rand_score error lengths": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "adjusted_rand_score(): 'labels_true' and 'labels_pred' must have the same length (3 and 2)"
+"msg": "adjusted_rand_score(): 'labels_true' and 'labels_pred' must have the same length, not 3 and 2"
 }
 },
 "adjusted_rand_score floats": {
@@ -222079,7 +222079,7 @@ false
 "hdbscan error one point": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "hdbscan(): 'X' must have at least 2 points"
+"msg": "hdbscan(): 'X' must have at least 2 points, not 1"
 }
 },
 "hdbscan hexagon7": {
@@ -250395,7 +250395,7 @@ false
 "kmedoids error rng with pam": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "kmedoids(): 'rng' is not used with method='pam'"
+"msg": "kmedoids(): 'rng' is only used with method='clara'"
 }
 },
 "kmedoids hexagon7": {
@@ -271684,7 +271684,7 @@ false
 "linkage error ['metric']=['manhattan']": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "linkage(): unknown metric 'manhattan' (choose from euclidean, sqeuclidean, cityblock, chebyshev, minkowski, seuclidean, mahalanobis, cosine, correlation, canberra, braycurtis, hamming, jaccard, haversine, precomputed)"
+"msg": "linkage(): 'metric' must be 'euclidean', 'sqeuclidean', 'cityblock', 'chebyshev', 'minkowski', 'seuclidean', 'mahalanobis', 'cosine', 'correlation', 'canberra', 'braycurtis', 'hamming', 'jaccard', 'haversine' or 'precomputed', not 'manhattan'"
 }
 },
 "linkage error ['optimal_ordering']=[1]": {
@@ -271708,13 +271708,13 @@ false
 "linkage error nan": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "linkage(): the input contains NaN (nan_policy='raise')"
+"msg": "linkage(): 'y' contains NaN"
 }
 },
 "linkage error one point": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "linkage(): at least 2 points are needed, not 1"
+"msg": "linkage(): 'y' must have at least 2 points, not 1"
 }
 },
 "linkage error positional method": {
@@ -367023,7 +367023,7 @@ false
 "silhouette_score error one cluster": {
 "r": {
 "error": "builtins.ValueError",
-"msg": "silhouette_score(): the number of clusters must be between 2 and n - 1 (got 1)"
+"msg": "silhouette_score(): the number of clusters must be between 2 and n - 1 (59), not 1"
 }
 },
 "silhouette_score hexagon7": {

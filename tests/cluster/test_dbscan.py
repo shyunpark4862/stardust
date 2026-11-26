@@ -193,7 +193,7 @@ def test_result_and_nan_policy():
         (lambda: CL.dbscan(np.eye(3), eps=np.inf), ValueError, r"'eps' must be finite and > 0"),
         (lambda: CL.dbscan(np.eye(3), min_samples=0), ValueError, r"'min_samples' must be >= 1"),
         (lambda: CL.dbscan(np.eye(3), min_samples=2.0), TypeError, r"'min_samples' must be an int"),
-        (lambda: CL.dbscan(np.eye(3), metric="manhattan"), ValueError, r"unknown metric 'manhattan'"),
+        (lambda: CL.dbscan(np.eye(3), metric="manhattan"), ValueError, r"'metric' must be .* not 'manhattan'"),
         (lambda: CL.dbscan(np.eye(3), weights=[1.0, -1.0, 1.0]), ValueError, r"'weights' must be >= 0"),
         (lambda: CL.dbscan(np.eye(3), weights=[1.0, 1.0]), ValueError, r"one value per point \(3\)"),
         (lambda: CL.dbscan([[0.0], [np.nan]]), ValueError, r"contains NaN \(nan_policy='raise'\)"),

@@ -1,12 +1,14 @@
 """The common base of sd.cluster's results (docs/api/cluster.md §1.3, docs/design/cluster.md §2.1, §2.7;
-decisions CL1, CL6, CL44): KMeansResult, KMedoidsResult, FuzzyCMeansResult, HierarchyResult, DBSCANResult,
-HDBSCANResult, OPTICSResult, GaussianMixtureResult, AffinityPropagationResult and GapResult derive from it.
+decisions CL1, CL6, CL44): KMeansResult, BisectingKMeansResult, KMedoidsResult, FuzzyCMeansResult, HierarchyResult,
+DBSCANResult, HDBSCANResult, OPTICSResult, GaussianMixtureResult, AffinityPropagationResult and GapResult derive from
+it.
 
 A result holds its fields as given by the fitting function: arrays become read-only (API.md §2.2), a field
 given as a callable is computed when first read and kept (a lazy field), and no field can be set afterwards.
-Every result has `labels` ((n,) int64 in the input's order: 0 .. K - 1 numbered by first appearance, -1 for
-noise and for the rows nan_policy='omit' left out), `n_clusters` (K; noise not counted), `nobs` (the points
-fitted) and `omitted` ((n,) bool). A result does not hold a copy of the data (§1.3 of the API document).
+Every result of a partition has `labels` ((n,) int64 in the input's order: 0 .. K - 1 numbered by first
+appearance, -1 for noise and for the rows nan_policy='omit' left out) and `n_clusters` (K; noise not counted); every
+result has `nobs` (the points fitted) and `omitted` ((n,) bool). HierarchyResult (a tree: cut() gives a partition)
+and GapResult (a choice of k) have no labels. A result does not hold a copy of the data (§1.3 of the API document).
 
 summary() is the regression box of stardust._summary (API.md §2.3): a header of the method, nobs, the
 clusters, the noise and omitted rows when there are any, the objective, the iterations and convergence on the
@@ -68,8 +70,9 @@ class ClusterResult:
     def __delattr__(self, name):
         raise AttributeError(f"{type(self).__name__}: the fields are read-only")
 
-    def __dir__(self):
-        return sorted(set(super().__dir__()) | set(object.__getattribute__(self, "_fields")))
+    def __dir__(self):  # the public fields (the private state a result keeps for its methods is left out)
+        fields = (k for k in object.__getattribute__(self, "_fields") if not k.startswith("_"))
+        return sorted(set(super().__dir__()) | set(fields))
 
     def _has(self, name):
         return name in object.__getattribute__(self, "_fields")

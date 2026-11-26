@@ -38,39 +38,45 @@ inline double sqd(const double* x, const double* c, int64_t p) {
     return spatial::sq_finish<false>(s, x, c, nullptr, p);
 }
 
-// sqd of four pairs (x[r], c[r]) side by side: four independent chains, each in pair_scalar's order (blocks of 32
-// terms, each its own chain from 0, the block sums added in block order), so each has sqd's bits.
-inline void sqd4(const double* const* x, const double* const* c, int64_t p, double* out) {
-    double s0 = 0.0, s1 = 0.0, s2 = 0.0, s3 = 0.0;
+// sqd of N pairs (x[r], c[r]) side by side: N independent chains, each in pair_scalar's order (blocks of 32 terms,
+// each its own chain from 0, the block sums added in block order), so each has sqd's bits. Eight chains keep the
+// four FP pipes busy through fma's latency (four chains wait on it).
+template <int N>
+inline void sqdN(const double* const* x, const double* const* c, int64_t p, double* out) {
+    double s[N];
     for (int64_t b = 0; b < p; b += spatial::kBlock) {
-        double t0 = 0.0, t1 = 0.0, t2 = 0.0, t3 = 0.0;
+        double t[N];
+        for (int r = 0; r < N; ++r) t[r] = 0.0;
         const int64_t e = std::min(p, b + spatial::kBlock);
-        for (int64_t d = b; d < e; ++d) {
-            const double z0 = x[0][d] - c[0][d], z1 = x[1][d] - c[1][d], z2 = x[2][d] - c[2][d], z3 = x[3][d] - c[3][d];
-            t0 = std::fma(z0, z0, t0), t1 = std::fma(z1, z1, t1), t2 = std::fma(z2, z2, t2), t3 = std::fma(z3, z3, t3);
-        }
-        if (b == 0) s0 = t0, s1 = t1, s2 = t2, s3 = t3;
-        else s0 = s0 + t0, s1 = s1 + t1, s2 = s2 + t2, s3 = s3 + t3;
+        for (int64_t d = b; d < e; ++d)
+            for (int r = 0; r < N; ++r) {
+                const double z = x[r][d] - c[r][d];
+                t[r] = std::fma(z, z, t[r]);
+            }
+        for (int r = 0; r < N; ++r) s[r] = b == 0 ? t[r] : s[r] + t[r];
     }
-    const double t[4] = {s0, s1, s2, s3};
-    for (int r = 0; r < 4; ++r) out[r] = spatial::sq_finish<false>(t[r], x[r], c[r], nullptr, p);
+    if (p == 0)
+        for (int r = 0; r < N; ++r) s[r] = 0.0;
+    for (int r = 0; r < N; ++r) out[r] = spatial::sq_finish<false>(s[r], x[r], c[r], nullptr, p);
 }
+
+inline void sqd4(const double* const* x, const double* const* c, int64_t p, double* out) { sqdN<4>(x, c, p, out); }
 
 // sqd of rows i0 .. i1 of X to the centres C[lab[i]] (lab null: to the one centre C): out[i - i0]
 inline void sqd_rows(
     const double* X, int64_t p, int64_t i0, int64_t i1, const double* C, const int64_t* lab, double* out
 ) {
-    for (int64_t i = i0; i < i1; i += 4) {
-        const int R = static_cast<int>(std::min<int64_t>(4, i1 - i));
-        const double* xr[4];
-        const double* cr[4];
-        for (int r = 0; r < 4; ++r) {
+    for (int64_t i = i0; i < i1; i += 8) {
+        const int R = static_cast<int>(std::min<int64_t>(8, i1 - i));
+        const double* xr[8];
+        const double* cr[8];
+        for (int r = 0; r < 8; ++r) {
             const int64_t ii = i + std::min(r, R - 1);
             xr[r] = X + ii * p;
             cr[r] = lab ? C + lab[ii] * p : C;
         }
-        double v[4];
-        sqd4(xr, cr, p, v);
+        double v[8];
+        sqdN<8>(xr, cr, p, v);
         for (int r = 0; r < R; ++r) out[i - i0 + r] = v[r];
     }
 }
@@ -113,9 +119,15 @@ struct Margin {
 };
 
 // CL43: the exponent for data whose largest |x| is maxabs, and a scaled copy when it is not 0
-inline double max_abs_of(const double* X, int64_t m) {
-    double mx = 0.0;
-    for (int64_t i = 0; i < m; ++i) mx = std::max(mx, std::fabs(X[i]));
+inline double max_abs_of(const double* X, int64_t m) {  // eight lanes (a max is exact in any order; NaN skipped)
+    float64x2_t a = vdupq_n_f64(0.0), b = a, c = a, d = a;
+    int64_t i = 0;
+    for (; i + 8 <= m; i += 8) {
+        a = vmaxnmq_f64(a, vabsq_f64(vld1q_f64(X + i))), b = vmaxnmq_f64(b, vabsq_f64(vld1q_f64(X + i + 2)));
+        c = vmaxnmq_f64(c, vabsq_f64(vld1q_f64(X + i + 4))), d = vmaxnmq_f64(d, vabsq_f64(vld1q_f64(X + i + 6)));
+    }
+    double mx = vmaxnmvq_f64(vmaxnmq_f64(vmaxnmq_f64(a, b), vmaxnmq_f64(c, d)));
+    for (; i < m; ++i) mx = std::max(mx, std::fabs(X[i]));
     return mx;
 }
 

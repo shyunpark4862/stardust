@@ -2,35 +2,52 @@
  "schema": 1,
  "area": "cluster",
  "runs": {
-  "20261127-035333-f68cf5b3+": {
-   "commit": "f68cf5b3",
+  "20261127-052744-846df10b+": {
+   "commit": "846df10b",
    "dirty": true,
    "changed": [
-    "CMakeLists.txt",
-    "bench/accuracy/cluster.py",
+    "API.md",
+    "ARCHITECTURE.md",
+    "README.md",
+    "ROADMAP.md",
+    "bench/README.md",
     "bench/speed/cases/cluster.py",
-    "csrc/bind/cluster_bind.cpp",
-    "csrc/cluster/cluster.hpp",
+    "csrc/cluster/affinity.cpp",
+    "csrc/cluster/common.hpp",
+    "csrc/cluster/density.cpp",
+    "csrc/cluster/hierarchy.cpp",
     "csrc/cluster/kmeans.cpp",
     "csrc/cluster/kmedoids.cpp",
-    "csrc/cluster/mixture.cpp",
+    "csrc/cluster/metrics.cpp",
     "csrc/cluster/partition.hpp",
     "docs/api/cluster.md",
     "docs/design/cluster.md",
-    "site/PLAN.md",
     "src/stardust/cluster/__init__.py",
+    "src/stardust/cluster/_affinity.py",
+    "src/stardust/cluster/_common.py",
+    "src/stardust/cluster/_density.py",
+    "src/stardust/cluster/_fuzzy.py",
+    "src/stardust/cluster/_gap.py",
+    "src/stardust/cluster/_gower.py",
+    "src/stardust/cluster/_hierarchy.py",
+    "src/stardust/cluster/_kmeans.py",
+    "src/stardust/cluster/_kmedoids.py",
+    "src/stardust/cluster/_metrics.py",
     "src/stardust/cluster/_mixture.py",
-    "tests/cluster/data/r.json",
-    "tests/cluster/ref/metrics.npz",
-    "tests/cluster/refdata.py",
+    "src/stardust/cluster/_results.py",
+    "tests/README.md",
+    "tests/cluster/test_affinity.py",
     "tests/cluster/test_api_surface.py",
+    "tests/cluster/test_dbscan.py",
+    "tests/cluster/test_gower.py",
+    "tests/cluster/test_hierarchy.py",
+    "tests/cluster/test_kmedoids.py",
+    "tests/cluster/test_metrics.py",
     "tests/cluster/test_mixture.py",
-    "tests/golden/cases_cluster.py",
-    "tests/golden/data/cluster.json",
-    "tools/cluster_probe.py",
-    "tools/cluster_ref.py"
+    "tests/cluster/test_results.py",
+    "tests/golden/data/cluster.json"
    ],
-   "date": "2026-11-27T03:53:33",
+   "date": "2026-11-27T05:27:44",
    "machine": "arm64",
    "python": "3.15.0",
    "references": {
@@ -230,8 +247,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261127-035333-f68cf5b3+",
-   "comparators_run": "20261127-035333-f68cf5b3+"
+   "run": "20261127-052744-846df10b+",
+   "comparators_run": "20261127-052744-846df10b+"
   },
   {
    "id": "cluster/fuzzy",
@@ -276,7 +293,7 @@
      ]
     }
    },
-   "run": "20261127-035333-f68cf5b3+"
+   "run": "20261127-052744-846df10b+"
   },
   {
    "id": "cluster/hierarchy",
@@ -1017,8 +1034,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261127-035333-f68cf5b3+",
-   "comparators_run": "20261127-035333-f68cf5b3+"
+   "run": "20261127-052744-846df10b+",
+   "comparators_run": "20261127-052744-846df10b+"
   },
   {
    "id": "cluster/kmeans",
@@ -1113,8 +1130,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261127-035333-f68cf5b3+",
-   "comparators_run": "20261127-035333-f68cf5b3+"
+   "run": "20261127-052744-846df10b+",
+   "comparators_run": "20261127-052744-846df10b+"
   },
   {
    "id": "cluster/kmedoids",
@@ -1164,8 +1181,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261127-035333-f68cf5b3+",
-   "comparators_run": "20261127-035333-f68cf5b3+"
+   "run": "20261127-052744-846df10b+",
+   "comparators_run": "20261127-052744-846df10b+"
   },
   {
    "id": "cluster/metrics",
@@ -1434,8 +1451,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261127-035333-f68cf5b3+",
-   "comparators_run": "20261127-035333-f68cf5b3+"
+   "run": "20261127-052744-846df10b+",
+   "comparators_run": "20261127-052744-846df10b+"
   },
   {
    "id": "cluster/mixture",
@@ -1539,8 +1556,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261127-035333-f68cf5b3+",
-   "comparators_run": "20261127-035333-f68cf5b3+"
+   "run": "20261127-052744-846df10b+",
+   "comparators_run": "20261127-052744-846df10b+"
   }
  ]
 }

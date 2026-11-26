@@ -415,6 +415,70 @@ void sil_observations(
         for (int64_t t = 0; t < ntask; ++t) body(t);
 }
 
+// The same sums on one thread from each pair once (CL98): the points in grouped order (cluster by cluster, key order
+// within), rows in groups of four against the panels from their own on, each distance added to the row point's chain
+// and to the column point's. A point's chain (cluster C, place mod 4) then meets its terms in increasing place, as
+// the scan above adds them: the terms from earlier points come while their rows run (rows in increasing order, within
+// a tile the rows in order), its own row's after. Every chain starts at +0 and a distance is >= +0, so 0 + d is the
+// scan's first term d and the left-out d(i, i) = 0 changes nothing; d(i, j) and d(j, i) have the same bits (z and -z).
+template <class Op, Fin F>
+void sil_observations_pairs(
+    const double* X, int64_t n, int64_t p, const int64_t* codes, const Groups& G, int64_t K, double* out
+) {
+    constexpr int64_t P = spatial::kPanel;
+    const int64_t np = (n + P - 1) / P;
+    std::vector<double> panels(static_cast<size_t>(np * p * P)), Gx(static_cast<size_t>(n * p));
+    for (int64_t r = 0; r < n; ++r) {
+        const double* x = X + G.member[static_cast<size_t>(r)] * p;
+        std::copy(x, x + p, Gx.begin() + r * p);
+    }
+    for (int64_t q = 0; q < np; ++q)
+        spatial::pack_panel(Gx.data() + q * P * p, p, std::min<int64_t>(P, n - q * P), p, panels.data() + q * p * P);
+    std::vector<int64_t> slot(static_cast<size_t>(n));  // r -> K * 4 index base of its cluster, + its chain
+    std::vector<int64_t> code_r(static_cast<size_t>(n));
+    for (int64_t c = 0; c < K; ++c)
+        for (int64_t r = G.start[static_cast<size_t>(c)]; r < G.start[static_cast<size_t>(c + 1)]; ++r) {
+            code_r[static_cast<size_t>(r)] = c;
+            slot[static_cast<size_t>(r)] = c * 4 + ((r - G.start[static_cast<size_t>(c)]) & 3);
+        }
+    std::vector<double> A(static_cast<size_t>(n * K * 4), 0.0);  // point r's chains: A[r K 4 + C 4 + place mod 4]
+    double sums[4 * P];
+    for (int64_t i0 = 0; i0 < n; i0 += 4) {
+        const int64_t R = std::min<int64_t>(4, n - i0);
+        const double* xr[4];
+        for (int r = 0; r < 4; ++r) xr[r] = Gx.data() + (i0 + std::min<int64_t>(r, R - 1)) * p;
+        for (int64_t q = i0 / P; q < np; ++q) {
+            spatial::tile<Op, 4, false>(xr, panels.data() + q * p * P, nullptr, p, sums);
+            const int64_t r0 = q * P, rows = std::min<int64_t>(P, n - r0);
+            for (int64_t i = 0; i < R; ++i) {
+                const int64_t a = i0 + i;
+                double* Aa = A.data() + a * K * 4;
+                const int64_t sa = slot[static_cast<size_t>(a)];
+                for (int64_t c = std::max<int64_t>(0, a + 1 - r0); c < rows; ++c) {
+                    const int64_t r = r0 + c;
+                    double d = sums[i * P + c];
+                    if constexpr (F == Fin::Euclid) {
+                        d = spatial::euclid_finish<false>(d, xr[i], Gx.data() + r * p, nullptr, p);
+                    } else if constexpr (F == Fin::Sq) {
+                        d = spatial::sq_finish<false>(d, xr[i], Gx.data() + r * p, nullptr, p);
+                    }
+                    Aa[slot[static_cast<size_t>(r)]] += d;
+                    A[static_cast<size_t>(r * K * 4 + sa)] += d;
+                }
+            }
+        }
+    }
+    std::vector<double> S(static_cast<size_t>(K));
+    for (int64_t r = 0; r < n; ++r) {
+        for (int64_t c = 0; c < K; ++c) {
+            const int64_t m = G.size[static_cast<size_t>(c)];
+            S[static_cast<size_t>(c)] = m > 0 ? meet4(A.data() + (r * K + c) * 4, m) : 0.0;
+        }
+        const int64_t i = G.member[static_cast<size_t>(r)];
+        out[i] = sil_value(S.data(), G, K, codes[i]);
+    }
+}
+
 void sil_condensed(
     const double* D, int64_t n, const int64_t* codes, const Groups& G, int64_t K, double scale, double* out
 ) {
@@ -466,7 +530,16 @@ nb::object silhouette_py(nb::handle Xo, nb::handle Do, nb::handle co, int64_t K,
             const int e = scale_exponent(max_abs_of(X, n * p));
             std::vector<double> Xs;
             if (e != 0) Xs = scaled_copy(X, n * p, e), X = Xs.data();
-            if (metric == 0) sil_observations<spatial::SqOp, Fin::Euclid>(X, n, p, codes, G, K, out.data());
+            // one thread: each pair once (the same bits), when the chains of every point fit in 2^28 bytes
+            const bool pairs =
+                !parallel::available() && static_cast<double>(n) * static_cast<double>(K) * 32.0 <= 0x1p28;
+            if (pairs) {
+                if (metric == 0) sil_observations_pairs<spatial::SqOp, Fin::Euclid>(X, n, p, codes, G, K, out.data());
+                else if (metric == 1) sil_observations_pairs<spatial::SqOp, Fin::Sq>(X, n, p, codes, G, K, out.data());
+                else if (metric == 2)
+                    sil_observations_pairs<spatial::AbsOp, Fin::None>(X, n, p, codes, G, K, out.data());
+                else sil_observations_pairs<spatial::MaxOp, Fin::None>(X, n, p, codes, G, K, out.data());
+            } else if (metric == 0) sil_observations<spatial::SqOp, Fin::Euclid>(X, n, p, codes, G, K, out.data());
             else if (metric == 1) sil_observations<spatial::SqOp, Fin::Sq>(X, n, p, codes, G, K, out.data());
             else if (metric == 2) sil_observations<spatial::AbsOp, Fin::None>(X, n, p, codes, G, K, out.data());
             else sil_observations<spatial::MaxOp, Fin::None>(X, n, p, codes, G, K, out.data());
@@ -851,7 +924,7 @@ nb::object gap_py(
                     );
                 Z = Zk.data();
                 if (distinct_rows_key(Z, n, p) < k_max)
-                    throw nb::value_error("a reference set has fewer distinct points than k_max");
+                    throw nb::value_error("gap_statistic(): a reference set has fewer distinct points than k_max");
             }
             std::vector<int64_t> lab(static_cast<size_t>(n), 0);
             for (int64_t k = 1; k <= k_max; ++k) {

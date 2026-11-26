@@ -112,8 +112,9 @@ def _blob_data():
 
 @pytest.mark.parametrize("method", METHODS)
 def test_every_path_gives_the_same_bits(method):
-    # CL18, CL45-CL47: matrix and matrix-free, the chain and the generic algorithm, Prim and Boruvka, and the
-    # precomputed distances of sd.spatial (single and complete: the heights are those distances)
+    # CL18, CL45-CL47, CL96: matrix and matrix-free, the chain (square and condensed copies) and the generic
+    # algorithm, Prim and Boruvka, and the precomputed distances of sd.spatial (single and complete: the heights are
+    # those distances)
     for X in _blob_data():
         Z, _ = _core(X, method)
         paths = [_core(X, method, 3)]
@@ -121,6 +122,8 @@ def test_every_path_gives_the_same_bits(method):
             paths.append(_core(X, method, 1, matrix=True))
         if method == "single":
             paths += [_core(X, method, 4), _core(X, method, 5), _core(X, method, matrix=True)]
+        if method in ("complete", "average", "weighted", "ward"):  # the chain's square and condensed copies (CL96)
+            paths += [_core(X, method, matrix=True), _core(X, method, 6, matrix=True)]
         if method == "single":  # sd.spatial's distances given: the same tree and heights
             Zp = _np(CL.linkage(sd.spatial.pdist(A(X))))
             assert D.merges(Zp, len(X)) == D.merges(_np(Z), len(X))

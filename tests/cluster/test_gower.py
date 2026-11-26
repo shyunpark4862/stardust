@@ -141,7 +141,9 @@ def test_errors():
         CL.gower_distance(df, types={"b": "logratio"})
     with pytest.raises(ValueError, match=r"^gower_distance\(\): the logratio column 'd' must hold values > 0$"):
         CL.gower_distance(df, types={"d": "logratio"})
-    with pytest.raises(ValueError, match=r"^gower_distance\(\): 'weights' must have one value per column \(6\)$"):
+    with pytest.raises(
+        ValueError, match=r"^gower_distance\(\): 'weights' must have one value per column \(6\), not 2$"
+    ):
         CL.gower_distance(df, weights=[1.0, 2.0])
     with pytest.raises(ValueError, match=r"^gower_distance\(\): 'weights' must be finite and >= 0$"):
         CL.gower_distance(df, weights=[1, 1, 1, 1, 1, -1])

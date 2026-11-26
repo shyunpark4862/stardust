@@ -28,6 +28,7 @@ from ._common import (
     integer,
     key,
     labels_back,
+    new_points,
     points,
     positive_int,
     real,
@@ -150,12 +151,8 @@ class GaussianMixtureResult(ClusterResult):
     _REPR = ("nobs", "n_clusters", "loglik", "n_iter")
 
     def _estimate(self, X_new, func):
-        Xn = points(X_new, func, "X_new")
         p = self.means.shape[1]
-        if Xn.shape[1] != p:
-            raise ValueError(f"{func}(): 'X_new' must have {p} columns (the fit's), not {Xn.shape[1]}")
-        if not bool(_sd.all(_sd.isfinite(Xn))):
-            raise ValueError(f"{func}(): 'X_new' must be finite (no NaN or infinity)")
+        Xn = new_points(X_new, func, p)
         out = _core.gmm_estimate(
             Xn, self._fit_means, self._fit_U, self._fit_logdet, self._fit_logw, self._type, self._fit_scale
         )
@@ -270,13 +267,15 @@ def gaussian_mixture(
     m0 = _means_init(means_init, func, k, p)
     P0 = _precisions_init(precisions_init, func, ctype, k, p)
     rng = check_rng(rng, func)
-    k0, k1 = key(rng)
     order = _core.lex_order(X)
+    given = w0 is not None and m0 is not None and P0 is not None
+    if not given and init == "kmeans":
+        _distinct_check(X, order, None, k, func)  # before the two words: a refused call leaves rng as it was
+    k0, k1 = key(rng)
     data = None
-    if w0 is not None and m0 is not None and P0 is not None:
+    if given:
         code = 4  # nothing to draw (scikit-learn computes no responsibilities either)
     elif init == "kmeans":
-        _distinct_check(X, order, None, k, func)
         code = 0
         data = _sd.empty((n_init, n), dtype=_sd.int64)
         for s in range(n_init):

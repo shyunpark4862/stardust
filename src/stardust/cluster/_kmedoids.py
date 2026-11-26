@@ -20,8 +20,11 @@ from ._common import (
     integer,
     key,
     labels_back,
+    metric_columns,
+    new_points,
     no_rng,
     points,
+    policy,
     positive_int,
 )
 from ._common import (
@@ -62,14 +65,10 @@ class KMedoidsResult(ClusterResult):
             raise ValueError(f"{func}(): a fit on precomputed distances cannot place new points")
         from .. import spatial as _spatial
 
-        Xn = points(X_new, func, "X_new")
-        p = self.medoid_points.shape[1]
-        if Xn.shape[1] != p:
-            raise ValueError(f"{func}(): 'X_new' must have {p} columns (the fit's), not {Xn.shape[1]}")
-        if not bool(_sd.all(_sd.isfinite(Xn))):
-            raise ValueError(f"{func}(): 'X_new' must be finite (no NaN or infinity)")
+        Xn = new_points(X_new, func, self.medoid_points.shape[1])
         M = contiguous(self.medoid_points[self._by_key])
-        lab = _sd.argmin(_spatial.cdist(Xn, M, metric=self.metric), axis=1)
+        # seuclidean and mahalanobis measure with the fit's V or VI (sd.spatial.pdist's, from the fitted points)
+        lab = _sd.argmin(_spatial.cdist(Xn, M, metric=self.metric, **self._aux), axis=1)
         return contiguous(self._by_key[lab])
 
 
@@ -105,15 +104,20 @@ def kmedoids(
     method = choice(method, func, "method", METHODS)
     metric = _metric(metric, func)
     if method == "pam":
-        no_rng(rng, func, "method='pam'")
+        no_rng(rng, func, "method='clara'")
     else:
         rng = check_rng(rng, func)
     max_iter = integer(max_iter, func, "max_iter")
     if max_iter < 0:
         raise ValueError(f"{func}(): 'max_iter' must be >= 0, not {max_iter}")
     samples = positive_int(samples, func, "samples")
+    if method == "pam" and sample_size is not None:
+        raise ValueError(f"{func}(): 'sample_size' is only used with method='clara'")
+    k = positive_int(k, func, "k")
     omitted = None
+    aux = {}
     if metric == "precomputed":
+        policy(nan_policy, func)  # checked though only observations have rows to leave out
         D, n = distances(X, func)
         n_input = n
         order = _sd.arange(n, dtype=_sd.int64)
@@ -127,14 +131,21 @@ def kmedoids(
         n = Xpts.shape[0]
         order = _core.lex_order(Xpts)
         Xr = contiguous(Xpts[order])
+        metric_columns(metric, Xr.shape[1], func)
         if metric in _ON_THE_FLY:
             Xk, D, code = Xr, None, _ON_THE_FLY[metric]
         else:
             from .. import spatial as _spatial
+            from ..spatial._distance import _default_vi
 
+            if k > n:
+                raise ValueError(f"{func}(): 'k' ({k}) is larger than the number of points ({n})")
             check_alloc(8 * (n * (n - 1) // 2), func)
             Xk, D, code = None, contiguous(_spatial.pdist(Xr, metric=metric)), 0
-    k = positive_int(k, func, "k")
+            if metric == "seuclidean":
+                aux = {"V": _sd.var(Xr, axis=0, correction=1)}
+            elif metric == "mahalanobis":
+                aux = {"VI": _default_vi(Xr, func)}
     if k > n:
         raise ValueError(f"{func}(): 'k' ({k}) is larger than the number of points ({n})")
     if method == "clara":
@@ -145,8 +156,6 @@ def kmedoids(
             raise ValueError(f"{func}(): 'sample_size' must be between k + 1 ({k + 1}) and n ({n}), not {size}")
         k0, k1 = key(rng)
     else:
-        if sample_size is not None:
-            positive_int(sample_size, func, "sample_size")
         size, k0, k1 = n, 0, 0
     lab_key, med_key, obj, build, swaps, converged = _core.kmedoids(
         Xk, D, k, 0 if method == "pam" else 1, code, max_iter, samples, size, k0, k1
@@ -177,4 +186,5 @@ def kmedoids(
         method=method,
         metric=metric,
         _by_key=contiguous(by_key.astype(_sd.int64)),
+        _aux=aux,
     )

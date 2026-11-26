@@ -15,7 +15,7 @@ import math
 from .. import _calls, _summary
 from .. import _core as _sd
 from .._calls import function
-from ._common import check_rng, choice, contiguous, key, points, positive_int, real
+from ._common import check_rng, choice, contiguous, integer, key, points, real
 from ._common import rows as _rows
 from ._results import ClusterResult
 
@@ -111,9 +111,6 @@ class GapResult(ClusterResult):
         table = _summary.Table(["log W", "E[log W]", "Gap", "SE"], rows, stub_head="k")
         return _summary.render(self._TITLE, header=(left, right), tables=(table,))
 
-    def __repr__(self):
-        return _summary.one_line(type(self).__name__, [(k, getattr(self, k)) for k in self._REPR])
-
 
 _calls.methods(GapResult)
 
@@ -152,10 +149,10 @@ def gap_statistic(
     n_input = Xp.shape[0]
     Xp, _, omitted = _rows(Xp, func, nan_policy)
     n, p = Xp.shape
-    k_max = positive_int(k_max, func, "k_max")
+    k_max = integer(k_max, func, "k_max")
     if k_max < 2:
         raise ValueError(f"{func}(): 'k_max' must be >= 2, not {k_max}")
-    B = positive_int(n_reference, func, "n_reference")
+    B = integer(n_reference, func, "n_reference")
     if B < 2:
         raise ValueError(f"{func}(): 'n_reference' must be >= 2 (the standard error needs two sets), not {B}")
     power = real(d_power, func, "d_power")

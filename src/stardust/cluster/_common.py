@@ -6,7 +6,8 @@ CL5, CL8, CL11, CL12, CL41 in docs/design/cluster.md §1.1).
   TypeError. Points are rows: X is (n, p), a 1-D X is (n, 1).
 - nan_policy (CL11): 'raise' (default; ValueError) or 'omit' (the rows with a NaN left out: their label is -1,
   nobs counts the rest, `omitted` marks them). +-inf is always a ValueError.
-- weights: 1-D, one per point, finite and >= 0 with at least one positive; a NaN weight makes its row a NaN row.
+- weights: 1-D, one per point, finite and >= 0 with at least one positive; a NaN weight makes its row a NaN row
+  (observations; with precomputed distances it is a ValueError, CL73).
 - metric (CL12): sd.spatial's names, and 'precomputed' for the functions defined by distances: an (n, n) square
   (symmetric bit for bit, zero diagonal, no negative value, no NaN) or a 1-D condensed vector of length
   n (n - 1) / 2 (finite, >= 0).
@@ -134,8 +135,10 @@ def weights(w, func, n):
 def rows(X, func, nan_policy, w=None, arg="X"):
     """The rows nan_policy keeps: (X, w, omitted) with X (and w) the kept rows and omitted the (n,) bool mask
     of the rows left out (None when none was). +-inf is a ValueError; a NaN (in X or in w) is one under
-    'raise'; 'omit' leaves the row out and needs at least one row left."""
-    nan_policy = policy(nan_policy, func)
+    'raise'; 'omit' leaves the row out and needs at least one row left. nan_policy None: a function without the
+    argument (a NaN is a ValueError naming arg)."""
+    bare = nan_policy is None
+    nan_policy = "raise" if bare else policy(nan_policy, func)
     if bool(_sd.any(_sd.isinf(X))):
         raise ValueError(f"{func}(): '{arg}' contains infinity")
     bad = _sd.any(_sd.isnan(X), axis=1)
@@ -145,13 +148,15 @@ def rows(X, func, nan_policy, w=None, arg="X"):
         if w is not None and not bool(_sd.any(w > 0)):
             raise ValueError(f"{func}(): at least one weight must be positive")
         return X, w, None
+    if bare:
+        raise ValueError(f"{func}(): '{arg}' contains NaN")
     if nan_policy == "raise":
         raise ValueError(f"{func}(): the input contains NaN (nan_policy='raise')")
     keep = _sd.logical_not(bad)
     X = contiguous(X[keep])
     w = contiguous(w[keep]) if w is not None else None
     if X.shape[0] == 0:
-        raise ValueError(f"{func}(): no row is left without NaN (nan_policy='omit')")
+        raise ValueError(f"{func}(): no point is left without NaN (nan_policy='omit')")
     if w is not None and not bool(_sd.any(w > 0)):
         raise ValueError(f"{func}(): at least one weight must be positive")
     return X, w, bad
@@ -207,13 +212,30 @@ def choice(v, func, arg, choices):
 
 
 def metric(v, func, precomputed=True):
-    """A metric name of sd.spatial, or 'precomputed' when the function takes distances (CL12)."""
-    names = METRICS + (("precomputed",) if precomputed else ())
-    if type(v) is str and v in names:
-        return v
-    if not isinstance(v, str):
-        raise TypeError(f"{func}(): 'metric' must be a metric name (str), not {type_name(v)}")
-    raise ValueError(f"{func}(): unknown metric {v!r} (choose from {', '.join(names)})")
+    """A metric name of sd.spatial, or 'precomputed' when the function takes distances (CL12); the message is
+    sd.spatial's (choice())."""
+    return choice(v, func, "metric", METRICS + (("precomputed",) if precomputed else ()))
+
+
+def metric_columns(metric_name, p, func):
+    """sd.spatial's column rule of a metric, under the calling function's name: haversine takes (latitude,
+    longitude) pairs."""
+    if metric_name == "haversine" and p != 2:
+        raise ValueError(f"{func}(): metric='haversine' needs 2 columns (latitude and longitude in radians), not {p}")
+
+
+def new_points(X_new, func, p):
+    """The new points of a predict-like method: (m, p) like the fit's 'X' (regression's messages); NaN and
+    infinity are ValueErrors (a label needs a place)."""
+    Xn = points(X_new, func, "X_new")
+    if Xn.shape[1] != p:
+        cols = f"{p} column" + ("" if p == 1 else "s")
+        raise ValueError(f"{func}(): 'X_new' must have {cols} like the fit's 'X', not {Xn.shape[1]}")
+    if bool(_sd.any(_sd.isnan(Xn))):
+        raise ValueError(f"{func}(): 'X_new' contains NaN")
+    if bool(_sd.any(_sd.isinf(Xn))):
+        raise ValueError(f"{func}(): 'X_new' contains infinity")
+    return Xn
 
 
 def condensed_size(m, func, arg):
@@ -268,10 +290,11 @@ def check_rng(rng, func):
     return rng
 
 
-def no_rng(rng, func, why):
-    """ValueError for an rng given to a method that draws nothing (CL8): why names the method."""
+def no_rng(rng, func, where):
+    """ValueError for an rng given to a method that draws nothing (CL8): where names the methods that draw
+    (regression's rlm form: 'rng' is only used with method='MM')."""
     if rng is not None:
-        raise ValueError(f"{func}(): 'rng' is not used with {why}")
+        raise ValueError(f"{func}(): 'rng' is only used with {where}")
 
 
 def key(rng):

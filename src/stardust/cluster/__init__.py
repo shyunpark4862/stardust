@@ -5,14 +5,11 @@ Usage: ``import stardust as sd`` then ``sd.cluster.kmeans(X, k, rng=sd.random.de
 ``sd.cluster.dbscan(X, eps=0.5).labels`` and ``sd.cluster.adjusted_rand_score(a, b)``. Partitioning
 (k-means, k-medoids, fuzzy c-means), hierarchical (scipy's linkage tools and DIANA), density (DBSCAN,
 HDBSCAN, OPTICS), Gaussian mixtures and the clustering indices in one flat namespace (no submodules); the
-fitting functions return <Name>Result objects, the scipy-named hierarchy tools take and return arrays
-(decisions CL1-CL94 in docs/design/cluster.md §1.1).
-
-Milestone CL0 made the common base of the results (_results.py) and the argument checks (_common.py); the
-public names come with milestones CL1 to CL6 (CL1: the hierarchy, _hierarchy.py; CL2: the partitions, _kmeans.py,
-_kmedoids.py, _fuzzy.py; CL3: the density methods, _density.py; CL4: the Gaussian mixtures, _mixture.py; CL5: the
-indices, the gap statistic and Gower's distance, _metrics.py, _gap.py, _gower.py; CL6: affinity propagation,
-_affinity.py).
+fitting functions return <Name>Result objects, the scipy-named hierarchy tools take and return arrays (decisions in
+docs/design/cluster.md §1.1). The results' common base is _results.py, the argument checks _common.py; the hierarchy
+is in _hierarchy.py, the partitions in _kmeans.py, _kmedoids.py and _fuzzy.py, the density methods in _density.py,
+the Gaussian mixtures in _mixture.py, the indices, the gap statistic and Gower's distance in _metrics.py, _gap.py and
+_gower.py, and affinity propagation in _affinity.py.
 """
 
 from ._affinity import AffinityPropagationResult, affinity_propagation

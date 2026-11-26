@@ -754,7 +754,9 @@ Optics optics_run(int64_t n, int64_t cost, std::vector<double> core, double max_
     std::vector<int64_t> open(static_cast<size_t>(n)), at(static_cast<size_t>(n));  // the unprocessed points (any
     std::iota(open.begin(), open.end(), int64_t{0});  // order) and their places
     std::iota(at.begin(), at.end(), int64_t{0});
-    const int64_t task = std::max<int64_t>(64, (int64_t{1} << 12) / std::max<int64_t>(cost, 1));
+    // tasks of about 2^10 flops: a step's scan (one pass over the open points) splits from 2^12 flops, since workers
+    // still spin from the step before (CL97; docs/design/cluster.md §5)
+    const int64_t task = std::max<int64_t>(64, (int64_t{1} << 10) / std::max<int64_t>(cost, 1));
     std::vector<int64_t> ti;
     auto better = [&](int64_t a, int64_t b) {  // (reach, key) of a below b's
         const double ra = o.reach[static_cast<size_t>(a)], rb = o.reach[static_cast<size_t>(b)];
@@ -793,7 +795,7 @@ Optics optics_run(int64_t n, int64_t cost, std::vector<double> core, double max_
             }
             ti[static_cast<size_t>(t)] = best;
         };
-        if (nt > 1 && m * (upd ? cost : 1) >= kSplitWork) parallel::parallel_for(nt, body, task * cost);
+        if (nt > 1 && m * (upd ? cost : 1) >= (kSplitWork >> 3)) parallel::parallel_for(nt, body, task * cost);
         else
             for (int64_t t = 0; t < nt; ++t) body(t);
         int64_t best = -1;

@@ -117,16 +117,68 @@ void nearest(const Dist& d, Pam& P) {
     std::sort(slots.begin(), slots.end(), [&](int64_t a, int64_t b) {
         return P.med[static_cast<size_t>(a)] < P.med[static_cast<size_t>(b)];
     });
+    // observations (CL104): the medoids (in slot order) packed in panels of 8 for spatial's tile, four points at a time; a
+    // lane holds pair_scalar's sum of its pair, finished as d.pair finishes it, so the values are d's bits
+    const int64_t np = (k + spatial::kPanel - 1) / spatial::kPanel;
+    std::vector<double> panels;
+    if (!d.D) {
+        std::vector<double> M(static_cast<size_t>(k * d.p));
+        for (int64_t q = 0; q < k; ++q) {
+            const double* x = d.X + P.med[static_cast<size_t>(slots[static_cast<size_t>(q)])] * d.p;
+            std::copy(x, x + d.p, M.begin() + q * d.p);
+        }
+        panels.assign(static_cast<size_t>(np * d.p * spatial::kPanel), 0.0);
+        for (int64_t b = 0; b < np; ++b)
+            spatial::pack_panel(
+                M.data() + b * spatial::kPanel * d.p, d.p, std::min<int64_t>(spatial::kPanel, k - b * spatial::kPanel),
+                d.p, panels.data() + b * d.p * spatial::kPanel
+            );
+    }
     auto body = [&](int64_t t) {
-        for (int64_t j = t * kTaskPts; j < std::min(n, (t + 1) * kTaskPts); ++j) {
-            double b1 = kInfD, b2 = kInfD;
-            int64_t a = 0;
-            for (int64_t s : slots) {
-                const double v = d(j, P.med[static_cast<size_t>(s)]);
-                if (v < b1) b2 = b1, b1 = v, a = s;
-                else if (v < b2) b2 = v;
+        const int64_t j0 = t * kTaskPts, j1 = std::min(n, (t + 1) * kTaskPts);
+        if (d.D) {
+            for (int64_t j = j0; j < j1; ++j) {
+                double b1 = kInfD, b2 = kInfD;
+                int64_t a = 0;
+                for (int64_t s : slots) {
+                    const double v = d(j, P.med[static_cast<size_t>(s)]);
+                    if (v < b1) b2 = b1, b1 = v, a = s;
+                    else if (v < b2) b2 = v;
+                }
+                P.near[static_cast<size_t>(j)] = a, P.d1[static_cast<size_t>(j)] = b1,
+                P.d2[static_cast<size_t>(j)] = b2;
             }
-            P.near[static_cast<size_t>(j)] = a, P.d1[static_cast<size_t>(j)] = b1, P.d2[static_cast<size_t>(j)] = b2;
+            return;
+        }
+        double sums[4 * spatial::kPanel];
+        for (int64_t j = j0; j < j1; j += 4) {
+            const int R = static_cast<int>(std::min<int64_t>(4, j1 - j));
+            const double* xr[4];
+            for (int r = 0; r < 4; ++r) xr[r] = d.X + (j + std::min(r, R - 1)) * d.p;
+            double b1[4] = {kInfD, kInfD, kInfD, kInfD}, b2[4] = {kInfD, kInfD, kInfD, kInfD};
+            int64_t a[4] = {0, 0, 0, 0};
+            for (int64_t b = 0; b < np; ++b) {
+                const double* pan = panels.data() + b * d.p * spatial::kPanel;
+                if (d.metric == 1) spatial::tile<spatial::AbsOp, 4, false>(xr, pan, nullptr, d.p, sums);
+                else spatial::tile<spatial::SqOp, 4, false>(xr, pan, nullptr, d.p, sums);
+                const int64_t cmax = std::min<int64_t>(spatial::kPanel, k - b * spatial::kPanel);
+                for (int64_t c = 0; c < cmax; ++c) {
+                    const int64_t s = slots[static_cast<size_t>(b * spatial::kPanel + c)];
+                    const double* y = d.X + P.med[static_cast<size_t>(s)] * d.p;
+                    for (int r = 0; r < 4; ++r) {  // all four lanes (a repeated row is dropped below): no branch
+                        const double sv = sums[r * spatial::kPanel + c];
+                        const double v = d.metric == 1 ? sv : spatial::euclid_finish<false>(sv, xr[r], y, nullptr, d.p);
+                        const bool lt1 = v < b1[r], lt2 = v < b2[r];
+                        b2[r] = lt1 ? b1[r] : (lt2 ? v : b2[r]);
+                        a[r] = lt1 ? s : a[r];
+                        b1[r] = lt1 ? v : b1[r];
+                    }
+                }
+            }
+            for (int r = 0; r < R; ++r) {
+                const auto jj = static_cast<size_t>(j + r);
+                P.near[jj] = a[r], P.d1[jj] = b1[r], P.d2[jj] = b2[r];
+            }
         }
     };
     const int64_t nt = (n + kTaskPts - 1) / kTaskPts;
@@ -284,9 +336,19 @@ Out run(Dist& d, int64_t k, int method, int64_t max_iter, int64_t samples, int64
                 in[static_cast<size_t>(i)]
                     ? -1.0
                     : uniform(st, element(static_cast<std::uint64_t>(s), static_cast<std::uint64_t>(i)));
-        std::vector<int64_t> idx(static_cast<size_t>(n));
-        std::iota(idx.begin(), idx.end(), int64_t{0});
+        // the need largest (u, then the smaller key) among the points with u above a threshold that about 16 need
+        // of them pass (u is uniform); every point below it is below them all, so the set is the one of all the
+        // points, and the scan falls back to all of them when fewer pass (CL104; the same sample)
         const auto need = static_cast<std::ptrdiff_t>(sample_size - static_cast<int64_t>(pts.size()));
+        const double thr = 1.0 - std::min(1.0, 16.0 * static_cast<double>(need + 16) / static_cast<double>(n));
+        std::vector<int64_t> idx;
+        idx.reserve(static_cast<size_t>(std::min<int64_t>(n, 32 * (need + 16))));
+        for (int64_t i = 0; i < n; ++i)
+            if (u[static_cast<size_t>(i)] > thr) idx.push_back(i);
+        if (static_cast<std::ptrdiff_t>(idx.size()) < need) {
+            idx.resize(static_cast<size_t>(n));
+            std::iota(idx.begin(), idx.end(), int64_t{0});
+        }
         std::partial_sort(idx.begin(), idx.begin() + need, idx.end(), [&](int64_t a, int64_t b) {
             const double x = u[static_cast<size_t>(a)], y = u[static_cast<size_t>(b)];
             return x != y ? x > y : a < b;

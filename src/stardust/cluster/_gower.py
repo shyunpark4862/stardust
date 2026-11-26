@@ -122,7 +122,8 @@ def gower_distance(data, /, *, types=None, weights=None):
     else:
         wa = _array(weights, func, "weights")
         if wa.ndim != 1 or wa.shape[0] != p:
-            raise ValueError(f"{func}(): 'weights' must have one value per column ({p})")
+            got = wa.shape[0] if wa.ndim == 1 else wa.size
+            raise ValueError(f"{func}(): 'weights' must have one value per column ({p}), not {got}")
         w = [real(v, func, "weights") for v in wa.tolist()]
         if any(not (v >= 0 and math.isfinite(v)) for v in w):
             raise ValueError(f"{func}(): 'weights' must be finite and >= 0")

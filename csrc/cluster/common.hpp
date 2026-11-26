@@ -53,7 +53,6 @@ inline std::uint64_t value_key(double v) {
 // as comparing the rows, so the same result.
 inline std::vector<int64_t> lex_order(const double* X, int64_t n, int64_t p) {
     std::vector<int64_t> order(static_cast<size_t>(n));
-    std::iota(order.begin(), order.end(), int64_t{0});
     auto rest_less = [&](int64_t a, int64_t b) {
         const double* x = X + a * p;
         const double* y = X + b * p;
@@ -61,38 +60,95 @@ inline std::vector<int64_t> lex_order(const double* X, int64_t n, int64_t p) {
             if (x[d] != y[d]) return x[d] < y[d];
         return a < b;
     };
-    std::vector<std::uint64_t> key(static_cast<size_t>(n));
-    for (int64_t i = 0; i < n; ++i) key[static_cast<size_t>(i)] = value_key(X[i * p]);
     if (n < 2048) {
+        std::vector<std::uint64_t> key(static_cast<size_t>(n));
+        for (int64_t i = 0; i < n; ++i) key[static_cast<size_t>(i)] = value_key(X[i * p]);
+        std::iota(order.begin(), order.end(), int64_t{0});
         std::sort(order.begin(), order.end(), [&](int64_t a, int64_t b) {
             const std::uint64_t ka = key[static_cast<size_t>(a)], kb = key[static_cast<size_t>(b)];
             return ka != kb ? ka < kb : rest_less(a, b);
         });
         return order;
     }
-    std::vector<int64_t> tmp(static_cast<size_t>(n));
-    std::vector<int64_t> count(65536);
-    for (int pass = 0; pass < 4; ++pass) {
-        const int shift = 16 * pass;
-        std::fill(count.begin(), count.end(), 0);
-        for (int64_t i : order) ++count[(key[static_cast<size_t>(i)] >> shift) & 0xFFFF];
+    // (CL99) The first coordinate's key by an LSD radix sort of (key, index) pairs, six digits of 11 bits (a stable sort, so
+    // equal keys keep the index order), each pass in fixed chunks: per-chunk counts, offsets by (digit, chunk), and
+    // each chunk scattered in order, so the result is the stable sort's whatever the threads. A digit that every key
+    // shares is skipped. Then the runs of one key are sorted by the other coordinates and the index.
+    struct KI {
+        std::uint64_t k;
+        int64_t i;
+    };
+    constexpr int kBits = 11, kBuckets = 1 << kBits, kPasses = 6;
+    const int64_t T = std::min<int64_t>(16, std::max<int64_t>(1, n / 16384));  // chunks: fixed by n
+    const int64_t L = (n + T - 1) / T;
+    std::vector<KI> a(static_cast<size_t>(n)), b(static_cast<size_t>(n));
+    std::vector<int64_t> cnt(static_cast<size_t>(T * kBuckets));
+    std::vector<int64_t> all(static_cast<size_t>(T * kPasses * kBuckets), 0);  // per chunk, every digit's counts
+    auto run = [&](auto&& body) {
+        if (T > 1) parallel::parallel_for(T, body, L * 8);
+        else body(0);
+    };
+    run([&](int64_t t) {
+        int64_t* h = all.data() + t * kPasses * kBuckets;
+        for (int64_t i = t * L; i < std::min(n, (t + 1) * L); ++i) {
+            const std::uint64_t k = value_key(X[i * p]);
+            a[static_cast<size_t>(i)] = {k, i};
+            for (int d = 0; d < kPasses; ++d) ++h[d * kBuckets + ((k >> (d * kBits)) & (kBuckets - 1))];
+        }
+    });
+    for (int d = 0; d < kPasses; ++d) {
+        bool constant = false;  // one bucket holds every key: the pass would not move anything
+        for (int64_t v = 0; v < kBuckets && !constant; ++v) {
+            int64_t tot = 0;
+            for (int64_t t = 0; t < T; ++t) tot += all[static_cast<size_t>((t * kPasses + d) * kBuckets + v)];
+            constant = tot == n;
+        }
+        if (constant) continue;
+        const int shift = d * kBits;
+        run([&](int64_t t) {
+            int64_t* h = cnt.data() + t * kBuckets;
+            std::fill(h, h + kBuckets, 0);
+            for (int64_t i = t * L; i < std::min(n, (t + 1) * L); ++i)
+                ++h[(a[static_cast<size_t>(i)].k >> shift) & (kBuckets - 1)];
+        });
         int64_t sum = 0;
-        for (auto& c : count) {
-            const int64_t t = c;
-            c = sum;
-            sum += t;
-        }
-        for (int64_t i : order) tmp[static_cast<size_t>(count[(key[static_cast<size_t>(i)] >> shift) & 0xFFFF]++)] = i;
-        order.swap(tmp);
+        for (int64_t v = 0; v < kBuckets; ++v)
+            for (int64_t t = 0; t < T; ++t) {
+                int64_t& c = cnt[static_cast<size_t>(t * kBuckets + v)];
+                const int64_t here = c;
+                c = sum;
+                sum += here;
+            }
+        run([&](int64_t t) {
+            int64_t* h = cnt.data() + t * kBuckets;
+            for (int64_t i = t * L; i < std::min(n, (t + 1) * L); ++i) {
+                const KI e = a[static_cast<size_t>(i)];
+                b[static_cast<size_t>(h[(e.k >> shift) & (kBuckets - 1)]++)] = e;
+            }
+        });
+        a.swap(b);
     }
-    if (p > 1) {
-        for (int64_t a = 0; a < n;) {
-            int64_t b = a + 1;
-            const std::uint64_t ka = key[static_cast<size_t>(order[static_cast<size_t>(a)])];
-            while (b < n && key[static_cast<size_t>(order[static_cast<size_t>(b)])] == ka) ++b;
-            if (b - a > 1) std::sort(order.begin() + a, order.begin() + b, rest_less);
-            a = b;
+    for (int64_t r = 0; r < n; ++r) order[static_cast<size_t>(r)] = a[static_cast<size_t>(r)].i;
+    if (p > 1) {  // the runs are independent: tasks of runs
+        std::vector<int64_t> runs;  // starts of the runs longer than one, then n
+        int64_t work = 0;
+        for (int64_t s0 = 0; s0 < n;) {
+            int64_t s1 = s0 + 1;
+            const std::uint64_t k = a[static_cast<size_t>(s0)].k;
+            while (s1 < n && a[static_cast<size_t>(s1)].k == k) ++s1;
+            if (s1 - s0 > 1) runs.push_back(s0), runs.push_back(s1), work += s1 - s0;
+            s0 = s1;
         }
+        const auto nr = static_cast<int64_t>(runs.size() / 2);
+        auto sort_run = [&](int64_t q) {
+            std::sort(
+                order.begin() + runs[static_cast<size_t>(2 * q)], order.begin() + runs[static_cast<size_t>(2 * q + 1)],
+                rest_less
+            );
+        };
+        if (nr > 1 && work * p >= kSplitWork) parallel::parallel_for(nr, sort_run, work / nr * 40);
+        else
+            for (int64_t q = 0; q < nr; ++q) sort_run(q);
     }
     return order;
 }
