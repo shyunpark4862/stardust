@@ -558,7 +558,7 @@ The sequence $\mathbf x_{k+1}=A\mathbf x_k$, $\mathbf x_k=A^k\mathbf x_0$, is th
 A^k\mathbf x_0=\sum_{i=1}^nc_i\lambda_i^k\mathbf x_i=c_1\lambda_1^k\mathbf x_1+c_2\lambda_2^k\mathbf x_2+\cdots+c_n\lambda_n^k\mathbf x_n .
 \label{eq:power-expansion}
 \end{equation}
-Each component evolves on its own, multiplied by its eigenvalue at every step. The continuous counterpart, the system of differential equations $\mathbf x'=A\mathbf x$, is solved by eigenvalues in the same way in Chapter~25, where the components grow like $e^{\lambda_it}$ and the real parts of the eigenvalues decide stability. Over a long time the components with the largest $|\lambda_i|$ dominate. An eigenvalue $\lambda_1$ is \term{dominant} if $|\lambda_1|>|\lambda_i|$ for all other eigenvalues counted with multiplicity, so that in particular $\operatorname{am}(\lambda_1)=1$.
+Each component evolves on its own, multiplied by its eigenvalue at every step. The continuous counterpart, the system of differential equations $\mathbf x'=A\mathbf x$, is solved by eigenvalues in the same way in \cref{ch:linear-ode-systems}, where the components grow like $e^{\lambda_it}$ and the real parts of the eigenvalues decide stability. Over a long time the components with the largest $|\lambda_i|$ dominate. An eigenvalue $\lambda_1$ is \term{dominant} if $|\lambda_1|>|\lambda_i|$ for all other eigenvalues counted with multiplicity, so that in particular $\operatorname{am}(\lambda_1)=1$.
 
 \begin{proposition}[Dominant eigenvalue]
 \label{prop:dominant}
