@@ -9,6 +9,7 @@ namespace sd {
 
 void bind_cluster(nb::module_& core) {
     nb::module_ m = core.def_submodule("cluster", "stardust cluster native core");
+    cluster::bind_hierarchy(m);
     cluster::bind_prototype(m);
 }
 

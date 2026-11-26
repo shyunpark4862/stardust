@@ -8,19 +8,16 @@ build/logs/cluster_probe/<stamp>.log, and docs/design/cluster.md quotes them.
 
 Sections (positional; default all):
   proto    the prototypes of csrc/cluster/prototype.cpp (_core.cluster._proto_*) against the references of
-           tests/cluster/ref (tools/cluster_ref.py must have run) -> prototype.json:
+           tests/cluster/ref (tools/cluster_ref.py must have run) -> prototype.json (milestone CL0's records
+           nnchain/* and heights of the hierarchy's prototypes, which milestone CL1 replaced, stay as they were):
              distance  k-means' squared distances in the difference form (spatial's pair kernel) against the
                        expanded form with Accelerate's dgemm (scikit-learn's): time at 1 and 10 threads, and the
                        labels against the exact ones (the references' label_f, and sets shifted by 10^4 to 10^12)
              bounds    Hamerly's bounds with the rounding margin c (p + 4) u, c = 0, 1, 4, 16: the same bits as
                        Lloyd on every reference set, the distances skipped, the time on 10^5 points
-             mst       Prim without a matrix, Boruvka on a KD tree and Boruvka by a scan: the same tree, and the
-                       times by n and p (where Boruvka starts to win)
-             nnchain   the nearest-neighbour chain against the exact primitive trees (does a scan meet an exact
-                       tie whenever the trees differ; do equal heights flag it), and the cost of the check
-             heights   heights recomputed by the definition (average: the |A||B| distances; ward: the
-                       centroids) against the exact ones and against scipy's Lance-Williams heights, in units
-                       of the draft contracts; the cost against the chain
+             mst       (milestone CL1: the area's kernels, csrc/cluster/mst.cpp) Prim without a matrix, Boruvka
+                       with each point's search of the KD tree and Boruvka by the dual tree: the same tree, and
+                       the times by n and p (where Boruvka starts to win; decisions CL47, CL54)
              tree_heights  the Lance-Williams recurrence evaluated on the final tree (path-free), every
                        linkage, in ULPs of the exact heights, beside scipy's
              centers   k-means centres summed in chunks of 4096 points against the exact means
@@ -58,7 +55,6 @@ SECTIONS = ("proto", "scipy", "sklearn", "r", "time")
 TOOL = "tools/cluster_probe.py"
 U = 2.0**-53
 HIER = ("single", "complete", "average", "weighted", "centroid", "median", "ward")
-CHAIN = {"complete": 1, "average": 2, "weighted": 3, "ward": 4}
 
 
 def S():
@@ -361,181 +357,59 @@ def proto_bounds(log, rec):
 
 
 def proto_mst(log, rec):
-    C = P()
+    """Milestone CL1's measurement of decision CL47 with the area's kernels (csrc/cluster/mst.cpp through
+    _core.cluster._mst): Prim without a matrix (0), Boruvka with each point's own search of the KD tree (1, what
+    linkage uses) and Boruvka by the dual tree (2): the same tree, and the times by n and p (where Boruvka starts
+    to win). The data in key order as linkage gives it."""
+    C = sd_core()
     g = np.random.Generator(np.random.PCG64(12))
-    log("mst: Prim without a matrix (0), Boruvka on a KD tree (1), Boruvka by a scan (2); ms at 1 / 10 threads")
+    log("mst: Prim without a matrix (0), Boruvka per point (1), Boruvka by the dual tree (2); ms at 1 / 10 threads")
     same = {}
     for p in (2, 5, 16):
-        X = g.random((3000, p))
-        outs = [C._proto_mst(sda(X), m) for m in (0, 1, 2)]
+        X = keyed(g.random((3000, p)))
+        outs = [C._mst(sda(X), m) for m in (0, 1, 2)]
         same[f"p{p}"] = all(
             np.array_equal(arr(outs[0][0]), arr(o[0])) and np.array_equal(arr(outs[0][1]), arr(o[1])) for o in outs[1:]
         )
-    X = np.array([[i, j] for i in range(40) for j in range(40)], float)
-    outs = [C._proto_mst(sda(X), m) for m in (0, 1, 2)]
+    X = keyed(np.array([[i, j] for i in range(40) for j in range(40)], float))
+    outs = [C._mst(sda(X), m) for m in (0, 1, 2)]
     same["lattice40"] = all(np.array_equal(arr(outs[0][0]), arr(o[0])) for o in outs[1:])
     rec["mst/same_tree"] = same
     log(f"  the same edges and weights: {same}")
     times = {}
-    for p in (2, 3, 5, 8, 16):
-        for n in (10**3, 10**4, 3 * 10**4, 10**5):
-            X = g.random((n, p))
+    for p in (2, 3, 4, 5, 6, 8, 16):
+        for n in (512, 1024, 2048, 4096, 10**4, 3 * 10**4, 10**5):
+            if p >= 8 and n > 3 * 10**4:
+                continue
+            X = keyed(g.random((n, p)))
+            sX = sda(X)
             row = {}
             for th in (1, 10):
                 threads(th)
+                reps = 1 if n > 10**4 else 3
                 if n <= 3 * 10**4:
-                    row[f"prim_{th}"] = best(lambda: C._proto_mst(sda(X), 0), 1 if n > 10**4 else 3)
-                if not (n == 10**5 and p == 16):
-                    row[f"boruvka_{th}"] = best(lambda: C._proto_mst(sda(X), 1), 1 if n > 10**4 else 3)
+                    row[f"prim_{th}"] = best(lambda: C._mst(sX, 0), reps)
+                row[f"boruvka_{th}"] = best(lambda: C._mst(sX, 1), reps)
+                if n <= 3 * 10**4 and p <= 8:
+                    row[f"dual_{th}"] = best(lambda: C._mst(sX, 2), reps)
             times[f"p{p}n{n}"] = row
             log(f"  p={p:>2} n={n:>6}: " + ", ".join(f"{k} {v:.1f}" for k, v in row.items()))
     threads(10)
     rec["mst/time"] = times
 
 
-# ---------------------------------------------------------------- proto: NN-chain
+def sd_core():
+    import stardust as sd
+
+    return sd._core.cluster
 
 
-def _lexsorted(X):
-    order = np.lexsort(tuple(X[:, j] for j in range(X.shape[1] - 1, -1, -1)))
-    return X[order], order
-
-
-def proto_nnchain(log, rec):
-    C = P()
-    R = RD().ref("hierarchy")
-    log("nnchain: the chain with the (distance, index) neighbour against the exact primitive trees")
-    rows = {}
-    totals = {"cases": 0, "same": 0, "differ_flagged": 0, "differ_unflagged": 0, "differ_unflagged_near": 0,
-              "scan_tie": 0, "equal_heights": 0}  # fmt: skip
-    for sid in R.group_inputs["set"].tolist():
-        s = S().points(sid)
-        Xs, order = _lexsorted(s.X)  # index order = the key order (CL7)
-        for method, code in CHAIN.items():
-            Zref, gaps, _ = RD().tree(R, method, sid)
-            Z, tie = C._proto_nnchain(sda(Xs), code, 1)
-            Z = arr(Z)
-            mapped = np.array(Z)
-            mapped[:, :2] = np.where(
-                mapped[:, :2] < s.n, order[np.minimum(mapped[:, :2], s.n - 1).astype(int)], mapped[:, :2]
-            )
-            same = RD().merges(mapped, s.n) == RD().merges(Zref, s.n)
-            eqh = len(np.unique(Z[:, 2])) < len(Z)
-            near = bool(np.min(gaps) <= RD().NEAR_TIE) if len(gaps) else False
-            totals["cases"] += 1
-            totals["same"] += int(same)
-            totals["scan_tie"] += int(tie)
-            totals["equal_heights"] += int(eqh)
-            if not same:
-                if tie:
-                    totals["differ_flagged"] += 1
-                else:
-                    totals["differ_unflagged"] += 1
-                    totals["differ_unflagged_near"] += int(near)
-            if not same or tie:
-                rows[f"{sid}/{method}"] = {"same": same, "scan_tie": int(tie), "equal_heights": eqh, "near_tie": near}
-    rec["nnchain/against_primitive"] = {"totals": totals, "cases": rows}
-    log(f"  {totals}")
-    for k, v in rows.items():
-        if not v["same"]:
-            log(f"    differs: {k} {v}")
-    g = np.random.Generator(np.random.PCG64(13))
-    X = g.standard_normal((5000, 5))
-    import scipy.cluster.hierarchy as sch
-
-    tt = {}
-    sX = sda(X)
-    for method, code in CHAIN.items():
-        t0, t1, ts = math.inf, math.inf, math.inf
-        for _ in range(3):  # interleaved: the first call of a size pays for its pages
-            t0 = min(t0, best(lambda: C._proto_nnchain(sX, code, 0), 1))
-            t1 = min(t1, best(lambda: C._proto_nnchain(sX, code, 1), 1))
-            ts = min(ts, best(lambda: sch.linkage(X, method), 1))
-        tt[method] = {"chain": t0, "chain_checked": t1, "overhead": t1 / t0 - 1, "scipy": ts}
-        log(
-            f"  n=5000 p=5 {method}: chain {t0:.0f} ms, with the tie check {t1:.0f} ms "
-            f"({100 * (t1 / t0 - 1):+.1f}%), scipy {ts:.0f} ms"
-        )
-    rec["nnchain/time"] = tt
+def keyed(X):
+    """The points in key order (decision CL7), as linkage passes them to its kernels."""
+    return np.ascontiguousarray(X[np.asarray(sd_core().lex_order(sda(X)))])
 
 
 # ---------------------------------------------------------------- proto: heights
-
-
-def proto_heights(log, rec):
-    import scipy.cluster.hierarchy as sch
-
-    C = P()
-    R = RD().ref("hierarchy")
-    D = RD()
-    log(
-        "heights: recomputed by the definition vs scipy's Lance-Williams, against the exact "
-        "(units of the draft bounds with constant 1)"
-    )
-    out = {}
-    for method, code in (("average", 2), ("ward", 4)):
-        worst = {"recomputed": 0.0, "lance_williams": 0.0, "recomputed_ulp": 0.0, "lance_williams_ulp": 0.0}
-        where = {}
-        for sid in R.group_inputs["set"].tolist():
-            s = S().points(sid)
-            if s.n < 2:
-                continue
-            Zref, gaps, lo = D.tree(R, method, sid)
-            if np.min(gaps) <= D.NEAR_TIE:
-                continue  # a tie: scipy's tree may be another one
-            h_exact = Zref[:, 2] + lo
-            rec_h = arr(C._proto_heights(sda(s.X), sda(Zref), code))
-            Zs = sch.linkage(s.X, method)
-            if D.merges(Zs, s.n) != D.merges(Zref, s.n):
-                lw = None
-            else:
-                key = {}
-                mem = {i: frozenset([i]) for i in range(s.n)}
-                for i, row in enumerate(Zs):
-                    mem[s.n + i] = mem[int(row[0])] | mem[int(row[1])]
-                    key[mem[s.n + i]] = row[2]
-                memr = {i: frozenset([i]) for i in range(s.n)}
-                lw = np.empty(len(Zref))
-                for i, row in enumerate(Zref):
-                    memr[s.n + i] = memr[int(row[0])] | memr[int(row[1])]
-                    lw[i] = key[memr[s.n + i]]
-            sizes = {i: 1 for i in range(s.n)}
-            cents = {i: s.X[i] for i in range(s.n)}
-            bounds = np.empty(len(Zref))
-            for i, row in enumerate(Zref):
-                a, b = int(row[0]), int(row[1])
-                na, nb = sizes[a], sizes[b]
-                if method == "average":
-                    bounds[i] = D.gamma(math.ceil(math.log2(na * nb)) + 1) * abs(h_exact[i])
-                else:
-                    ca, cb = np.linalg.norm(cents[a]), np.linalg.norm(cents[b])
-                    bounds[i] = U * (s.p + math.log2(s.n)) * (ca + cb) * math.sqrt(2.0 * na * nb / (na + nb))
-                sizes[s.n + i] = na + nb
-                cents[s.n + i] = (na * cents[a] + nb * cents[b]) / (na + nb)
-            bounds = np.maximum(bounds, 2.0**-1074)
-            for name, h in (("recomputed", rec_h), ("lance_williams", lw)):
-                if h is None:
-                    continue
-                err = np.abs(h - Zref[:, 2] - lo)
-                r = float(np.max(err / bounds))
-                ulp = float(np.max(err / np.maximum(np.spacing(np.abs(h_exact)), 2.0**-1074)))
-                if r > worst[name]:
-                    worst[name] = r
-                    where[name] = sid
-                worst[f"{name}_ulp"] = max(worst[f"{name}_ulp"], ulp)
-        worst["where"] = where
-        out[method] = worst
-        log(f"  {method}: {worst}")
-    g = np.random.Generator(np.random.PCG64(14))
-    X = g.standard_normal((5000, 5))
-    for method, code in (("average", 2), ("ward", 4)):
-        Z = sch.linkage(X, method)
-        th = best(lambda: C._proto_heights(sda(X), sda(Z), code))
-        tc = best(lambda: C._proto_nnchain(sda(X), code, 1))
-        out[method]["time_recompute_ms"] = th
-        out[method]["time_chain_ms"] = tc
-        log(f"  n=5000 p=5 {method}: recompute {th:.0f} ms, chain {tc:.0f} ms ({th / tc:.2f} of it)")
-    rec["heights"] = out
 
 
 def tree_heights(X, Z, method):
@@ -672,17 +546,16 @@ PROTO = {
     "distance": lambda: proto_distance,
     "bounds": lambda: proto_bounds,
     "mst": lambda: proto_mst,
-    "nnchain": lambda: proto_nnchain,
-    "heights": lambda: proto_heights,
     "tree_heights": lambda: proto_tree_heights,
     "centers": lambda: proto_centers,
 }
 
 
 def proto(log, only=None):
-    """Every prototype measurement, or only those named (proto.distance ...: the others' records are kept)."""
+    """Every prototype measurement, or only those named (proto.distance ...). The records of the sections not run
+    (and of milestone CL0's sections milestone CL1 retired: nnchain/*, heights) are kept."""
     rec = {}
-    if only:
+    if (DATA / "prototype.json").exists():
         old = json.loads((DATA / "prototype.json").read_text())
         old.pop("_provenance")
         rec.update(old)

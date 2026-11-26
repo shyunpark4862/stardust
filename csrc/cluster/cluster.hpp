@@ -5,6 +5,7 @@
 
 namespace sd::cluster {
 
-void bind_prototype(nanobind::module_& m);  // milestone CL0's measurements (prototype.cpp); CL1 and CL2 remove it
+void bind_hierarchy(nanobind::module_& m);  // hierarchy.cpp: linkage, DIANA, cophenet, optimal leaf ordering
+void bind_prototype(nanobind::module_& m);  // milestone CL0's k-means measurements (prototype.cpp); CL2 removes it
 
 }  // namespace sd::cluster

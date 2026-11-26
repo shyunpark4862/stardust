@@ -100,7 +100,7 @@ R_MATRIX = "x <- matrix(xv, nrow = dims[1])"
 
 def _hierarchy_specs():
     out = []
-    for method in ("single", "complete", "average", "ward", "centroid"):
+    for method in ("single", "complete", "average", "weighted", "ward", "centroid", "median"):
         refs = [Ref("scipy", lambda d, m=method: lambda: _sch().linkage(d["X"], m))]
         if method in ("complete", "average"):
             refs.append(RRef("R", f"hclust(dist(x), '{method}')$height", data=R_X, setup=R_MATRIX))
@@ -115,7 +115,7 @@ def _hierarchy_specs():
                 lambda d, m=method: lambda: _cl().linkage(d["sX"], method=m),
                 tuple(refs),
                 quick=method in ("single", "ward"),
-                check=Check(rtol=1e-12),
+                check=Check(sd=_heights, ref=_ref_heights, rtol=1e-12),
             )
         )
     for method in ("single", "ward"):
@@ -131,7 +131,83 @@ def _hierarchy_specs():
                 note="no comparator: scipy and R need the 40 GB condensed matrix",
             )
         )
+    out.append(
+        Spec(
+            "CL1",
+            "hierarchy",
+            "divisive p=5",
+            ("divisive",),
+            count(1000),
+            _points(1000, 5),
+            lambda d: lambda: _cl().divisive(d["sX"]).linkage,
+            (
+                RRef(
+                    "R cluster",
+                    "cluster::diana(x)$height",
+                    data=R_X,
+                    setup=R_MATRIX,
+                    packages=("cluster",),
+                    differs="R's diana gives its banner (the heights in leaf order), not the merges",
+                ),
+            ),
+        )
+    )
+    out.append(
+        Spec(
+            "CL1",
+            "hierarchy",
+            "cophenet",
+            ("cophenet",),
+            count(5000),
+            lambda: _with_tree(5000, 5),
+            lambda d: lambda: _cl().cophenet(d["sZ"]),
+            (Ref("scipy", lambda d: lambda: _sch().cophenet(d["Z"])),),
+            check=Check(rtol=1e-12),
+        )
+    )
+    out.append(
+        Spec(
+            "CL1",
+            "hierarchy",
+            "optimal_leaf_ordering",
+            ("optimal_leaf_ordering",),
+            count(1000),
+            lambda: _with_tree(1000, 5, distances=True),
+            lambda d: lambda: _cl().optimal_leaf_ordering(d["sZ"], d["sy"]),
+            (
+                Ref(
+                    "scipy",
+                    lambda d: lambda: _sch().optimal_leaf_ordering(d["Z"], d["y"]),
+                    differs="scipy 1.18.1's order is not always the optimal one (decision CL53)",
+                ),
+            ),
+        )
+    )
     return out
+
+
+def _heights(Z):
+    """The sorted heights of a linkage matrix (R gives its heights alone, in its merge order)."""
+    return np.sort(np.asarray(Z)[:, 2])
+
+
+def _ref_heights(label, v):
+    v = np.asarray(v)
+    return np.sort(v[:, 2] if v.ndim == 2 else v)
+
+
+def _with_tree(n, p, distances=False):
+    import stardust as sd
+
+    d = _points(n, p)()
+    Z = _sch().linkage(d["X"], "average")
+    d.update({"Z": Z, "sZ": sd.asarray(Z)})
+    if distances:
+        import scipy.spatial.distance as ssd
+
+        y = ssd.pdist(d["X"])
+        d.update({"y": y, "sy": sd.asarray(y)})
+    return d
 
 
 def _kmeans_specs():

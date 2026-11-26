@@ -1,0 +1,802 @@
+{
+ "schema": 1,
+ "area": "cluster",
+ "runs": {
+  "20261127-000954-58694629+": {
+   "commit": "58694629",
+   "dirty": true,
+   "changed": [
+    "CMakeLists.txt",
+    "bench/accuracy/cluster.py",
+    "bench/speed/cases/cluster.py",
+    "csrc/bind/cluster_bind.cpp",
+    "csrc/cluster/cluster.hpp",
+    "csrc/cluster/prototype.cpp",
+    "src/stardust/cluster/__init__.py",
+    "tests/cluster/data/prototype.json",
+    "tests/cluster/refdata.py",
+    "tests/cluster/test_api_surface.py",
+    "tests/golden/cases_cluster.py",
+    "tests/golden/data/cluster.json",
+    "textbook/chapters/v1-23-first-order-equations.tex",
+    "textbook/pdf/vol1.pdf",
+    "textbook/plans/PROMISES.md",
+    "textbook/references.bib",
+    "textbook/vol1.tex",
+    "tools/cluster_probe.py"
+   ],
+   "date": "2026-11-27T00:09:54",
+   "machine": "arm64",
+   "python": "3.15.0",
+   "references": {
+    "array": "aef7e7bf22a5feb65a19c421f4d1b04d578dca8fd4e3122d503043afbc1c9638",
+    "linalg": "ba8d2d9b5e6767d51c11ec21fe26040320b31de4c06ccfe0562a6b1033ff2950",
+    "special": "241d3855ece237ebf086080118d4295238b54dc9b7b60a2822cef413e170064f",
+    "stats": "6f88d53afd2668510257ee4cc6e6ee9df3d20ef72ebfde263aacaefd1855586f",
+    "regression": "d18611e3becf4d1273fb0aff2671ad314fe6bd66c918a6db28ce54d01acb18b0",
+    "optimize": "28d5e52d860b54463697743fb86962197c0c4b7e5a4b9a670ca0518d9d3588e8"
+   },
+   "comparators": {
+    "scipy": "1.18.1",
+    "numpy": "2.5.4",
+    "statsmodels": "0.15.0",
+    "scikit-learn": "1.9.1",
+    "R": "4.6.2",
+    "R mvtnorm": "1.4.2",
+    "R reticulate": "1.47.0",
+    "R minpack.lm": "1.2.4",
+    "R car": "3.1.5",
+    "R lmtest": "0.9.40",
+    "R leaps": "3.2",
+    "R irlba": "2.4.1",
+    "R numDeriv": "2016.8.1.1",
+    "Boost": null,
+    "Boost in sd.special": "4682f44"
+   }
+  }
+ },
+ "sweeps": [
+  {
+   "id": "cluster/hierarchy",
+   "area": "cluster",
+   "name": "hierarchy",
+   "points": 10241,
+   "regions": {
+    "average/plain": {
+     "points": 1050,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 3.115945064776231e-16,
+     "contract": 0.2755706223862288,
+     "bound": 1.0,
+     "worst": [
+      "blobs/k3p2 #15"
+     ]
+    },
+    "average/scale": {
+     "points": 236,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 0.0007722007722007722,
+     "contract": 0.2363265397098543,
+     "bound": 1.0,
+     "worst": [
+      "narrow/k3p2 #20"
+     ]
+    },
+    "average/ties": {
+     "points": 177,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 2.1904205938826103e-16,
+     "contract": 0.202489971341016,
+     "bound": 1.0,
+     "worst": [
+      "collinear/p2 #5"
+     ]
+    },
+    "centroid/plain": {
+     "points": 1050,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 3.0417551292398465e-16,
+     "contract": 0.21433270630040022,
+     "bound": 1.0,
+     "worst": [
+      "blobs/k3p2 #15"
+     ]
+    },
+    "centroid/scale": {
+     "points": 236,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 2.38038586209978e-16,
+     "contract": 0.18380953088544222,
+     "bound": 1.0,
+     "worst": [
+      "narrow/k3p2 #21"
+     ]
+    },
+    "centroid/ties": {
+     "points": 177,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 2.1394043882215405e-16,
+     "contract": 0.1574921999319014,
+     "bound": 1.0,
+     "worst": [
+      "collinear/p2 #5"
+     ]
+    },
+    "complete/plain": {
+     "points": 1050,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 2.2172344474049339e-16,
+     "contract": 0.6657024154083923,
+     "bound": 1.0,
+     "worst": [
+      "rings/p2 #74"
+     ]
+    },
+    "complete/scale": {
+     "points": 236,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 2.2029062915189725e-16,
+     "contract": 0.6614005302411308,
+     "bound": 1.0,
+     "worst": [
+      "narrow/k3p2 #28"
+     ]
+    },
+    "complete/ties": {
+     "points": 177,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 2.050060702019328e-16,
+     "contract": 0.5961773227465793,
+     "bound": 1.0,
+     "worst": [
+      "collinear/p2 #25"
+     ]
+    },
+    "median/plain": {
+     "points": 1050,
+     "ulp_max": 2.0,
+     "ulp_p999": 1.0,
+     "rel_max": 2.6319761140112085e-16,
+     "contract": 0.21433270630040022,
+     "bound": 1.0,
+     "worst": [
+      "blobs/k3p2 #15"
+     ]
+    },
+    "median/scale": {
+     "points": 236,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 2.1928831872261427e-16,
+     "contract": 0.18380953088544222,
+     "bound": 1.0,
+     "worst": [
+      "narrow/k3p2 #21"
+     ]
+    },
+    "median/ties": {
+     "points": 177,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 2.150501445330884e-16,
+     "contract": 0.17254762992589737,
+     "bound": 1.0,
+     "worst": [
+      "collinear/p2 #15"
+     ]
+    },
+    "single/plain": {
+     "points": 1050,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 2.2026650118584593e-16,
+     "contract": 0.6583204987153165,
+     "bound": 1.0,
+     "worst": [
+      "sizes/k3p2 #143"
+     ]
+    },
+    "single/scale": {
+     "points": 236,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 2.048851009078335e-16,
+     "contract": 0.6151469760681901,
+     "bound": 1.0,
+     "worst": [
+      "huge/k3p2 #23"
+     ]
+    },
+    "single/ties": {
+     "points": 177,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 2.1948566668865048e-16,
+     "contract": 0.5648431809783832,
+     "bound": 1.0,
+     "worst": [
+      "constcol/p3 #27"
+     ]
+    },
+    "ward/plain": {
+     "points": 1050,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 3.08914911208603e-16,
+     "contract": 0.21433270630040022,
+     "bound": 1.0,
+     "worst": [
+      "blobs/k3p2 #14"
+     ]
+    },
+    "ward/scale": {
+     "points": 236,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 2.577069607365576e-16,
+     "contract": 0.18380953088544222,
+     "bound": 1.0,
+     "worst": [
+      "narrow/k3p2 #17"
+     ]
+    },
+    "ward/ties": {
+     "points": 177,
+     "ulp_max": 2.0,
+     "ulp_p999": 2.0,
+     "rel_max": 3.418600331348558e-16,
+     "contract": 0.1574921999319014,
+     "bound": 1.0,
+     "worst": [
+      "collinear/p2 #5"
+     ]
+    },
+    "weighted/plain": {
+     "points": 1050,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 2.2163562942318176e-16,
+     "contract": 0.2755706223862288,
+     "bound": 1.0,
+     "worst": [
+      "blobs/k3p2 #15"
+     ]
+    },
+    "weighted/scale": {
+     "points": 236,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 0.0007722007722007722,
+     "contract": 0.2363265397098543,
+     "bound": 1.0,
+     "worst": [
+      "narrow/k3p2 #19"
+     ]
+    },
+    "weighted/ties": {
+     "points": 177,
+     "ulp_max": 1.0,
+     "ulp_p999": 1.0,
+     "rel_max": 2.176856157402764e-16,
+     "contract": 0.24087552013973312,
+     "bound": 1.0,
+     "worst": [
+      "collinear/p2 #15"
+     ]
+    },
+    "trees_differ": {
+     "points": 0,
+     "rel_max": null,
+     "contract": null,
+     "bound": null,
+     "worst": []
+    },
+    "trees_near_tie": {
+     "points": 0,
+     "rel_max": null,
+     "contract": null,
+     "bound": null,
+     "worst": []
+    }
+   },
+   "comparators": {
+    "scipy": {
+     "average/plain": {
+      "points": 1050,
+      "ulp_max": 2.0,
+      "ulp_p999": 2.0,
+      "rel_max": 2.721774525379948e-16,
+      "contract": 0.28426874177892253,
+      "bound": 1.0,
+      "worst": [
+       "moons/p2 #20"
+      ]
+     },
+     "average/scale": {
+      "points": 177,
+      "ulp_max": 2.0,
+      "ulp_p999": 2.0,
+      "rel_max": 2.6264108773339546e-16,
+      "contract": 0.2363265397098543,
+      "bound": 1.0,
+      "worst": [
+       "narrow/k3p2 #20"
+      ]
+     },
+     "average/ties": {
+      "points": 122,
+      "ulp_max": 1.0,
+      "ulp_p999": 1.0,
+      "rel_max": 2.16100427524875e-16,
+      "contract": 0.25221378752192936,
+      "bound": 1.0,
+      "worst": [
+       "collinear/p2 #2"
+      ]
+     },
+     "centroid/plain": {
+      "points": 1050,
+      "ulp_max": 3.0,
+      "ulp_p999": 3.0,
+      "rel_max": 4.1763829029773103e-16,
+      "contract": 0.22109791027249537,
+      "bound": 1.0,
+      "worst": [
+       "moons/p2 #21"
+      ]
+     },
+     "centroid/scale": {
+      "points": 177,
+      "ulp_max": 2.0,
+      "ulp_p999": 2.0,
+      "rel_max": 3.0595225261471035e-16,
+      "contract": 0.18380953088544222,
+      "bound": 1.0,
+      "worst": [
+       "narrow/k3p2 #21"
+      ]
+     },
+     "centroid/ties": {
+      "points": 61,
+      "ulp_max": 2.0,
+      "ulp_p999": 2.0,
+      "rel_max": 2.312962339097558e-16,
+      "contract": 0.19616627918372287,
+      "bound": 1.0,
+      "worst": [
+       "collinear/p2 #2"
+      ]
+     },
+     "complete/plain": {
+      "points": 1050,
+      "ulp_max": 1.0,
+      "ulp_p999": 1.0,
+      "rel_max": 2.2172344474049339e-16,
+      "contract": 0.6657024154083923,
+      "bound": 1.0,
+      "worst": [
+       "rings/p2 #74"
+      ]
+     },
+     "complete/scale": {
+      "points": 177,
+      "ulp_max": 1.0,
+      "ulp_p999": 1.0,
+      "rel_max": 1.99601605294546e-16,
+      "contract": 0.59928381015138,
+      "bound": 1.0,
+      "worst": [
+       "shifted/k3p2 #55"
+      ]
+     },
+     "complete/ties": {
+      "points": 122,
+      "ulp_max": 1.0,
+      "ulp_p999": 1.0,
+      "rel_max": 2.0977936111904854e-16,
+      "contract": 0.5961773227465793,
+      "bound": 1.0,
+      "worst": [
+       "collinear/p2 #25"
+      ]
+     },
+     "median/plain": {
+      "points": 1050,
+      "ulp_max": 2.0,
+      "ulp_p999": 2.0,
+      "rel_max": 3.695387918288836e-16,
+      "contract": 0.22109791027249537,
+      "bound": 1.0,
+      "worst": [
+       "moons/p2 #21"
+      ]
+     },
+     "median/scale": {
+      "points": 177,
+      "ulp_max": 2.0,
+      "ulp_p999": 2.0,
+      "rel_max": 2.7398958605929753e-16,
+      "contract": 0.18380953088544222,
+      "bound": 1.0,
+      "worst": [
+       "narrow/k3p2 #21"
+      ]
+     },
+     "median/ties": {
+      "points": 61,
+      "ulp_max": 1.0,
+      "ulp_p999": 1.0,
+      "rel_max": 2.150501445330884e-16,
+      "contract": 0.19616627918372287,
+      "bound": 1.0,
+      "worst": [
+       "collinear/p2 #2"
+      ]
+     },
+     "single/plain": {
+      "points": 1050,
+      "ulp_max": 1.0,
+      "ulp_p999": 1.0,
+      "rel_max": 2.2092119161292828e-16,
+      "contract": 0.6632937308174863,
+      "bound": 1.0,
+      "worst": [
+       "moons/p2 #25"
+      ]
+     },
+     "single/scale": {
+      "points": 177,
+      "ulp_max": 1.0,
+      "ulp_p999": 1.0,
+      "rel_max": 2.048851009078335e-16,
+      "contract": 0.6151469760681901,
+      "bound": 1.0,
+      "worst": [
+       "huge/k3p2 #23"
+      ]
+     },
+     "single/ties": {
+      "points": 156,
+      "ulp_max": 1.0,
+      "ulp_p999": 1.0,
+      "rel_max": 2.1948566668865048e-16,
+      "contract": 0.6024320164947745,
+      "bound": 1.0,
+      "worst": [
+       "collinear/p2 #24"
+      ]
+     },
+     "ward/plain": {
+      "points": 1050,
+      "ulp_max": 2.0,
+      "ulp_p999": 2.0,
+      "rel_max": 4.0645120771659533e-16,
+      "contract": 0.22109791027249537,
+      "bound": 1.0,
+      "worst": [
+       "moons/p2 #19"
+      ]
+     },
+     "ward/scale": {
+      "points": 177,
+      "ulp_max": 2.0,
+      "ulp_p999": 2.0,
+      "rel_max": 2.9798790853833976e-16,
+      "contract": 0.18380953088544222,
+      "bound": 1.0,
+      "worst": [
+       "narrow/k3p2 #17"
+      ]
+     },
+     "ward/ties": {
+      "points": 115,
+      "ulp_max": 3.0,
+      "ulp_p999": 3.0,
+      "rel_max": 5.035792799606768e-16,
+      "contract": 0.19616627918372287,
+      "bound": 1.0,
+      "worst": [
+       "collinear/p2 #2"
+      ]
+     },
+     "weighted/plain": {
+      "points": 1050,
+      "ulp_max": 1.0,
+      "ulp_p999": 1.0,
+      "rel_max": 2.2163562942318176e-16,
+      "contract": 0.28426874177892253,
+      "bound": 1.0,
+      "worst": [
+       "moons/p2 #20"
+      ]
+     },
+     "weighted/scale": {
+      "points": 177,
+      "ulp_max": 2.0,
+      "ulp_p999": 2.0,
+      "rel_max": 2.586954298566356e-16,
+      "contract": 0.2363265397098543,
+      "bound": 1.0,
+      "worst": [
+       "narrow/k3p2 #19"
+      ]
+     },
+     "weighted/ties": {
+      "points": 122,
+      "ulp_max": 1.0,
+      "ulp_p999": 1.0,
+      "rel_max": 2.176856157402764e-16,
+      "contract": 0.25221378752192936,
+      "bound": 1.0,
+      "worst": [
+       "collinear/p2 #2"
+      ]
+     },
+     "trees_differ": {
+      "points": 6,
+      "rel_max": 0.0,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       "subnormal/k3p2 single"
+      ]
+     },
+     "trees_near_tie": {
+      "points": 48,
+      "rel_max": 0.0,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       "line/7 centroid"
+      ]
+     }
+    },
+    "R": {
+     "average/plain": {
+      "points": 1050,
+      "ulp_max": 2.0,
+      "ulp_p999": 2.0,
+      "rel_max": 3.5730727589786716e-16,
+      "contract": 0.2755706223862288,
+      "bound": 1.0,
+      "worst": [
+       "blobs/k3p2 #15"
+      ]
+     },
+     "average/scale": {
+      "points": 236,
+      "ulp_max": 23705.0,
+      "ulp_p999": 23705.0,
+      "rel_max": 1.0,
+      "contract": 576.1428571428571,
+      "bound": 1.0,
+      "worst": [
+       "subnormal/k3p2 #39"
+      ]
+     },
+     "average/ties": {
+      "points": 59,
+      "ulp_max": 1.0,
+      "ulp_p999": 1.0,
+      "rel_max": 2.1904205938826103e-16,
+      "contract": 0.202489971341016,
+      "bound": 1.0,
+      "worst": [
+       "collinear/p2 #5"
+      ]
+     },
+     "centroid/plain": {
+      "points": 1050,
+      "ulp_max": 2.0,
+      "ulp_p999": 2.0,
+      "rel_max": 3.5400020201177615e-16,
+      "contract": 0.21433270630040022,
+      "bound": 1.0,
+      "worst": [
+       "blobs/k3p2 #15"
+      ]
+     },
+     "centroid/scale": {
+      "points": 236,
+      "ulp_max": 5768484277520996.0,
+      "ulp_p999": 5768484277520996.0,
+      "rel_max": 1.0,
+      "contract": 135342421190579.48,
+      "bound": 1.0,
+      "worst": [
+       "huge/k3p2 #49"
+      ]
+     },
+     "centroid/ties": {
+      "points": 59,
+      "ulp_max": 1.0,
+      "ulp_p999": 1.0,
+      "rel_max": 2.1394043882215405e-16,
+      "contract": 0.1574921999319014,
+      "bound": 1.0,
+      "worst": [
+       "collinear/p2 #5"
+      ]
+     },
+     "complete/plain": {
+      "points": 1050,
+      "ulp_max": 1.0,
+      "ulp_p999": 1.0,
+      "rel_max": 2.2172344474049339e-16,
+      "contract": 0.6657024154083923,
+      "bound": 1.0,
+      "worst": [
+       "rings/p2 #74"
+      ]
+     },
+     "complete/scale": {
+      "points": 177,
+      "ulp_max": 1.0,
+      "ulp_p999": 1.0,
+      "rel_max": 2.2029062915189725e-16,
+      "contract": 0.6614005302411308,
+      "bound": 1.0,
+      "worst": [
+       "narrow/k3p2 #28"
+      ]
+     },
+     "complete/ties": {
+      "points": 59,
+      "ulp_max": 1.0,
+      "ulp_p999": 1.0,
+      "rel_max": 2.050060702019328e-16,
+      "contract": 0.5961773227465793,
+      "bound": 1.0,
+      "worst": [
+       "collinear/p2 #25"
+      ]
+     },
+     "median/plain": {
+      "points": 1050,
+      "ulp_max": 2.0,
+      "ulp_p999": 1.0,
+      "rel_max": 3.048667243183849e-16,
+      "contract": 0.21433270630040022,
+      "bound": 1.0,
+      "worst": [
+       "blobs/k3p2 #15"
+      ]
+     },
+     "median/scale": {
+      "points": 236,
+      "ulp_max": 5923726480669888.0,
+      "ulp_p999": 5923726480669888.0,
+      "rel_max": 1.0,
+      "contract": 199379320103625.16,
+      "bound": 1.0,
+      "worst": [
+       "huge/k3p2 #48"
+      ]
+     },
+     "median/ties": {
+      "points": 59,
+      "ulp_max": 1.0,
+      "ulp_p999": 1.0,
+      "rel_max": 2.150501445330884e-16,
+      "contract": 0.17254762992589737,
+      "bound": 1.0,
+      "worst": [
+       "collinear/p2 #15"
+      ]
+     },
+     "single/plain": {
+      "points": 1050,
+      "ulp_max": 1.0,
+      "ulp_p999": 1.0,
+      "rel_max": 2.2026650118584593e-16,
+      "contract": 0.6583204987153165,
+      "bound": 1.0,
+      "worst": [
+       "sizes/k3p2 #143"
+      ]
+     },
+     "single/scale": {
+      "points": 236,
+      "ulp_max": 5697.0,
+      "ulp_p999": 5697.0,
+      "rel_max": 1.0,
+      "contract": 1424.25,
+      "bound": 1.0,
+      "worst": [
+       "subnormal/k3p2 #58"
+      ]
+     },
+     "single/ties": {
+      "points": 59,
+      "ulp_max": 1.0,
+      "ulp_p999": 1.0,
+      "rel_max": 2.1948566668865048e-16,
+      "contract": 0.5648431809783832,
+      "bound": 1.0,
+      "worst": [
+       "constcol/p3 #27"
+      ]
+     },
+     "ward/plain": {
+      "points": 1050,
+      "ulp_max": 2.0,
+      "ulp_p999": 2.0,
+      "rel_max": 2.9573768621249407e-16,
+      "contract": 0.21433270630040022,
+      "bound": 1.0,
+      "worst": [
+       "blobs/k3p2 #14"
+      ]
+     },
+     "ward/scale": {
+      "points": 236,
+      "ulp_max": 7162042064862054.0,
+      "ulp_p999": 7162042064862054.0,
+      "rel_max": 1.0,
+      "contract": 214400328958723.12,
+      "bound": 1.0,
+      "worst": [
+       "huge/k3p2 #45"
+      ]
+     },
+     "ward/ties": {
+      "points": 59,
+      "ulp_max": 1.0,
+      "ulp_p999": 1.0,
+      "rel_max": 2.0587542258185787e-16,
+      "contract": 0.1574921999319014,
+      "bound": 1.0,
+      "worst": [
+       "collinear/p2 #5"
+      ]
+     },
+     "weighted/plain": {
+      "points": 1050,
+      "ulp_max": 2.0,
+      "ulp_p999": 1.0,
+      "rel_max": 2.2412106549565396e-16,
+      "contract": 0.2755706223862288,
+      "bound": 1.0,
+      "worst": [
+       "blobs/k3p2 #15"
+      ]
+     },
+     "weighted/scale": {
+      "points": 236,
+      "ulp_max": 25796.0,
+      "ulp_p999": 25796.0,
+      "rel_max": 1.0,
+      "contract": 806.125,
+      "bound": 1.0,
+      "worst": [
+       "subnormal/k3p2 #58"
+      ]
+     },
+     "weighted/ties": {
+      "points": 59,
+      "ulp_max": 1.0,
+      "ulp_p999": 1.0,
+      "rel_max": 2.176856157402764e-16,
+      "contract": 0.24087552013973312,
+      "bound": 1.0,
+      "worst": [
+       "collinear/p2 #15"
+      ]
+     }
+    }
+   },
+   "comparator_seconds": 60.0,
+   "run": "20261127-000954-58694629+",
+   "comparators_run": "20261127-000954-58694629+"
+  }
+ ]
+}

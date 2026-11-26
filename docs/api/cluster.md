@@ -1,6 +1,6 @@
 # sd.cluster API
 
-> 상태: **확정** (2026-11-24; 설계 결정 CL1–CL49). CL0 마일스톤(준비)을 마쳤고 공개 이름은 아직 없다: 이름은 CL1–CL6 마일스톤에서 생긴다(tests/cluster/test_api_surface.py가 이름마다의 마일스톤을 쥔다). `sd.cluster`는 있고 `__all__`은 비었다. 이름과 시그니처는 [docs/design/cluster.md](../design/cluster.md) §9의 답(13번만 (b), 나머지 (a))을 따른다. 시그니처는 scikit-learn 1.9.1(`sklearn.cluster`, `sklearn.mixture`, `sklearn.metrics`), scipy 1.18.1(`scipy.cluster.hierarchy`), R 4.6.2의 `stats`와 `cluster` 2.1.8.3의 이름과 뜻에 stardust의 규칙과 CL1–CL40의 결정을 입힌 것이다. 임시로 둔 값(`fuzzy_cmeans`의 `tol`, `kmedoids`의 `max_iter`, `affinity_propagation`의 `metric='precomputed'`의 이름, `gap_statistic`의 `select` 이름)은 해당 마일스톤에서 정한다(표시가 그 자리에 있다).
+> 상태: **확정** (2026-11-24; 설계 결정 CL1–CL58). CL1 마일스톤(계층, 2026-11-27)까지 마쳤다: §2의 이름이 공개됐고 나머지 이름은 CL2–CL6 마일스톤에서 생긴다(tests/cluster/test_api_surface.py가 이름마다의 마일스톤을 쥔다). 이름과 시그니처는 [docs/design/cluster.md](../design/cluster.md) §9의 답(13번만 (b), 나머지 (a))을 따른다. 시그니처는 scikit-learn 1.9.1(`sklearn.cluster`, `sklearn.mixture`, `sklearn.metrics`), scipy 1.18.1(`scipy.cluster.hierarchy`), R 4.6.2의 `stats`와 `cluster` 2.1.8.3의 이름과 뜻에 stardust의 규칙과 CL1–CL40의 결정을 입힌 것이다. 임시로 둔 값(`fuzzy_cmeans`의 `tol`, `kmedoids`의 `max_iter`, `affinity_propagation`의 `metric='precomputed'`의 이름, `gap_statistic`의 `select` 이름)은 해당 마일스톤에서 정한다(표시가 그 자리에 있다).
 
 - 설계와 결정의 근거는 [docs/design/cluster.md](../design/cluster.md)(§1.1 CL1–CL40), 공통 규칙은 [API.md](../../API.md)다.
 - 언어 표시가 없는 코드 블록은 `tests/cluster/test_api_surface.py`가 읽는다. 블록의 줄은 모듈의 함수(`name(...)`), 결과 클래스(`Name`), 결과의 메서드(`Name.method(...)`)다. 블록의 모듈 수준 이름이 마일스톤을 마칠 때마다 `sd.cluster.__all__`에 들어가 CL6 마일스톤에서 그 전부가 된다.
@@ -37,6 +37,7 @@
 | `summary()` | API.md §2.3의 상자: 머리에 방법, `nobs`, `n_clusters`, 목적값, 반복 수, 수렴, 조절 모수. 표는 군집마다 한 줄(크기, 군집 안 제곱합이나 목적의 몫, 혼합 모형은 무게) |
 
 - 배열 필드는 쓰기 금지이고 처음 읽을 때 계산하는 필드도 있다(API.md §2.2). 결과의 생성자는 공개 API가 아니다.
+- `HierarchyResult`는 분할이 하나가 아니라 `labels`·`n_clusters`가 없고 `cut(k=, height=)`이 분할을 준다(설계 문서 CL57).
 - 중심·medoid·성분의 순서는 라벨의 순서다(`centers[j]`가 라벨 j의 중심).
 - `repr`는 한 줄이다(API.md §2.3): `KMeansResult(nobs=300, n_clusters=3, inertia=573.168, n_iter=6)`.
 - 결과는 자료의 사본을 쥐지 않는다. 자료가 필요한 게으른 필드(`HDBSCANResult.centroids` 등)는 자료의 읽기 전용 참조를 쥔다.
@@ -57,7 +58,9 @@
   | scipy `kmeans2`: 빈 군집(`UserWarning`을 반복마다) | 가장 먼 점으로 옮긴다(sklearn과 같다) |
   | R `kmeans`: 빈 군집(에러 또는 경고) | 위와 같다 |
   | scipy `linkage`: 거리 행렬처럼 보이는 2차원 입력(`ClusterWarning`) | 없음: 2차원은 관측값이다 |
-  | scipy `fcluster`·`cut_tree`: 역전 트리의 높이 자르기(서로 다른 답) | `ValueError`: `cut_tree(): cannot cut a non-monotonic tree by height (method='centroid')` |
+  | scipy `fcluster`·`cut_tree`: 역전 트리의 높이 자르기(서로 다른 답) | `ValueError`: `cut_tree(): cannot cut a non-monotonic tree by height (its heights decrease somewhere)`, 결과의 `cut(): cannot cut a non-monotonic tree by height (method='centroid')` |
+  | scipy `fcluster(criterion='maxclust')`: t < 1(정해지지 않은 답) | `ValueError`: `fcluster(): 't' must be >= 1 for criterion='maxclust', not 0` |
+  | scipy `linkage`: 1차원(압축 꼴) 입력의 `metric`을 무시 | `ValueError`: `linkage(): a 1-D 'y' holds condensed distances; 'metric' does not apply (got 'cityblock')` |
   | sklearn `HDBSCAN`: `copy`의 기본값 변경(`FutureWarning`) | 없음: `copy` 인자가 없다(입력을 고치지 않는다) |
   | sklearn `GaussianMixture`: 공분산 실패(`ValueError`) | `LinAlgError`: `gaussian_mixture(): component 2 has an ill-defined covariance; increase 'reg_covar' or check for duplicate points` |
   | R `daisy`: 논리형 열(경고, 비대칭 이진으로) | 대칭 이진(`types`로 바꾼다) |
@@ -87,6 +90,7 @@ fcluster(Z, t, /, *, criterion='inconsistent', depth=2, R=None, monocrit=None)
 cut_tree(Z, /, *, n_clusters=None, height=None)
 cophenet(Z, /)
 cophenet_correlation(Z, y, /)
+CophenetResult
 leaves_list(Z, /)
 optimal_leaf_ordering(Z, y, /, *, metric='euclidean')
 dendrogram(Z, /, *, p=30, truncate_mode=None, color_threshold=None, orientation='top', labels=None, count_sort=False, distance_sort=False, show_leaf_counts=True)
@@ -104,18 +108,22 @@ is_isomorphic(T1, T2, /)
 - **`method`**: `'single'`, `'complete'`, `'average'`, `'weighted'`, `'centroid'`, `'median'`, `'ward'`. 기본값은 scipy와 같은 `'single'`이다(CL16; R `hclust`는 `'complete'`, sklearn `AgglomerativeClustering`은 `'ward'`라 그쪽에서 옮겨 오는 코드는 `method`를 적어 준다). 높이의 뜻은 scipy와 같다: `ward`는 R `ward.D2`, `centroid`·`median`은 유클리드 거리의 뜻(R은 제곱 거리를 주어야 같은 트리이고 높이는 제곱), `weighted`는 R `mcquitty`다.
 - 관측값과 비유클리드 `metric`의 `ward`·`centroid`·`median`은 `ValueError`(`linkage(): method='ward' requires metric='euclidean'`)다. 미리 계산한 거리는 받고 유클리드 거리라고 가정한다.
 - **Z**: scipy의 꼴이다. 행 i는 i번째 병합(두 군집 번호, 높이, 크기)이고 군집 번호는 점이 0 … n − 1, 병합이 n + i다. 두 군집 번호는 (작은 것, 큰 것)이다. 행의 순서는 병합 순서다(단조 연결법에서는 높이 순서).
-- **동점과 입력 순서**: 같은 높이의 후보는 두 군집의 가장 작은 점 번호(좌표의 사전순 정렬의 번호)의 짝이 작은 쪽을 먼저 합친다. 그래서 점들을 섞어 주어도 같은 트리다(Z의 점 번호는 입력의 번호).
-- **높이**: 트리가 정해진 뒤 최종 트리 위에서 Lance–Williams 재귀로 다시 계산한 값이다(`single`·`complete`는 입력 거리 그대로; 설계 문서 CL45). 그래서 행렬 길, 행렬 없는 길, 동점의 일반 알고리즘이 같은 비트를 낸다. scipy(병합 순서의 누적)와 끝자리가 다를 수 있고, 정확도는 같은 크기다(CL0 마일스톤의 시제품: 참값과 2 ULP 안, scipy 3 ULP 안).
-- **큰 n**: 관측값의 `single`, `ward`, `centroid`, `median`은 n × n 행렬을 만들지 않는다(n = 10⁵ 이상도 된다). `complete`, `average`, `weighted`와 미리 계산한 거리는 행렬이다.
-- **`agglomerative`** → `HierarchyResult`: 같은 트리의 결과 객체다. **`divisive`**: R `diana`의 분할식 계층(높이는 지름)이다.
+- **동점과 입력 순서**: 같은 높이의 후보는 두 군집의 가장 작은 점 번호(좌표의 사전순 정렬의 번호; 미리 계산한 거리는 입력 색인)의 짝이 작은 쪽을 먼저 합친다. 그래서 점들을 섞어 주어도 같은 트리다(Z의 점 번호는 입력의 번호). 행은 두 자식이 이미 있는 병합 가운데 (높이, 짝)이 가장 작은 것부터다(설계 문서 CL51).
+- **높이**: 트리가 정해진 뒤 최종 트리 위에서 Lance–Williams 재귀로 다시 계산한 값이다(`single`·`complete`는 입력 거리 그대로; 설계 문서 CL45). 그래서 행렬 길, 행렬 없는 길, 동점의 일반 알고리즘이 같은 비트를 낸다. 단조인 연결법(`centroid`·`median` 밖)의 높이는 행을 따라 줄지 않는다(CL51). scipy(병합 순서의 누적)와 끝자리가 다를 수 있고, 정확도는 같은 크기다(참값과 2 ULP 이하, scipy 3 ULP 이하). 계약은 설계 문서 §4.1에서 증명한 한계다(CL55).
+- **큰 n**: 관측값의 `single`, `ward`, `centroid`, `median`은 n × n 행렬을 만들지 않는다(n = 10⁵의 `single`이 0.17초, `ward`가 7초; 10스레드). `complete`, `average`, `weighted`, 그 밖의 거리와 미리 계산한 거리는 행렬이다(작업 사본까지 16·n(n − 1)/2 바이트).
+- **`agglomerative`** → `HierarchyResult`: 같은 트리의 결과 객체다. **`divisive`**: R `diana`의 분할식 계층(높이는 지름)이다. `[R과 다름]` 지름이 같은 나누기가 이어지면 R의 `merge`는 배너에서 만든 다른 중첩을 보인다. sd는 실제로 나눈 트리다(같은 높이의 k 자르기가 R과 다를 수 있다; 서로 다른 높이 사이의 자르기는 같다).
 - **자르기**:
   - `HierarchyResult.cut(k=)`, `cut_tree(Z, n_clusters=)`, `fcluster(Z, t, criterion='maxclust')`: 병합 순서로 마지막 k − 1개의 병합을 되돌린 분할(R `cutree(k=)`). `fcluster(maxclust)`는 scipy의 뜻("t개 이하"; 같은 높이의 병합은 함께 되돌리거나 함께 남긴다)이라 동점의 높이에서 k보다 적을 수 있다. `cut`과 `cut_tree`는 언제나 k개다.
-  - `cut(height=)`, `cut_tree(height=)`, `fcluster(criterion='distance')`: 높이 h 이하의 병합만 남긴다. 역전 트리(`is_monotonic(Z)`가 False)에서는 `ValueError`다(`[scipy와 다름]`; R과 같다).
+  - `cut(height=)`, `cut_tree(height=)`, `fcluster(criterion='distance')`: 높이 h 이하의 병합만 남긴다(`[scipy와 다름]`: scipy `cut_tree(height=)`는 h 미만이다). 역전 트리(`is_monotonic(Z)`가 False)에서는 `ValueError`다(`[scipy와 다름]`; R과 같다).
+  - 같은 높이의 병합이 있을 때 `cut(k=)`·`cut_tree(n_clusters=)`는 행의 차례로 되돌린다(R `cutree(k=)`와 같고, scipy `cut_tree`의 너비 우선 차례와는 다를 수 있다 `[scipy와 다름]`).
   - `cut`은 (n,) 라벨(0부터, 처음 나오는 차례), `cut_tree`는 scipy처럼 (n, len) 배열(인자가 하나면 (n, 1)), `fcluster`는 scipy처럼 1부터의 라벨이다.
-  - `fcluster`의 기준: `'inconsistent'`(기본), `'distance'`, `'maxclust'`, `'monocrit'`, `'maxclust_monocrit'`(scipy와 같다).
+  - `fcluster`의 기준: `'inconsistent'`(기본), `'distance'`, `'maxclust'`, `'monocrit'`, `'maxclust_monocrit'`(scipy와 같고 번호도 scipy의 순회 차례다). maxclust의 두 기준은 t가 1 이상의 정수다(t ≥ n은 scipy처럼 1 … n). `monocrit`은 아래에서 위로 줄지 않아야 한다(`ValueError`).
 - **`cophenet(Z)`**: 압축 꼴의 cophenetic 거리. **`cophenet_correlation(Z, y)`**: `CophenetResult(correlation, distances)`(`[scipy와 다름]`: scipy는 `cophenet(Z, Y)`가 인자에 따라 다른 꼴을 돌려준다).
-- **`dendrogram`** → `DendrogramResult`(namedtuple `icoord`, `dcoord`, `ivl`, `leaves`, `color_list`, `leaves_color_list`): scipy `dendrogram(no_plot=True)`과 같은 자리 자료다. 그리지 않는다. `color_list`는 matplotlib 색 이름이 아니라 묶음 번호(0부터, `color_threshold` 위의 가지는 −1)다.
-- `is_valid_linkage`는 bool만 돌려준다(scipy의 `warning`, `throw`, `name`은 없다; 검사가 필요한 곳은 함수가 스스로 `ValueError`를 낸다).
+- **`dendrogram`** → `DendrogramResult`(namedtuple `icoord`, `dcoord`, `ivl`, `leaves`, `color_list`, `leaves_color_list`): scipy `dendrogram(no_plot=True)`과 같은 자리 자료다. 그리지 않는다. `icoord`·`dcoord`는 (m, 4) float64 배열, `leaves`는 int64 배열, `ivl`은 잎 이름의 리스트다. `color_list`는 matplotlib 색 이름이 아니라 묶음 번호(0부터 차례로, scipy처럼 돌려 쓰지 않는다; `color_threshold` 이상의 가지는 −1)이고, `leaves_color_list`는 잎마다 그 잎을 잇는 가지의 번호다. `orientation`은 검사만 한다(그림의 것이다).
+- `is_valid_linkage`는 bool만 돌려준다(scipy의 `warning`, `throw`, `name`은 없다; 검사가 필요한 곳은 함수가 스스로 `ValueError`를 낸다). scipy가 보는 것에 더해 군집 번호가 정수인지, 개수가 두 자식의 합인지, 높이가 유한한지도 본다(`[scipy와 다름]`).
+- **`optimal_leaf_ordering`**: 이웃한 잎의 거리 합이 가장 작은 순서(Bar-Joseph 외 2001)의 Z다. 뿌리의 첫 군집은 왼쪽에 둔다. 같은 합의 순서는 점 번호가 작은 쪽이다. `[scipy와 다름]` scipy 1.18.1은 최소가 아닌 순서를 낼 때가 있다(설계 문서 CL53).
+- **`inconsistent`**: scipy의 네 열(깊이 d까지의 높이의 평균, 표준편차(n − 1로 나눈다), 개수, 불일치 계수). 표준편차는 평균을 뺀 두 번째 훑기라 scipy(한 번 훑기)와 끝자리가 다르고, 높이 하나일 때 scipy의 10⁻⁹ 꼴 대신 0이다.
+- **`leaders`** → (L, M) int64 배열의 튜플(scipy와 같은 차례). **`cophenet_correlation`** → `CophenetResult(correlation, distances)`(namedtuple; 설계 문서 CL58).
 
 | `HierarchyResult`의 필드·메서드 | 뜻 |
 |---|---|
@@ -123,7 +131,8 @@ is_isomorphic(T1, T2, /)
 | `method`, `metric` | 연결법(`divisive`는 `'diana'`)과 거리 |
 | `heights` | Z의 높이 열 (n − 1,) |
 | `order` | 잎의 순서(`leaves_list(Z)`; `optimal_ordering=True`면 최적 순서) |
-| `coefficient` | 응집 계수(R `agnes`의 `ac`) 또는 분할 계수(`diana`의 `dc`) |
+| `coefficient` | 응집 계수(R `agnes`의 `ac`) 또는 분할 계수(`diana`의 `dc`): 점마다 1 − (처음 합쳐지는 높이)/(마지막 병합의 높이)의 평균(마지막 높이가 0이면 NaN) |
+| `nobs`, `omitted` | 트리의 점 수와 `nan_policy='omit'`이 뺀 행(Z의 점 번호는 남은 행의 번호; `cut`은 뺀 행에 −1) |
 | `cut(k=, height=)`, `cophenet()`, `dendrogram(...)` | 위의 함수들 |
 
 ## §3. 분할 (§9의 20–24번)

@@ -22,7 +22,8 @@ LINE = re.compile(r"^(?:(?P<cls>[A-Za-z_]\w*)\.)?(?P<name>[A-Za-z_]\w*)(?:\((?P<
 # the milestone that makes each documented module-level name public (docs/design/cluster.md §8)
 MILESTONE = {
     **dict.fromkeys(
-        "linkage agglomerative divisive HierarchyResult fcluster cut_tree cophenet cophenet_correlation leaves_list "
+        "linkage agglomerative divisive HierarchyResult fcluster cut_tree cophenet cophenet_correlation CophenetResult "
+        "leaves_list "
         "optimal_leaf_ordering dendrogram DendrogramResult inconsistent maxdists maxinconsts maxRstat leaders "
         "is_monotonic is_valid_linkage num_obs_linkage is_isomorphic".split(),
         "CL1",
@@ -44,7 +45,7 @@ MILESTONE = {
     ),
     **dict.fromkeys("affinity_propagation AffinityPropagationResult".split(), "CL6"),
 }
-DONE = ()  # the milestones whose names are public (CL0 makes none)
+DONE = ("CL1",)  # the milestones whose names are public
 RESULTS = {
     "HierarchyResult",
     "KMeansResult",
@@ -58,7 +59,7 @@ RESULTS = {
     "GapResult",
     "AffinityPropagationResult",
 }
-TUPLES = {"DendrogramResult", "HomogeneityResult"}  # namedtuples: no methods
+TUPLES = {"DendrogramResult", "CophenetResult", "HomogeneityResult"}  # namedtuples: no methods
 RNG = (
     "kmeans",
     "minibatch_kmeans",

@@ -6,10 +6,58 @@ Usage: ``import stardust as sd`` then ``sd.cluster.kmeans(X, k, rng=sd.random.de
 (k-means, k-medoids, fuzzy c-means), hierarchical (scipy's linkage tools and DIANA), density (DBSCAN,
 HDBSCAN, OPTICS), Gaussian mixtures and the clustering indices in one flat namespace (no submodules); the
 fitting functions return <Name>Result objects, the scipy-named hierarchy tools take and return arrays
-(decisions CL1-CL50 in docs/design/cluster.md §1.1).
+(decisions CL1-CL57 in docs/design/cluster.md §1.1).
 
 Milestone CL0 made the common base of the results (_results.py) and the argument checks (_common.py); the
-public names come with milestones CL1 to CL6.
+public names come with milestones CL1 to CL6 (CL1: the hierarchy, _hierarchy.py).
 """
 
-__all__ = []
+from ._hierarchy import (
+    CophenetResult,
+    DendrogramResult,
+    HierarchyResult,
+    agglomerative,
+    cophenet,
+    cophenet_correlation,
+    cut_tree,
+    dendrogram,
+    divisive,
+    fcluster,
+    inconsistent,
+    is_isomorphic,
+    is_monotonic,
+    is_valid_linkage,
+    leaders,
+    leaves_list,
+    linkage,
+    maxdists,
+    maxinconsts,
+    maxRstat,
+    num_obs_linkage,
+    optimal_leaf_ordering,
+)
+
+__all__ = [
+    "linkage",
+    "agglomerative",
+    "divisive",
+    "HierarchyResult",
+    "fcluster",
+    "cut_tree",
+    "cophenet",
+    "cophenet_correlation",
+    "CophenetResult",
+    "leaves_list",
+    "optimal_leaf_ordering",
+    "dendrogram",
+    "DendrogramResult",
+    "inconsistent",
+    "maxdists",
+    "maxinconsts",
+    "maxRstat",
+    "leaders",
+    "is_monotonic",
+    "is_valid_linkage",
+    "num_obs_linkage",
+    "is_isomorphic",
+]

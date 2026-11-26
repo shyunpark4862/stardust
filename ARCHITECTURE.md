@@ -41,7 +41,7 @@
   - `interpolate/`의 선형 커널(`base/lerp.hpp`)과 구간 찾기(`base/interval.hpp`)는 바닥 층에 두고 배열의 `sd.interp`(`array/ops/interp.cpp`)와 함께 쓴다(`base/sincos.hpp`와 같은 자리; docs/design/interpolate.md §1.4, §3.2). 배열은 interpolate를 모른다. 삼각분할 위의 보간(`interpolate/scattered.cpp`)은 spatial의 `_Delaunay` 객체(`spatial/delaunay2.hpp`의 `DelaunayObj`), 위치 찾기(`triangulation.hpp`의 `locate_each`), 값 커널(`predicates.hpp`)을 쓴다(docs/design/interpolate.md IP128). Python 층의 `stardust.interpolate`는 `stardust.spatial`(`KDTree`, `Delaunay`)과 `stardust.sparse`(`design_matrix`)를 쓴다.
   - `fft/`는 다른 영역을 쓰지 않는다. 모든 길이를 자체 C++로 계산하고 Accelerate의 vDSP를 부르지 않는다(docs/design/fft.md FT30, FT66; vDSP의 래퍼 `fft/vdsp.hpp`는 라이브러리에 빌드되지 않고 탐침 `tools/fft_probe_kernels.cpp`만 쓴다). Python 층의 `stardust.fft`도 다른 영역을 쓰지 않는다(FFTLog의 계수도 `fft/fftlog.hpp`의 double-double log Γ로 만든다: docs/design/fft.md FT58).
   - `smooth/`는 보간의 B-스플라인 값(`interpolate/deboor.hpp`), spatial의 KD 트리와 거리 커널(`spatial/kdtree.hpp`), fft의 계획과 r2r(`fft/plan.hpp`, `fft/r2r.hpp`)를 부르기만 하고 그 영역들은 smooth를 모른다. 한 변수 찾기(fminbound, brentq)와 Nelder–Mead는 optimize와 같은 알고리즘을 C++ 함수 인자로 받는 판을 이 영역에 둔다(`smooth/search.hpp`, `kreg.cpp`, `bandwidth.cpp`; docs/design/smooth.md §1.4, §6). Python 층의 `stardust.smooth`는 `stardust.interpolate`(결과의 `BSpline`, 보간 극한의 `make_interp_spline`), `stardust.stats`(구간의 분위수, 표본의 잡음), `stardust.random`, `stardust.linalg`, `stardust.frame`, `stardust._summary`를 쓴다.
-  - `cluster/`는 spatial의 짝 거리 커널(`spatial/metric.hpp`: k-평균과 계층 군집의 거리가 `sd.spatial.cdist`와 같은 비트)과 KD 트리를 부르기만 하고 spatial은 cluster를 모른다(docs/design/cluster.md §1.4, §6). CL0 마일스톤의 시제품(`cluster/prototype.cpp`, `_core.cluster._proto_*`)은 거리 꼴을 견주려고 Accelerate의 `cblas_dgemm`을 부르고, CL1·CL2 마일스톤이 영역의 커널로 바꾸며 지운다. Python 층의 `stardust.cluster`는 `stardust.random`(`rng`의 두 단어), `stardust.spatial`(`squareform`, 거리 이름), `stardust.frame`, `stardust._summary`, `stardust._calls`를 쓴다.
+  - `cluster/`는 spatial의 짝 거리 커널(`spatial/metric.hpp`: k-평균과 계층 군집의 거리가 `sd.spatial.cdist`와 같은 비트)과 KD 트리를 부르기만 하고 spatial은 cluster를 모른다(docs/design/cluster.md §1.4, §6). 계층 군집(`cluster/hierarchy.cpp`, `cluster/mst.cpp`; CL1 마일스톤)은 spatial의 짝 커널과 KD 트리(`kd_build`, 증명된 가지치기 `KdCut`)를 부른다. CL0 마일스톤의 시제품(`cluster/prototype.cpp`, `_core.cluster._proto_*`)은 k-평균 부분만 남았고(거리 꼴을 견주려고 Accelerate의 `cblas_dgemm`을 부른다) CL2 마일스톤이 영역의 커널로 바꾸며 지운다. Python 층의 `stardust.cluster`는 `stardust.random`(`rng`의 두 단어), `stardust.spatial`(`squareform`, 거리 이름), `stardust.frame`, `stardust._summary`, `stardust._calls`를 쓴다.
   - Python 층에서 `stardust.integrate`와 `stardust.differentiate`는 인자 검사 도우미(`_callable`, `_check_int`, `_real` 등)를 `stardust.optimize._common`에서, 원소별 무리의 입력(`_inputs`, `_args`, `_shaped`)을 `stardust.optimize._elementwise`에서 가져온다. C++의 반복 고리는 바닥 폴더 `csrc/elementwise/`에 있어 optimize를 거치지 않는다(docs/design/integrate.md C16, §6.3).
   - Python 경계의 공용 도우미 `bind/pyutil.hpp`(배열 받기와 만들기)와 `bind/errors.hpp`(에러 메시지에 공개 함수 이름 붙이기)는 모든 영역의 `ops/`가 쓴다. 영역마다의 바인딩 파일(`bind/<영역>_bind.cpp`)은 맨 위 층이다.
 - **새 영역은 디렉터리 하나와 Python 하위 모듈 하나로 붙는다.** 아래 층만 쓰고, 기존 영역을 고치지 않는다.
@@ -77,7 +77,7 @@ stardust/
     interpolate/                __init__.py, _common, _ppoly (IP2 마일스톤), _bspline (IP3 마일스톤), _polyint _aaa (IP4 마일스톤), _grid (IP5 마일스톤), _rbf (IP6 마일스톤; docs/design/interpolate.md §6)
     fft/                        _common, _basic, _realtransforms, _helper, _fftlog (docs/design/fft.md §6)
     smooth/                     __init__.py, _results(회귀형 결과의 공통 기반; SM0 마일스톤), _common, _local (SM1 마일스톤), _loess (SM2 마일스톤), _spline _fitpack (SM3 마일스톤), _kreg (SM4 마일스톤), _kde _bandwidth (SM5 마일스톤), _savgol (SM6 마일스톤; docs/design/smooth.md §6)
-    cluster/                    __init__.py, _results(결과의 공통 기반 `ClusterResult`; CL0 마일스톤), _common (CL0 마일스톤; docs/design/cluster.md §6)
+    cluster/                    __init__.py, _results(결과의 공통 기반 `ClusterResult`; CL0 마일스톤), _common (CL0 마일스톤), _hierarchy(계층과 scipy의 도구; CL1 마일스톤) (docs/design/cluster.md §6)
     plot/                       _figure(칸·배치·내보내기), _layers, _basic, _sample·_function(함수 그림), _field(두 변수), _stat, _surface(3D), _adapt(곡면의 적응형 표본),
                                 _scene(도형 목록), _text(LaTeX 조판과 글리프 윤곽선의 캐시), _dvi, _ticks, _color, _svg·_pdf·_png
                                 (docs/design/plot.md §7)
@@ -131,7 +131,7 @@ stardust/
     fft/          twiddle(회전 인자), cfft(혼합 기수 Stockham 복소 FFT, 4단계, 두 줄 커널), bluestein·ddmath, rfft(실수 FFT), plan(계획과 캐시), driver(축 구동기),
                   basic·helper·args(변환과 도우미), r2r(DCT·DST), fftlog(FFTLog), vdsp(vDSP DFT의 래퍼, 탐침만; docs/design/fft.md §6)
     smooth/       local (SM1 마일스톤), loess (SM2 마일스톤), bandqr search spline fitpack (SM3 마일스톤), gauss_sum kreg (SM4 마일스톤), gauss_tree kde bandwidth (SM5 마일스톤), savgol (SM6 마일스톤; docs/design/smooth.md §6)
-    cluster/      prototype (CL0 마일스톤의 측정: 거리 꼴, 경계 가속, Prim·Borůvka, NN-chain, 높이; CL1·CL2 마일스톤이 영역의 커널로 바꾼다; docs/design/cluster.md §6)
+    cluster/      common.hpp(열쇠, 압축 꼴 색인, 2의 거듭제곱 척도), mst(Prim, KD 트리 Borůvka), hierarchy(NN-chain, 일반 알고리즘, 행렬 없는 길, 트리 위의 높이 재귀, DIANA, cophenet, 최적 잎 순서; CL1 마일스톤), prototype(CL0 마일스톤의 k-평균 측정; CL2 마일스톤이 지운다) (docs/design/cluster.md §6)
     plot/         raster(2D 래스터라이저: 면적 누적, 획의 윤곽, 점 찍기, 그림 붙이기), zbuffer(3D 깊이 버퍼), levels(marching squares; docs/design/plot.md §3.5, §5, §6)
     elementwise/  loop(원소별 반복 고리: optimize의 배치 넷, 미분·적분의 원소별 무리; docs/design/integrate.md §6.2)
     bind/         module.cpp(_core와 하위 모듈), <영역>_bind.cpp, stats_{desc,matrix,mv,mvcdf,sample}.cpp,
@@ -174,7 +174,7 @@ stardust/
 - **"얇은 Python, 두꺼운 C++"**: 계산은 C++에 있고, Python은 인자 정리, 결과 객체, 메시지를 맡는다.
   - 예외: `Series`, `DataFrame`, 분포 객체(`sd.stats`), 회귀·최적화의 결과 객체는 Python 클래스다.
 - **확장 모듈은 `_core` 하나다** (DESIGN §3.2).
-  - `nb::module_::def_submodule`로 영역마다 `_core.linalg`, `_core.frame`, `_core.special`, `_core.stats`, `_core.regression`, `_core.random`, `_core.optimize`, `_core.differentiate`, `_core.integrate`, `_core.htest`, `_core.sparse`를 만든다(`bind/module.cpp`가 차례로 부른다). spatial의 `_core.spatial`은 공개 함수가 생기는 SPT1부터다. graph의 `_core.graph`는 GR1 마일스톤부터, interpolate의 `_core.interpolate`는 IP1 마일스톤부터, fft의 `_core.fft`는 FT1 마일스톤부터, smooth의 `_core.smooth`는 SM1 마일스톤부터, cluster의 `_core.cluster`는 CL0 마일스톤부터다(시제품 `_proto_*`만; 공개 함수는 CL1 마일스톤부터).
+  - `nb::module_::def_submodule`로 영역마다 `_core.linalg`, `_core.frame`, `_core.special`, `_core.stats`, `_core.regression`, `_core.random`, `_core.optimize`, `_core.differentiate`, `_core.integrate`, `_core.htest`, `_core.sparse`를 만든다(`bind/module.cpp`가 차례로 부른다). spatial의 `_core.spatial`은 공개 함수가 생기는 SPT1부터다. graph의 `_core.graph`는 GR1 마일스톤부터, interpolate의 `_core.interpolate`는 IP1 마일스톤부터, fft의 `_core.fft`는 FT1 마일스톤부터, smooth의 `_core.smooth`는 SM1 마일스톤부터, cluster의 `_core.cluster`는 CL0 마일스톤부터다(CL0은 시제품 `_proto_*`만; CL1 마일스톤부터 계층의 커널).
   - nanobind 타입 테이블이 하나라서, C++ 어디서든 `is_ndarray`/`as_ndarray`(`bind/pyutil.hpp`)로 배열을 직접 받는다.
 - **linalg는 배열을 C++에서 직접 주고받는다.**
   - 입력은 `const NDArray&`이고, 결과는 linalg가 정한 strides로 `new_array_strided(dtype, shape, strides, nbytes)`가 `NDArray`를 직접 만든다. 레이아웃(행렬마다 열 우선, 배치 축은 바깥에 C-order, 길이 0인 축도 그대로 곱함)은 linalg의 정책이라 linalg에 두고, 메모리와 플래그만 배열이 맡는다.

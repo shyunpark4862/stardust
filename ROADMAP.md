@@ -1,6 +1,6 @@
 # stardust 로드맵
 
-> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6 완료·승인, G7a 완료·승인, G7b 완료·승인), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0 완료·승인, O1 완료·승인, O2 완료·승인, O3 완료·승인, O4 완료·승인, O5 완료·승인, O6 완료·승인), 그 뒤 [가설검정 (sd.htest)](#가설검정-영역-sdhtest)(H0 완료·승인, H1 완료·승인, H2 완료·승인, H3 완료·승인, H4 완료·승인, H5 완료·승인, H6 완료·승인(위임), H7 완료·승인(위임), H8 완료·승인(위임), H9 완료·승인(위임), H10 완료·승인(위임)), 그 뒤 [희소 (sd.sparse)](#희소-영역-sdsparse)(SP0 완료·승인, SP1 완료·승인, SP2 완료·승인, SP3 완료·승인, SP4 완료·승인(위임), SP5 완료·승인(위임), SP6 완료·승인(위임), SP7 완료·승인(위임), SP8 완료·승인(위임)), 그 뒤 [수치 미적분 (sd.integrate, sd.differentiate)](#수치-미적분-영역-sdintegrate-sddifferentiate)(C0 완료·승인(위임), C1 완료·승인(위임), C2 완료·승인(위임), C3 완료·승인(위임), C4 완료·승인(위임), C5 완료·승인(위임), C6 완료·승인(위임), C7 완료·승인(위임), C8 완료·승인(위임)), 그 뒤 [공간 (sd.spatial)](#공간-영역-sdspatial)(SPT0 완료·승인(위임), SPT1 완료·승인(위임), SPT2 완료·승인(위임), SPT3 완료·승인(위임), SPT4 완료·승인(위임), SPT6 완료·승인(위임), SPT7 완료·승인(위임); 계산 기하 SPT8·SPT9·SPT10·SPT11·SPT12·SPT13·SPT14 완료·승인(위임), 흩어진 점 보간 IP9는 나중), 그리고 [그림 (sd.plot)](#그림-영역-sdplot)(PL0–PL9 완료·승인), 그 뒤 [그래프 (sd.graph)](#그래프-영역-sdgraph)(GR0·GR1·GR2·GR3·GR4·GR5·GR6·GR7 마일스톤 완료·승인(위임)), 그 뒤 [보간 (sd.interpolate)](#보간-영역-sdinterpolate)(IP0·IP1·IP2·IP3·IP4·IP5·IP6·IP7·IP8 마일스톤 완료·승인(위임)), 그 뒤 [푸리에 변환 (sd.fft)](#푸리에-변환-영역-sdfft)(FT0·FT1·FT2·FT3·FT4·FT5·FT6·FT7 마일스톤 완료·승인(위임)), 그 뒤 [평활 (sd.smooth)](#평활-영역-sdsmooth)(SM0·SM1·SM2·SM3·SM4·SM5·SM6·SM7·SM8 마일스톤 완료·승인(위임)), 그 뒤 [군집 (sd.cluster)](#군집-영역-sdcluster)(CL0 마일스톤 완료)이다.
+> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6 완료·승인, G7a 완료·승인, G7b 완료·승인), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0 완료·승인, O1 완료·승인, O2 완료·승인, O3 완료·승인, O4 완료·승인, O5 완료·승인, O6 완료·승인), 그 뒤 [가설검정 (sd.htest)](#가설검정-영역-sdhtest)(H0 완료·승인, H1 완료·승인, H2 완료·승인, H3 완료·승인, H4 완료·승인, H5 완료·승인, H6 완료·승인(위임), H7 완료·승인(위임), H8 완료·승인(위임), H9 완료·승인(위임), H10 완료·승인(위임)), 그 뒤 [희소 (sd.sparse)](#희소-영역-sdsparse)(SP0 완료·승인, SP1 완료·승인, SP2 완료·승인, SP3 완료·승인, SP4 완료·승인(위임), SP5 완료·승인(위임), SP6 완료·승인(위임), SP7 완료·승인(위임), SP8 완료·승인(위임)), 그 뒤 [수치 미적분 (sd.integrate, sd.differentiate)](#수치-미적분-영역-sdintegrate-sddifferentiate)(C0 완료·승인(위임), C1 완료·승인(위임), C2 완료·승인(위임), C3 완료·승인(위임), C4 완료·승인(위임), C5 완료·승인(위임), C6 완료·승인(위임), C7 완료·승인(위임), C8 완료·승인(위임)), 그 뒤 [공간 (sd.spatial)](#공간-영역-sdspatial)(SPT0 완료·승인(위임), SPT1 완료·승인(위임), SPT2 완료·승인(위임), SPT3 완료·승인(위임), SPT4 완료·승인(위임), SPT6 완료·승인(위임), SPT7 완료·승인(위임); 계산 기하 SPT8·SPT9·SPT10·SPT11·SPT12·SPT13·SPT14 완료·승인(위임), 흩어진 점 보간 IP9는 나중), 그리고 [그림 (sd.plot)](#그림-영역-sdplot)(PL0–PL9 완료·승인), 그 뒤 [그래프 (sd.graph)](#그래프-영역-sdgraph)(GR0·GR1·GR2·GR3·GR4·GR5·GR6·GR7 마일스톤 완료·승인(위임)), 그 뒤 [보간 (sd.interpolate)](#보간-영역-sdinterpolate)(IP0·IP1·IP2·IP3·IP4·IP5·IP6·IP7·IP8 마일스톤 완료·승인(위임)), 그 뒤 [푸리에 변환 (sd.fft)](#푸리에-변환-영역-sdfft)(FT0·FT1·FT2·FT3·FT4·FT5·FT6·FT7 마일스톤 완료·승인(위임)), 그 뒤 [평활 (sd.smooth)](#평활-영역-sdsmooth)(SM0·SM1·SM2·SM3·SM4·SM5·SM6·SM7·SM8 마일스톤 완료·승인(위임)), 그 뒤 [군집 (sd.cluster)](#군집-영역-sdcluster)(CL0·CL1 마일스톤 완료)이다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -1260,7 +1260,7 @@
 
 # 군집 영역 (sd.cluster)
 
-> 상태: **CL0 마일스톤 완료** (2026-11-24). 설계는 [docs/design/cluster.md](docs/design/cluster.md)(확정), API는 [docs/api/cluster.md](docs/api/cluster.md)(확정)다. 결정은 CL1–CL49이다. 공개 이름은 아직 없다(CL1 마일스톤부터). k-평균의 거리 꼴은 사용자가 정했다(CL49: 차의 꼴 + 증명된 거르기, 2026-11-26).
+> 상태: **CL1 마일스톤 완료** (2026-11-27; CL0 2026-11-24). 설계는 [docs/design/cluster.md](docs/design/cluster.md)(확정), API는 [docs/api/cluster.md](docs/api/cluster.md)(확정)다. 결정은 CL1–CL49이다. 공개 이름은 아직 없다(CL1 마일스톤부터). k-평균의 거리 꼴은 사용자가 정했다(CL49: 차의 꼴 + 증명된 거르기, 2026-11-26).
 
 ## 진행 원칙
 - 다른 영역과 같다: 마일스톤마다 시작 전에 물을 것을 정하고, 구현하고, 정확도·속도를 재고, 커밋하고, 결과를 전달한다. 해설과 안내서는 쓰지 않는다. 결정 번호와 마일스톤 이름이 같은 머리글자라서 마일스톤은 "CL1 마일스톤"처럼 적는다. 마일스톤 에이전트는 한 번에 하나다.
@@ -1272,13 +1272,13 @@
 | 마일스톤 | 상태 |
 |---|---|
 | CL0 준비: API 문서의 손질, 영역 등록, 시험 자료, 참값, sklearn·scipy·R 기록, 시제품의 측정, 결과의 공통 기반, 속도 사례와 골든의 틀 | 완료 (2026-11-24) |
-| CL1 계층: `linkage`, `agglomerative`, `divisive`, `HierarchyResult`, scipy의 계층 도구, `dendrogram`의 자료, 행렬 없는 길 | 시작 전 |
+| CL1 계층: `linkage`, `agglomerative`, `divisive`, `HierarchyResult`, scipy의 계층 도구, `dendrogram`의 자료, 행렬 없는 길 | 완료 (2026-11-27; CL50–CL58) |
 | CL2 분할: `kmeans`, `minibatch_kmeans`, `bisecting_kmeans`, `kmedoids`(PAM·CLARA), `fuzzy_cmeans` | 시작 전 |
 | CL3 밀도: `dbscan`, `hdbscan`, `optics` | 시작 전 |
 | CL4 혼합: `gaussian_mixture`(네 공분산 꼴) | 시작 전 |
 | CL5 지표와 k 고르기: 내부·외부 지표, `gap_statistic`, `gower_distance` | 시작 전 |
 | CL6 그 밖: `affinity_propagation` | 시작 전 |
-| CL7 성능과 일관성 점검 | 시작 전 |
+| CL7 성능과 일관성 점검 (CL1에서 넘긴 것: 10스레드 목표에 못 미친 `linkage`의 complete·average·weighted·centroid·median·ward) | 시작 전 |
 | CL8 문서 | 시작 전 |
 
 ## 마일스톤

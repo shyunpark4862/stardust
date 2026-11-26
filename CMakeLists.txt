@@ -146,6 +146,8 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/smooth/kreg.cpp
   csrc/smooth/kde.cpp
   csrc/smooth/bandwidth.cpp
+  csrc/cluster/hierarchy.cpp
+  csrc/cluster/mst.cpp
   csrc/cluster/prototype.cpp
   csrc/special/reduce.cpp
   csrc/frame/column.cpp

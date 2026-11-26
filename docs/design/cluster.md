@@ -1,6 +1,6 @@
 # 군집 영역 설계 (sd.cluster)
 
-> 상태: **확정** (2026-11-24). 큰 결정(§1.1 CL1–CL3)은 사용자가 정했다. §9의 질문 가운데 범위(미루는 것과 넣는 것: 19·22·27·28·29·32·36·37번), 결정성(6번), 라벨 번호(3번), 지표의 자리(10번)는 사용자가 (a)로 정했고(CL6, CL9, CL13, CL22, CL25, CL30–CL32, CL35, CL39, CL40), 연결법의 기본값(13번)은 메인 세션이 (b)로 정했으며(CL16, 사용자 위임), 나머지는 추천안 (a)다(사용자 위임). CL0 마일스톤(준비)을 마쳤다(2026-11-24): 결과의 공통 기반, 시험 자료, 참값, 비교 대상의 기록, 시제품의 측정과 그로 정한 CL41–CL48(추천안, 사용자 위임)이 있고 공개 이름은 아직 없다. k-평균의 거리 꼴(§9의 38번)은 사용자가 (a)로 정했다(CL49, 2026-11-26). 임시로 둔 값(퍼지 c-평균의 `tol`, PAM의 `max_iter`, `affinity_propagation`의 `precomputed`의 이름, `gap_statistic`의 `select` 이름)은 해당 마일스톤에서 정한다. 이 문서의 잰 값은 `tools/cluster_probe.py`의 것이다(기록은 `tests/cluster/data/`의 `scipy.json`·`sklearn.json`·`r.json`, 시제품의 측정은 `prototype.json`; 설계 때의 탐침 `site/notes/cluster-design/probe_behavior.py`를 옮겨 넓혔다).
+> 상태: **확정** (2026-11-24). 큰 결정(§1.1 CL1–CL3)은 사용자가 정했다. §9의 질문 가운데 범위(미루는 것과 넣는 것: 19·22·27·28·29·32·36·37번), 결정성(6번), 라벨 번호(3번), 지표의 자리(10번)는 사용자가 (a)로 정했고(CL6, CL9, CL13, CL22, CL25, CL30–CL32, CL35, CL39, CL40), 연결법의 기본값(13번)은 메인 세션이 (b)로 정했으며(CL16, 사용자 위임), 나머지는 추천안 (a)다(사용자 위임). CL0 마일스톤(준비)을 마쳤다(2026-11-24): 결과의 공통 기반, 시험 자료, 참값, 비교 대상의 기록, 시제품의 측정과 그로 정한 CL41–CL48(추천안, 사용자 위임)이 있고 공개 이름은 아직 없다. k-평균의 거리 꼴(§9의 38번)은 사용자가 (a)로 정했다(CL49, 2026-11-26). CL1 마일스톤(계층)을 마쳤다(2026-11-27): `linkage`, `agglomerative`, `divisive`, `HierarchyResult`, scipy의 계층 도구와 `dendrogram`의 자료가 공개됐고, 그 세부를 CL50–CL57(추천안, 사용자 위임)과 CL58(메인 결정, 사용자 위임)로 정했다(§1.1; 높이 계약의 증명과 NN-chain 동점 검출의 충분함은 §4.1). 임시로 둔 값(퍼지 c-평균의 `tol`, PAM의 `max_iter`, `affinity_propagation`의 `precomputed`의 이름, `gap_statistic`의 `select` 이름)은 해당 마일스톤에서 정한다. 이 문서의 잰 값은 `tools/cluster_probe.py`의 것이다(기록은 `tests/cluster/data/`의 `scipy.json`·`sklearn.json`·`r.json`, 시제품의 측정은 `prototype.json`; 설계 때의 탐침 `site/notes/cluster-design/probe_behavior.py`를 옮겨 넓혔다).
 
 `sd.cluster`(점들을 무리로 나누기: 분할, 계층, 밀도, 혼합 모형, 그리고 나눈 결과를 재는 지표)의 안과 내부 구조를 적는다.
 
@@ -64,10 +64,19 @@
 | CL43 2의 거듭제곱 척도 | 제곱 거리를 쓰는 커널(k-평균의 거리, 높이의 재귀, 혼합 모형의 이차형식)은 자료의 max\|x\|가 [2⁻²⁵⁰, 2²⁵⁰] 밖이면 자료에 2의 거듭제곱을 곱해 [1, 2)로 옮겨 계산하고 결과(중심, 높이, 관성)를 되돌린다(정확한 곱셈이라 범위 안의 자료와 같은 비트다). 시제품에서 비정상 수 좌표(subnormal/k3p2)의 제곱이 0으로 아래넘쳐 60점 중 40점의 라벨이 틀렸다(§5) (추천안, 사용자 위임 2026-11-24) |
 | CL44 결과의 공통 기반 | `_results.py`의 `ClusterResult`: 필드 `labels`·`n_clusters`·`nobs`·`omitted`, 처음 읽을 때 한 번 계산하는 필드, 쓰기와 지우기는 `AttributeError`, 배열은 읽기 전용. `summary()`는 회귀 상자의 머리(왼쪽: Method, No. Observations, No. Clusters, 있을 때만 Noise points와 Omitted rows (NaN), 목적값, Iterations, Converged; 오른쪽: 조절 모수)와 군집마다 한 줄의 표(cluster, Size, 하위 클래스의 열; 20개를 넘으면 양 끝 5개씩), `repr`는 한 줄, 메서드의 호출 모양 에러는 자기 이름으로 시작한다 (추천안, 사용자 위임 2026-11-24) |
 | CL45 계층 군집의 높이 | CL17의 "최종 트리에서 정의대로 다시 계산"을 최종 트리 위의 Lance–Williams 재귀로 정한다: 병합 (P₁ ∪ P₂, Q)의 값은 (P₁, Q)와 (P₂, Q)의 값과 P의 높이로 그 연결법의 식이고, 점 x와 군집 Q는 Q를 같은 식으로 점까지 내려간다(점끼리는 spatial의 유클리드 거리, ward·centroid·median은 그 제곱; 자식은 Z의 순서). 트리와 자료만이 연산을 정해 고른 알고리즘(NN-chain, 일반, 행렬 없는 길)과 무관한 비트이고, 모든 점 짝이 공통 조상에서 한 번씩만 쓰여 O(n²p) 시간·O(n) 메모리다. 시제품에서 모든 참값 집합·연결법이 2 ULP 안이었고(scipy의 누적은 3 ULP), 정의대로의 합은 ward에서 5.2×10⁸ ULP까지 틀렸다(§5) (추천안, 사용자 위임 2026-11-24) |
-| CL46 NN-chain의 동점 검출 | 이웃 찾기 한 번에서 가장 작은 거리와 정확히 같은 다른 후보(사슬의 앞 점 포함)를 만나면 표시하고, 표시된 입력만 일반 알고리즘으로 다시 푼다(CL17의 "계산한 높이에 같은 값이 둘 이상" 대신). 시제품에서 사슬이 정의의 트리와 다른 경우는 모두 표시됐고(128가지 중 4가지), 검사의 비용은 잴 수 없었다(§5). 이 검출이 충분하다는 증명은 CL1 마일스톤에서 적는다 (추천안, 사용자 위임 2026-11-24) |
-| CL47 Prim과 Borůvka의 문턱 (초안) | 관측값의 단일 연결과 HDBSCAN의 최소 신장 트리는 p ≤ 5이고 n ≥ 2048이거나 p ≤ 8이고 n ≥ 32768이면 KD 트리 위의 Borůvka, 그 밖은 행렬 없는 Prim이다(모양만으로 고른다). 시제품의 단일 트리 Borůvka로 잰 문턱이고 CL1 마일스톤이 이중 트리 Borůvka로 다시 잰다 (추천안, 사용자 위임 2026-11-24) |
+| CL46 NN-chain의 동점 검출 | 이웃 찾기 한 번에서 가장 작은 거리와 정확히 같은 다른 후보(사슬의 앞 점 포함)를 만나면 표시하고, 표시된 입력만 일반 알고리즘으로 다시 푼다(CL17의 "계산한 높이에 같은 값이 둘 이상" 대신). 시제품에서 사슬이 정의의 트리와 다른 경우는 모두 표시됐고(128가지 중 4가지), 검사의 비용은 잴 수 없었다(§5). 이 검출이 충분하다는 증명은 §4.1에 있다(CL1 마일스톤) (추천안, 사용자 위임 2026-11-24) |
+| CL47 Prim과 Borůvka의 문턱 (초안) | 관측값의 단일 연결과 HDBSCAN의 최소 신장 트리는 p ≤ 5이고 n ≥ 2048이거나 p ≤ 8이고 n ≥ 32768이면 KD 트리 위의 Borůvka, 그 밖은 행렬 없는 Prim이다(모양만으로 고른다). 시제품의 단일 트리 Borůvka로 잰 문턱이고 CL1 마일스톤이 이중 트리 Borůvka로 다시 잰다 (추천안, 사용자 위임 2026-11-24). → CL54가 바꿨다 |
 | CL48 k-평균 중심의 합 | 점을 열쇠의 순서(CL7)로 4096점 덩이로 나눠 덩이마다 군집별 부분합을 내고 덩이 순서의 짝 합으로 합친다. 그래서 중심의 비트가 입력 순서와도 무관하다. 정렬한 사본을 만들지 색인으로 모을지는 CL2 마일스톤이 잰다 (추천안, 사용자 위임 2026-11-24) |
 | CL49 k-평균의 거리 꼴 | 차의 꼴 Σ(x − c)²이 정의다. 1스레드의 큰 p·k를 위해 증명된 오차 한계의 거르기(전개식으로 후보를 거르고 한계 안의 후보만 차의 꼴로 다시 잰다)를 CL2·CL7 마일스톤에서 넣는다. 결과는 차의 꼴과 같은 비트이고 CL9(스레드와 무관한 같은 바이트)를 지킨다 (사용자 결정 2026-11-26, §9의 38번 (a)) |
+| CL50 단일 연결의 동점 | 최소 신장 트리의 변을 (거리, 작은 열쇠, 큰 열쇠)로 정렬해 합친다. 같은 거리의 변이 둘 이상이면 그 변들이 잇는 군집들의 묶음마다 정의(CL17)대로 푼다: 묶음 안에서 열쇠가 가장 작은 군집이, 그 거리에 정확히 있는 이웃 군집을 열쇠 순서로 하나씩 흡수한다(이웃은 그 거리의 점 짝이고 KD 트리의 반경 찾기나 훑기로 찾는다). 같은 거리의 두 군집 사이에 최소 신장 트리의 변이 없을 수 있어서 트리의 변만으로는 정의의 트리가 나오지 않는다(§4.1의 증명). 동점이 없으면 Kruskal의 차례가 곧 정의의 트리다 (추천안, 사용자 위임 2026-11-26) |
+| CL51 행의 순서와 단조 연결법의 높이 | Z의 행은 최종 높이 위의 primitive 차례다: 두 자식이 이미 있는 병합 가운데 (높이, 작은 열쇠, 큰 열쇠)가 가장 작은 것부터. 정확한 산술에서 primitive 알고리즘의 차례와 같고, 고른 알고리즘(NN-chain, 일반, 행렬 없는 길)과 무관하게 트리와 자료만으로 정해진다. 단조인 연결법(single, complete, average, weighted, ward)의 높이는 트리 위로 누적 최댓값을 취한다(CL17의 "줄어든 자리는 앞 높이로 맞춘다"를 트리 위에서 정한 것; 행의 높이가 줄지 않는다) (추천안, 사용자 위임 2026-11-26) |
+| CL52 DIANA의 세부 | R `diana`의 나누기(갈라진 무리를 다른 점들과의 평균 거리가 가장 큰 점으로 시작하고, 나머지에서 (나머지와의 평균 거리 − 갈라진 무리와의 평균 거리)가 0보다 큰 점 가운데 그 값이 가장 큰 점을 하나씩 옮긴다; 동점은 열쇠)의 트리를 그대로 Z로 낸다(높이는 지름, 행은 CL51). 지름이 같은 나누기가 이어지면 R의 `merge`(배너에서 만든 것)는 다른 중첩을 보인다: sd는 실제로 나눈 트리다 `[R과 다름]`. `coefficient`는 R의 ac·dc 공식(점마다 1 − (처음 합쳐지는 높이)/(마지막 병합의 높이)의 평균)이고 마지막 높이가 0이면 NaN이다 (추천안, 사용자 위임 2026-11-26) |
+| CL53 최적 잎 순서 | Bar-Joseph 외(2001)의 동적 계획으로 정확한 최소를 낸다. 뿌리의 첫 자식(Z[-1, 0])은 왼쪽에 둔다. 같은 비용의 선택은 열쇠가 작은 끝점((u, w), 안에서는 (m, k))이다. scipy 1.18.1의 `optimal_leaf_ordering`은 최소가 아닌 순서를 낼 때가 있다(n = 4에서도; 테스트가 모든 순서와 견준다) `[scipy와 다름]` (추천안, 사용자 위임 2026-11-26) |
+| CL54 KD 트리 Borůvka와 길의 문턱 | Borůvka는 점마다 KD 트리를 뿌리부터 찾는다(가까운 자식 먼저; 자기 성분만 든 마디와, spatial의 증명된 한계로 반경 밖인 마디를 자른다; 반경은 자기 최선과 성분이 지금까지 찾은 최선 중 작은 것). 이중 트리(질의 마디 × 참조 마디)도 만들어 쟀지만 p ≥ 3에서 1.2–6배 느려 쓰지 않는다(`_core.cluster._mst`의 측정용으로만 남긴다). 문턱(CL47 초안을 바꾼다): p ≤ 3이고 n ≥ 1024, p ≤ 5이고 n ≥ 2048, p = 6이고 n ≥ 4096, p ≤ 8이고 n ≥ 16384면 Borůvka, 그 밖은 Prim이다. 1스레드에서 Prim과 비슷하거나 빠르고 10스레드에서 여러 배 빠른 곳부터다(§5, tests/cluster/data/prototype.json의 "mst/time") (추천안, 사용자 위임 2026-11-26) |
+| CL55 높이의 계약 | CL45의 재귀는 병합 (A, B)에서 열쇠가 작은 자식을 바깥(먼저 펼치는 쪽)으로 한다(Z의 번호는 입력 순서에 달려 입력 순서와 무관한 비트를 깬다). 계약은 §4.1에서 증명한 꼴 \|Ĥ − H*\| ≤ γ_{cμ+p+2}·V⁺다: H는 재귀의 눈금(ward·centroid·median은 높이의 제곱), V⁺는 뺄셈을 덧셈으로 바꾼 재귀(average·weighted는 H* 그 자체), μ는 그 병합 뒤의 반올림 사슬의 길이, c는 한 단계의 반올림 수(average 3, weighted 1, centroid·ward 5, median 2). single·complete의 높이는 spatial의 거리 그 자체다. CL0 마일스톤의 초안 C_HEIGHT·u·(p + d)·h*를 바꾼다(그 꼴은 뺄셈의 상쇄를 담지 못한다) (추천안, 사용자 위임 2026-11-26) |
+| CL56 길의 선택 | 관측값과 유클리드의 single·ward·centroid·median은 언제나 행렬 없는 길이다(single: Prim이나 Borůvka; 나머지: 군집의 무게 중심과 크기를 열 단위로 쥐고 NEON 두 칸씩 훑는다). complete·average·weighted와 그 밖의 거리는 열쇠 순서로 놓은 점들의 `sd.spatial.pdist`(같은 비트) 위의 행렬 길이고, 미리 계산한 거리는 그 행렬이다(열쇠는 입력 색인). CL43의 2의 거듭제곱은 ward·centroid·median의 관측값에만 쓴다(나머지의 거리는 spatial의 조심 길이 맡는다). 길을 강제하는 `_core.cluster.linkage`의 `path`는 테스트의 두 길 비교용이다 (추천안, 사용자 위임 2026-11-26) |
+| CL57 scipy 도구의 세부 | (1) 높이로 자르기(`cut(height=)`, `cut_tree(height=)`, `fcluster(criterion='distance')`)는 h **이하**의 병합을 남긴다(R `cutree(h=)`, scipy `fcluster`와 같고 scipy `cut_tree(height=)`는 h 미만이다 `[scipy와 다름]`). (2) `cut_tree(n_clusters=)`는 행의 차례로 되돌린다(같은 높이에서 scipy의 너비 우선 차례와 다를 수 있다 `[scipy와 다름]`; R `cutree(k=)`와 같다). (3) `fcluster`의 maxclust 기준은 t가 1 이상의 정수다(scipy는 t < 1에서 정해지지 않은 답을 낸다; t ≥ n은 scipy처럼 1 … n). (4) `inconsistent`의 표준편차는 평균을 뺀 두 번째 훑기다(scipy는 한 번 훑기라 높이가 하나일 때 0 대신 10⁻⁹ 꼴을 낸다). (5) `is_valid_linkage`는 정수 번호, 개수의 합, 유한한 높이도 본다(scipy는 보지 않는다). (6) `leaders`는 scipy의 (L, M) 튜플이다(int64). (7) `dendrogram`은 icoord·dcoord를 (m, 4) 배열로, 색을 묶음 번호(0부터 돌려 쓰지 않는다; 문턱 이상은 −1)로, 잎의 색을 그 잎을 잇는 가지의 색으로 준다(scipy는 좌표로 잎을 다시 찾아 높이 0의 가지에서 다른 잎을 칠할 수 있다). (8) `HierarchyResult`에는 분할이 하나가 아니라 `labels`·`n_clusters`가 없고 `cut`이 분할을 준다. `nan_policy='omit'`의 Z는 남은 행의 번호이고 `cut`이 뺀 행에 −1을 넣는다. (9) `linkage`의 1차원 입력(압축 꼴)에 유클리드 아닌 `metric`은 `ValueError`다(scipy는 무시한다). (추천안, 사용자 위임 2026-11-26) |
+| CL58 `CophenetResult`의 공개 | `cophenet_correlation`의 결과 namedtuple `CophenetResult(correlation, distances)`를 `__all__`과 API 문서의 서명 묶음에 더해 공개한다(결과 namedtuple은 공개하는 관례: smooth의 `DensityResult`, 이 영역의 `DendrogramResult`·`HomogeneityResult`) (메인 결정, 사용자 위임 2026-11-27) |
 
 ### 1.2 범위
 마일스톤 열은 그 이름을 만드는 §8의 마일스톤이고 "나중"은 첫 판에 넣지 않는 후보, "밖"은 이 영역에 두지 않는 것이다. 이름은 §9의 1·2·11번의 답(a)을 따른다.
@@ -178,9 +187,10 @@
   - scipy의 트리는 입력의 순서에 달려 있다: 같은 다섯 점·아홉 점을 섞어 주면 네 연결법 모두 다른 트리가 나온다(한 줄의 `single`은 왼쪽 끝부터 합치던 것이 섞은 순서의 3, 4부터 합친다).
   - 동점의 높이에서 `fcluster(maxclust)`는 청한 수보다 적은 군집을 낸다: 한 줄 네 점의 `single`에 k = 2를 청하면 한 군집이다(높이 1로 자르면 모두 합쳐지므로 scipy의 문서대로 "t개 이하"다). `cut_tree`와 R `cutree`는 두 군집이다.
 - **잎의 순서**: scipy `leaves_list`와 R `hclust`의 `order`는 탐침의 두 트리(난수 10점의 `complete`, `average`)에서 같았다. `optimal_leaf_ordering`(Bar-Joseph 외 2001)은 이웃한 잎의 거리 합이 가장 작은 순서다.
-- **자르기 도구**: `fcluster`(scipy의 다섯 기준과 기본 `criterion='inconsistent'`), `cut_tree`(여러 k를 한 번에, (n, len(k)) 배열), `HierarchyResult.cut(*, k=None, height=None)`(R `cutree`의 뜻).
+- **자르기 도구**: `fcluster`(scipy의 다섯 기준과 기본 `criterion='inconsistent'`), `cut_tree`(여러 k를 한 번에, (n, len(k)) 배열), `HierarchyResult.cut(*, k=None, height=None)`(R `cutree`의 뜻). CL1 마일스톤에서 scipy 1.18.1과 견준 것(CL57; `tests/cluster/test_hierarchy.py`): 동점 없는 트리에서 `fcluster`의 다섯 기준, `leaders`, `leaves_list`, `maxdists`, `maxinconsts`, `maxRstat`, `cophenet`, `dendrogram`의 좌표·잎·색 묶음은 scipy와 같다. 다른 곳: 높이로 자르기는 h 이하(scipy `cut_tree`는 h 미만), 같은 높이의 `cut_tree(n_clusters=)`는 행의 차례(scipy는 너비 우선 차례로 되돌려 다른 분할이 된다), maxclust의 t < 1은 에러(scipy는 정해지지 않은 답), `inconsistent`의 표준편차는 두 번 훑기(scipy는 높이 하나에서 10⁻⁹ 꼴).
+- **최적 잎 순서**: scipy 1.18.1의 `optimal_leaf_ordering`은 최소가 아닌 순서를 낼 때가 있다(무작위 3–8점의 트리 12개 가운데 여러 개에서, n = 4에서도 비용이 4.95 대신 5.73; 가능한 모든 순서를 견주는 테스트). sd는 정확한 최소다(CL53).
 - **덴드로그램**: `dendrogram(Z, *, …)`은 scipy의 `no_plot=True`가 돌려주는 사전(`icoord`, `dcoord`, `ivl`, `leaves`, `color_list`, `leaves_color_list`)과 같은 내용을 namedtuple로 돌려준다(§9의 18번). 색은 matplotlib 색 이름이 아니라 묶음 번호다.
-- **DIANA** (§9의 19번): `divisive(X)`는 R `diana`의 분할식 계층이다(가장 지름이 큰 군집을 고르고, 평균 거리가 가장 큰 점을 떼어 "갈라진 무리"를 키운다). 결과는 같은 `HierarchyResult`이고 높이는 지름이다. R `agnes`는 `agglomerative(method='average')`와 같은 높이다(탐침: R `hclust(…, 'average')`와 `agnes`의 높이가 같다). 응집 계수(`agnes`의 `ac`, `diana`의 `dc`)는 `HierarchyResult.coefficient`다.
+- **DIANA** (§9의 19번): `divisive(X)`는 R `diana`의 분할식 계층이다(가장 지름이 큰 군집을 고르고, 평균 거리가 가장 큰 점을 떼어 "갈라진 무리"를 키운다). 결과는 같은 `HierarchyResult`이고 높이는 지름이다. R `agnes`는 `agglomerative(method='average')`와 같은 높이다(탐침: R `hclust(…, 'average')`와 `agnes`의 높이가 같다). 응집 계수(`agnes`의 `ac`, `diana`의 `dc`)는 `HierarchyResult.coefficient`다. CL1 마일스톤에서 R과 견줬다: 동점 없는 참값 집합 모두에서 `dc`와 높이가 같고(차 10⁻¹⁵ 꼴), 서로 다른 높이 사이의 모든 자르기가 R `cutree(as.hclust(diana(x)), h=)`와 같다. R의 `merge`는 지름이 같은 나누기가 이어질 때(갈라진 점이 지름의 짝이 아니면 흔하다) 배너에서 다른 중첩을 만들어 같은 높이의 k 자르기가 다를 수 있다(CL52). 격자·정육각형의 정확한 동점은 열쇠라 R과 다를 수 있다.
 
 ### 2.3 분할 (CL2 마일스톤)
 - **`kmeans`**: 목적은 관성 Σᵢwᵢ‖xᵢ − c_{lᵢ}‖²이다. Lloyd 반복이고, 결과는 Lloyd의 고정점(모든 점의 라벨이 계산한 거리의 가장 가까운 중심이고 모든 중심이 그 점들의 무게 평균) 또는 반복 상한에서 멈춘 점이다(§4.2). 탐침으로 본 비교 대상:
@@ -234,6 +244,9 @@
 | 연결법의 기본값 | scipy `'single'`, R `'complete'`, sklearn `'ward'` | scipy와 같은 `'single'`(CL16) |
 | 계층의 동점 | scipy·R이 서로 다른 트리, 입력 순서에 따라 다른 트리 | 정의(가장 작은 (높이, 열쇠)의 쌍을 먼저)와 입력 순서와 무관한 열쇠(§9의 4·14번) |
 | 역전 트리 자르기 | scipy의 세 자르기가 서로 다르고 R과도 다르다 | k는 병합 순서, 높이는 `ValueError`(§9의 16번) |
+| 높이로 자르기의 경계, 같은 높이의 k 자르기 | scipy `cut_tree(height=)`는 h 미만, 같은 높이는 너비 우선 차례 | h 이하(R·`fcluster`와 같다), 행의 차례(R `cutree(k=)`; CL57) |
+| 최적 잎 순서 | scipy 1.18.1은 최소가 아닌 순서를 낼 때가 있다 | 정확한 최소(CL53) |
+| DIANA의 같은 지름 | R의 `merge`는 배너에서 만들어 같은 지름의 나누기를 다르게 중첩한다 | 실제로 나눈 트리(CL52) |
 | 미리 계산한 거리의 ward·centroid·median | scipy는 어떤 거리든 받는다 | 받되 유클리드 거리를 가정한다고 적는다(§9의 12번) |
 | k-평균의 스레드 의존 | sklearn은 스레드 수에 따라 중심의 끝자리가 다르다 | 스레드와 무관한 비트(§9의 6번) |
 | k-평균의 거리 | sklearn은 ‖x‖² − 2x·c + ‖c‖²(상쇄) | 차의 제곱합(§9의 7번) |
@@ -258,15 +271,20 @@
 - **미리 계산한 거리**(`metric='precomputed'`; §9의 9번): (n, n) 정사각 또는 1차원 압축 꼴. 정사각은 대칭이고 대각이 0이며 음수와 NaN이 없어야 한다(`ValueError`; 대칭은 비트까지 본다). 압축 꼴의 길이는 n(n − 1)/2여야 한다.
 
 ### 3.2 계층 군집
-- **정의** (§9의 14번): 계층 군집의 트리는 "모든 군집 쌍 가운데 (연결 거리, 열쇠)가 가장 작은 쌍을 합친다"를 n − 1번 한 것이다(Müllner 2011의 "primitive" 알고리즘). 열쇠는 두 군집의 가장 작은 점 번호의 짝(작은 쪽, 큰 쪽)이고, 점 번호는 §9의 4번의 순서(좌표의 사전순 정렬 뒤의 번호)다. 연결 거리는 그 연결법의 정의(single: 두 군집 사이의 가장 작은 거리, complete: 가장 큰 거리, average: 평균, weighted·median: Lance–Williams의 재귀, centroid: 무게 중심 사이의 거리, ward: √(2|A||B|/(|A| + |B|))·‖c_A − c_B‖)다.
-- **single**: 최소 신장 트리의 Kruskal 순서가 곧 정의의 트리다(같은 무게는 graph의 키 (w, min, max)). 관측값이면 **행렬 없이** Prim(O(n²p) 시간, O(n) 메모리; 거리를 그때그때 계산)이고, 낮은 차원은 KD 트리 위의 Borůvka(O(n log n) 어림)다. 문턱은 CL47(p ≤ 5이고 n ≥ 2048, 또는 p ≤ 8이고 n ≥ 32768; 시제품의 측정, CL1 마일스톤이 다시 잰다). 압축 꼴 입력은 Prim이다. 셋은 같은 트리와 같은 높이 비트를 낸다(높이는 입력 거리 그 자체).
-- **complete·average·weighted·ward** (축소 가능한 연결법): NN-chain(Murtagh 1983; scipy의 `nn_chain`)이다. NN-chain은 서로 가장 가까운 짝을 합치므로 동점이 없으면 정의의 트리와 같은 병합 집합을 낸다(Müllner 2011 정리). 동점이 있으면 다를 수 있다(탐침의 3×3 격자에서 scipy와 R이 다른 트리). CL17(§9의 14번 (a))로 NN-chain의 이웃 고르기에 (거리, 열쇠)를 쓰고, 이웃 찾기 한 번에서 가장 작은 거리와 정확히 같은 다른 후보를 만나면(CL46) 그 입력만 일반 알고리즘(Müllner의 "generic", 우선순위 큐; O(n²) 메모리, 최악 O(n³))으로 다시 푼다. 정확한 동점은 정수·격자·같은 점 자료에서만 흔하다.
-- **centroid·median** (축소 불가능): 일반 알고리즘(scipy의 `fast_linkage`와 같은 Müllner의 generic)이다. 역전이 생긴다(§2.2).
-- **높이의 계산** (§9의 14번, CL45): Lance–Williams 갱신은 병합 순서에 따라 반올림이 다르다(NN-chain은 높이 순서가 아닌 순서로 합친다). CL17로 트리가 정해진 뒤 높이를 최종 트리 위의 Lance–Williams 재귀로 다시 계산한다: 병합 (P₁ ∪ P₂, Q)의 값은 (P₁, Q)와 (P₂, Q)의 값과 P의 높이로 그 연결법의 식이고, 점 x와 Q는 Q를 같은 식으로 점까지 내려간다(자식은 Z의 순서, 점끼리는 spatial의 유클리드 거리이고 ward·centroid·median은 그 제곱). 모든 점 짝이 공통 조상에서 한 번씩만 쓰여 O(n²p) 시간(행렬 만들기와 같은 크기), 재귀 깊이만큼의 O(n) 메모리라 행렬 없는 길에도 맞는다. complete·single은 입력 거리 그 자체다(재귀의 min·max가 정확하다). 그래서 높이가 고른 알고리즘(NN-chain, 일반, 행렬 없는 길)과 무관한 비트다. 시제품에서 모든 참값 집합과 일곱 연결법에서 2 ULP 안이었다(scipy의 누적 3 ULP). 설계 초안의 "정의대로의 합"(average는 |A||B|개 거리의 합, ward는 무게 중심의 차)은 average에서 3 ULP, ward의 무게 중심에서 상쇄로 5.2×10⁸ ULP(shifted/k3p2)·91 ULP(collinear/p2)라 버렸다(§5). 자료의 척도는 CL43으로 옮긴다. 트리를 고를 때의 비교에 쓰는 값과 출력 높이가 끝자리에서 다를 수 있고, 그래서 출력 높이가 병합 순서에서 끝자리만큼 줄어들 수 있다: 단조인 연결법에서 그런 자리는 앞의 높이로 맞춘다(§9의 14번에서 정한다).
-- **행렬 없는 길** (§9의 15번): 압축 꼴 거리 행렬은 8·n(n − 1)/2 바이트다(n = 10⁵에서 40 GB). 관측값과 유클리드의 `single`(Prim·Borůvka), `ward`·`centroid`·`median`(무게 중심과 크기만 쥐고 군집 사이 거리를 그때그때 계산; NN-chain과 generic이 같은 비교를 한다)은 O(np) 메모리로 푼다. `complete`·`average`·`weighted`는 행렬이 필요하고, 행렬이 물리 메모리보다 크면 할당 전에 `MemoryError`다(API.md §2). scipy는 언제나 행렬을 만든다.
-- **`optimal_leaf_ordering`**: Bar-Joseph 외(2001)의 O(n³) 동적 계획(scipy와 같다; 거리는 입력 거리). 같은 비용의 순서가 여럿이면 열쇠의 사전순으로 가장 작은 것이다.
-- **`inconsistent`, `cophenet`**: 정의대로의 합(고정 순서). `cophenet`의 상관은 짝 합의 Pearson 상관이다.
-- **DIANA**: R `diana`의 단계 그대로(지름이 가장 큰 군집을 고르고, 다른 점들과의 평균 거리가 가장 큰 점을 떼어 내고, 남은 점 가운데 갈라진 무리에 더 가까운 점을 차례로 옮긴다). 동점은 열쇠다. O(n²) 메모리, O(n³) 최악 시간이다.
+구현은 `csrc/cluster/hierarchy.cpp`(트리, 높이, 행, DIANA, `cophenet`, 최적 잎 순서)와 `mst.cpp`(최소 신장 트리), Python 층은 `src/stardust/cluster/_hierarchy.py`다(CL1 마일스톤).
+- **정의** (§9의 14번): 계층 군집의 트리는 "모든 군집 쌍 가운데 (연결 거리, 열쇠)가 가장 작은 쌍을 합친다"를 n − 1번 한 것이다(Müllner 2011의 "primitive" 알고리즘). 열쇠는 두 군집의 가장 작은 점 번호의 짝(작은 쪽, 큰 쪽)이고, 점 번호는 §9의 4번의 순서(좌표의 사전순 정렬 뒤의 번호; 미리 계산한 거리는 입력 색인)다. 연결 거리는 그 연결법의 정의(single: 두 군집 사이의 가장 작은 거리, complete: 가장 큰 거리, average: 평균, weighted·median: Lance–Williams의 재귀, centroid: 무게 중심 사이의 거리, ward: √(2|A||B|/(|A| + |B|))·‖c_A − c_B‖)다.
+- **열쇠의 공간**: 커널은 점을 열쇠 순서로 받고(Python 층이 `_core.cluster.lex_order`로 정렬한 사본을 준다), 군집은 가장 작은 열쇠의 칸에 산다(합친 군집은 작은 칸에 남는다). 그래서 모든 동점 규칙의 "작은 칸"이 곧 "작은 열쇠"이고, 같은 점들을 섞어 주면 같은 Z가 점 번호만 바뀌어 나온다(테스트가 비트까지 본다; 같은 점이 여럿이면 그 점들끼리는 바뀔 수 있다).
+- **single**: 최소 신장 트리(변의 순서 (거리, 작은 열쇠, 큰 열쇠); 거리는 spatial의 유클리드 거리와 그 조심 길). 관측값이면 **행렬 없이** Prim(O(n²p) 시간, O(n) 메모리; 단계마다 바깥 점을 점 덩이로 나눠 갱신하고 덩이의 최솟값을 덩이 순서로 고른다)이나 KD 트리 위의 Borůvka(CL54: 점마다 뿌리부터 찾고, 자기 성분만 든 마디와 반경 밖의 마디를 spatial의 증명된 한계로 자른다; 반경은 자기 최선과 그 성분이 지금까지 찾은 최선 중 작은 것)다. 압축 꼴 입력과 비유클리드 거리는 행렬 위의 Prim이다. 길의 문턱은 CL54(p ≤ 3이고 n ≥ 1024, p ≤ 5이고 n ≥ 2048, p = 6이고 n ≥ 4096, p ≤ 8이고 n ≥ 16384면 Borůvka). 트리의 변을 정렬해 합치고, 같은 거리의 변이 둘 이상인 묶음은 CL50대로 정의를 푼다. 높이는 고른 변의 거리 그 자체라 세 길이 같은 트리와 같은 비트를 낸다.
+- **complete·average·weighted·ward** (축소 가능한 연결법): NN-chain(Murtagh 1983; scipy의 `nn_chain`)이다. 행렬 길은 Lance–Williams로 행렬을 갱신하고(ward·centroid·median은 제곱 거리의 눈금), 행렬 없는 길(관측값의 ward)은 군집의 무게 중심과 크기를 쥐고 값을 그때그때 계산한다(무게 중심을 열 단위로 두어 NEON 한 칸에 두 군집씩; 한 칸이 spatial의 제곱합과 같은 연산이라 스칼라와 같은 비트다). 이웃 고르기는 (값, 열쇠)이고, 이웃 찾기 한 번에서 가장 작은 값과 정확히 같은 다른 후보(사슬의 앞 군집 포함)를 만나면 그 입력을 일반 알고리즘으로 다시 푼다(CL46; 충분함의 증명은 §4.1).
+- **centroid·median과 표시된 입력** (일반 알고리즘): Müllner의 generic(우선순위 큐의 (값, 칸)과 칸마다의 가장 가까운 뒤 칸; 거리가 줄 수 있어 합친 뒤 앞 칸들의 후보를 다시 본다)이다. 행렬 없는 길은 무게 중심을 칸 순서로 두어 앞·뒤 범위를 이진 찾기로 정한다. 역전이 생긴다(§2.2).
+- **길** (CL56): 관측값과 유클리드의 single·ward·centroid·median은 언제나 행렬 없는 길, 나머지는 열쇠 순서의 점들의 `sd.spatial.pdist`(같은 비트) 위의 행렬 길이다.
+- **높이** (CL45, CL55): Lance–Williams 갱신은 병합 순서에 따라 반올림이 다르다(NN-chain은 높이 순서가 아닌 순서로 합친다). 그래서 트리가 정해진 뒤 높이를 최종 트리 위의 Lance–Williams 재귀로 다시 계산한다: 병합 (A, B)에서 열쇠가 작은 자식 A를 바깥으로 두고, A의 점 x마다 B의 부분 트리를 후위 순서로 훑어 (x, B)의 값을 구하고(점끼리는 spatial의 유클리드 거리, ward·centroid·median은 그 제곱), 그 값들을 A의 부분 트리 위로 올린다. 한 단계의 식은 두 자식에 대칭인 꼴이라(덧셈과 곱셈은 바꿔도 같은 비트) 자식의 차례는 상관없다. 모든 점 짝이 공통 조상에서 한 번씩 쓰여 O(n²p) 시간(행렬 만들기와 같은 크기), O(n) 메모리라 행렬 없는 길에도 맞는다. 바깥 점 넷을 한 번에 훑고(같은 부분 트리 구조, 칸마다 독립인 연산), 큰 병합은 바깥 점 덩이로 나란히 한다. single·complete는 고른 거리 그 자체다(재귀의 min·max가 정확하다). 그래서 높이가 고른 알고리즘(NN-chain, 일반, 행렬 없는 길)과 무관한 비트다. ward·centroid·median의 관측값은 CL43의 2의 거듭제곱으로 옮겨 계산하고 높이를 되돌린다. 단조인 연결법은 높이를 트리 위로 누적 최댓값으로 올린다(CL51).
+- **행** (CL51): 두 자식이 이미 있는 병합 가운데 (높이, 작은 열쇠, 큰 열쇠)가 가장 작은 것부터 행을 쓴다. 두 군집 번호는 (작은 것, 큰 것)이다.
+- **행렬 없는 길** (§9의 15번): 압축 꼴 거리 행렬은 8·n(n − 1)/2 바이트다(n = 10⁵에서 40 GB). 관측값과 유클리드의 single(Prim·Borůvka)과 ward·centroid·median(무게 중심 길)은 O(np) 메모리로 푼다(n = 10⁵의 ward가 10스레드 7초, single 0.17초; §5). complete·average·weighted는 행렬이 필요하고(작업 사본까지 16·n(n − 1)/2 바이트), 물리 메모리보다 크면 할당 전에 `MemoryError`다(API.md §2). scipy는 언제나 행렬을 만든다.
+- **`optimal_leaf_ordering`** (CL53): Bar-Joseph 외(2001)의 O(n³) 동적 계획(M[u][w] = 병합의 잎을 u에서 w로 늘어놓는 최소 비용; 한 병합에서 먼저 바깥 쪽 끝 m에 대해 최소를 구하고 다시 안쪽 끝 k에 대해 구해 O(|L|²|R| + |L||R|²))이고 거리는 입력 거리다. 뿌리의 첫 자식은 왼쪽에 둔다. 같은 비용의 선택은 열쇠가 작은 끝점이다. 메모리 8n² 바이트(scipy와 같다).
+- **`inconsistent`, `cophenet`**: `inconsistent`는 깊이 d까지의 높이들의 평균과 평균을 뺀 두 번째 훑기의 표준편차(n − 1로 나눈다)다. `cophenet`은 병합마다 두 자식의 점 짝에 높이를 쓴다(큰 병합은 점 덩이로 나란히). 상관은 sd 배열의 평균을 뺀 합이다.
+- **DIANA** (CL52): R `diana`의 단계 그대로(지름이 2 이상인 군집마다: 다른 점들과의 평균 거리가 가장 큰 점으로 갈라진 무리를 시작하고, 나머지에서 (나머지와의 평균 거리 − 갈라진 무리와의 평균 거리)가 0보다 큰 점 가운데 가장 큰 점을 하나씩 옮긴다; 거리 합은 옮길 때마다 고친다). 군집을 나누는 순서는 트리를 바꾸지 않아 위에서부터 나누고 아래에서부터 합친다. 동점은 열쇠다. 거리는 열쇠 순서의 점들의 `sd.spatial.pdist`(또는 주어진 압축 꼴)다. O(n²) 메모리, O(n³) 최악 시간이다.
+- **자르기와 scipy의 도구**: `fcluster`의 다섯 기준은 scipy의 순회(왼쪽 부분 트리, 오른쪽 부분 트리, 그다음 마디의 점 자식)로 1부터 번호를 매기고, maxclust는 단조 트리에서 높이의 값들 가운데 군집이 t 이하인 가장 작은 문턱이다(scipy와 같다; 역전 트리는 행의 차례로 정확히 t개). `cut`·`cut_tree`는 행의 차례로 되돌리고 라벨은 처음 나오는 차례다(scipy `cut_tree`의 번호와 같다). `leaders`는 scipy의 순회 차례다. `dendrogram`은 scipy `_dendrogram_calculate_info`의 재귀를 명시적 스택으로 옮겼다(CL57의 색). 이 도구들은 O(n)(`cut_tree`의 전체는 O(n²))이라 Python이다.
 
 ### 3.3 k-평균
 - **Lloyd 반복의 한 단계**: (1) 점마다 가장 가까운 중심(계산한 제곱 거리의 최솟값, 동점은 작은 중심 번호), (2) 중심마다 무게 평균. 평균은 점을 열쇠의 순서(CL7)로 4096점 덩이로 나눠 덩이마다 군집별 부분합을 내고 덩이 번호 순서의 짝 합으로 합친다(CL48). 그래서 스레드 수와도 입력 순서와도 무관한 비트다(§3.10).
@@ -313,9 +331,9 @@
 |---|---|---|
 | 거리 행렬(압축 꼴) | 행 덩이(크기로만) | 원소 하나는 spatial의 한 커널이다 |
 | Prim(단일 연결, HDBSCAN) | 단계마다 후보 갱신을 점 덩이로, 최솟값은 (거리, 열쇠)의 전순서 | 최솟값이 하나로 정해진다 |
-| Borůvka(KD 트리) | 성분마다 가장 가까운 변을 나란히 | (거리, 열쇠)의 전순서라 고른 변 집합이 하나다 |
-| NN-chain·일반 알고리즘 | 차례(사슬은 본디 차례다); 갱신한 거리 열은 덩이로 나란히 | 원소마다 같은 식이다 |
-| 높이 다시 계산 | 병합마다 짝 합을 덩이로, 덩이 순서의 짝 합 | 덩이는 크기로만 정한다 |
+| Borůvka(KD 트리) | 질의 잎의 덩이(크기로만)마다 점의 찾기; 성분의 지금까지의 최선은 원자적으로 낮춘다 | 점마다 가장 가까운 다른 성분의 점은 (거리, 열쇠)의 전순서라 하나다. 성분의 최선은 자르기에만 쓰고 자르기는 엄격해서 같은 값의 변을 놓치지 않는다 |
+| NN-chain·일반 알고리즘 | 차례(사슬은 본디 차례다); 무게 중심 길의 찾기는 군집 덩이로 나란히 | 덩이의 (값, 열쇠) 최소와 동점 수를 덩이 순서로 합친다 |
+| 높이 다시 계산 | 병합마다 바깥 점 덩이로 나란히(점 넷씩 한 번에) | 점 하나의 값은 그 점의 정해진 연산 차례다 |
 | k-평균의 라벨 | 점 덩이 | 점 하나는 한 커널이다 |
 | k-평균의 중심 합 | 점 덩이(크기로만)의 부분합, 덩이 순서의 짝 합 | 합의 순서가 n, k, p로만 정해진다 |
 | `n_init`의 시작들 | 시작마다 | 하위 흐름이 시작 번호로 정해지고, 고르기는 (목적, 번호) |
@@ -329,7 +347,7 @@
 - 병렬 기준값은 배열의 규칙이다(float64 연산 2¹⁵개 분량 이상이면 나누고 GIL을 놓는다; API.md §3).
 
 ### 3.11 메모리
-- 계층: 행렬 길은 압축 꼴 8·n(n − 1)/2 바이트(n = 2×10⁴에서 1.6 GB, 10⁵에서 40 GB)이고 물리 메모리보다 크면 할당 전에 `MemoryError`다. 행렬 없는 길(§3.2)은 O(np). 일반 알고리즘의 우선순위 큐는 O(n). `optimal_leaf_ordering`은 O(n²)이다.
+- 계층: 행렬 길은 압축 꼴 8·n(n − 1)/2 바이트(n = 2×10⁴에서 1.6 GB, 10⁵에서 40 GB)와 그 작업 사본(scipy도 사본을 만든다)이고 둘의 합이 물리 메모리보다 크면 할당 전에 `MemoryError`다. 행렬 없는 길(§3.2)은 O(np)(무게 중심의 열 사본, KD 트리). 일반 알고리즘의 우선순위 큐와 높이 재귀는 O(n). `optimal_leaf_ordering`은 8n² 바이트다.
 - k-평균: 자료(사본 없음, 정렬 순서는 색인 배열; §9의 4번), 중심 O(kp), 경계 가속 O(n) 또는 O(nk)(Elkan; nk가 2²⁶을 넘으면 Hamerly만), 덩이 부분합 O(덩이 수 × kp).
 - k-medoids: 관측값 길은 O(n + k), 미리 계산한 거리는 그 행렬.
 - DBSCAN: 이웃 목록 O(Σ 이웃 수)를 만들지 않고 핵심 판정(셈)과 연결(합집합–찾기)을 두 번 훑는다(sklearn은 이웃 목록 전체를 쥔다).
@@ -343,9 +361,13 @@
 군집의 결과는 이산적이다. 그래서 계약은 두 겹이다. (1) **이산 결과의 계약**: 라벨·트리·medoid가 "주어진 실수 값(계산한 거리, 계산한 목적)과 정한 동점 규칙으로 정의대로 고른 것"이다. 정확한 값으로 고른 것과는 가까운 동점(두 후보의 차가 계산의 오차 한계 안)에서만 다를 수 있다. 참값 도구는 정확한 산술로 고른 답과 견주고, 다를 때는 그 자리가 가까운 동점인지(정확한 두 값의 차가 한계 안인지)를 확인한다. (2) **실수 결과의 계약**: 높이, 중심, 목적값, 모수, 지표가 정확한 값과 견준 한계 안이다(참값: 정확한 유리수와 Arb; 상수는 CL0 마일스톤의 시제품 측정으로 정한다, smooth §4.7과 같은 절차).
 
 ### 4.1 계층 군집
-- **트리**: 높이 비교가 정확한 산술의 것과 같다면 정의(§3.2)의 트리와 같다. 비교에 쓰는 값의 오차 한계는 연결법마다 다르다: single·complete는 입력 거리 그 자체(비교가 정확하다; 트리는 계산한 거리 행렬의 정확한 함수다), ward·centroid·median은 무게 중심의 반올림(상대 c·γ_{log n}·κ 꼴, κ는 ‖c_A‖ + ‖c_B‖ 대 ‖c_A − c_B‖의 비), average는 짝 합의 반올림이다.
-- **높이**: single·complete는 계산한 거리와 비트까지 같다. 나머지는 트리 위의 재귀(CL45)라 |h − h*| ≤ C_HEIGHT·u·(p + d)·h*(d는 그 병합 아래의 병합 깊이) 꼴의 초안이고 C_HEIGHT = 2다(시제품의 최대 2 ULP; tests/cluster/refdata.py). ward·centroid·median의 재귀는 뺄셈(−|Q|·d²(P₁, P₂))이 있어 상쇄가 생길 수 있고, 그 한계는 CL1 마일스톤에서 증명과 함께 정한다. 참값 h*은 정확한 유리수(ward·centroid·median의 제곱 높이는 유리식이다)와 Arb(제곱근, average의 유클리드 거리)다.
-- `cophenet`, `inconsistent`: 정의대로의 합의 한계(γ 꼴). `optimal_leaf_ordering`: 비용 합이 정확한 최적과 c·γ_n·Σd 안(같은 비용의 순서는 열쇠).
+- **트리**: 계산한 값(거리, Lance–Williams의 값, 무게 중심의 값)과 열쇠로 정의(§3.2)대로 고른 트리다. 정확한 산술로 고른 트리와는 비교가 가까운 동점(두 후보의 차가 그 값의 반올림 안)일 때만 다르다. single·complete는 비교하는 값이 입력 거리 그 자체라 트리가 계산한 거리의 정확한 함수다. 참값 집합 37개 × 일곱 연결법에서 행(두 군집, 크기, 차례)이 모두 참값과 같았다(격자·같은 점의 정확한 동점 포함; `tests/cluster/test_hierarchy.py`).
+- **정리 1 (단일 연결의 동점, CL50)**. 계산한 거리 d̂로, 변을 (d̂, 작은 열쇠, 큰 열쇠)로 정렬한 Kruskal의 최소 신장 트리를 T라 하자. 거리 w 바로 앞의 군집들(d̂ < w인 변의 연결 요소)을 C, C 위의 그래프 G_w를 "두 군집 사이에 d̂ = w인 점 짝이 있다"로 두면 (i) G_w의 연결 요소는 T의 무게 w인 변들이 잇는 군집 묶음과 같고, (ii) 정의의 트리는 각 요소에서 열쇠가 가장 작은 군집 m이 G_w의 이웃을 열쇠 순서로 흡수하는 트리다. 증명: C의 서로 다른 두 군집 사이 거리는 w 이상이다(w보다 작으면 이미 합쳐졌다). (i) G_w의 변 (A, B)는 T 위에서 A와 B를 잇는 경로를 닫는 고리를 만들고, 고리 성질로 그 경로의 가장 큰 변은 w 이하이며 A ≠ B라 w인 변이 경로에 있다. 그래서 G_w의 요소는 T의 w인 변의 요소 안에 있고, 그 역은 T의 변 자체가 G_w의 변이라 당연하다. (ii) 높이 w에서 정의는 열쇠가 가장 작은 인접 쌍을 고른다. 쌍의 열쇠 (min, max)의 첫째가 가장 작은 것은 요소의 최소 열쇠 m을 품은 쌍이고, 합친 군집은 열쇠 m과 두 군집 이웃의 합집합을 가지며 다른 쌍의 값은 그대로다. 그래서 m이 이웃을 남기는 동안 m의 쌍이 계속 먼저이고, 그 쌍의 둘째는 지금 이웃 가운데 가장 작은 열쇠다. ∎ 같은 거리의 군집 짝 사이에 T의 변이 없을 수 있어(정삼각형의 세 점: T는 두 변만 쥔다) (ii)는 T의 변만으로 정해지지 않는다. 동점이 없으면 Kruskal의 차례가 곧 정의의 트리다.
+- **정리 2 (NN-chain의 동점 검출이 충분하다, CL46)**. 연결법이 축소 가능하다고 하자(complete, average, weighted, ward: d(i, j) ≤ min(d(i, k), d(j, k))이면 d(i ∪ j, k) ≥ min(d(i, k), d(j, k)); Lance–Williams 계수로 확인된다). 비교가 그 값들의 정확한 비교라 할 때, NN-chain의 어떤 이웃 찾기도 최솟값과 정확히 같은 다른 후보(사슬의 앞 군집 포함)를 만나지 않으면 NN-chain의 병합 집합은 정의(어떤 열쇠로든)의 병합 집합과 같다. 증명: (1) NN-chain이 합치는 (x, y)는 그때 **엄격한** 서로 가장 가까운 짝이다: x의 찾기가 y를 다른 모든 후보보다 엄격히 작게 찾았고(동점 없음), y의 찾기도 x를 그렇게 찾았다. x의 찾기 뒤의 병합 (c, d)는 엄격한 짝이라 d(c, d) ≤ min(d(c, x), d(d, x))이고 축소 가능성으로 d(x, c ∪ d) ≥ min(d(x, c), d(x, d)) > d(x, y)라 엄격함이 이어진다. (2) 분할 P에서 (a, b)가 값 δ의 엄격한 짝이면, P에서 출발한 정의는 a나 b를 품은 다른 쌍을 (a, b)보다 먼저 고르지 않고(그 값은 δ보다 크고, 축소 가능한 연결법의 정의는 고르는 값이 줄지 않아 (a, b)를 고를 때까지 δ 이하만 고른다), (a, b)를 먼저 합친 P′에서 출발해도 a ∪ b의 쌍의 값이 δ보다 커서(축소 가능성) 같은 쌍을 같은 차례로 고르다가 두 상태가 같아진다. 그래서 병합 집합이 같다. (3) NN-chain의 병합마다 (2)를 쓰면 귀납으로 집합이 같다. ∎ 동점이 찾기 밖에 있는 것(서로 먼 두 쌍이 같은 높이)은 트리를 바꾸지 않고, 행의 차례는 CL51이 정한다. 표시된 입력은 일반 알고리즘이 (값, 열쇠)로 정의대로 푼다. 시제품의 128가지 가운데 다른 4가지가 모두 표시됐던 것(§5)과 맞는다.
+- **정리 3 (높이, CL45·CL55)**. 모형: IEEE double, 가장 가까운 값으로 반올림, FMA 축약 없음(spatial의 제곱합의 fma만), 연산 하나의 상대 오차 |δ| ≤ u, γ_k = ku/(1 − ku). 재귀의 한 단계는 v = α₁v₁ + α₂v₂ − βh 꼴이고(average: β = 0; weighted: α = ½, β = 0; centroid: αᵢ = nᵢ/(n₁ + n₂), β = n₁n₂/(n₁ + n₂)²; median: ½, ½, ¼; ward: αᵢ = (nᵢ + n_Q)/T, β = n_Q/T), 항 하나가 겪는 반올림은 c번 이하다(average 3, weighted 1, centroid·ward 5, median 2: 계수의 계산, 곱, 더하기와 빼기). 밑값은 점 짝의 제곱합(차 하나에 1, fma 사슬 p단계: 상대 γ_{p+2}; CL43의 척도와 조심 길은 정확하다)이거나 그 제곱근(γ_{p+2} 안)이다. 재귀의 값 w마다 정확한 값 w*(같은 재귀를 정확한 밑값과 정확한 높이로), 양의 값 w⁺(각 −βh를 +βh⁺로 바꾼 같은 재귀), 사슬의 길이 λ(w)(밑값 0, 단계마다 1 + 세 입력의 λ 최댓값; 병합의 높이에서는 μ)를 두면 |ŵ − w*| ≤ γ_{cλ(w)+p+2}·w⁺다. 증명: 단계의 계산값은 α₁v̂₁(1 + θ₁) + α₂v̂₂(1 + θ₂) − βĥ(1 + θ₃), |θᵢ| ≤ γ_c(Higham 2002, 보조정리 3.1·3.3)이고, v̂ᵢ = vᵢ* + εᵢ, |εᵢ| ≤ γ_{cλᵢ+p+2}vᵢ⁺(귀납 가정), |vᵢ*| ≤ vᵢ⁺이므로 |ŵ − w*| ≤ (α₁v₁⁺ + α₂v₂⁺ + βh⁺)(γ_{c·maxλᵢ+p+2} + γ_c + γ_cγ_{…}) ≤ γ_{c(maxλᵢ+1)+p+2}·w⁺(γ_a + γ_b + γ_aγ_b ≤ γ_{a+b}). ∎ 출력 높이: ward·centroid·median은 ĥ = RN(√max(Ĥ, 0))·2^{−e}라 \|ĥ² − H*\| ≤ γ_{cμ+p+5}V⁺, 그래서 \|ĥ − h*\| ≤ γ_{cμ+p+5}V⁺/h* + (아래넘침의 절대항)다. 단조 연결법의 누적 최댓값(CL51)으로 올라간 높이는 그 자식의 한계를 지킨다(h* ≥ 자식의 h*). 이 한계가 `tests/cluster/refdata.py`의 `height_bound`이고 μ와 V⁺를 그 트리에서 계산한다.
+  - **상쇄**: V⁺/H*는 average·weighted에서 1이다(뺄셈이 없다). ward·centroid·median의 맨 위 단계는 단조 트리에서 βh ≤ v라 2배 안이지만 안쪽 단계(병합이 아닌 군집 짝의 값)는 원리상 묶이지 않는다. 참값 집합에서 V⁺/H*는 ward 6.2(blobs/k5p5), centroid 5.3, median 5.4(lattice/3x3x3)까지, μ는 깊이의 3.7배(44)까지였다. 측정한 오차는 일곱 연결법 모두 참값과 2 ULP 이하(scipy의 누적 3 ULP)이고 한계의 0.21–0.28배(single·complete는 spatial 거리의 한계 γ_{p/2+2}h*의 0.67배)다(`bench/cluster/accuracy.md`).
+- **DIANA**: 높이는 지름(입력 거리의 최댓값)이라 정확하다. 트리는 계산한 평균 거리의 비교로 고르며 정확한 비교와는 가까운 동점에서만 다르다.
+- `cophenet`은 높이를 옮겨 쓴다(정확). `inconsistent`는 정의대로의 두 번 훑기(γ 꼴). `optimal_leaf_ordering`은 계산한 비용 합의 정확한 최소이고(같은 비용은 열쇠), 정확한 최소와는 비용 합이 가까운 동점일 때만 다르다.
 
 ### 4.2 k-평균
 - **고정점**: `converged=True`이면 (1) 모든 점 i의 라벨은 결과의 중심까지 계산한 제곱 거리의 최솟값(동점은 작은 번호)이고 정확한 제곱 거리의 최솟값과는 두 중심의 정확한 거리 차가 c·u·(‖xᵢ − c‖² 꼴의 한계) 안일 때만 다르다, (2) 모든 중심은 그 라벨의 점들의 정확한 무게 평균과 ‖c − c*‖_∞ ≤ c·γ_{⌈log₂ n⌉+1}·max|x| 안이다(짝 합의 한계). `tol` > 0으로 멈춘 결과는 (2)만 약속하고 (1)은 마지막 라벨 다시 매기기의 것이다(§3.3).
@@ -402,6 +424,25 @@
   | 높이 (CL45) | 트리 위의 Lance–Williams 재귀(정밀도 float64, 자료는 CL43의 척도로): 일곱 연결법 모두 참값과 2 ULP 안(single·complete 1, average 2, weighted 1, centroid 2, median 1, ward 2), scipy의 누적은 1–3 ULP. 설계 초안의 정의대로의 합은 average 3 ULP, ward 무게 중심 5.2×10⁸ ULP(shifted/k3p2), 91 ULP(collinear/p2). n = 5000에서 다시 계산 average 4.5 ms·ward 1.0 ms 대 사슬 162·155 ms |
   | 중심의 합 (CL48) | 참값 라벨의 무게 평균을 덩이 합으로: γ_{⌈log₂ n⌉+1}·max\|x\|의 0.38배(shifted/k3p2)라 초안 상수 C_CENTER = 2 |
 
+- **CL1 마일스톤의 측정** (계층; Apple M4 Pro, 부하 평균 2.3–3.5, 세 번 중 가장 빠른 값, "1 / 10"은 sd의 스레드 수, scipy와 R은 1스레드, R은 `dist` 포함):
+
+  | 사례 | sd 1 / 10스레드 | scipy | R |
+  |---|---|---|---|
+  | `linkage` n = 5000, p = 5: single | 28.9 / 5.3 ms | 61.0 | `hclust` 175 |
+  | complete | 110 / 103 | 155 | 203 |
+  | average | 154 / 108 | 165 | 205 |
+  | weighted | 153 / 107 | 160 | 206 (`mcquitty`) |
+  | centroid | 110 / 78 | 162 | 212 (제곱 거리) |
+  | median | 105 / 77 | 151 | 208 (제곱 거리) |
+  | ward | 115 / 70 | 154 | 198 (`ward.D2`) |
+  | `linkage` n = 10⁵, p = 5, 행렬 없이: single | 1150 / 173 ms | (행렬 40 GB) | — |
+  | ward | — / 7.0 s | (행렬 40 GB) | — |
+  | `divisive` n = 1000, p = 5 | 4.8 / 4.6 ms | — | `diana` 354 |
+  | `cophenet` n = 5000 | 25 / 8.7 ms | 20.8 | — |
+  | `optimal_leaf_ordering` n = 1000 | 40.8 / 5.7 ms | 399 (최소가 아닐 때가 있다) | — |
+
+  1스레드는 모든 연결법이 scipy보다 빠르다. 10스레드의 몫은 single(Borůvka)·높이 재귀·`pdist`·무게 중심 찾기이고, NN-chain과 일반 알고리즘은 본디 차례라(§3.10) complete·average·weighted는 행렬 NN-chain(약 100 ms)이 남는다: §5 첫 표의 10스레드 목표(scipy의 1/3)는 single만 이르렀다. complete·average·weighted·centroid·median·ward의 10스레드는 CL7 마일스톤의 점검거리다(메인 결정, 사용자 위임 2026-11-27; §8). 높이 재귀는 n = 5000에서 1스레드 24–47 ms, 10스레드 4–10 ms다.
+- **최소 신장 트리** (CL54; `tools/cluster_probe.py proto.mst`, 기록 `tests/cluster/data/prototype.json`의 "mst/time", 1 / 10스레드 ms): 세 길(Prim, 점마다의 Borůvka, 이중 트리 Borůvka)이 같은 변과 무게를 낸다(p = 2, 5, 16의 3000점, 40×40 격자). 점마다의 Borůvka 대 Prim: p = 2는 n = 1024에서 1.1 대 1.8(1스레드), p = 5는 n = 2048에서 9.4 / 1.6 대 7.8 / 7.8, n = 10⁴에서 80 / 12 대 187 / 58, p = 8은 n = 10⁴에서 291 / 36 대 237 / 59, n = 3×10⁴에서 1176 / 136 대 2398 / 396, p = 16은 어디서나 Prim이 빠르다(n = 10⁴에서 408 대 3536). 이중 트리는 p = 2에서 점마다보다 조금 빠르고(n = 3×10⁴에서 42 대 56) p ≥ 3에서 1.2–6배 느리다(p = 8, n = 10⁴에서 1420 대 291). Borůvka만 n = 10⁵: p = 2 217 / 40, p = 3 373 / 59, p = 5 1280 / 169 ms.
 - 다른 라이브러리가 틀리는 곳(기록): §2.8의 표. sklearn `silhouette_samples`는 shifted/k3p2에서 0.21, subnormal/k3p2에서 0.75까지 참값과 다르다(전개식 거리).
 
 ---
@@ -410,8 +451,9 @@
 - **층**: `cluster/`는 `array/`, `base/`(`buffer.hpp`, `pairwise.hpp`), `parallel/`, `bind/`, `spatial/`(`metric.hpp`, `kdtree.hpp`, `neighbors.hpp`), `graph/`(합집합–찾기: CL0 마일스톤에서 보니 `csrc/graph/traversal.cpp`의 이름 없는 이름공간에 차례판(뿌리는 집합의 가장 작은 마디)과 원자적 병렬판(2¹⁸개부터 나눈다)이 있다. 처음 쓰는 CL3 마일스톤(DBSCAN)에서 `graph/unionfind.hpp`로 꺼내고 graph의 골든으로 같은 비트를 확인한다; CL1의 Borůvka는 차례판이면 된다) 위에 있다. 다른 영역은 `cluster/`를 모른다. Python 층의 `stardust.cluster`는 `stardust.random`, `stardust.linalg`(`LinAlgError`), `stardust.spatial`(`squareform`, 거리 이름의 검사), `stardust.frame`, `stardust._summary`, `stardust._calls`를 쓴다.
 - 등록: `bench/areas.py`에서 `cluster`는 `smooth` 뒤, `plot` 앞이다(어림). ARCHITECTURE §1의 그림과 §2의 목록, API.md의 색인 표, README.md의 표, tests/README.md·bench/README.md의 영역 목록에 한 줄씩 더한다.
 - C++ 폴더 `cluster/` (계획; CL0 마일스톤에는 시제품 `prototype.cpp`와 `cluster.hpp`만 있고 CL1·CL2 마일스톤이 아래 파일로 바꾸며 지운다)
-  - `common.hpp`: 점의 사전순 정렬과 열쇠, 덩이 부분합과 짝 합, Philox 하위 흐름의 원소 번호
-  - `hierarchy.cpp`: 압축 꼴 거리, Prim·Borůvka(단일 연결), NN-chain, 일반 알고리즘, 행렬 없는 무게 중심 길, 높이 다시 계산, 자르기·`cophenet`·`inconsistent`·`optimal_leaf_ordering`·`dendrogram`의 자리 계산, DIANA
+  - `common.hpp`: 점의 사전순 정렬과 열쇠, 압축 꼴 색인, CL43의 지수, 가장 작은 원소가 뿌리인 합집합–찾기 (CL1 마일스톤; 덩이 부분합과 Philox 하위 흐름의 원소 번호는 CL2 마일스톤이 더한다)
+  - `hierarchy.cpp` (CL1 마일스톤): 단일 연결의 트리(정렬한 최소 신장 트리와 CL50의 동점), NN-chain(행렬과 무게 중심), 일반 알고리즘(행렬과 무게 중심), 높이 다시 계산(CL45·CL55), 행(CL51), DIANA, `cophenet`, `optimal_leaf_ordering`. 자르기·`inconsistent`·`dendrogram`의 자리 계산은 O(n)이라 Python(`_hierarchy.py`)이다
+  - `mst.hpp`·`mst.cpp` (CL1 마일스톤): Prim(점, 행렬)과 KD 트리 위의 Borůvka(점마다; 측정용 이중 트리), 길의 문턱(CL54). HDBSCAN(CL3 마일스톤)이 상호 도달 거리로 넓힌다
   - `kmeans.cpp`: k-means++, Lloyd와 경계 가속, 빈 군집, 미니배치, 이분
   - `kmedoids.cpp`: BUILD, SWAP(FastPAM1의 재사용), CLARA
   - `fuzzy.cpp`: 퍼지 c-평균
@@ -419,7 +461,7 @@
   - `mixture.cpp`: EM(네 공분산 꼴), 작은 Cholesky
   - `metrics.cpp`: 분할표, 128비트 정수의 ARI·RI, MI·EMI, 실루엣·CH·DB, gap의 log W
   - `cluster.hpp`: 파일마다의 `bind_*`
-- 바인딩 `bind/cluster_bind.cpp`: `_core.cluster` 하위 모듈(CL0 마일스톤부터; 시제품의 `_proto_*`만).
+- 바인딩 `bind/cluster_bind.cpp`: `_core.cluster` 하위 모듈(CL0 마일스톤부터; CL1 마일스톤의 `lex_order`, `linkage`, `diana`, `cophenet`, `optimal_leaf_ordering`, 측정용 `_mst`, 그리고 k-평균 시제품의 `_proto_*`).
 - `src/stardust/cluster/`(하위 패키지 없음): `__init__.py`(`__all__`), `_common.py`(입력 정리, `metric`과 `'precomputed'`, `nan_policy`, `rng`의 검사, 메시지), `_results.py`(공통 기반 `ClusterResult`와 `summary`; CL44), `_hierarchy.py`, `_kmeans.py`, `_kmedoids.py`, `_fuzzy.py`, `_density.py`, `_mixture.py`, `_metrics.py`, `_gap.py`, `_gower.py`.
 
 ---
@@ -457,7 +499,7 @@ CL0 마일스톤의 여섯 묶음이다(점은 시험 자료의 id와 종류·�
 - 비교 대상이 없는 것: mclust의 공분산 꼴(나중), R `dbscan`·원본 `hdbscan`(sklearn만), `e1071::cmeans`(퍼지 c-평균은 참값으로만), `apcluster`(Affinity Propagation은 sklearn만), scikit-learn-extra의 `KMedoids`(R `pam`만).
 
 ### 7.5 정확도·속도 체계와 골든
-- **정확도** (`bench/accuracy/cluster.py`, 표는 `bench/cluster/accuracy.md`): 스윕 `hierarchy`(높이, 가까운 동점의 수), `kmeans`(중심, 관성, 고정점), `kmedoids`, `density`, `mixture`(로그 밀도, 책임도, M 단계), `metrics`. `--compare`가 비교 패키지의 같은 양을 같은 한계로 잰다.
+- **정확도** (`bench/accuracy/cluster.py`, 표는 `bench/cluster/accuracy.md`): 스윕 `hierarchy`(CL1 마일스톤, 기준선: 높이의 ULP와 계약의 몫, 참값과 다른 트리의 수; scipy·R 열), `kmeans`(중심, 관성, 고정점), `kmedoids`, `density`, `mixture`(로그 밀도, 책임도, M 단계), `metrics`. `--compare`가 비교 패키지의 같은 양을 같은 한계로 잰다.
 - **속도** (`bench/speed/cases/cluster.py`): §5의 사례와 크기, 1·10스레드. `--smoke`에서 결과를 비교 대상과 견준다.
 - **골든** (`tests/golden/cases_cluster.py`, 기록은 `tests/golden/data/cluster.json`): 모든 공개 함수 × 시험 자료의 대표, 옵션의 값마다, 틀린 호출, 병렬 길을 탈 큰 케이스(워커 하나 1 GB 아래). 1·3·10스레드의 결과가 모두 같아야 한다.
 
@@ -467,13 +509,13 @@ CL0 마일스톤의 여섯 묶음이다(점은 시험 자료의 id와 종류·�
 | 마일스톤 | 내용 | 끝났다는 뜻 |
 |---|---|---|
 | CL0 준비 | API 문서(`docs/api/cluster.md`)를 시제품의 측정에 맞춰 고치기, 영역 등록(`bench/areas.py`, ARCHITECTURE, API.md의 색인), 시험 자료(§7.1), 참값 도구(§7.2), 탐침 도구와 기록(§7.4), 결과의 공통 기반과 `summary`, 시제품의 측정(k-평균의 거리 꼴, 경계 가속의 여유, Prim 대 Borůvka, NN-chain의 동점 검출, 높이 다시 계산의 비용과 정확도), 속도 사례와 골든의 틀 | 문서와 도구가 커밋되고 탐침 기록이 있다 |
-| CL1 계층 | `linkage`, `agglomerative`, `divisive`, `HierarchyResult`, scipy의 도구(§9의 17번), `dendrogram`의 자료, 행렬 없는 길 | 트리와 높이의 계약, scipy·R과의 차이가 문서대로, 두 길의 같은 비트, 스레드마다 같은 바이트, 속도 사례 |
+| CL1 계층 | `linkage`, `agglomerative`, `divisive`, `HierarchyResult`, scipy의 도구(§9의 17번), `dendrogram`의 자료, 행렬 없는 길 | 트리와 높이의 계약, scipy·R과의 차이가 문서대로, 두 길의 같은 비트, 스레드마다 같은 바이트, 속도 사례 — **마침**(2026-11-27; CL50–CL57) |
 | CL2 분할 | `kmeans`, `minibatch_kmeans`, `bisecting_kmeans`, `kmedoids`(PAM·CLARA), `fuzzy_cmeans`와 결과들 | 고정점의 계약, sklearn·R과 같은 시작에서 같은 답, 경계 가속이 Lloyd와 같은 비트, `rng` 규칙, 속도 사례 |
 | CL3 밀도 | `dbscan`, `hdbscan`, `optics`와 결과들 | 정의대로의 분할(참값), sklearn과의 차이가 문서대로(경계 점), KD 트리와 훑기의 같은 비트, 속도 사례 |
 | CL4 혼합 | `gaussian_mixture`와 결과(네 공분산 꼴, `bic`·`aic`, `sample`) | 주어진 모수·책임도의 계약, sklearn과 같은 시작에서 같은 고정점 근처, 속도 사례 |
 | CL5 지표와 k 고르기 | 내부·외부 지표, `gap_statistic`, `gower_distance` | 지표의 계약(ARI 등은 올바른 반올림), sklearn·R과 같은 값, 속도 사례 |
 | CL6 그 밖 | `affinity_propagation`(CL40) | 정의와 멈춤 규칙이 문서대로, sklearn과 같은 답(잡음 없이) |
-| CL7 성능과 일관성 점검 | 모든 공개 함수를 크기마다 비교 대상과 견주어 고치기, 갈래의 문턱(Prim·Borůvka, 경계 가속, 트리와 훑기), 메시지·시그니처의 영역 간 일관성, 코드 리뷰 | 속도 표와 정확도 표가 기준선이 되고 §5의 목표를 적은 대로 확인한다 |
+| CL7 성능과 일관성 점검 | 모든 공개 함수를 크기마다 비교 대상과 견주어 고치기(CL1 마일스톤에서 넘긴 것: 10스레드 목표에 못 미친 `linkage`의 complete·average·weighted·centroid·median·ward, n = 5000에서 70–108 ms 대 목표 scipy의 1/3 ≈ 50 ms; NN-chain과 일반 알고리즘의 차례 부분), 갈래의 문턱(Prim·Borůvka, 경계 가속, 트리와 훑기), 메시지·시그니처의 영역 간 일관성, 코드 리뷰 | 속도 표와 정확도 표가 기준선이 되고 §5의 목표를 적은 대로 확인한다 |
 | CL8 문서 | `docs/api/cluster.md`의 확정, 이 문서를 구현대로 고치기, 등록 문서의 확인 | 문서가 코드와 맞고 `test_api_surface`가 통과한다 |
 
 진행 원칙은 다른 영역과 같다: 마일스톤마다 시작 전에 §9의 질문을 정하고, 구현하고, 정확도·속도를 재고, 커밋한다. 마일스톤 에이전트는 한 번에 하나다(C++ 재빌드가 모든 import를 멈춘다). CL1–CL5 마일스톤은 CL0 마일스톤에만 기대어 대체로 독립이지만, CL3 마일스톤의 HDBSCAN은 CL1 마일스톤의 MST(Prim·Borůvka)와 Z 꼴을, CL4 마일스톤의 시작은 CL2 마일스톤의 `kmeans`를, CL5 마일스톤의 gap은 CL2 마일스톤의 `kmeans`·`kmedoids`를 쓴다. 그래서 순서는 CL1 → CL2 → CL3 → CL4 → CL5 → CL6이다. 기존 영역의 결과는 비트까지 같아야 한다(이 영역은 다른 영역의 커널을 부르기만 한다; graph의 합집합–찾기를 머리 파일로 꺼내면 graph의 골든으로 확인한다).
