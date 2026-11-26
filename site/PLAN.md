@@ -1,6 +1,6 @@
 # 사이트 작업 계획
 
-작성 지침은 `WRITING.md`, 기준 빌드는 `README.md`. 영역은 하나씩 순서대로 쓴다. 마일스톤마다 작성 에이전트 하나 → 검증 에이전트 하나(둘 다 Opus 5.5, effort medium) → 메인 확인 → 커밋·push → Project Logger1 알림. 영역별 얼개는 `plans/<area>.md`.
+작성 지침은 `WRITING.md`, 기준 빌드는 `README.md`. 마일스톤은 한 번에 하나만 진행한다(여러 마일스톤을 동시에 돌리지 않음, 2026-11-27 사용자). 한 마일스톤 안에서는 페이지 묶음을 나눠 작성 에이전트 여럿을 병렬로 돌려도 되고(맡은 파일이 겹치지 않게, 영역 개요 파일은 한 에이전트만), 검증도 같은 방식. 에이전트는 Opus 5.5, effort medium. 작성 → 검증 → 메인 확인 → 커밋·push → Project Logger1 알림. 영역별 얼개는 `plans/<area>.md`.
 
 ## 순서
 common(Install·Conventions 첫판은 템플릿 작업과 함께) → array → linalg → frame → special → stats → random → regression → htest → optimize → integrate → differentiate → sparse → spatial → graph → interpolate → fft → smooth → plot → common 마무리. `sd.cluster`는 기준 빌드에 일부만 있어 뺀다.
