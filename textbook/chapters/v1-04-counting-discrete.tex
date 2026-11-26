@@ -834,7 +834,7 @@ a_n=\sum_{i=1}^{s}P_i(n)\,r_i^n,
 where each $P_i$ is a polynomial of degree less than $m_i$, and the $k$ coefficients of $P_1,\ldots,P_s$ are uniquely determined by $a_0,\ldots,a_{k-1}$.
 \end{proposition}
 
-\begin{proof}
+\begin{proof}[sketch]
 As in \cref{thm:linear-recurrence}, a solution is determined by its first $k$ values, and one checks that each sequence $n^jr_i^n$ with $j<m_i$ is a solution. The remaining point is that the $k$ coefficients can always be fitted to $k$ given initial values, which amounts to the invertibility of a $k\times k$ matrix of the Vandermonde type. Alternatively, the generating function of any solution is a rational function whose denominator is $1-c_1x-\cdots-c_kx^k$, and its partial fraction decomposition yields the formula; this second proof is carried out by Graham, Knuth and Patashnik~\cite[Sect.~7.3]{graham1994concrete}. A complete proof by linear algebra, with the companion matrix and its Jordan form, is \cref{cor:linear-recurrence}.
 \end{proof}
 
@@ -1549,7 +1549,7 @@ How many trees have the vertex set $\{1,\ldots,n\}$? For $n=3$ there are $3$, ea
 For every $n\ge2$, the number of trees with vertex set $\{1,\ldots,n\}$ is $n^{n-2}$.
 \end{theorem}
 
-\begin{proof}
+\begin{proof}[sketch]
 The proof constructs a bijection between these trees and the $n^{n-2}$ sequences of length $n-2$ with entries in $\{1,\ldots,n\}$. To \emph{encode} a tree $T$, repeat $n-2$ times: remove the leaf with the smallest label (it exists by \cref{cor:leaves}, and what remains is again a tree), and write down the label of its unique neighbour. The resulting sequence is the \term{Pr\"ufer code} of $T$. Every vertex $v$ occurs in the code exactly $\deg(v)-1$ times, because each removal of a neighbour of $v$ records $v$, and $v$ is either removed itself, when it has become a leaf after $\deg(v)-1$ of its neighbours have been removed, or is one of the two vertices that remain at the end, joined by an edge to its last neighbour. In particular, the leaves of $T$ are exactly the labels that do not occur in the code, and the first removed vertex is the smallest of them. This observation allows the tree to be \emph{decoded}: given any sequence $(a_1,\ldots,a_{n-2})$, the first removed leaf is the smallest label not occurring in the sequence, it was joined to $a_1$, and the remaining tree has the code $(a_2,\ldots,a_{n-2})$ on the remaining labels; repeating this, and joining the two labels left at the end, reconstructs $T$ and shows that every sequence is the code of exactly one tree. Pr\"ufer introduced the code in 1918~\cite{prufer1918}; West carries out the proof in detail~\cite[Sect.~2.2]{west2001}, and Aigner and Ziegler present four proofs of the formula~\cite{aigner2018proofs}.
 \end{proof}
 

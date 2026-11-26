@@ -654,7 +654,7 @@ A \term{closed polygon} with the vertices $\mathbf p_0,\ldots,\mathbf p_{N-1}$, 
 Let $P$ be a simple closed polygon. The points of the plane that do not lie on $P$ form two disjoint connected open sets, a bounded one, the \term{interior} of $P$, and an unbounded one, the \term{exterior} of $P$. Every point of $P$ is a limit of points of the interior and of points of the exterior.
 \end{theorem}
 
-\begin{proof}
+\begin{proof}[sketch]
 For a point $\mathbf a$ not on $P$, draw a ray from $\mathbf a$ that passes through no vertex of $P$, and count the edges that it crosses. The parity of this number does not depend on the ray: as the ray turns about $\mathbf a$, the count changes only when the ray sweeps over a vertex, and there it changes by $0$ or $\pm2$ if the two edges at the vertex lie on the same side of the ray, and not at all if they lie on opposite sides. The parity is also unchanged when $\mathbf a$ moves a little, and it is even for points far away, whose rays can be chosen to miss $P$. Two points close to the midpoint of an edge and on opposite sides of it have different parities: the ray from the first point through the second crosses the edges that the ray from the second point in the same direction crosses, and the edge between them besides. Finally, every point not on $P$ can be joined by a broken line avoiding $P$ to a point close to an edge, and then, by a broken line running alongside $P$ on one side, to a point close to any other edge on a determined side. The points of odd parity therefore form one connected set, the interior, which is bounded, and the points of even parity the exterior. Hales gives the details and explains how the general Jordan curve theorem is deduced from this case by approximation~\cite{hales2007}.
 \end{proof}
 
@@ -665,7 +665,7 @@ The union $D$ of $P$ and its interior is closed and bounded; it is the \term{pol
 Let $P$ be a simple closed polygon with $N\ge3$ vertices and $D$ its polygon region. Then $D$ is the union of $N-2$ triangles whose vertices are vertices of $P$, such that any two of the triangles meet in a common vertex, in a common side or not at all, every edge of $P$ is a side of exactly one triangle, and every other side of a triangle is a \term{diagonal}, a segment between two vertices of $P$ that lies in the interior of $P$ apart from its end points, shared by exactly two triangles, which lie on opposite sides of it.
 \end{theorem}
 
-\begin{proof}
+\begin{proof}[sketch]
 The proof is by induction on $N$, the case $N=3$ being trivial. For $N\ge4$ there is a diagonal. To find one, take a vertex $\mathbf p_k$ at which the interior angle is less than $\pi$, for instance the lowest of the leftmost vertices. If the segment between its neighbours $\mathbf p_{k-1}$ and $\mathbf p_{k+1}$ is a diagonal, take it. Otherwise the triangle $\mathbf p_{k-1}\mathbf p_k\mathbf p_{k+1}$ contains other vertices of $P$, and the one farthest from the line through $\mathbf p_{k-1}$ and $\mathbf p_{k+1}$ can be joined to $\mathbf p_k$ by a diagonal. A diagonal cuts $P$ into two simple closed polygons with $N_1$ and $N_2$ vertices, $N_1+N_2=N+2$ and $N_1,N_2<N$, whose regions make up $D$ and meet only along the diagonal. By induction they are triangulated by $N_1-2$ and $N_2-2$ triangles, $N-2$ in all. Meisters showed more: every simple polygon with at least four vertices has two \emph{ears}, vertices $\mathbf p_k$ for which $[\mathbf p_{k-1},\mathbf p_{k+1}]$ is a diagonal, so that the triangles can be cut off one at a time~\cite{meisters1975}.
 \end{proof}
 

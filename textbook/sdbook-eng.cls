@@ -71,10 +71,23 @@
 \sd@newthm{definition}{Definition}
 \sd@newthm{assumption}{Assumption}
 % Proof: italic head as in SNmono, the box set flush right
+% \begin{proof}[sketch] (user's choice 2026-11-27): a proof that gives only the storyline
+% or the key idea and leaves the rest to a reference or a later chapter. Head "Proof
+% (sketch)", and a dagger (\sketchsymbol) in place of the box, set by the same mechanism
+% (\qed at the end, \qedhere in a display or a list). Any other optional argument is a
+% custom head, as before: \begin{proof}[Proof of \cref{...}].
 \renewcommand\qedsymbol{\hbox{\rlap{$\sqcap$}$\sqcup$}}
+\newcommand\sketchsymbol{\hbox{\textdagger}}
+\def\sd@sketcharg{sketch}
 \renewenvironment{proof}[1][\proofname]{\par
+  \def\sd@proofarg{#1}%
+  \ifx\sd@proofarg\sd@sketcharg
+    \def\sd@proofhead{\proofname\ (sketch)}\let\qedsymbol\sketchsymbol
+  \else
+    \def\sd@proofhead{#1}%
+  \fi
   \pushQED{\qed}\normalfont\topsep6\p@\@plus6\p@\relax
-  \trivlist\item[\hskip\labelsep\itshape #1\@addpunct{.}]\ignorespaces
+  \trivlist\item[\hskip\labelsep\itshape \sd@proofhead\@addpunct{.}]\ignorespaces
 }{\popQED\endtrivlist\@endpefalse}
 
 % ---------------------------------------------------------------------------

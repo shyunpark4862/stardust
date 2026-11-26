@@ -107,7 +107,7 @@ f(0)=a\qquad\text{and}\qquad f(S(n))=g(f(n))\quad\text{for every }n\in\mathbb N.
 \]
 \end{theorem}
 
-\begin{proof}
+\begin{proof}[sketch]
 \emph{Uniqueness.} If $f$ and $f'$ both have the two properties, then $f(0)=a=f'(0)$, and $f(n)=f'(n)$ implies $f(S(n))=g(f(n))=g(f'(n))=f'(S(n))$. By induction, $f(n)=f'(n)$ for all $n$.
 
 \emph{Existence.} The function is built from its graph. Call a set $R\subseteq\mathbb N\times X$ \emph{admissible} if $(0,a)\in R$ and $(n,x)\in R$ implies $(S(n),g(x))\in R$; the set $\mathbb N\times X$ itself is admissible. Let $F$ be the intersection of all admissible sets. Then $F$ is admissible, and it is the smallest admissible set, as in the construction of the transitive closure in \cref{prop:transitive-closure}. One shows by induction on $n$ that for each $n$ there is exactly one $x$ with $(n,x)\in F$. That there is at least one follows by induction from admissibility. If there were a second pair, removing it from $F$ would leave a set that is still admissible, contradicting minimality. For $n=0$ this holds because $0$ is not a successor (axiom (i)), so admissibility never forces a pair $(0,y)$ with $y\ne a$. In the inductive step a pair $(S(n),y)$ with $y\ne g(x)$, where $x$ is the unique value paired with $n$, is never forced either, because $S(m)=S(n)$ only for $m=n$ (axiom (ii)). Hence $F$ is the graph of a function $f$, and admissibility says precisely that $f(0)=a$ and $f(S(n))=g(f(n))$. Complete proofs are given by Enderton~\cite{enderton1977sets} and by Hrbacek and Jech~\cite{hrbacek1999}.
@@ -157,7 +157,7 @@ For all $k,m,n\in\mathbb N$:
 \end{enumerate}
 \end{theorem}
 
-\begin{proof}
+\begin{proof}[sketch]
 We prove the associative law of addition, the commutative law of addition and the cancellation law. The others are proved by similar inductions on one of the variables. For the laws of multiplication, the distributive law $k(m+n)=km+kn$ comes first, by induction on $n$; the associative law follows from it, and the commutative law, like that of addition, needs the two auxiliary rules $0\cdot n=0$ and $S(m)\cdot n=mn+n$. Part (vi) follows from \cref{prop:peano-basic}\,(i): if $n\ne0$, then $n=S(j)$, so $m+n=S(m+j)\ne0$, and $mn=mj+m\ne0$ when also $m\ne0$. Landau carries out all these proofs in full~\cite{landau1930}, with the minor difference that his natural numbers start at $1$.
 
 \emph{Associativity of addition.} Fix $k$ and $m$, and use induction on $n$. For $n=0$, both sides equal $k+m$ by \eqref{eq:peano-add}. Suppose $(k+m)+n=k+(m+n)$. Then, using \eqref{eq:peano-add} three times and the inductive hypothesis once,
@@ -1462,7 +1462,7 @@ Every ordered field contains a copy of $\mathbb Q$. The elements $0$, $1$, $1+1$
 If $F$ and $F'$ are complete ordered fields, there is exactly one bijection $\varphi\colon F\to F'$ that preserves sums and products; it also preserves the order.
 \end{theorem}
 
-\begin{proof}
+\begin{proof}[sketch]
 Let $\varphi$ be a bijection that preserves sums and products. Then $\varphi(0)$ and $\varphi(1)$ are the zero and the one of $F'$, so $\varphi$ maps the elements $1+\cdots+1$ of $F$ to the corresponding elements of $F'$, and, since it preserves negatives and quotients, it maps each rational element $q$ of $F$ to the corresponding rational element $q'$ of $F'$. It preserves the order, because in a complete ordered field the elements $x\ge0$ are exactly the squares, by \cref{prop:order-rules}\,(iv) and \cref{thm:roots} below, whose proof uses only the axioms, and $\varphi$ maps squares to squares. If $\varphi$ preserves the order and fixes the rational elements in this sense, then $\varphi(x)=\sup\{q': q\text{ rational},\ q<x\}$ for every $x\in F$, by the density of the rational elements (\cref{thm:q-dense} below); this proves uniqueness. For existence one defines $\varphi$ by this formula and checks, with the Archimedean property and the density proved below, that it is a bijection that preserves sums and products. Spivak gives the complete proof in the last part of his \emph{Calculus}~\cite{spivak2008calculus}.
 \end{proof}
 
@@ -1931,7 +1931,7 @@ so the solutions of $az^2+bz+c=0$ are $z=(-b\pm w)/(2a)$, where $w$ is either sq
 Every polynomial $p(z)=a_nz^n+a_{n-1}z^{n-1}+\cdots+a_0$ of degree $n\ge1$ with complex coefficients, $a_n\ne0$, has a complex root: there is $z_0\in\mathbb C$ with $p(z_0)=0$.
 \end{theorem}
 
-\begin{proof}
+\begin{proof}[sketch]
 The proof uses a property of continuous functions that belongs to analysis. Since the leading term dominates for large $|z|$, $|p(z)|\to\infty$ as $|z|\to\infty$, and one deduces from the compactness of closed discs that $|p|$ attains a smallest value at some point $z_0$. Suppose $p(z_0)\ne0$. Expanding $p$ around $z_0$ gives $p(z_0+h)=p(z_0)+ch^k+h^{k+1}g(h)$ with $c\ne0$, some $k\ge1$ and a polynomial $g$. By \cref{thm:complex-roots} there is $u$ with $u^k=-p(z_0)/c$. For $h=tu$ with small $t>0$, the term $ch^k=-t^kp(z_0)$ points from $p(z_0)$ towards $0$, and the remainder is too small to undo this, so $|p(z_0+tu)|<|p(z_0)|$, contradicting the minimality. Hence $p(z_0)=0$. The details are carried out in Volume~II, which also gives the shortest proof, by Liouville's theorem of complex analysis. Aigner and Ziegler present the argument sketched here in full~\cite{aigner2018proofs}, and Remmert's chapter in the book of Ebbinghaus and others discusses it together with several other proofs and their history~\cite{ebbinghaus1991}.
 \end{proof}
 

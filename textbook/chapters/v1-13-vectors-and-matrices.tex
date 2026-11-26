@@ -659,7 +659,7 @@ For square matrices the asymmetry disappears. This is a genuinely deeper fact, b
 Let $A,B\in\mathbb R^{n\times n}$. If $BA=I$, then also $AB=I$, so that $A$ is invertible with $A^{-1}=B$. The same holds if $AB=I$.
 \end{theorem}
 
-\begin{proof}
+\begin{proof}[sketch]
 If $BA=I$, then $A\mathbf x=\mathbf 0$ only for $\mathbf x=\mathbf 0$, by \cref{prop:one-sided-inverses}\,(ii). For a \emph{square} matrix with this property, the system $A\mathbf x=\mathbf b$ has a solution for every $\mathbf b$; this is part of \cref{thm:invertible-matrices}\,(i), and \cref{ch:linear-systems} proves it by Gaussian elimination, which reduces a square matrix without nonzero solutions of $A\mathbf x=\mathbf 0$ to the identity by row operations, each of which is undone by another. Solving $A\mathbf c_k=\mathbf e_k$ for $k=1,\ldots,n$ gives a matrix $C$ with the columns $\mathbf c_k$ and $AC=I$, and by \cref{prop:one-sided-inverses}\,(i), $B=C$. If $AB=I$, apply the first case to the pair $(B,A)$: $B$ has the left inverse $A$, so $BA=I$ as well. See also Horn and Johnson~\cite[Sect.~0.5]{horn2013} and Strang~\cite[Sect.~2.5]{strang2016}.
 \end{proof}
 

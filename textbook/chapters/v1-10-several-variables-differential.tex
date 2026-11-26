@@ -284,7 +284,7 @@ For $A\in\mathbb R^{n\times n}$ there is a number $\det A$, a polynomial in the 
 \end{enumerate}
 \end{theorem}
 
-\begin{proof}
+\begin{proof}[sketch]
 The determinant is defined as the sum $\sum_\pi\operatorname{sgn}(\pi)\,a_{1\pi(1)}\cdots a_{n\pi(n)}$ over all permutations $\pi$ of $\{1,\ldots,n\}$, where the sign is $\pm1$ according to the parity of the number of inversions of $\pi$; for $n=2$ and $n=3$ this is the formula above. It is characterised by three properties: it is linear in each column, it changes sign when two columns are exchanged, and $\det I=1$. Gaussian elimination, which \cref{ch:linear-systems} develops, reduces $A$ by row operations of known effect on the determinant to a triangular matrix, whose determinant is the product of the diagonal entries; this proves (i) and the product rule (ii). Part (iii) is the adjugate formula, the matrix form of Cramer's rule: the inverse is the transpose of the matrix of cofactors divided by $\det A$, and each cofactor is, up to sign, the determinant of a submatrix. \Cref{ch:linear-systems} and \cref{ch:determinants} give the details; see also Horn and Johnson~\cite[Sects.~0.3 and~0.5]{horn2013}.
 \end{proof}
 
@@ -1252,7 +1252,7 @@ Let $A\in\mathbb R^{n\times n}$ be symmetric.
 \end{enumerate}
 \end{theorem}
 
-\begin{proof}
+\begin{proof}[sketch]
 Part (i) rests on the spectral theorem of \cref{ch:symmetric-matrices}: there is a matrix $Q$ with $Q^{\mathsf T}Q=I$, whose columns are eigenvectors, such that $Q^{\mathsf T}AQ=\operatorname{diag}(\lambda_1,\ldots,\lambda_n)$. With $\mathbf h=Q\mathbf y$ the quadratic form becomes $\sum_i\lambda_iy_i^2$, whose sign behaviour is read off from the signs of the $\lambda_i$, as for diagonal matrices above. Part (ii) follows from Gaussian elimination without pivoting, which, when all $\Delta_k$ are positive, writes $A=LDL^{\mathsf T}$ with $L$ lower triangular with ones on the diagonal and $D$ diagonal with the positive entries $\Delta_k/\Delta_{k-1}$; this is completing the square in $n$ variables, as \eqref{eq:complete-square} is for $n=2$. \Cref{ch:determinants,ch:symmetric-matrices} give the proofs; see also Horn and Johnson~\cite[Sects.~4.1 and~7.2]{horn2013}.
 \end{proof}
 
@@ -1371,7 +1371,7 @@ D\mathbf g(\mathbf y)=\bigl(D\mathbf f(\mathbf g(\mathbf y))\bigr)^{-1}\qquad(\m
 If $\mathbf f\in C^k(U)$, then $\mathbf g\in C^k(W)$.
 \end{theorem}
 
-\begin{proof}
+\begin{proof}[sketch]
 The proof turns the equation into a fixed point problem. Let $A\coloneqq D\mathbf f(\mathbf a)$. For a given $\mathbf y$, the solutions of $\mathbf f(\mathbf x)=\mathbf y$ are the fixed points of
 \[
 \boldsymbol\varphi_{\mathbf y}(\mathbf x)\coloneqq\mathbf x+A^{-1}\bigl(\mathbf y-\mathbf f(\mathbf x)\bigr),
@@ -1513,7 +1513,7 @@ D\boldsymbol\varphi(\mathbf x)=-\bigl(D_{\mathbf y}\mathbf F(\mathbf x,\boldsymb
 and $\boldsymbol\varphi\in C^k(V)$ if $\mathbf F\in C^k(W)$.
 \end{theorem}
 
-\begin{proof}
+\begin{proof}[sketch]
 Apply the inverse function theorem to $\mathbf G(\mathbf x,\mathbf y)\coloneqq(\mathbf x,\mathbf F(\mathbf x,\mathbf y))$, a map from $W$ to $\mathbb R^{n+m}$. Its Jacobian matrix has the block form
 \[
 \begin{bmatrix}I&0\\D_{\mathbf x}\mathbf F&D_{\mathbf y}\mathbf F\end{bmatrix},

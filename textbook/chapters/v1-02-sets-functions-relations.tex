@@ -1739,7 +1739,7 @@ have ever larger cardinalities. The next theorem makes the comparison $|A|\le|B|
 If $|A|\le|B|$ and $|B|\le|A|$, then $|A|=|B|$.
 \end{theorem}
 
-\begin{proof}
+\begin{proof}[sketch]
 Let $f\colon A\to B$ and $g\colon B\to A$ be injections. The idea is to use $f$ on part of $A$ and $g^{-1}$ on the rest. An element of $A$ that is not of the form $g(b)$ cannot be handled by $g^{-1}$, so it must be sent by $f$; and once an element $a$ is sent by $f$, the element $g(f(a))$ must be sent by $f$ as well, for otherwise $g^{-1}$ would send it to $f(a)$, which is already taken. This leads to the sets
 \[
 C_0\coloneqq A\setminus g(B),\qquad C_{n+1}\coloneqq g(f(C_n)),\qquad C\coloneqq\bigcup_{n\in\mathbb N}C_n ,

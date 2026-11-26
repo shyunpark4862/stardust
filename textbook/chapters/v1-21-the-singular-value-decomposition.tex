@@ -753,7 +753,7 @@ For $A,E\in\mathbb F^{m\times n}$,
 \]
 \end{theorem}
 
-\begin{proof}
+\begin{proof}[sketch]
 The Hoffman--Wielandt theorem states that two Hermitian matrices $X$ and $Y$ of order $N$ satisfy $\sum_k(\lambda_k(X)-\lambda_k(Y))^2\le\|X-Y\|_{\mathrm F}^2$, with both sets of eigenvalues in increasing order; the standard proof writes $\|X-Y\|_{\mathrm F}^2$ in terms of the eigenvalues and the unitary matrix that relates the two eigenvector bases, observes that the squared moduli of the entries of this unitary matrix form a doubly stochastic matrix, and minimises a linear function over the doubly stochastic matrices, whose extreme points are the permutation matrices by Birkhoff's theorem~\cite{hoffman1953},~\cite[Sect.~6.3]{horn2013}. Applied to the Hermitian dilations $X=M_{A+E}$ and $Y=M_A$ of \cref{prop:dilation} below, whose eigenvalues in increasing order are $-\sigma_1,\ldots,-\sigma_p$, then $|m-n|$ zeros, then $\sigma_p,\ldots,\sigma_1$, the left side becomes twice the square of the left side of the theorem, and $\|M_E\|_{\mathrm F}^2=2\|E\|_{\mathrm F}^2$. Mirsky proved the inequality, and its analogue for every unitarily invariant norm, in 1960~\cite{mirsky1960}.
 \end{proof}
 
@@ -1084,7 +1084,7 @@ Let $A\in\mathbb F^{m\times n}$ have full column rank, let $\mathbf x$ be the le
 \]
 \end{theorem}
 
-\begin{proof}
+\begin{proof}[sketch]
 The proof follows the computation of \cref{prop:ls-first-order}, but expresses $\hat{\mathbf x}-\mathbf x$ exactly instead of to first order. One writes $\hat{\mathbf x}-\mathbf x=(A+E)^+(\mathbf b+\mathbf f)-A^+\mathbf b$, splits $\mathbf b=A\mathbf x+\mathbf r$, and uses the orthogonality relations of the Penrose conditions to separate a part that involves $E\mathbf x$ and $\mathbf f$, bounded by $\|(A+E)^+\|_2$, from a part that involves $\mathbf r$ and the tilt of the column space, bounded by $\|(A+E)^+\|_2^2\|E\|_2$; the assumption $\kappa_2(A)\varepsilon<1$ guarantees that $A+E$ has full column rank and $\|(A+E)^+\|_2\le1/(\sigma_n(1-\kappa_2(A)\varepsilon))$, by \cref{thm:weyl-singular}. The bound is due to Wedin~\cite{wedin1973}; Higham~\cite[Thm.~20.1]{higham2002accuracy} gives it in this form with a complete proof, which Volume~VIII presents.
 \end{proof}
 

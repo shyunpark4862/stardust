@@ -16,6 +16,7 @@ Four passes.
    Written-out matrices and column vectors use square brackets (bmatrix), never pmatrix.
    Likewise no written-out matrix or column vector inline: move it to a display.
    Remove run-in pseudo-environment labels (\emph{Example.}, \emph{Examples.}, \emph{Remark.}, \paragraph{...}) and make the sentence lead in by itself.
+   Check that every proof environment is classified correctly (GUIDE.md §3): a proof that gives only the storyline or key idea and leaves the rest to a reference, a later chapter or another volume, or proves only part of the statement, must be \begin{proof}[sketch] ("Proof (sketch)", ending with the dagger \sketchsymbol); a complete proof from results available up to that point must be plain \begin{proof} (ending with the square). Fix misclassified proofs with this one-token change, and remove a redundant opening such as "We sketch the proof" from a sketch.
 4. Prose. Formal academic English, clear and unhurried, British spelling. Remove filler, repeated phrasings, inflated wording, mechanical parallelism, overused words ("crucial", "key", "fundamental", "it is worth noting") and excess dashes; vary sentence openings; keep terminology consistent. Keep all content; never shorten explanations for brevity.
 
 Then `tools/build.sh volN` until warnings 0, render every page with a figure, table, algorithm or box (pdftoppm -r 80 into a temp directory outside the repository, deleted afterwards) and confirm margins, placement, overlaps, fills and axes on top.

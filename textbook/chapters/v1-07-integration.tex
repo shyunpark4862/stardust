@@ -1034,8 +1034,8 @@ with distinct real $\alpha_i$, distinct quadratic factors without real roots, an
 for all $x$ with $s(x)\ne0$.
 \end{theorem}
 
-\begin{proof}
-We outline the argument. If $s=s_1s_2$ with coprime polynomials $s_1$ and $s_2$, the extended Euclidean algorithm for polynomials, which works as the one for integers in \cref{ch:numbers}, gives polynomials $a_1,a_2$ with $a_1s_1+a_2s_2=1$; then $\rho/s=\rho a_2/s_1+\rho a_1/s_2$, and after division with remainder the problem splits into the two factors. For a power $(x-\alpha)^m$ or $(x^2+px+q)^n$ of a single factor, expanding the numerator in powers of $x-\alpha$, or dividing it repeatedly by $x^2+px+q$, gives the terms of the decomposition. Uniqueness follows by comparing the behaviour of both sides near the roots of $s$, real and complex. Spivak treats the decomposition in detail~\cite{spivak2008calculus}.
+\begin{proof}[sketch]
+If $s=s_1s_2$ with coprime polynomials $s_1$ and $s_2$, the extended Euclidean algorithm for polynomials, which works as the one for integers in \cref{ch:numbers}, gives polynomials $a_1,a_2$ with $a_1s_1+a_2s_2=1$; then $\rho/s=\rho a_2/s_1+\rho a_1/s_2$, and after division with remainder the problem splits into the two factors. For a power $(x-\alpha)^m$ or $(x^2+px+q)^n$ of a single factor, expanding the numerator in powers of $x-\alpha$, or dividing it repeatedly by $x^2+px+q$, gives the terms of the decomposition. Uniqueness follows by comparing the behaviour of both sides near the roots of $s$, real and complex. Spivak treats the decomposition in detail~\cite{spivak2008calculus}.
 \end{proof}
 
 The coefficients are found in practice by multiplying out and comparing coefficients, which gives a system of linear equations (Part~III), or by substituting the roots of $s$. Each piece has an elementary antiderivative. As in \cref{tab:integrals}, we write $\ln|x|$ for the function $\Lambda(|x|)$ of \eqref{eq:log-integral}; \cref{ch:transcendental} shows that the two agree, and the computations below use only the derivative $1/x$ and the additivity of \cref{prop:log-additive}. For the linear factors,
@@ -1078,7 +1078,7 @@ e^{-x^2},\qquad\frac{\sin x}x\quad(x\ne0),\qquad\frac1{\ln x}\quad(x>1)
 have no elementary antiderivative on any interval.
 \end{theorem}
 
-\begin{proof}
+\begin{proof}[sketch]
 The theory behind this theorem was created by Liouville in the 1830s and given an algebraic form by Ritt and by Rosenlicht~\cite{ritt1948,rosenlicht1972}. Its central result is a criterion: if $g$ and $h$ are rational functions and $g$ is not constant, then $h\,e^g$ has an elementary antiderivative if and only if the differential equation $R'+g'R=h$ has a rational solution $R$, in which case $Re^g$ is an antiderivative. For $e^{-x^2}$, with $h=1$ and $g=-x^2$, the equation $R'-2xR=1$ has no rational solution, by an argument about degrees and poles given in the note below. The other two functions reduce to the same kind of criterion, after writing $\sin x$ through complex exponentials and substituting $x=e^u$ in $1/\ln x$, which becomes $e^u/u$. Rosenlicht's paper gives a complete and short account~\cite{rosenlicht1972}.
 \end{proof}
 

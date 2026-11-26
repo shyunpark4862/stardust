@@ -621,7 +621,7 @@ The spectral radius is the radius of the smallest disc about $0$ in the complex 
 For $A\in\mathbb C^{n\times n}$, $A^k\to0$ entrywise as $k\to\infty$ if and only if $\rho(A)<1$.
 \end{theorem}
 
-\begin{proof}
+\begin{proof}[sketch]
 Suppose that $A^k\to0$, and let $A\mathbf x=\lambda\mathbf x$ with $\mathbf x\ne\mathbf 0$. Then $A^k\mathbf x=\lambda^k\mathbf x$, and each component of $A^k\mathbf x$ is a fixed combination of the entries of $A^k$, so $\lambda^k\mathbf x\to\mathbf 0$; for a component $x_j\ne0$ this gives $\lambda^k\to0$ and $|\lambda|<1$. So $\rho(A)<1$. Conversely, let $\rho(A)<1$. If $A=S\Lambda S^{-1}$ is diagonalisable, every entry of $A^k=S\Lambda^kS^{-1}$ is a fixed combination of the numbers $\lambda_i^k$, which tend to zero. For a general matrix the converse is proved in \cref{cor:powers-general}, with the help of the Cayley--Hamilton theorem of the next section.
 \end{proof}
 
@@ -1204,7 +1204,7 @@ The proof is a refinement of $\rho(A)\le\|A\|_\infty$: it uses the largest compo
 If the union of $k$ of the Gershgorin discs of $A$ is disjoint from the union of the other $n-k$, then it contains exactly $k$ eigenvalues of $A$, counted with multiplicity. In particular a disc that meets no other disc contains exactly one eigenvalue, and if $A$ is real, this eigenvalue is real.
 \end{theorem}
 
-\begin{proof}
+\begin{proof}[sketch]
 Let $A_0$ be the diagonal part of $A$ and $A_t\coloneqq A_0+t(A-A_0)$ for $0\le t\le1$. The discs of $A_t$ have the same centres as those of $A$ and the radii $tR_i$, so for every $t$ the union of the first group of discs lies inside the union for $A$ and is disjoint from the union of the others. The eigenvalues of $A_t$ are the roots of $p_{A_t}$, whose coefficients are polynomials in $t$, and the roots of a polynomial depend continuously on its coefficients, a consequence of the argument principle of complex analysis (Volume~II). As $t$ runs from $0$ to $1$, no eigenvalue can pass from one union to the other without leaving both, which Gershgorin's theorem forbids; so the number of eigenvalues in the first union is the same for $t=1$ as for $t=0$, where the eigenvalues are the diagonal entries and exactly $k$ of them are centres of the discs of the first group. Horn and Johnson~\cite[Sect.~6.1]{horn2013} and Varga~\cite{varga2004} give the details. For a real matrix, the discs are symmetric about the real axis, so the conjugate of an eigenvalue in an isolated disc lies in the same disc, and the disc contains only one eigenvalue, which is therefore real.
 \end{proof}
 

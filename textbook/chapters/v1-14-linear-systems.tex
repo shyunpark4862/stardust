@@ -660,7 +660,7 @@ The rank was defined through the rows: it counts the nonzero rows that survive e
 For every $A\in\mathbb R^{m\times n}$, $\operatorname{rank}A^{\mathsf T}=\operatorname{rank}A$.
 \end{theorem}
 
-\begin{proof}
+\begin{proof}[sketch]
 Let $R=GA$ be the reduced form of $A$, with $r$ pivots. The span of the rows of $A$ equals the span of the rows of $R$, since every row operation replaces rows by combinations of rows and can be undone; the $r$ nonzero rows of $R$ are linearly independent, because each has a $1$ in a pivot column where the others vanish. So $r$ is the dimension of the row space. On the other hand, $R\mathbf x=\mathbf 0$ and $A\mathbf x=\mathbf 0$ have the same solutions, so the columns of $A$ satisfy the same linear relations as the columns of $R$; in $R$ the pivot columns are the independent ones and every free column is a combination of them, so the $r$ pivot columns of $A$ are independent and span all columns of $A$. Hence the column space also has dimension $r$. The column space of $A$ is the row space of $A^{\mathsf T}$, whose dimension is $\operatorname{rank}A^{\mathsf T}$. \Cref{ch:vector-spaces} carries out this argument in full (\cref{thm:four-dimensions}); see also Strang~\cite[Chap.~3]{strang2016} and Meyer~\cite[Chap.~4]{meyer2000}.
 \end{proof}
 

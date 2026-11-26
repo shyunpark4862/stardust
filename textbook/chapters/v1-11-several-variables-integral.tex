@@ -901,8 +901,8 @@ Let $U\subseteq\mathbb R^n$ be open, let $\mathbf g\colon U\to\mathbb R^n$ be co
 In particular, $\operatorname{vol}(\mathbf g(S))=\int_S|\det D\mathbf g(\mathbf u)|\,d\mathbf u$.
 \end{theorem}
 
-\begin{proof}
-We describe the structure of the proof. Complete proofs are given by Spivak~\cite[Thm.~3-13]{spivak1965manifolds} and Munkres~\cite[Chap.~4]{munkres1991}, for a map that is injective with nonzero Jacobian determinant on an open set; the version stated here follows by applying their theorem to the interior of $S$, since $\partial S$ and $\mathbf g(\partial S)$ have content zero, as the first step below shows. Lax~\cite{lax1999} gives a short proof of a related version, for maps that agree with the identity outside a bounded set, in which injectivity is not assumed.
+\begin{proof}[sketch]
+Complete proofs are given by Spivak~\cite[Thm.~3-13]{spivak1965manifolds} and Munkres~\cite[Chap.~4]{munkres1991}, for a map that is injective with nonzero Jacobian determinant on an open set; the version stated here follows by applying their theorem to the interior of $S$, since $\partial S$ and $\mathbf g(\partial S)$ have content zero, as the first step below shows. Lax~\cite{lax1999} gives a short proof of a related version, for maps that agree with the identity outside a bounded set, in which injectivity is not assumed.
 
 \emph{The image is Jordan measurable.} $\mathbf g(S)$ is closed and bounded as the continuous image of a closed bounded set. By the inverse function theorem (\cref{thm:inverse-function}), $\mathbf g$ maps a neighbourhood of every interior point of $S$ onto an open set, so interior points of $S$ go to interior points of $\mathbf g(S)$, and the boundary of $\mathbf g(S)$ lies in $\mathbf g(\partial S)$. On a neighbourhood of the closed bounded set $\partial S$, the map $\mathbf g$ is Lipschitz continuous, by the mean value inequality (\cref{thm:mean-value-inequality}) applied on small balls, and \cref{lem:lipschitz-content} shows that $\mathbf g(\partial S)$ has content zero.
 
@@ -1103,7 +1103,7 @@ Let $A\in\mathbb R^{n\times n}$ be symmetric and positive definite. Then
 \]
 \end{theorem}
 
-\begin{proof}
+\begin{proof}[sketch]
 Let $n=2$, and let $A$ have the rows $(a,b)$ and $(b,c)$, so that $q(x,y)\coloneqq\langle(x,y),A(x,y)\rangle=ax^2+2bxy+cy^2$, with $a>0$ and $\det A=ac-b^2>0$ by \cref{prop:definite-2x2}. Completing the square as in \eqref{eq:complete-square},
 \[
 q(x,y)=a\Bigl(x+\frac bay\Bigr)^2+\frac{\det A}a\,y^2 .
