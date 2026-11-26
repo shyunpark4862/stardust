@@ -63,8 +63,9 @@
   - **Done의 기준**: 초고 커밋과 검토(서지 검증 포함) 커밋이 모두 main에 들어간 장. Done on은 검토 커밋 날짜, Commits는 그 장의 초고·검토 커밋(그 장만 다룬 후속 커밋이 있으면 함께)의 짧은 해시를 `[abc12345](https://github.com/shyunpark4862/stardust/commit/abc12345)` 꼴로 공백으로 이어 쓴다. 여러 장을 한꺼번에 손본 정리 커밋은 넣지 않는다.
   - 갱신: 장을 시작하면(얼개를 짜거나 집필 에이전트를 띄우면) 그 행을 In progress로, 검토 커밋을 push하면 Done + Done on + Commits로 바꾼다. 얼개가 바뀌어 장이 늘거나 줄면 Planned 행을 더하거나 지우고 Order를 맞춘다.
   - 상태·날짜·커밋의 진실 기준은 md 기록이 아니라 git 이력이다(`git log --format='%h %ad %s' --date=short -- textbook/`; 2026-11-26 이름 바꾸기 전 기록은 `-- textbook-eng/`). 장 본문은 읽지 않아도 된다.
-  - 라이브러리·홈페이지 행과 Runs는 건드리지 않는다. 별권 Excursions는 Units에 행이 없어 아직 넣지 않았다(행이 생기면 같은 규칙으로 채운다).
-  - 처음 채움(2026-11-27): OUTLINE.md의 16권 235장. 1권 1–23장 Done, 24장 In progress, 나머지 Planned.
+  - 라이브러리·홈페이지 행과 Runs는 건드리지 않는다. 별권 Excursions는 Units에 "Excursions — Special Chapters (companion volume)" 행(Order 17)이 있고, 장 번호는 OUTLINE.md의 1–30을 그대로 쓴다.
+  - 처음 채움(2026-11-27): OUTLINE.md의 16권 235장과 Excursions 30장. 1권 1–23장 Done, 24장 In progress, 나머지 Planned.
+  - **알리기** (2026-11-27 사용자 지시): 노션 갱신은 기록 세션(현재 이름 "Project Logger2"; `ListAgents`로 확인)이 맡는다. 교과서 세션은 (i) 장을 시작할 때, (ii) 장의 검토 커밋을 push했을 때(장 번호, 커밋 해시, 날짜), (iii) 얼개가 바뀌어 장이 늘거나 줄거나 이름이 바뀔 때 그 세션에 `SendMessage`로 한두 줄 알린다. 여러 사건은 모아서 한 번에 보내도 된다. 기록 세션이 없으면 교과서 세션이 위 규칙대로 직접 고친다.
 
 ## 7. 디자인 (2026-11-25 확정, 구현은 sdbook-eng.cls)
 - 바탕: Springer SNmono 그대로(판형, 장·절 머리, 정리 꼴, 10/12pt Times). pdfLaTeX.
