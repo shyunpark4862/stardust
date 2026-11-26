@@ -1,10 +1,12 @@
 %% Foundations of Scientific Computing, Volume 1. Build: tools/build.sh vol1 (output pdf/vol1.pdf)
+%% Volumes I and II refer to each other: tools/build.sh all builds them in turn until both are stable.
 \documentclass{sdbook-eng}
 
 \addbibresource{references.bib}
+\externalvolume{2}{vol2}   % results of Volume II: \vcref{2}{<label>}, \Vcref, \veqref
 
 \title{Foundations of\\Scientific Computing}
-\volume{1}{Calculus, Linear Algebra, and Differential Equations}
+\volume{1}{Foundations and Calculus}
 \author{}
 \date{}
 
@@ -65,8 +67,6 @@ This list collects the symbols that are used in several chapters, and the conven
 \item[$x\to a^+$, $f(a^+)$] $x$ tends to $a$ from the right, and the right-hand limit of $f$ at $a$; similarly $a^-$
 \item[$C(D)$, $C^k(I)$, $C^\infty(I)$] the continuous functions on $D$; the $k$ times continuously differentiable and the smooth functions on $I$
 \item[$f'$, $f^{(n)}$, $df/dx$] derivatives, with $f^{(0)}=f$
-\item[$y'=f(t,y)$] a differential equation for $y(t)$; in Part~IV primes denote $d/dt$ ($d/dx$ for plane curves and in \cref{ch:series-solutions}), and dots, $\dot y$, are not used
-\item[$E$, $\Delta$] the shift $(Ey)_n=y_{n+1}$ and the difference $\Delta=E-I$ of sequences
 \item[$D_h^+f(x)$, $D_h^0f(x)$] the forward and the central difference quotient $(f(x+h)-f(x))/h$ and $(f(x+h)-f(x-h))/(2h)$
 \item[$\kappa_f(x)$] the relative condition number $|xf'(x)/f(x)|$ of $f$ at $x$
 \item[$\int_a^bf$, $\int_a^bf(x)\,dx$] the integral of $f$ over $[a,b]$; $\int_b^af=-\int_a^bf$
@@ -90,24 +90,13 @@ This list collects the symbols that are used in several chapters, and the conven
 \begin{symbols}
 \item[$\mathbf x=(x_1,\ldots,x_n)$] a vector of $\mathbb R^n$ (bold lower case), a column in matrix products
 \item[$\mathbf 0$, $\mathbf e_i$] the zero vector; the $i$th standard basis vector
-\item[$\langle\mathbf x,\mathbf y\rangle$] the inner product $\mathbf x^{\mathsf T}\mathbf y=\sum_ix_iy_i$; $\mathbf x^{\mathsf H}\mathbf y$ if complex (linear in $\mathbf y$)
+\item[$\langle\mathbf x,\mathbf y\rangle$] the inner product $\mathbf x^{\mathsf T}\mathbf y=\sum_ix_iy_i$
 \item[$\|\mathbf x\|$, $\|\mathbf x\|_p$] the Euclidean norm $\|\mathbf x\|_2$; $\|\mathbf x\|_1=\sum_i|x_i|$; $\|\mathbf x\|_\infty=\max_i|x_i|$
 \item[$A=(a_{ij})$, $\mathbb R^{m\times n}$] a matrix (italic capital) with entries $a_{ij}$; the real $m\times n$ matrices
-\item[$A^{\mathsf T}$, $A^{\mathsf H}$, $I_n$] the transpose; the conjugate transpose $\bar A^{\mathsf T}$; the identity matrix
-\item[$\operatorname{diag}(d_i)$, $\operatorname{tr}A$] the diagonal matrix with the entries $d_1,\ldots,d_n$; the trace $\sum_ia_{ii}$
+\item[$A^{\mathsf T}$, $I_n$] the transpose; the identity matrix
+\item[$\operatorname{diag}(d_i)$] the diagonal matrix with the entries $d_1,\ldots,d_n$
 \item[$\|A\|_p$, $\|A\|_{\mathrm F}$] the operator norm induced by $\|\cdot\|_p$; the Frobenius norm
-\item[$\operatorname{rank}A$] the rank of $A$, the number of pivots in its row echelon forms
 \item[$\det A$, $\operatorname{sgn}\sigma$] the determinant of a square matrix; the sign $\pm1$ of a permutation $\sigma$
-\item[$\mathbb F$, $\mathcal P_n$] the scalars, $\mathbb R$ or $\mathbb C$; the polynomials of degree at most $n$
-\item[$\operatorname{span}S$, $\dim V$] the span of a set $S$; the dimension of a vector space $V$
-\item[$\mathcal C(A)$, $\mathcal N(A)$] the column space and the null space of $A$
-\item[$\ker T$, $\operatorname{im}T$, $\mathcal L(V,W)$] the kernel and the image of $T$; the linear maps from $V$ to $W$
-\item[$S^\perp$, $T^*$] the orthogonal complement of $S$; the adjoint of $T$ ($A^{\mathsf H}$ for a matrix)
-\item[$p_A$, $\rho(A)$, $E_\lambda$] the characteristic polynomial $\det(\lambda I-A)$; the spectral radius, the largest modulus of an eigenvalue; the eigenspace $\mathcal N(A-\lambda I)$
-\item[$J_k(\lambda)$, $e^A$] the Jordan block of order $k$ for $\lambda$; the matrix exponential $\sum_kA^k/k!$
-\item[$A\succeq0$, $\lambda_k(A)$] $A$ is Hermitian positive semidefinite ($A\succ0$: definite); the eigenvalues of a Hermitian $A$ in \emph{increasing} order, $\lambda_1(A)\le\cdots\le\lambda_n(A)$
-\item[$\sigma_i(A)$, $A^+$, $\kappa_2(A)$] the singular values, \emph{decreasing}; the pseudoinverse; $\sigma_1/\sigma_r$
-\item[{$[T]_{\mathcal D\leftarrow\mathcal B}$}] the matrix of $T$ with respect to the bases $\mathcal B$ and $\mathcal D$; $[T]_{\mathcal B}$ if $\mathcal D=\mathcal B$
 \item[$B(\mathbf a,r)$, $\bar B(\mathbf a,r)$] the open and the closed ball with centre $\mathbf a$ and radius $r$
 \item[$\mathbf f=(f_1,\ldots,f_m)$] a vector-valued function, in bold, with component functions $f_i$
 \item[$\partial_if$, $\partial f/\partial x_i$, $f_{x_i}$] the partial derivative with respect to $x_i$; $f_{xy}=(f_x)_y$
@@ -135,25 +124,6 @@ This list collects the symbols that are used in several chapters, and the conven
 \input{chapters/v1-10-several-variables-differential}
 \input{chapters/v1-11-several-variables-integral}
 \input{chapters/v1-12-vector-calculus}
-
-\part{Linear Algebra}
-\input{chapters/v1-13-vectors-and-matrices}
-\input{chapters/v1-14-linear-systems}
-\input{chapters/v1-15-vector-spaces}
-\input{chapters/v1-16-linear-maps}
-\input{chapters/v1-17-determinants}
-\input{chapters/v1-18-inner-products-and-orthogonality}
-\input{chapters/v1-19-eigenvalues-and-eigenvectors}
-\input{chapters/v1-20-symmetric-matrices-and-quadratic-forms}
-\input{chapters/v1-21-the-singular-value-decomposition}
-\input{chapters/v1-22-canonical-forms-and-matrix-functions}
-
-\part{Differential Equations}
-\input{chapters/v1-23-first-order-equations}
-\input{chapters/v1-24-linear-equations-of-higher-order}
-\input{chapters/v1-25-linear-systems-of-differential-equations}
-\input{chapters/v1-26-series-solutions}
-\input{chapters/v1-27-difference-equations-and-recurrences}
 
 \backmatter
 \end{document}

@@ -1,0 +1,1329 @@
+%% Volume II, Chapter 2: Linear Systems
+\chapter{Linear Systems}
+\label{ch:linear-systems}
+
+\abstract{Linear systems are the problem that scientific computing solves more often than any other. Newton's method turns a nonlinear system into a sequence of linear ones, a least squares fit ends in one, and a differential equation becomes one as soon as it is discretised. The method for solving them, the elimination of unknowns, is more than two thousand years old and is taught at school. Read as a factorisation of the matrix into two triangular factors, however, it answers at once the three questions that one asks of a system: whether it has a solution, how many solutions it has, and how much work it takes to find them. It also shows what can go wrong when the arithmetic is rounded.}
+
+\Cref{ch:vectors-matrices} built the arithmetic of vectors and matrices and left one question deliberately open: given a matrix $A\in\mathbb R^{m\times n}$ and a vector $\mathbf b\in\mathbb R^m$, is there a vector $\mathbf x$ with $A\mathbf x=\mathbf b$, how many are there, and how is one found? This chapter answers the question completely, with a single method, Gaussian elimination, which removes the unknowns one at a time until a system remains that can be solved by inspection. The method is old and simple, but it carries the whole theory. It decides whether a system has a solution, it describes all solutions when there are many, it leads to the notion of rank, and it proves the facts about invertible matrices that \vcref{1}{ch:several-variables,ch:multiple-integrals} and \cref{ch:vectors-matrices} used on credit: that a square matrix is invertible exactly when $A\mathbf x=\mathbf0$ has only the solution $\mathbf x=\mathbf 0$, that a one-sided inverse of a square matrix is two-sided, and that every invertible matrix is a product of elementary matrices of three simple kinds.
+
+Read as a statement about matrices, elimination factorises $A$ into a lower triangular matrix $L$ and an upper triangular matrix $U$, and this factorisation $A=LU$ is how linear systems are actually solved on computers. It costs about $2n^3/3$ operations for a square matrix of order $n$, after which every further system with the same matrix costs only about $2n^2$. In floating-point arithmetic the method must exchange rows to avoid small pivots, and even then some systems cannot be solved accurately, because their solutions depend extremely sensitively on the data. Both phenomena are introduced here and analysed in Volume~IX.
+
+We keep every convention of \cref{ch:vectors-matrices}. The language of abstract vector spaces, subspaces, bases and dimension, is the subject of \cref{ch:vector-spaces}, so this chapter speaks only of vectors in $\mathbb R^n$, their columns and rows, and of the number of pivots that elimination produces; \cref{ch:vector-spaces} then reinterprets this number as a dimension. Determinants are not used at all; \cref{ch:determinants} defines them and relates them to the pivots of elimination. Entries are real numbers, but every definition, theorem and proof of the chapter holds verbatim for complex entries, since only the rules of arithmetic of a field are used: addition, subtraction, multiplication and division by nonzero numbers.
+
+The chapter is organised as follows. \Cref{sec:systems} describes the solution set of a system from two points of view, the row picture and the column picture, and shows that it is a particular solution plus the solutions of the homogeneous system. \Cref{sec:triangular-systems} solves triangular systems by substitution, and \cref{sec:elimination} reduces a general square system to a triangular one by Gaussian elimination and counts its cost. \Cref{sec:echelon} extends elimination to rectangular matrices, introduces the reduced row echelon form, proves that it is unique and reads off all solutions of a system from it, and \cref{sec:rank} defines the rank. \Cref{sec:invertible} proves the main theorem on invertible matrices and explains why one solves systems instead of computing inverses. \Cref{sec:lu} recasts elimination as the factorisation $A=LU$, with row exchanges as $PA=LU$, \cref{sec:pivoting} shows why the exchanges are needed in floating-point arithmetic and what limits the accuracy of any method, and \cref{sec:special-systems} treats tridiagonal, banded, diagonally dominant and Vandermonde systems. \Cref{sec:systems-practice} solves systems with a library routine and measures how the time grows. Unlike most chapters of this volume, all results of this chapter are proved, except the equality of the ranks of a matrix and of its transpose, whose proof belongs to \cref{ch:vector-spaces}; the rounding error analysis of elimination is described, but left to Volume~IX.
+
+\section{Systems of Linear Equations}
+\label{sec:systems}
+
+\subsection{Equations, Matrices and Solutions}
+
+A \term{linear equation} in the unknowns $x_1,\ldots,x_n$ is an equation of the form $a_1x_1+a_2x_2+\cdots+a_nx_n=b$ with given numbers $a_1,\ldots,a_n$ and $b$. The unknowns appear only multiplied by constants and added; there are no products $x_1x_2$, no powers $x_1^2$ and no functions such as $\sin x_1$. Several such equations that are to hold simultaneously form a system.
+
+\begin{definition}[Linear system]
+\label{def:linear-system}
+A \term{system of $m$ linear equations in $n$ unknowns} is
+\[
+\begin{aligned}
+a_{11}x_1+a_{12}x_2+\cdots+a_{1n}x_n&=b_1,\\
+a_{21}x_1+a_{22}x_2+\cdots+a_{2n}x_n&=b_2,\\
+&\;\;\vdots\\
+a_{m1}x_1+a_{m2}x_2+\cdots+a_{mn}x_n&=b_m,
+\end{aligned}
+\]
+or briefly $A\mathbf x=\mathbf b$, with the \term{coefficient matrix} $A=(a_{ij})\in\mathbb R^{m\times n}$ and the \term{right-hand side} $\mathbf b\in\mathbb R^m$. A \term{solution} is a vector $\mathbf x\in\mathbb R^n$ with $A\mathbf x=\mathbf b$, and the set of all solutions is the \term{solution set}. The system is \term{consistent} if it has at least one solution and \term{inconsistent} otherwise, and it is \term{homogeneous} if $\mathbf b=\mathbf 0$. The matrix $[A\mid\mathbf b]\in\mathbb R^{m\times(n+1)}$ obtained by appending $\mathbf b$ to $A$ as a last column is the \term{augmented matrix} of the system.
+\end{definition}
+
+The augmented matrix contains everything there is to know about the system: the names of the unknowns are irrelevant, and the equations are determined by their coefficients. For the system
+\begin{equation}
+\begin{aligned}
+2x_1+\phantom{3}x_2-\phantom{2}x_3&=-1,\\
+-4x_1-\phantom{3}x_2+3x_3&=\phantom{-}3,\\
+2x_1+3x_2+2x_3&=\phantom{-}3,
+\end{aligned}
+\qquad\text{the augmented matrix is}\qquad
+\left[\begin{array}{rrr|r}2&1&-1&-1\\-4&-1&3&3\\2&3&2&3\end{array}\right],
+\label{eq:example-system}
+\end{equation}
+where the vertical bar is only a reminder of where the right-hand side begins. We shall solve this system in \cref{sec:elimination}; its solution is $\mathbf x=(1,-1,2)$, as substituting confirms.
+
+Linear systems arise everywhere. The currents in an electrical network are determined by Kirchhoff's laws, which are linear equations, one for each node and each loop. A chemical reaction is balanced by solving a homogeneous system for the numbers of molecules. The polynomial of degree at most $d$ through $d+1$ given points is found from a system with a Vandermonde matrix (\cref{sec:matrices-linear-maps}), and the boundary value problem $-u''=f$ becomes the system $T_n\mathbf u=h^2\mathbf f$ with the second difference matrix (\cref{sec:special-matrices}). Each step of Newton's method for a nonlinear system solves a linear system with the Jacobian matrix, $D\mathbf F(\mathbf x_k)\mathbf d_k=-\mathbf F(\mathbf x_k)$ \veqref{1}{eq:newton-n}, and a least squares fit solves the normal equations (\vcref{1}{sec:extrema-n}). In large computations the systems have thousands or millions of unknowns, and the question of how to solve them efficiently is as important as the question of whether they can be solved at all.
+
+\subsection{The Row Picture and the Column Picture}
+
+\Cref{sec:matrices-linear-maps} introduced two readings of the product $A\mathbf x$, and each gives a picture of the system $A\mathbf x=\mathbf b$. In the \term{row picture}, the $i$th equation $\langle\mathbf r_i,\mathbf x\rangle=b_i$, where $\mathbf r_i^{\mathsf T}$ is the $i$th row of $A$, describes a hyperplane with the normal vector $\mathbf r_i$ (\cref{sec:inner-product-length}), provided that $\mathbf r_i\ne\mathbf 0$, and the solution set is the intersection of the $m$ hyperplanes. In the plane, the hyperplanes are lines, and two lines can meet in a single point, be parallel, or coincide. Panels A to C of \cref{fig:systems-pictures} show the three cases for the systems
+\begin{equation}
+\text{(A)}\ \begin{aligned}x+y&=3,\\x-y&=1,\end{aligned}\qquad
+\text{(B)}\ \begin{aligned}x+y&=3,\\x+y&=1,\end{aligned}\qquad
+\text{(C)}\ \begin{aligned}x+y&=3,\\2x+2y&=6.\end{aligned}
+\label{eq:three-cases}
+\end{equation}
+System (A) has exactly one solution, the point $(2,1)$ where the lines cross. System (B) has none: the two lines are parallel, and no point can lie on both, as is also clear algebraically, since $x+y$ cannot equal both $3$ and $1$. System (C) has infinitely many solutions: the second equation is twice the first and says nothing new, so every point of the line $x+y=3$ is a solution.
+
+\begin{figure}
+\newcommand\sdsyspanel[1]{\begin{tikzpicture}[scale=0.6, font=\scriptsize]
+\draw[line width=0.4pt, -{Latex[length=1.5mm]}] (-0.6,0) -- (4.3,0) node[right] {$x$};
+\draw[line width=0.4pt, -{Latex[length=1.5mm]}] (0,-1.4) -- (0,4.1) node[above] {$y$};
+#1
+\end{tikzpicture}}
+\sdpanel{A}{\sdsyspanel{%
+\draw[line width=0.8pt] (-0.4,3.4) -- (3.6,-0.6);
+\node[anchor=west] at (0.15,3.45) {$x+y=3$};
+\draw[line width=0.8pt, dashed] (-0.3,-1.3) -- (3.9,2.9);
+\node[anchor=west] at (3.05,1.5) {$x-y=1$};
+\fill (2,1) circle (2.2pt);
+\node[anchor=east] at (1.8,1.0) {$(2,1)$};}}\hfill
+\sdpanel{B}{\sdsyspanel{%
+\draw[line width=0.8pt] (-0.4,3.4) -- (3.6,-0.6);
+\node[anchor=west] at (0.15,3.45) {$x+y=3$};
+\draw[line width=0.8pt, dashed] (-0.4,1.4) -- (2.4,-1.4);
+\node[anchor=west] at (2.4,-1.2) {$x+y=1$};}}\hfill
+\sdpanel{C}{\sdsyspanel{%
+\draw[line width=2.4pt, black!30] (-0.4,3.4) -- (3.6,-0.6);
+\draw[line width=0.8pt, dashed] (-0.4,3.4) -- (3.6,-0.6);
+\node[anchor=west] at (0.15,3.45) {$x+y=3$};
+\node[anchor=west] at (2.0,1.6) {$2x+2y=6$};}}
+\sdpanelrow
+\centering
+\sdpanel{D}{\begin{tikzpicture}[scale=0.62, font=\scriptsize]
+\draw[line width=0.4pt, -{Latex[length=1.5mm]}] (-0.6,0) -- (4.4,0);
+\draw[line width=0.4pt, -{Latex[length=1.5mm]}] (0,-1.4) -- (0,3.2);
+\draw[black!60, dashed, line width=0.5pt] (2,2) -- (3,1);
+\draw[line width=0.8pt, -{Latex[length=2mm]}] (0,0) -- (1,1) node[above left] {$\mathbf a_1$};
+\draw[line width=0.8pt, -{Latex[length=2mm]}] (0,0) -- (1,-1) node[below] {$\mathbf a_2$};
+\draw[line width=1.1pt, -{Latex[length=2mm]}] (1,1) -- (2,2) node[above] {$2\mathbf a_1$};
+\draw[line width=1.1pt, -{Latex[length=2mm]}] (0,0) -- (3,1) node[right] {$\mathbf b=2\mathbf a_1+\mathbf a_2$};
+\end{tikzpicture}}
+\caption{The row picture and the column picture of the systems \eqref{eq:three-cases}. (A) Two lines that cross: exactly one solution. (B) Two parallel lines: no solution. (C) Two coincident lines: every point of the line is a solution. (D) The column picture of system (A): the right-hand side $\mathbf b=(3,1)$ is the combination $2\mathbf a_1+1\mathbf a_2$ of the columns $\mathbf a_1=(1,1)$ and $\mathbf a_2=(1,-1)$, and the coefficients $2$ and $1$ are the solution.}
+\label{fig:systems-pictures}
+\end{figure}
+
+In space, each equation describes a plane, and three planes have many more ways of meeting. Typically they meet in a single point, like the two walls and the floor of a room. Two of them may be parallel, and then there is no solution at all; but there may be no solution even if no two of the planes are parallel, when each two of them meet in a line and the three lines are parallel, like the three faces of a triangular prism. The planes $x+y=0$, $y+z=0$ and $x-z=1$ are an example: subtracting the second equation from the first gives $x-z=0$, which contradicts the third. Or the three planes may pass through a common line, like three pages of an open book, and then every point of the line is a solution; this happens for $x+y=0$, $y+z=0$, $x-z=0$, whose solutions are the points $(t,-t,t)$. Finally the three planes may coincide. With $n$ unknowns the hyperplanes are harder to visualise, and the row picture, while always correct, gives little guidance.
+
+In the \term{column picture}, the product is the combination $A\mathbf x=x_1\mathbf a_1+\cdots+x_n\mathbf a_n$ of the columns of $A$ (\cref{def:matrix-vector}), and the system asks for coefficients that combine the columns into $\mathbf b$. Panel D of \cref{fig:systems-pictures} shows this for system (A): the columns $(1,1)$ and $(1,-1)$ combine into $(3,1)$ with the coefficients $2$ and $1$. In system (B) both columns equal $(1,1)$, every combination is a multiple of $(1,1)$, and $\mathbf b=(3,1)$ is not; in system (C) both columns equal $(1,2)$, and $\mathbf b=(3,6)=3(1,2)$ is obtained as $x(1,2)+y(1,2)$ whenever $x+y=3$. In general the column picture gives a clean criterion: \emph{the system $A\mathbf x=\mathbf b$ is consistent if and only if $\mathbf b$ lies in the span of the columns of $A$} (\cref{def:span}). This is a reformulation rather than a test, since deciding whether $\mathbf b$ lies in the span is the same problem, but it is the right way to think about existence, and \cref{thm:rank-solutions} turns it into a test.
+
+\subsection{Homogeneous Systems and the Structure of the Solution Set}
+
+The homogeneous system $A\mathbf x=\mathbf 0$ always has the solution $\mathbf x=\mathbf 0$, the \term{trivial} solution, and the question is whether it has others. Its solution set
+\[
+\mathcal N(A)\coloneqq\{\mathbf x\in\mathbb R^n: A\mathbf x=\mathbf 0\}
+\]
+is called the \term{null space} of $A$; it consists of the vectors that the linear map $\mathbf x\mapsto A\mathbf x$ maps to zero, the information that the map destroys. The following theorem shows that it governs the solutions of every system with the matrix $A$.
+
+\begin{theorem}[Structure of the solution set]
+\label{thm:solution-structure}
+Let $A\in\mathbb R^{m\times n}$ and $\mathbf b\in\mathbb R^m$.
+\begin{enumerate}
+\item $\mathcal N(A)$ contains $\mathbf 0$, and it contains $\mathbf z+\mathbf w$ and $t\mathbf z$ whenever it contains $\mathbf z$ and $\mathbf w$ and $t\in\mathbb R$. Consequently it contains every linear combination of its elements.
+\item If $\mathbf x_{\mathrm p}$ is a solution of $A\mathbf x=\mathbf b$, then the solution set of $A\mathbf x=\mathbf b$ is
+\[
+\mathbf x_{\mathrm p}+\mathcal N(A)\coloneqq\{\mathbf x_{\mathrm p}+\mathbf z: \mathbf z\in\mathcal N(A)\}.
+\]
+\item The system $A\mathbf x=\mathbf b$ has either no solution, or exactly one solution, or infinitely many solutions. It has exactly one solution if and only if it is consistent and $\mathcal N(A)=\{\mathbf 0\}$.
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+(i) $A\mathbf 0=\mathbf 0$, and if $A\mathbf z=A\mathbf w=\mathbf 0$, then $A(\mathbf z+\mathbf w)=A\mathbf z+A\mathbf w=\mathbf 0$ and $A(t\mathbf z)=tA\mathbf z=\mathbf 0$, by the linearity of the map $\mathbf x\mapsto A\mathbf x$ (\cref{thm:matrices-linear-maps}). The last statement follows by induction on the number of terms, as in the proof of \cref{prop:span}.
+
+(ii) If $\mathbf z\in\mathcal N(A)$, then $A(\mathbf x_{\mathrm p}+\mathbf z)=\mathbf b+\mathbf 0=\mathbf b$, so $\mathbf x_{\mathrm p}+\mathbf z$ is a solution. Conversely, if $\mathbf x$ is a solution, then $A(\mathbf x-\mathbf x_{\mathrm p})=\mathbf b-\mathbf b=\mathbf 0$, so $\mathbf z\coloneqq\mathbf x-\mathbf x_{\mathrm p}$ lies in $\mathcal N(A)$ and $\mathbf x=\mathbf x_{\mathrm p}+\mathbf z$.
+
+(iii) Suppose the system is consistent, with a solution $\mathbf x_{\mathrm p}$. If $\mathcal N(A)=\{\mathbf 0\}$, then by (ii) $\mathbf x_{\mathrm p}$ is the only solution. Otherwise there is $\mathbf z\ne\mathbf 0$ in $\mathcal N(A)$, and by (i) and (ii) the vectors $\mathbf x_{\mathrm p}+t\mathbf z$, $t\in\mathbb R$, are all solutions. They are pairwise different, since $\mathbf x_{\mathrm p}+s\mathbf z=\mathbf x_{\mathrm p}+t\mathbf z$ gives $(s-t)\mathbf z=\mathbf 0$ and hence $s=t$; so there are infinitely many solutions.
+\end{proof}
+
+The theorem is often summarised in the slogan \emph{general solution = particular solution + general homogeneous solution}, which the reader will meet again for linear differential equations in Part~II, where it has exactly the same proof. In system (C) of \eqref{eq:three-cases}, $\mathbf x_{\mathrm p}=(3,0)$ is a particular solution, and the homogeneous system $x+y=0$, $2x+2y=0$ has the solutions $t(-1,1)$, so the solution set is $\{(3-t,t): t\in\mathbb R\}$, the line $x+y=3$, a shifted copy of the line $x+y=0$ through the origin. Geometrically, the solution set of a consistent system is always the null space shifted by a particular solution, and in particular it is a point, a line, a plane or a flat of higher dimension through $\mathbf x_{\mathrm p}$, parallel to $\mathcal N(A)$. Part~(i) says that $\mathcal N(A)$ is closed under the two operations of vector arithmetic; \cref{ch:vector-spaces} calls such sets subspaces and measures their size by their dimension.
+
+Two further observations belong here. First, a system with more equations than unknowns may well be consistent, and a system with fewer equations than unknowns may well be inconsistent; system (B) has as many equations as unknowns and no solution. The counts of equations and unknowns alone decide nothing, and \cref{sec:rank} identifies the number that does. Second, part~(iii) uses that $\mathbb R$ is infinite. Over the finite fields $\mathbb Z/p\mathbb Z$ of \vcref{1}{cor:zp-field}, where the same theory applies, a consistent system has either one solution or a power of $p$ of them, as the note at the end of \cref{sec:echelon} explains.
+
+\section{Triangular Systems}
+\label{sec:triangular-systems}
+
+\subsection{Back Substitution}
+
+Some systems can be solved one unknown at a time. In the system
+\begin{equation}
+\begin{aligned}
+2x_1+x_2-x_3&=-1,\\
+x_2+x_3&=\phantom{-}1,\\
+x_3&=\phantom{-}2,
+\end{aligned}
+\label{eq:triangular-example}
+\end{equation}
+the last equation gives $x_3=2$; the second then gives $x_2=1-x_3=-1$; and the first gives $x_1=(-1-x_2+x_3)/2=1$. The reason this works is that the coefficient matrix is upper triangular: the $i$th equation involves only the unknowns $x_i,\ldots,x_n$, and once $x_{i+1},\ldots,x_n$ are known it determines $x_i$. For an upper triangular matrix $U=(u_{ij})\in\mathbb R^{n\times n}$ with nonzero diagonal entries, the $i$th equation $u_{ii}x_i+\sum_{j>i}u_{ij}x_j=b_i$ is solved for $x_i$ as
+\begin{equation}
+x_i=\frac1{u_{ii}}\Bigl(b_i-\sum_{j=i+1}^nu_{ij}x_j\Bigr)\qquad(i=n,n-1,\ldots,1),
+\label{eq:back-substitution}
+\end{equation}
+which is \term{back substitution}, already used in the proof of \cref{thm:triangular} with the columns of the identity as right-hand sides. \Cref{alg:back-substitution} states it as an algorithm.
+
+\begin{algorithm}
+\begin{algorithmic}[1]
+\Require an upper triangular $U=(u_{ij})\in\mathbb R^{n\times n}$ with $u_{ii}\ne0$ for all $i$; $\mathbf b\in\mathbb R^n$
+\Ensure the solution $\mathbf x$ of $U\mathbf x=\mathbf b$
+\Name{BackSubstitution}{U,\mathbf b}
+\For{$i=n,n-1,\ldots,1$}
+  \State $s\gets b_i$
+  \For{$j=i+1,\ldots,n$}
+    \State $s\gets s-u_{ij}x_j$ \Comment{the unknowns $x_j$, $j>i$, are already known}
+  \EndFor
+  \State $x_i\gets s/u_{ii}$
+\EndFor
+\State \Return $\mathbf x$
+\end{algorithmic}
+\caption{Back substitution for an upper triangular system, \eqref{eq:back-substitution}. It uses $n(n-1)/2$ multiplications, as many subtractions and $n$ divisions, $n^2$ operations in all (\cref{prop:triangular-solve}).}
+\label{alg:back-substitution}
+\end{algorithm}
+
+\begin{proposition}[Triangular systems]
+\label{prop:triangular-solve}
+Let $U\in\mathbb R^{n\times n}$ be upper triangular.
+\begin{enumerate}
+\item If $u_{ii}\ne0$ for every $i$, then for every $\mathbf b\in\mathbb R^n$ the system $U\mathbf x=\mathbf b$ has exactly one solution, which \cref{alg:back-substitution} computes with $n(n-1)/2$ multiplications, $n(n-1)/2$ subtractions and $n$ divisions.
+\item If $u_{ii}=0$ for some $i$, then $U\mathbf x=\mathbf 0$ has a solution $\mathbf x\ne\mathbf 0$, and for every $\mathbf b$ the system $U\mathbf x=\mathbf b$ has either no solution or infinitely many.
+\end{enumerate}
+The same holds for lower triangular matrices, with \term{forward substitution}
+\[
+x_i=\frac1{l_{ii}}\Bigl(b_i-\sum_{j=1}^{i-1}l_{ij}x_j\Bigr)\qquad(i=1,2,\ldots,n)
+\]
+in place of back substitution; for a unit lower triangular matrix the divisions are omitted.
+\end{proposition}
+
+\begin{proof}
+(i) Since $u_{ij}=0$ for $j<i$, the $i$th equation of $U\mathbf x=\mathbf b$ reads $u_{ii}x_i+\sum_{j>i}u_{ij}x_j=b_i$, and since $u_{ii}\ne0$, it is equivalent to \eqref{eq:back-substitution}. So $\mathbf x$ is a solution if and only if \eqref{eq:back-substitution} holds for every $i$. These equations determine $x_n$ (the sum is empty for $i=n$), then $x_{n-1}$, and so on down to $x_1$, each from the ones already determined; so there is exactly one vector that satisfies all of them. The computation of $x_i$ uses $n-i$ multiplications, $n-i$ subtractions and one division, and $\sum_{i=1}^n(n-i)=\sum_{k=0}^{n-1}k=n(n-1)/2$ by \veqref{1}{eq:sum-k}. (ii) By \cref{thm:triangular}\,(ii), $U$ is singular, and the proof given there constructs $\mathbf x\ne\mathbf 0$ with $U\mathbf x=\mathbf 0$. The rest is \cref{thm:solution-structure}\,(iii). For lower triangular matrices the equations are solved from the first to the last, with the same count.
+\end{proof}
+
+In (ii) both cases occur. For $U=\operatorname{diag}(1,0)$, the system $U\mathbf x=(1,0)$ has the solutions $(1,t)$, and $U\mathbf x=(1,1)$ has none; \cref{sec:invertible} shows that for every triangular matrix with a zero diagonal entry there are right-hand sides for which the system has no solution. In the system \eqref{eq:triangular-example} the count is $3$ multiplications, $3$ subtractions and $3$ divisions, $9=3^2$ operations.
+
+The operation count of back substitution, about $n^2$ in all, is the count of a single matrix--vector product with a triangular matrix (\cref{tab:op-counts}): solving a triangular system is no more expensive than multiplying by its matrix. It is much cheaper than forming the inverse $U^{-1}$ and multiplying by it. The $k$th column of $U^{-1}$ is the solution of $U\mathbf x=\mathbf e_k$, whose components $x_{k+1},\ldots,x_n$ vanish, as the proof of \cref{thm:triangular} showed; computing it takes about $k^2$ operations, and all $n$ columns about $\sum_kk^2\approx n^3/3$, by \veqref{1}{eq:sum-k2}, roughly $n/3$ times the cost of one back substitution.
+
+The two loops of \cref{alg:back-substitution} can be interchanged. Instead of computing each $x_i$ from a row of $U$, one can compute $x_n=b_n/u_{nn}$, subtract $x_n$ times the last column of $U$ from $\mathbf b$, and continue with the remaining system of order $n-1$:
+\[
+\text{for }j=n,n-1,\ldots,1:\qquad x_j\gets b_j/u_{jj},\qquad b_i\gets b_i-u_{ij}x_j\quad(i=1,\ldots,j-1).
+\]
+The two versions perform the same operations on every $x_i$, in the same order, and so give the same results even in floating-point arithmetic, for the reason of \cref{prop:loop-orders}; they differ in whether they read $U$ by rows or by columns, which matters for the speed on a computer that stores the matrix in one of these orders. In floating-point arithmetic, substitution is very accurate: the computed solution is the exact solution of a system whose matrix differs from $U$ in each entry by at most about $n$ times the unit roundoff, relative to that entry~\cite[Chap.~8]{higham2002accuracy}. Triangular systems are the easy systems, and the whole strategy of this chapter is to reduce every system to triangular ones.
+
+\section{Gaussian Elimination}
+\label{sec:elimination}
+
+\subsection{Row Operations and Elementary Matrices}
+
+To solve a system, we replace it by a simpler system with the same solutions. Three operations on the equations obviously do not lose any solutions: writing the equations in a different order, multiplying an equation by a nonzero number, and adding a multiple of one equation to another. None of them creates solutions either, because each can be undone by an operation of the same kind. On the augmented matrix the three operations act on rows.
+
+\begin{definition}[Row operations]
+\label{def:row-operations}
+The \term{elementary row operations} on a matrix are:
+\begin{enumerate}
+\item the \term{exchange} of two rows;
+\item the \term{scaling} of a row by a number $c\ne0$;
+\item the \term{addition} of $c$ times one row to another row, for any number $c$.
+\end{enumerate}
+A matrix $B$ is \term{row equivalent} to $A$ if $B$ is obtained from $A$ by a finite sequence of elementary row operations.
+\end{definition}
+
+Each row operation is a multiplication from the left by a matrix, and this turns statements about operations into statements about products. The matrices are obtained, by the recipe of \cref{thm:matrices-linear-maps}, by applying the operation to the identity matrix. With the standard basis vectors $\mathbf e_1,\ldots,\mathbf e_m$ of $\mathbb R^m$ and $i\ne j$, we define the \term{elementary matrices} of order $m$:
+\begin{itemize}
+\item the \term{exchange matrix} $P_{ij}$, the permutation matrix (\cref{sec:special-matrices}) of the permutation that exchanges $i$ and $j$; it is $I$ with its rows $i$ and $j$ exchanged;
+\item the \term{scaling matrix} $D_i(c)\coloneqq I+(c-1)\mathbf e_i\mathbf e_i^{\mathsf T}$ for $c\ne0$, which is $I$ with its $(i,i)$ entry replaced by $c$;
+\item the \term{shear matrix} $E_{ij}(c)\coloneqq I+c\,\mathbf e_i\mathbf e_j^{\mathsf T}$, which is $I$ with the entry $c$ added in position $(i,j)$.
+\end{itemize}
+For $m=3$, for instance,
+\[
+P_{12}=\begin{bmatrix}0&1&0\\1&0&0\\0&0&1\end{bmatrix},\qquad D_2(c)=\begin{bmatrix}1&0&0\\0&c&0\\0&0&1\end{bmatrix},\qquad E_{31}(c)=\begin{bmatrix}1&0&0\\0&1&0\\c&0&1\end{bmatrix}.
+\]
+As maps of $\mathbb R^m$, the three kinds exchange two coordinates, stretch one coordinate by the factor $c$, and add $c$ times the coordinate $x_j$ to the coordinate $x_i$; the last is the shear $x_i\mapsto x_i+cx_j$ of \cref{sec:matrices-linear-maps}, and these are the three kinds of maps that \vcref{1}{thm:linear-volume} needed.
+
+\begin{proposition}[Elementary matrices]
+\label{prop:elementary-matrices}
+Let $A\in\mathbb R^{m\times n}$ have the rows $\mathbf r_1^{\mathsf T},\ldots,\mathbf r_m^{\mathsf T}$, and let $i\ne j$.
+\begin{enumerate}
+\item $P_{ij}A$ is $A$ with the rows $i$ and $j$ exchanged; $D_i(c)A$ is $A$ with its $i$th row multiplied by $c$; and $E_{ij}(c)A$ is $A$ with $c$ times its $j$th row added to its $i$th row.
+\item The elementary matrices are invertible, and their inverses are elementary matrices of the same kind:
+\[
+P_{ij}^{-1}=P_{ij},\qquad D_i(c)^{-1}=D_i(1/c),\qquad E_{ij}(c)^{-1}=E_{ij}(-c).
+\]
+\item Multiplication from the right by elementary matrices of order $n$ acts on columns: $AP_{ij}$ exchanges the columns $i$ and $j$ of $A$, $AD_i(c)$ multiplies the $i$th column by $c$, and $AE_{ij}(c)$ adds $c$ times the $i$th column to the $j$th column.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) By the row reading of the product (\cref{thm:four-readings}\,(iii)), the $k$th row of $EA$ is $\mathbf e_k^{\mathsf T}EA$, the $k$th row of $E$ times $A$. For $E=E_{ij}(c)$ the $k$th row of $E$ is $\mathbf e_k^{\mathsf T}+c\,\delta_{ki}\mathbf e_j^{\mathsf T}$, so the $k$th row of $EA$ is $\mathbf r_k^{\mathsf T}+c\,\delta_{ki}\mathbf r_j^{\mathsf T}$: the $i$th row becomes $\mathbf r_i^{\mathsf T}+c\,\mathbf r_j^{\mathsf T}$, and the others are unchanged. For $E=D_i(c)$ the $k$th row of $EA$ is $\mathbf r_k^{\mathsf T}+(c-1)\delta_{ki}\mathbf r_i^{\mathsf T}$, which is $c\,\mathbf r_i^{\mathsf T}$ for $k=i$ and $\mathbf r_k^{\mathsf T}$ otherwise. For $P_{ij}$ the statement is \cref{prop:permutation-matrices}\,(i).
+
+(ii) By (i), $E_{ij}(-c)E_{ij}(c)$ is the identity with $c$ times row $j$ added to row $i$ and then subtracted again, so it is $I$, and similarly in the other order; algebraically, $(I-c\,\mathbf e_i\mathbf e_j^{\mathsf T})(I+c\,\mathbf e_i\mathbf e_j^{\mathsf T})=I-c^2\mathbf e_i(\mathbf e_j^{\mathsf T}\mathbf e_i)\mathbf e_j^{\mathsf T}=I$, because $\mathbf e_j^{\mathsf T}\mathbf e_i=0$ for $i\ne j$. In the same way $D_i(1/c)D_i(c)=D_i(c)D_i(1/c)=I$, and exchanging two rows twice restores them, $P_{ij}P_{ij}=I$.
+
+(iii) By the column reading (\cref{thm:four-readings}\,(ii)), the $k$th column of $AE$ is $A$ times the $k$th column of $E$. The $k$th column of $E_{ij}(c)$ is $\mathbf e_k+c\,\delta_{kj}\mathbf e_i$, so the $k$th column of $AE_{ij}(c)$ is $\mathbf a_k+c\,\delta_{kj}\mathbf a_i$; the other two cases are similar.
+\end{proof}
+
+The proposition translates row operations into matrix algebra. A sequence of row operations applied to $A$ produces $E_k\cdots E_2E_1A$, where $E_1$ is the matrix of the first operation, $E_2$ that of the second, and so on, in the order of the reversal rule: the first operation is the rightmost factor. Consequently $B$ is row equivalent to $A$ if and only if $B=EA$ with a product $E$ of elementary matrices, and by (ii) and \cref{prop:inverse-rules}\,(ii), $E$ is invertible and $E^{-1}$ is again a product of elementary matrices. In particular, if $B$ is row equivalent to $A$, then $A=E^{-1}B$ is row equivalent to $B$, and row equivalence is an equivalence relation in the sense of \vcref{1}{sec:equivalence}. The property of row operations on which everything rests is that they do not change the solutions.
+
+\begin{theorem}[Row operations preserve solutions]
+\label{thm:row-equivalence}
+Let $A\in\mathbb R^{m\times n}$, $\mathbf b\in\mathbb R^m$, and let $E\in\mathbb R^{m\times m}$ be invertible. Then the systems $A\mathbf x=\mathbf b$ and $EA\mathbf x=E\mathbf b$ have the same solutions. In particular, if the augmented matrix $[A\mid\mathbf b]$ is row equivalent to $[A'\mid\mathbf b']$, then $A\mathbf x=\mathbf b$ and $A'\mathbf x=\mathbf b'$ have the same solutions, and $A\mathbf x=\mathbf 0$ and $A'\mathbf x=\mathbf 0$ have the same solutions.
+\end{theorem}
+
+\begin{proof}
+If $A\mathbf x=\mathbf b$, then $EA\mathbf x=E\mathbf b$. Conversely, if $EA\mathbf x=E\mathbf b$, then multiplying by $E^{-1}$ gives $A\mathbf x=\mathbf b$. If $[A'\mid\mathbf b']=E[A\mid\mathbf b]$ with a product $E$ of elementary matrices, then $A'=EA$ and $\mathbf b'=E\mathbf b$ by the column reading of the product, and $E$ is invertible. The last statement is the case $\mathbf b=\mathbf 0$, for which $\mathbf b'=E\mathbf 0=\mathbf 0$.
+\end{proof}
+
+\subsection{The Elimination Algorithm}
+
+\term{Gaussian elimination} uses the third row operation to remove the unknowns from the equations one at a time, column by column, until the system is upper triangular. We first describe it for a square system $A\mathbf x=\mathbf b$, $A\in\mathbb R^{n\times n}$, and carry it out on the system \eqref{eq:example-system}.
+
+In the first step, the entry $a_{11}$, called the first \term{pivot}, is used to eliminate $x_1$ from equations $2$ to $n$: for $i=2,\ldots,n$, the \term{multiplier} $l_{i1}\coloneqq a_{i1}/a_{11}$ is computed, and $l_{i1}$ times the first row is subtracted from the $i$th row of the augmented matrix. This makes the entries below the pivot zero. For \eqref{eq:example-system} the multipliers are $l_{21}=-4/2=-2$ and $l_{31}=2/2=1$, and the step is
+\[
+\left[\begin{array}{rrr|r}2&1&-1&-1\\-4&-1&3&3\\2&3&2&3\end{array}\right]
+\;\longrightarrow\;
+\left[\begin{array}{rrr|r}2&1&-1&-1\\0&1&1&1\\0&2&3&4\end{array}\right],
+\]
+in which the second row is the old second row plus twice the first, and the third row is the old third row minus the first. The equations $2$ to $n$ now form a system of $n-1$ equations in the $n-1$ unknowns $x_2,\ldots,x_n$, and the second step treats it in the same way, with the new entry in position $(2,2)$ as the pivot. Here the multiplier is $l_{32}=2/1=2$, and
+\[
+\left[\begin{array}{rrr|r}2&1&-1&-1\\0&1&1&1\\0&2&3&4\end{array}\right]
+\;\longrightarrow\;
+\left[\begin{array}{rrr|r}2&1&-1&-1\\0&1&1&1\\0&0&1&2\end{array}\right].
+\]
+After $n-1$ steps the coefficient matrix is upper triangular, and the system is the triangular system \eqref{eq:triangular-example}, which back substitution solved: $\mathbf x=(1,-1,2)$. The pivots, the diagonal entries of the final triangular matrix, are $2$, $1$ and $1$.
+
+The step fails if a pivot is zero, since it cannot be divided by. Then the equation must be exchanged with a later one whose coefficient in the pivot column is nonzero. In the system with the augmented matrix
+\[
+\left[\begin{array}{rrr|r}1&1&1&1\\2&2&5&5\\4&6&8&6\end{array}\right]
+\;\longrightarrow\;
+\left[\begin{array}{rrr|r}1&1&1&1\\0&0&3&3\\0&2&4&2\end{array}\right]
+\;\longrightarrow\;
+\left[\begin{array}{rrr|r}1&1&1&1\\0&2&4&2\\0&0&3&3\end{array}\right],
+\]
+the first step, with the multipliers $2$ and $4$, leaves a zero in the pivot position $(2,2)$, and exchanging the second and the third row completes the elimination, without a further step; back substitution gives $x_3=1$, $x_2=(2-4x_3)/2=-1$ and $x_1=1-x_2-x_3=1$. If the pivot and all entries below it are zero, no exchange helps. Then $x_k$ is already absent from the equations $k$ to $n$; \cref{sec:invertible} shows that this happens exactly when $A$ is singular, and \cref{sec:echelon} shows how to continue in that case. \Cref{alg:gauss-solve} summarises the method for a square system.
+
+\begin{algorithm}
+\begin{algorithmic}[1]
+\Require $A=(a_{ij})\in\mathbb R^{n\times n}$ and $\mathbf b\in\mathbb R^n$
+\Ensure the solution of $A\mathbf x=\mathbf b$, or the report that $A$ is singular
+\Name{GaussSolve}{A,\mathbf b}
+\For{$k=1,\ldots,n-1$}
+  \If{$a_{kk}=0$}
+    \If{$a_{rk}=0$ for all $r>k$} \Return ``singular'' \Comment{no pivot in column $k$}
+    \EndIf
+    \State exchange row $k$ with a row $r>k$ with $a_{rk}\ne0$, in $A$ and in $\mathbf b$
+  \EndIf
+  \For{$i=k+1,\ldots,n$}
+    \State $l\gets a_{ik}/a_{kk}$ \Comment{the multiplier $l_{ik}$}
+    \For{$j=k+1,\ldots,n$}
+      \State $a_{ij}\gets a_{ij}-l\,a_{kj}$
+    \EndFor
+    \State $a_{ik}\gets0$; \ $b_i\gets b_i-l\,b_k$
+  \EndFor
+\EndFor
+\If{$a_{nn}=0$} \Return ``singular''
+\EndIf
+\State \Return \Call{BackSubstitution}{$A,\mathbf b$}
+\end{algorithmic}
+\caption{Gaussian elimination for a square system, followed by back substitution (\cref{alg:back-substitution}). A row exchange is made only when a pivot is zero; \cref{sec:pivoting} replaces this rule by a better one.}
+\label{alg:gauss-solve}
+\end{algorithm}
+
+The $k$th step of the algorithm changes only the entries in rows $k+1$ to $n$ and columns $k$ to $n$. Apart from the entries below the pivot, which become zero, these form the \term{active submatrix} in rows and columns $k+1$ to $n$. \Cref{fig:elimination-pattern} shows the pattern of the entries during the elimination of a $4\times4$ matrix. Each step subtracts from the active submatrix the matrix with the entries $l_{ik}a_{kj}$, which is the outer product of the column of multipliers $(l_{k+1,k},\ldots,l_{nk})$ and the part $(a_{k,k+1},\ldots,a_{kn})$ of the pivot row. So every step of elimination is a rank-one update, as \cref{sec:matrix-multiplication} anticipated: in the outer product reading, Gaussian elimination takes a matrix apart one rank-one layer at a time. \Cref{sec:lu} makes this precise.
+
+\begin{figure}
+\newcommand\sdelimpanel[1]{\begin{tikzpicture}[x=0.46cm, y=0.46cm, font=\scriptsize]
+\ifnum#1<4\relax \fill[sdfill] (#1-0.5,-#1+0.5) rectangle (4.5,-4.5);\fi
+\foreach \i in {1,...,4} {\foreach \j in {1,...,4} {
+  \def\sdsym{$\times$}%
+  \ifnum\j<#1\relax \ifnum\i>\j\relax \def\sdsym{$0$}\fi\fi
+  \node at (\j,-\i) {\sdsym};}}
+\ifnum#1<4\relax \draw[line width=0.5pt] (#1,-#1) circle (0.33);\fi
+\draw[line width=0.5pt] (0.75,-0.4) -- (0.5,-0.4) -- (0.5,-4.6) -- (0.75,-4.6);
+\draw[line width=0.5pt] (4.25,-0.4) -- (4.5,-0.4) -- (4.5,-4.6) -- (4.25,-4.6);
+\end{tikzpicture}}
+\centering
+\sdpanel{A}{\sdelimpanel{1}}\hspace{1.2cm}
+\sdpanel{B}{\sdelimpanel{2}}\hspace{1.2cm}
+\sdpanel{C}{\sdelimpanel{3}}\hspace{1.2cm}
+\sdpanel{D}{\sdelimpanel{4}}
+\caption{Gaussian elimination on a $4\times4$ matrix. A cross marks an entry that is in general nonzero, and the circled entry is the pivot of the next step. (A) The matrix $A$. (B) After the first step, the entries below the first pivot are zero. (C) After the second step. (D) The upper triangular matrix $U$ after the third step. The shaded block in each panel is the part that the next step reads: the pivot row and column and the active submatrix below and to the right of the pivot, which the step modifies by subtracting an outer product.}
+\label{fig:elimination-pattern}
+\end{figure}
+
+\subsection{The Cost of Elimination}
+
+Counting the operations of \cref{alg:gauss-solve} gives the most important number of numerical linear algebra.
+
+\begin{proposition}[Operation count of Gaussian elimination]
+\label{prop:elimination-cost}
+Let $A\in\mathbb R^{n\times n}$, and suppose that \cref{alg:gauss-solve} runs without encountering a zero pivot. Reducing $A$ to upper triangular form uses $n(n-1)/2$ divisions, $(n-1)n(2n-1)/6$ multiplications and as many subtractions, in all
+\[
+\frac{4n^3-3n^2-n}6=\frac23n^3-\frac12n^2-\frac16n
+\]
+operations. Transforming the right-hand side uses $n(n-1)$ operations and back substitution $n^2$, so that solving $A\mathbf x=\mathbf b$ costs $2n^3/3+3n^2/2-7n/6$ operations.
+\end{proposition}
+
+\begin{proof}
+In step $k$ the algorithm computes $n-k$ multipliers, one division each, and updates the $(n-k)^2$ entries $a_{ij}$ with $k<i,j\le n$, one multiplication and one subtraction each; the entries $a_{ik}$ below the pivot are set to zero without arithmetic. It updates $n-k$ entries of $\mathbf b$, with one multiplication and one subtraction each. With $j\coloneqq n-k$, which runs from $1$ to $n-1$, the totals for the matrix are, by \veqref{1}{eq:sum-k} and \veqref{1}{eq:sum-k2},
+\[
+\sum_{j=1}^{n-1}j=\frac{n(n-1)}2\quad\text{divisions},\qquad\sum_{j=1}^{n-1}j^2=\frac{(n-1)n(2n-1)}6\quad\text{multiplications},
+\]
+and as many subtractions as multiplications,
+in all $n(n-1)/2+(n-1)n(2n-1)/3=n(n-1)(4n+1)/6=(4n^3-3n^2-n)/6$. The right-hand side takes $\sum_j2j=n(n-1)$ operations and back substitution $n^2$ (\cref{prop:triangular-solve}), and $(4n^3-3n^2-n)/6+n(n-1)+n^2=2n^3/3+3n^2/2-7n/6$.
+\end{proof}
+
+For $n=2$ the count is $9$, and indeed eliminating $x_1$ from a $2\times2$ system costs one division, one multiplication and one subtraction for the matrix and two operations for the right-hand side, after which back substitution costs four. For large $n$ the leading term $2n^3/3$ dominates, as \cref{tab:elimination-cost} shows: already for $n=100$ the exact count of the elimination differs from $2n^3/3$ by less than one percent. This is why the cost of Gaussian elimination is always quoted as $2n^3/3$, the figure that \vcref{1}{sec:newton-n} and \cref{sec:computing-matrices} anticipated. The leading term can also be seen without the exact sums: the work of step $k$ is about $2(n-k)^2$, and $\sum_k2(n-k)^2$ is approximately $\int_0^n2x^2\,dx=2n^3/3$, by the comparison of sums with integrals in \vcref{1}{ch:integration}. In words, the elimination performs a rank-one update of a shrinking square, whose area $(n-k)^2$ decreases from $n^2$ to $0$, and the work is the volume of the resulting pyramid.
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}{colspec={rrrrr}, row{1}={font=\small\bfseries}}
+\toprule
+$n$ & multiplications & all operations & $2n^3/3$ & ratio \\
+\midrule
+$2$ & $1$ & $3$ & $5.3$ & $0.5625$ \\
+$3$ & $5$ & $13$ & $18$ & $0.7222$ \\
+$10$ & $285$ & $615$ & $666.7$ & $0.9225$ \\
+$100$ & $328\,350$ & $661\,650$ & $666\,666.7$ & $0.9925$ \\
+$1000$ & $332\,833\,500$ & $666\,166\,500$ & $666\,666\,666.7$ & $0.9992$ \\
+\bottomrule
+\end{sdtable}}{The number of operations for reducing an $n\times n$ matrix to triangular form (\cref{prop:elimination-cost}), compared with the leading term $2n^3/3$. The ratio of the exact count to the leading term tends to $1$; the lower-order terms $-n^2/2-n/6$ matter only for small $n$.\label{tab:elimination-cost}}
+\end{table}
+
+The cubic growth has practical consequences. Doubling the number of unknowns multiplies the work by eight, and a system of a million unknowns with a full matrix would require about $7\times10^{17}$ operations, which is why the very large systems of practice are solved only when their matrices are sparse or structured (\cref{sec:special-systems}, Volume~X). By comparison, the right-hand side and back substitution cost only about $2n^2$ operations together. Gaussian elimination is thus expensive in the matrix and cheap in the right-hand side, an asymmetry that \cref{sec:lu} exploits.
+\section{Row Echelon Form}
+\label{sec:echelon}
+
+\subsection{Echelon Forms}
+
+Elimination need not stop when a column has no pivot, and it need not be restricted to square matrices. If the entries in and below the pivot position of a column are all zero, one simply moves on to the next column, keeping the same row. The result is a matrix in which the nonzero entries form a staircase.
+
+\begin{definition}[Row echelon form]
+\label{def:echelon}
+A matrix is in \term{row echelon form} if
+\begin{enumerate}
+\item all its zero rows, if any, lie below all its nonzero rows, and
+\item the first nonzero entry of each nonzero row lies strictly to the right of the first nonzero entry of the row above it.
+\end{enumerate}
+The first nonzero entries of the nonzero rows are the \term{pivots}, and the columns that contain a pivot are the \term{pivot columns}; the other columns are the \term{free columns}. A matrix in row echelon form is in \term{reduced row echelon form} if, in addition,
+\begin{enumerate}
+\setcounter{enumi}{2}
+\item every pivot equals $1$, and
+\item every pivot is the only nonzero entry of its column.
+\end{enumerate}
+\end{definition}
+
+By (ii), all entries below a pivot are zero, every row and every column contains at most one pivot, and the number of pivots equals the number of nonzero rows. \Cref{fig:echelon} shows the typical shape. For instance, of the matrices
+\[
+\begin{bmatrix}2&1&-1\\0&1&1\\0&0&1\end{bmatrix},\qquad
+\begin{bmatrix}1&2&0&3\\0&0&1&2\\0&0&0&0\end{bmatrix},\qquad
+\begin{bmatrix}0&1&5\\1&0&2\end{bmatrix},
+\]
+the first is in row echelon form, with the pivots $2$, $1$, $1$ and no free columns; the second is in reduced row echelon form, with the pivot columns $1$ and $3$ and the free columns $2$ and $4$; the third is in neither form, because the first nonzero entry of the second row lies to the left of that of the first row. An upper triangular matrix with nonzero diagonal entries is in row echelon form, and the identity matrix is in reduced row echelon form.
+
+\begin{figure}
+\newcommand\sdechelon[1]{\begin{tikzpicture}[x=0.5cm, y=0.5cm, font=\scriptsize]
+\draw[black!45, line width=0.6pt] (0.5,-1.5) -- (2.5,-1.5) -- (2.5,-2.5) -- (3.5,-2.5) -- (3.5,-3.5) -- (7.5,-3.5);
+\foreach \i/\j in {1/1,2/3,3/4} {\node at (\j,-\i) {$\blacksquare$};}
+#1
+\foreach \j in {1,...,7} {\node at (\j,-4) {$0$};}
+\draw[line width=0.5pt] (0.75,-0.4) -- (0.5,-0.4) -- (0.5,-4.6) -- (0.75,-4.6);
+\draw[line width=0.5pt] (7.25,-0.4) -- (7.5,-0.4) -- (7.5,-4.6) -- (7.25,-4.6);
+\end{tikzpicture}}
+\centering
+\sdpanel{A}{\sdechelon{%
+\foreach \j in {2,...,7} {\node at (\j,-1) {$*$};}
+\foreach \j in {4,...,7} {\node at (\j,-2) {$*$};}
+\foreach \j in {5,...,7} {\node at (\j,-3) {$*$};}
+\node at (1,-2) {$0$}; \node at (2,-2) {$0$};
+\foreach \j in {1,2,3} {\node at (\j,-3) {$0$};}}}\hspace{1.5cm}
+\sdpanel{B}{\sdechelon{%
+\node at (2,-1) {$*$}; \node at (3,-1) {$0$}; \node at (4,-1) {$0$};
+\foreach \j in {5,...,7} {\node at (\j,-1) {$*$};}
+\node at (4,-2) {$0$};
+\foreach \j in {5,...,7} {\node at (\j,-2) {$*$};}
+\foreach \j in {5,...,7} {\node at (\j,-3) {$*$};}
+\node at (1,-2) {$0$}; \node at (2,-2) {$0$};
+\foreach \j in {1,2,3} {\node at (\j,-3) {$0$};}}}
+\caption{The staircase of echelon forms, for a $4\times7$ matrix with three pivots ($\blacksquare$) in the columns $1$, $3$ and $4$; a star marks an arbitrary entry. (A) Row echelon form: below the staircase all entries are zero, and every step down is one row high. (B) Reduced row echelon form: in addition the pivots are $1$ and the other entries of the pivot columns are $0$; the free columns $2$, $5$, $6$ and $7$ may contain arbitrary entries above the staircase.}
+\label{fig:echelon}
+\end{figure}
+
+\subsection{Reduction to Reduced Row Echelon Form}
+
+The reduced form is obtained by a variant of elimination, \term{Gauss--Jordan elimination}, which scales every pivot to $1$ and eliminates the entries above each pivot as well as those below it. \Cref{alg:rref} states it for an arbitrary $m\times n$ matrix.
+
+\begin{algorithm}
+\begin{algorithmic}[1]
+\Require $A=(a_{ij})\in\mathbb R^{m\times n}$
+\Ensure the reduced row echelon form of $A$, its number $r$ of pivots and the pivot columns $p_1<\cdots<p_r$
+\Name{ReducedEchelon}{A}
+\State $r\gets0$ \Comment{the number of pivots found so far}
+\For{$c=1,\ldots,n$}
+  \If{$a_{ic}\ne0$ for some $i>r$}
+    \State $r\gets r+1$; \ $p_r\gets c$
+    \State exchange row $r$ with a row $i\ge r$ that has $a_{ic}\ne0$
+    \State divide row $r$ by $a_{rc}$ \Comment{the pivot becomes $1$}
+    \For{every $i\ne r$}
+      \State subtract $a_{ic}$ times row $r$ from row $i$ \Comment{clears column $c$}
+    \EndFor
+  \EndIf
+\EndFor
+\State \Return $A$, $r$, $(p_1,\ldots,p_r)$
+\end{algorithmic}
+\caption{Gauss--Jordan elimination to reduced row echelon form. Every operation is an elementary row operation, so the result is row equivalent to the input (\cref{thm:rref-existence}).}
+\label{alg:rref}
+\end{algorithm}
+
+\begin{theorem}[Existence of the reduced row echelon form]
+\label{thm:rref-existence}
+Every matrix $A\in\mathbb R^{m\times n}$ is row equivalent to a matrix in reduced row echelon form, and \cref{alg:rref} computes one with finitely many elementary row operations.
+\end{theorem}
+
+\begin{proof}
+The algorithm performs only exchanges, scalings by $1/a_{rc}\ne0$ and additions of multiples of a row to other rows, so its result is row equivalent to $A$, and it stops after the $n$ passes of the loop. We show by induction on $c$ that after the pass for column $c$ the following holds: the first $c$ columns form a matrix in reduced row echelon form with $r$ pivots, in the columns $p_1<\cdots<p_r$, and the rows $r+1,\ldots,m$ are zero in these $c$ columns. For $c=0$ there is nothing to show. Suppose the statement holds after the pass for column $c-1$, with $r$ pivots. If column $c$ has no nonzero entry in the rows below $r$, nothing changes, and the first $c$ columns still form a reduced row echelon matrix, in which column $c$ is a free column; its entries in the rows $1,\ldots,r$ are not restricted by \cref{def:echelon}. Otherwise the pass exchanges two rows with numbers greater than $r$, both zero in the first $c-1$ columns, scales the new row $r+1$, which is zero in those columns, and subtracts multiples of this row from the others, which changes no entry in the first $c-1$ columns. Afterwards column $c$ is $\mathbf e_{r+1}$, the first nonzero entry of row $r+1$ is the $1$ in column $c$, to the right of all earlier pivots, and the rows $r+2,\ldots,m$ are zero in the first $c$ columns. So the statement holds with $r+1$ pivots.
+\end{proof}
+
+The algorithm involves choices, namely which row to bring into the pivot position, and other sequences of row operations lead to reduced row echelon forms as well. The next theorem says that they all lead to the same one. Its proof rests on the observation that the reduced form can be recognised from the solutions of the homogeneous system, which do not depend on the row operations (\cref{thm:row-equivalence}). For a matrix $R$ in reduced row echelon form, a solution of $R\mathbf x=\mathbf 0$ with $x_n=1$ exists if and only if the last column is a free column. Indeed, if the last column is free, we may set $x_n\coloneqq1$, set the unknowns of the other free columns to $0$ and the unknown of the pivot column $p_i$ to $-r_{in}$; then the $i$th equation, which reads $x_{p_i}+r_{in}x_n=0$ once the unknowns of the other free columns are set to zero, holds for $i\le r$, because the $i$th row vanishes in the other pivot columns, and the rows below $r$ are zero. If the last column is the pivot column of row $i$, the $i$th equation reads $x_n=0$.
+
+\begin{lemma}
+\label{lem:rref-null}
+Let $B,C\in\mathbb R^{m\times n}$ be in reduced row echelon form, and suppose that $B\mathbf x=\mathbf 0$ and $C\mathbf x=\mathbf 0$ have the same solutions. Then $B=C$.
+\end{lemma}
+
+\begin{proof}
+We use induction on $n$. For $n=1$, a matrix in reduced row echelon form is either the zero column or $\mathbf e_1$, and it is the zero column exactly when every $x\in\mathbb R$ solves the homogeneous system. So $B=0$ if and only if $C=0$, and otherwise $B=C=\mathbf e_1$.
+
+Let $n\ge2$, and let $B'$ and $C'$ be $B$ and $C$ with their last columns removed. They are in reduced row echelon form: the conditions of \cref{def:echelon} for $B'$ follow from those for $B$, except possibly condition (i), and a row of $B$ whose only nonzero entry is in the last column has its pivot further right than every other row and is therefore the last nonzero row of $B$, so that it becomes a zero row of $B'$ below all nonzero rows. For $\mathbf x'\in\mathbb R^{n-1}$, write $\mathbf x$ for $\mathbf x'$ with a last component $0$ appended. Then $B'\mathbf x'=B\mathbf x$ and $C'\mathbf x'=C\mathbf x$, so $B'\mathbf x'=\mathbf 0$ and $C'\mathbf x'=\mathbf 0$ have the same solutions, and by the induction hypothesis $B'=C'$.
+
+Suppose that $B\ne C$. Then $B$ and $C$ differ only in their last columns $\mathbf b_n$ and $\mathbf c_n$. Every solution $\mathbf x$ of $B\mathbf x=\mathbf 0$ also satisfies $C\mathbf x=\mathbf 0$, so $\mathbf 0=(B-C)\mathbf x=x_n(\mathbf b_n-\mathbf c_n)$, and since $\mathbf b_n\ne\mathbf c_n$, $x_n=0$. By the observation before the lemma, the last column of $B$ is a pivot column, and by the same argument so is the last column of $C$. Let $r'$ be the number of nonzero rows of $B'=C'$. The pivot in the last column of $B$ is the first nonzero entry of the row $r'+1$, the first row that vanishes in the first $n-1$ columns, so by (iii) and (iv) of \cref{def:echelon} the last column of $B$ is $\mathbf e_{r'+1}$. The same holds for $C$, so $\mathbf b_n=\mathbf c_n$, a contradiction.
+\end{proof}
+
+\begin{theorem}[Uniqueness of the reduced row echelon form]
+\label{thm:rref-unique}
+Every matrix $A\in\mathbb R^{m\times n}$ is row equivalent to exactly one matrix in reduced row echelon form, the \term{reduced row echelon form} of $A$.
+\end{theorem}
+
+\begin{proof}
+Existence is \cref{thm:rref-existence}. If $R_1$ and $R_2$ are in reduced row echelon form and both are row equivalent to $A$, then by \cref{thm:row-equivalence} the systems $R_1\mathbf x=\mathbf 0$, $A\mathbf x=\mathbf 0$ and $R_2\mathbf x=\mathbf 0$ have the same solutions, and $R_1=R_2$ by \cref{lem:rref-null}.
+\end{proof}
+
+The theorem is less obvious than it looks; it says that however cleverly or clumsily one chooses the row operations, the reduced result is always the same. The short proof by induction on the number of columns is due to Yuster~\cite{yuster1984}. An unreduced row echelon form is not unique, since a row may be multiplied by a nonzero number or a multiple of a lower row added to it. But its pivot positions are.
+
+\begin{corollary}[Pivot positions]
+\label{cor:pivot-positions}
+All matrices in row echelon form that are row equivalent to $A$ have their pivots in the same positions, the pivot positions of the reduced row echelon form of $A$. In particular they have the same number of pivots.
+\end{corollary}
+
+\begin{proof}
+Let $B$ be in row echelon form and row equivalent to $A$, with pivots in the positions $(i,p_i)$, $i=1,\ldots,r$. Divide each nonzero row by its pivot, and then, for $i=r,r-1,\ldots,2$, subtract suitable multiples of row $i$ from the rows $1,\ldots,i-1$ to clear the entries above the pivot $(i,p_i)$. Row $i$ is zero in the columns before $p_i$, so these operations do not change any entry of a row $k<i$ to the left of column $p_i$, in particular not the first nonzero entry of row $k$, which lies in column $p_k<p_i$. The result is in reduced row echelon form, with the pivots in the same positions as $B$, and it is row equivalent to $A$. By \cref{thm:rref-unique} it is the reduced row echelon form of $A$.
+\end{proof}
+
+\subsection{Reading Off the Solutions}
+
+The reduced row echelon form displays all solutions of a system. Let $R$ be the reduced row echelon form of $A\in\mathbb R^{m\times n}$, with $r$ pivots in the columns $p_1<\cdots<p_r$, and let $f_1<\cdots<f_{n-r}$ be the free columns. The unknowns $x_{p_1},\ldots,x_{p_r}$ of the pivot columns are the \term{pivot variables}, and $x_{f_1},\ldots,x_{f_{n-r}}$ are the \term{free variables}. The name is explained by the following theorem: the free variables may be chosen arbitrarily, and the pivot variables are then determined.
+
+\begin{theorem}[Solutions of a homogeneous system]
+\label{thm:homogeneous-solutions}
+With this notation, for $k=1,\ldots,n-r$ let $\mathbf s_k\in\mathbb R^n$ be the vector with the components
+\[
+(\mathbf s_k)_{f_k}=1,\qquad(\mathbf s_k)_{f_l}=0\ \ (l\ne k),\qquad(\mathbf s_k)_{p_i}=-r_{i f_k}\ \ (i=1,\ldots,r).
+\]
+Then $\mathbf x$ solves $A\mathbf x=\mathbf 0$ if and only if
+\[
+\mathbf x=t_1\mathbf s_1+t_2\mathbf s_2+\cdots+t_{n-r}\mathbf s_{n-r}
+\]
+for some numbers $t_1,\ldots,t_{n-r}$, and then $t_k=x_{f_k}$. In particular, $A\mathbf x=\mathbf 0$ has only the trivial solution if and only if $r=n$, that is, if every column of $R$ is a pivot column.
+\end{theorem}
+
+\begin{proof}
+By \cref{thm:row-equivalence}, $A\mathbf x=\mathbf 0$ if and only if $R\mathbf x=\mathbf 0$. Row $i\le r$ of $R$ has the entry $1$ in column $p_i$, zeros in the other pivot columns, and arbitrary entries $r_{if_k}$ in the free columns, so the $i$th equation of $R\mathbf x=\mathbf 0$ is
+\[
+x_{p_i}+\sum_{k=1}^{n-r}r_{if_k}x_{f_k}=0,
+\]
+and the rows below $r$ are zero and impose no condition. So $\mathbf x$ is a solution if and only if $x_{p_i}=-\sum_kr_{if_k}x_{f_k}$ for every $i$. With $t_k\coloneqq x_{f_k}$, these are exactly the components of $\sum_kt_k\mathbf s_k$ in the pivot columns, and the components in the free columns agree by the definition of the $\mathbf s_k$. Conversely, the $f_k$th component of $\sum_lt_l\mathbf s_l$ is $t_k$, so a vector of this form has $x_{f_k}=t_k$ and satisfies the equations. If $r=n$ there are no free variables, and the only solution is $\mathbf 0$; if $r<n$, then $\mathbf s_1\ne\mathbf 0$ is a nontrivial solution.
+\end{proof}
+
+The vectors $\mathbf s_k$ are the \term{special solutions}: $\mathbf s_k$ is the solution obtained by setting one free variable to $1$ and the others to $0$. The theorem says that every solution is a combination of the special solutions, with the free variables as coefficients, and that the coefficients are determined by the solution. In the language of \cref{ch:vector-spaces}, the special solutions form a basis of the null space $\mathcal N(A)$, whose dimension is therefore the number $n-r$ of free variables.
+
+The inhomogeneous system $A\mathbf x=\mathbf b$ is treated by applying the same reduction to the augmented matrix. If $[R\mid\mathbf d]$ is the reduced row echelon form of $[A\mid\mathbf b]$, then $R$ is the reduced row echelon form of $A$: the row operations that reduce $[A\mid\mathbf b]$ reduce its first $n$ columns, and the first $n$ columns of a matrix in reduced row echelon form are in reduced row echelon form, as in the proof of \cref{lem:rref-null}; so $R$ is a reduced form of $A$, and by \cref{thm:rref-unique} it is the reduced form.
+
+\begin{theorem}[Solvability]
+\label{thm:solvability}
+Let $[R\mid\mathbf d]$ be the reduced row echelon form of $[A\mid\mathbf b]$, and let $r$ be the number of pivots of $R$. The system $A\mathbf x=\mathbf b$ is consistent if and only if the last column of $[R\mid\mathbf d]$ is not a pivot column, that is, if and only if $d_{r+1}=\cdots=d_m=0$. In that case the vector $\mathbf x_{\mathrm p}$ with $(\mathbf x_{\mathrm p})_{p_i}=d_i$ for $i=1,\ldots,r$ and zeros in the free columns is a solution, and the solutions are exactly the vectors
+\[
+\mathbf x=\mathbf x_{\mathrm p}+t_1\mathbf s_1+\cdots+t_{n-r}\mathbf s_{n-r}\qquad(t_1,\ldots,t_{n-r}\in\mathbb R).
+\]
+\end{theorem}
+
+\begin{proof}
+By \cref{thm:row-equivalence}, $A\mathbf x=\mathbf b$ has the same solutions as $R\mathbf x=\mathbf d$. If the last column of $[R\mid\mathbf d]$ is a pivot column, its pivot is the first nonzero entry of row $r+1$, which is therefore $[0\ \cdots\ 0\mid1]$; this row is the equation $0=1$, and there is no solution. Otherwise $d_i=0$ for $i>r$, since $\mathbf d$ is not a pivot column and the rows $r+1,\ldots,m$ of $R$ are zero, so the rows below $r$ are the equations $0=0$. For $i\le r$ the $i$th equation is $x_{p_i}+\sum_kr_{if_k}x_{f_k}=d_i$, which $\mathbf x_{\mathrm p}$ satisfies. The description of all solutions follows from \cref{thm:solution-structure}\,(ii) and \cref{thm:homogeneous-solutions}.
+\end{proof}
+
+Consider the system of three equations in four unknowns with the augmented matrix
+\[
+[A\mid\mathbf b]=\left[\begin{array}{rrrr|r}1&2&0&3&1\\2&4&1&8&3\\-1&-2&1&-1&0\end{array}\right].
+\]
+Subtracting twice the first row from the second and adding the first row to the third clears the first column; the second column has no pivot below the first row, so the next pivot is the entry $1$ in position $(2,3)$, and subtracting the second row from the third finishes the reduction:
+\[
+\left[\begin{array}{rrrr|r}1&2&0&3&1\\0&0&1&2&1\\0&0&1&2&1\end{array}\right]
+\;\longrightarrow\;
+\left[\begin{array}{rrrr|r}1&2&0&3&1\\0&0&1&2&1\\0&0&0&0&0\end{array}\right]=[R\mid\mathbf d].
+\]
+The pivot columns are $1$ and $3$, the free columns $2$ and $4$, and the last column is not a pivot column, so the system is consistent. The particular solution is $\mathbf x_{\mathrm p}=(1,0,1,0)$, the special solutions are $\mathbf s_1=(-2,1,0,0)$ and $\mathbf s_2=(-3,0,-2,1)$, and the solution set is
+\[
+\bigl\{(1-2t_1-3t_2,\ t_1,\ 1-2t_2,\ t_2): t_1,t_2\in\mathbb R\bigr\},
+\]
+a plane in $\mathbb R^4$ through $(1,0,1,0)$. Had the last entry of $\mathbf b$ been $1$ instead of $0$, the reduction would have ended with the row $[0\ 0\ 0\ 0\mid1]$, the equation $0=1$, and the system would have been inconsistent. The reason is visible in $A$ itself: its third row is the second minus three times the first, so the third equation is consistent with the first two only if $b_3=b_2-3b_1$.
+
+In practice one rarely computes the reduced form to solve a square system: elimination to upper triangular form followed by back substitution, as in \cref{sec:elimination}, needs fewer operations, about $2n^3/3$ against about $n^3$ for the full Gauss--Jordan reduction of the augmented matrix. The reduced form is a theoretical tool. It shows the structure of the solution set at a glance, and its uniqueness turns the number of pivots into a property of the matrix.
+
+\begin{note}{Elimination over other fields}
+Nothing in this section used properties of the real numbers beyond the rules of arithmetic and the possibility of dividing by a nonzero number, so the theory holds over every field, in particular over the complex numbers and over the finite fields $\mathbb Z/p\mathbb Z$ with a prime $p$ (\vcref{1}{cor:zp-field}). Over $\mathbb Z/p\mathbb Z$ the computations are exact, and a pivot only has to be nonzero; the inverse of a pivot is computed by the extended Euclidean algorithm. One difference concerns the number of solutions. A consistent system with $n-r$ free variables has exactly $p^{n-r}$ solutions over $\mathbb Z/p\mathbb Z$, since each free variable takes $p$ values independently, rather than infinitely many. Systems over $\mathbb Z/2\mathbb Z$, where $1+1=0$, describe parity checks and are the basis of linear error-correcting codes; systems over $\mathbb Z/p\mathbb Z$ for large primes are used in computer algebra, where an integer system is solved modulo several primes and the results combined by the Chinese remainder theorem~\cite[Sect.~4.3.2]{knuth1997taocp2}. Over the integers, where division is not always possible, elimination must be replaced by other methods, such as the Hermite and Smith normal forms~\cite{cohen1993}.
+\end{note}
+\section{Rank}
+\label{sec:rank}
+
+\subsection{The Rank of a Matrix}
+
+By \cref{thm:rref-unique}, the number of pivots in the reduced row echelon form of a matrix depends only on the matrix, not on the row operations used to compute it. This number is the most important single number attached to a matrix.
+
+\begin{definition}[Rank]
+\label{def:rank}
+The \term{rank} $\operatorname{rank}A$ of $A\in\mathbb R^{m\times n}$ is the number of pivots of its reduced row echelon form. By \cref{cor:pivot-positions} it is also the number of pivots of every row echelon form of $A$, and the number of nonzero rows of such a form.
+\end{definition}
+
+The rank is computed by elimination. The matrix of the example at the end of \cref{sec:echelon},
+\[
+A=\begin{bmatrix}1&2&0&3\\2&4&1&8\\-1&-2&1&-1\end{bmatrix},
+\]
+has rank $2$, since its reduced form has two pivots; three equations in four unknowns, but one of the equations is a consequence of the other two. The matrix of the system \eqref{eq:example-system} has rank $3$, and the matrices of the three systems \eqref{eq:three-cases} have the ranks $2$, $1$ and $1$. The identity matrix $I_n$ has rank $n$. A nonzero outer product $\mathbf u\mathbf v^{\mathsf T}$, all of whose rows are multiples of $\mathbf v^{\mathsf T}$, has rank $1$: if $u_k\ne0$, subtracting $u_i/u_k$ times row $k$ from every other row $i$ leaves a single nonzero row. This justifies the name rank-one matrix of \cref{sec:matrix-multiplication}.
+
+\begin{proposition}[Basic properties of the rank]
+\label{prop:rank-basic}
+Let $A\in\mathbb R^{m\times n}$.
+\begin{enumerate}
+\item $\operatorname{rank}A\le\min(m,n)$, and $\operatorname{rank}A=0$ if and only if $A=0$.
+\item The number of free variables of $A\mathbf x=\mathbf 0$ is $n-\operatorname{rank}A$.
+\item If all rows of $B\in\mathbb R^{m\times n}$ below the $r$th are zero, then $\operatorname{rank}B\le r$.
+\item $\operatorname{rank}(EA)=\operatorname{rank}A$ for every invertible $E\in\mathbb R^{m\times m}$.
+\item $\operatorname{rank}(AF)=\operatorname{rank}A$ for every invertible $F\in\mathbb R^{n\times n}$.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) Every pivot occupies its own row and its own column, so there are at most $m$ and at most $n$ of them. The zero matrix is in reduced row echelon form without pivots. Conversely, if the reduced form $R=EA$ has no pivots, it is zero, and so is $A=E^{-1}R$. (ii) is the definition of the free columns. (iii) Write $B$ in blocks, with the first $r$ rows forming $B_1\in\mathbb R^{r\times n}$ and the other rows zero. Row operations on the rows of $B_1$ reduce it to its reduced form $R_1$, which has at most $r$ pivots by (i), and the same operations applied to $B$ leave the zero rows unchanged and produce the matrix with the blocks $R_1$ and $0$, which is in reduced row echelon form. So $\operatorname{rank}B=\operatorname{rank}R_1\le r$. (iv) Since $E$ is invertible, $EA\mathbf x=\mathbf 0$ if and only if $A\mathbf x=\mathbf 0$. The reduced forms of $A$ and of $EA$ therefore have the same homogeneous solutions, by \cref{thm:row-equivalence}, and they are equal by \cref{lem:rref-null}. (v) Let $R=GA$ be the reduced form of $A$, with $G$ a product of elementary matrices, and let $r\coloneqq\operatorname{rank}A$. The matrix $G(AF)=RF$ has zero rows below the $r$th, because $R$ has. By (iv) and (iii), $\operatorname{rank}(AF)=\operatorname{rank}(RF)\le r$. Applied to $AF$ and $F^{-1}$ in place of $A$ and $F$, this gives $\operatorname{rank}A=\operatorname{rank}(AFF^{-1})\le\operatorname{rank}(AF)$.
+\end{proof}
+
+\subsection{Rank and the Number of Solutions}
+
+The rank decides the solvability of every system with the matrix $A$ and the size of its solution set. This is the answer to the questions of the beginning of the chapter, in so far as they depend only on $A$.
+
+\begin{theorem}[Rank and solutions]
+\label{thm:rank-solutions}
+Let $A\in\mathbb R^{m\times n}$ have rank $r$, and let $\mathbf b\in\mathbb R^m$.
+\begin{enumerate}
+\item The system $A\mathbf x=\mathbf b$ is consistent if and only if $\operatorname{rank}[A\mid\mathbf b]=\operatorname{rank}A$.
+\item If it is consistent, its solutions are $\mathbf x_{\mathrm p}+t_1\mathbf s_1+\cdots+t_{n-r}\mathbf s_{n-r}$ with $n-r$ free parameters, as in \cref{thm:solvability}. The solution is unique if and only if $r=n$.
+\item The system $A\mathbf x=\mathbf b$ is consistent for every $\mathbf b\in\mathbb R^m$ if and only if $r=m$.
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+(i) The reduced form of $[A\mid\mathbf b]$ is $[R\mid\mathbf d]$, whose pivots are those of $R$ together with a pivot in the last column if there is one. So $\operatorname{rank}[A\mid\mathbf b]$ is $r$ or $r+1$, and it is $r$ exactly when the last column is not a pivot column, which by \cref{thm:solvability} means that the system is consistent. (ii) is \cref{thm:solvability,thm:homogeneous-solutions}. (iii) If $r=m$, every row of $R$ contains a pivot, and there is no row $r+1$ for a pivot in the last column of $[R\mid\mathbf d]$; so every system is consistent. If $r<m$, the rows $r+1,\ldots,m$ of $R=GA$ are zero, where $G$ is a product of elementary matrices. Let $\mathbf b\coloneqq G^{-1}\mathbf e_{r+1}$. Then $G[A\mid\mathbf b]=[R\mid\mathbf e_{r+1}]$, which is in reduced row echelon form with a pivot in the last column, the $1$ in row $r+1$. By \cref{thm:solvability} the system $A\mathbf x=\mathbf b$ is inconsistent.
+\end{proof}
+
+Part~(i) is known under several names, among them the Rouch\'e--Capelli and the Kronecker--Capelli theorem. \Cref{tab:rank-cases} lists the four cases that the theorem distinguishes. The three systems \eqref{eq:three-cases} illustrate the first and the last row: system (A) has $r=m=n=2$; systems (B) and (C) have $r=1<2$, and whether there are no solutions or infinitely many depends on the right-hand side. The example at the end of \cref{sec:echelon}, with $r=2<m=3$ and $r<n=4$, belongs to the last row as well.
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}{colspec={lll}, row{1}={font=\small\bfseries}}
+\toprule
+rank & shape & solutions of $A\mathbf x=\mathbf b$ \\
+\midrule
+$r=m=n$ & square & exactly one, for every $\mathbf b$ \\
+$r=n<m$ & tall & exactly one or none, depending on $\mathbf b$ \\
+$r=m<n$ & wide & infinitely many, for every $\mathbf b$ \\
+$r<m$, $r<n$ & any & none or infinitely many, depending on $\mathbf b$ \\
+\bottomrule
+\end{sdtable}}{The number of solutions of a system $A\mathbf x=\mathbf b$ with $A\in\mathbb R^{m\times n}$ of rank $r$ (\cref{thm:rank-solutions}). A consistent system has $n-r$ free parameters.\label{tab:rank-cases}}
+\end{table}
+
+A homogeneous system is always consistent, and the theorem specialises to a statement that deserves a name of its own.
+
+\begin{theorem}[More unknowns than equations]
+\label{thm:more-unknowns}
+If $A\in\mathbb R^{m\times n}$ with $m<n$, then $A\mathbf x=\mathbf 0$ has a solution $\mathbf x\ne\mathbf 0$.
+\end{theorem}
+
+\begin{proof}
+By \cref{prop:rank-basic}\,(i), $\operatorname{rank}A\le m<n$, so there is at least one free variable, and the special solution $\mathbf s_1$ of \cref{thm:homogeneous-solutions} is a nonzero solution.
+\end{proof}
+
+In the column picture, the theorem says that $n$ vectors in $\mathbb R^m$ with $n>m$ always admit a nontrivial combination $x_1\mathbf a_1+\cdots+x_n\mathbf a_n=\mathbf 0$: there are too many of them to be independent of each other. \Cref{ch:vector-spaces} uses exactly this statement to prove that all bases of a subspace have the same number of elements, so that the dimension is well defined, and it then interprets the rank as the dimension of the span of the columns. The theorem is the computational heart of the theory of dimension.
+
+\subsection{Rank, Transpose and Products}
+
+The rank was defined through the rows: it counts the nonzero rows that survive elimination. One might expect a second number, counting the columns in some way, but there is only one. We state the result now; its proof belongs to \cref{ch:vector-spaces}.
+
+\begin{theorem}[Rank of the transpose]
+\label{thm:rank-transpose}
+For every $A\in\mathbb R^{m\times n}$, $\operatorname{rank}A^{\mathsf T}=\operatorname{rank}A$.
+\end{theorem}
+
+\begin{proof}[sketch]
+Let $R=GA$ be the reduced form of $A$, with $r$ pivots. The span of the rows of $A$ equals the span of the rows of $R$, since every row operation replaces rows by combinations of rows and can be undone; the $r$ nonzero rows of $R$ are linearly independent, because each has a $1$ in a pivot column where the others vanish. So $r$ is the dimension of the row space. On the other hand, $R\mathbf x=\mathbf 0$ and $A\mathbf x=\mathbf 0$ have the same solutions, so the columns of $A$ satisfy the same linear relations as the columns of $R$; in $R$ the pivot columns are the independent ones and every free column is a combination of them, so the $r$ pivot columns of $A$ are independent and span all columns of $A$. Hence the column space also has dimension $r$. The column space of $A$ is the row space of $A^{\mathsf T}$, whose dimension is $\operatorname{rank}A^{\mathsf T}$. \Cref{ch:vector-spaces} carries out this argument in full (\cref{thm:four-dimensions}); see also Strang~\cite[Chap.~3]{strang2016} and Meyer~\cite[Chap.~4]{meyer2000}.
+\end{proof}
+
+For the matrix $A$ above of rank $2$, the transpose has four rows and three columns, and elimination on it indeed leaves two nonzero rows. The equality of the two ranks is surprising if one thinks of rows and columns as different objects: the theorem says that the number of independent equations of a system equals the number of independent columns. It is the first instance of the duality between a matrix and its transpose that runs through linear algebra.
+
+\begin{proposition}[Rank of a product]
+\label{prop:rank-product}
+For $A\in\mathbb R^{m\times n}$ and $B\in\mathbb R^{n\times p}$,
+\[
+\operatorname{rank}(AB)\le\min(\operatorname{rank}A,\operatorname{rank}B).
+\]
+\end{proposition}
+
+\begin{proof}
+Let $R=GA$ be the reduced form of $A$, with $r$ nonzero rows. Then $G(AB)=RB$ has zero rows below the $r$th, and by \cref{prop:rank-basic}\,(iv) and (iii), $\operatorname{rank}(AB)=\operatorname{rank}(RB)\le r$. For the second bound, by \cref{thm:rank-transpose} and the bound just proved, $\operatorname{rank}(AB)=\operatorname{rank}(B^{\mathsf T}A^{\mathsf T})\le\operatorname{rank}B^{\mathsf T}=\operatorname{rank}B$.
+\end{proof}
+
+The first bound has a transparent meaning in the row picture: the rows of $AB$ are combinations of the rows of $B$, with the rows of $A$ as coefficients (\cref{thm:four-readings}\,(iii)), and the elimination that removes the dependent rows of $A$ removes the same rows of $AB$. A product of matrices of rank one has rank at most one, and the product of an $m\times k$ and a $k\times n$ matrix has rank at most $k$; matrices of low rank are therefore cheap to store and apply in factored form, an observation that \cref{ch:svd} exploits. \Cref{ch:linear-maps} sharpens the proposition with the rank--nullity theorem, $\operatorname{rank}A+\dim\mathcal N(A)=n$, of which \cref{prop:rank-basic}\,(ii) and \cref{thm:homogeneous-solutions} are the computational form.
+
+\section{Invertible Matrices}
+\label{sec:invertible}
+
+\subsection{The Invertible Matrix Theorem}
+
+For a square matrix, the cases of \cref{tab:rank-cases} collapse: either the rank is $n$, and every system has exactly one solution, or it is less than $n$, and the matrix is singular. The following theorem collects the many equivalent forms of this dichotomy. It proves the part of \vcref{1}{thm:invertible-matrices}\,(i) that does not involve determinants, and \cref{thm:one-sided-square} of \cref{ch:vectors-matrices}.
+
+\begin{theorem}[Invertible matrices]
+\label{thm:invertible}
+For $A\in\mathbb R^{n\times n}$ the following are equivalent:
+\begin{enumerate}
+\item $A$ is invertible;
+\item $A\mathbf x=\mathbf 0$ only for $\mathbf x=\mathbf 0$;
+\item the reduced row echelon form of $A$ is $I$;
+\item $A\mathbf x=\mathbf b$ has a solution for every $\mathbf b\in\mathbb R^n$;
+\item $A\mathbf x=\mathbf b$ has exactly one solution for every $\mathbf b\in\mathbb R^n$;
+\item $A$ is a product of elementary matrices;
+\item $\operatorname{rank}A=n$;
+\item $A$ has a left inverse: $BA=I$ for some $B\in\mathbb R^{n\times n}$;
+\item $A$ has a right inverse: $AC=I$ for some $C\in\mathbb R^{n\times n}$.
+\end{enumerate}
+In that case every left inverse and every right inverse of $A$ equals $A^{-1}$.
+\end{theorem}
+
+\begin{proof}
+We prove the implications (i)$\Rightarrow$(viii)$\Rightarrow$(ii)$\Leftrightarrow$(vii)$\Leftrightarrow$(iii)$\Rightarrow$(vi)$\Rightarrow$(i), which make (i), (ii), (iii), (vi), (vii) and (viii) equivalent, and then bring in (iv), (v) and (ix).
+
+(i)$\Rightarrow$(viii): $B=A^{-1}$ is a left inverse. (viii)$\Rightarrow$(ii): by \cref{prop:one-sided-inverses}\,(ii). (ii)$\Leftrightarrow$(vii): by \cref{thm:homogeneous-solutions}, $A\mathbf x=\mathbf 0$ has only the trivial solution if and only if there are no free variables, that is, if $\operatorname{rank}A=n$. (vii)$\Leftrightarrow$(iii): a square matrix in reduced row echelon form with $n$ pivots has a pivot in every row and every column; by condition (ii) of \cref{def:echelon} the pivot of row $i$ lies in column $i$, and by (iii) and (iv) the matrix is $I$. Conversely $I$ has $n$ pivots. (iii)$\Rightarrow$(vi): if $E_k\cdots E_1A=I$ with elementary matrices $E_j$, then $A=E_1^{-1}\cdots E_k^{-1}$, and each $E_j^{-1}$ is elementary by \cref{prop:elementary-matrices}\,(ii). (vi)$\Rightarrow$(i): elementary matrices are invertible, and so are their products, by \cref{prop:inverse-rules}\,(ii).
+
+(vii)$\Leftrightarrow$(iv): by \cref{thm:rank-solutions}\,(iii) with $m=n$. (v)$\Leftrightarrow$(ii) and (iv): by \cref{thm:solution-structure}\,(iii), a consistent system has exactly one solution if and only if $\mathcal N(A)=\{\mathbf 0\}$; so (v) holds if and only if (iv) and (ii) hold, and these are equivalent to each other and to (i) by what has been shown. (i)$\Rightarrow$(ix): $C=A^{-1}$. (ix)$\Rightarrow$(iv): by \cref{prop:one-sided-inverses}\,(iii), $\mathbf x=C\mathbf b$ solves $A\mathbf x=\mathbf b$.
+
+Finally, if $A$ is invertible and $BA=I$ or $AC=I$, then $B=A^{-1}$ and $C=A^{-1}$ by \cref{prop:one-sided-inverses}\,(i), applied to the pairs $(B,A^{-1})$ and $(A^{-1},C)$.
+\end{proof}
+
+The theorem now gives the proof that \cref{ch:vectors-matrices} postponed. Let $A,B\in\mathbb R^{n\times n}$ with $BA=I$. Then $A$ has a left inverse, so it is invertible by (viii)$\Rightarrow$(i), and $B=A^{-1}$, so that $AB=AA^{-1}=I$. If $AB=I$, then $A$ has a right inverse, and the same conclusion follows from (ix)$\Rightarrow$(i). This is \cref{thm:one-sided-square}. The proof used \cref{prop:one-sided-inverses,prop:inverse-rules}, the elementary matrices and the theory of elimination of this chapter, and none of the results of \cref{ch:vectors-matrices} that were derived from \cref{thm:one-sided-square}, such as $Q^{-1}=Q^{\mathsf T}$ for orthogonal matrices (\cref{thm:orthogonal}) or the Sherman--Morrison and Woodbury formulas (\cref{thm:sherman-morrison,thm:woodbury}); so the argument is not circular. It uses only the arithmetic of a field and therefore also proves the theorem for complex matrices, as \cref{sec:complex-matrices} assumed. Where the square shape enters is the step (ii)$\Rightarrow$(iv): no free variables means $n$ pivots, which for $n$ rows means a pivot in every row, and then every system is consistent. For a rectangular matrix the two counts are different, and the left inverses of a tall matrix, such as those of the column $(1,2)$ in \cref{sec:inverse}, are not right inverses.
+
+The equivalence of (i) and (ii) also settles the case of \cref{alg:gauss-solve} that was left open.
+
+\begin{proposition}[Elimination detects singularity]
+\label{prop:gauss-singular}
+\Cref{alg:gauss-solve} reports that $A$ is singular if and only if $A$ is singular. Otherwise the upper triangular matrix $U$ that it produces has nonzero diagonal entries.
+\end{proposition}
+
+\begin{proof}
+If the algorithm does not report singularity, it produces $U=GA$ with $u_{kk}\ne0$ for every $k$, where $G$ is a product of elementary matrices, and $A=G^{-1}U$ is invertible as a product of invertible matrices (\cref{thm:triangular}\,(ii)). Suppose that it reports singularity at the end, because $u_{nn}=0$. Then $U=GA$ is upper triangular and singular by \cref{thm:triangular}\,(ii), and so is $A=G^{-1}U$, since otherwise $U$ would be a product of invertible matrices. Suppose finally that it reports singularity in step $k$. The current matrix $B=GA$ then has, in its first $k$ columns, nonzero entries only in the rows $1,\ldots,k-1$: the columns before $k$ have been eliminated below the diagonal, and column $k$ is zero from row $k$ on. The system $B\mathbf x=\mathbf 0$ with $x_{k+1}=\cdots=x_n=0$ reduces to $k-1$ equations in the $k$ unknowns $x_1,\ldots,x_k$, which have a nontrivial solution by \cref{thm:more-unknowns} (for $k=1$ there are no equations, and $x_1=1$ will do). So $B\mathbf x=\mathbf 0$ for some $\mathbf x\ne\mathbf 0$, hence $A\mathbf x=\mathbf 0$ by \cref{thm:row-equivalence}, and $A$ is singular by \cref{thm:invertible}.
+\end{proof}
+
+\subsection{Products of Elementary Matrices and the Image of a Singular Matrix}
+
+Two consequences of the theorem were used in \vcref{1}{ch:multiple-integrals}, in the proof of \vcref{1}{thm:linear-volume} that a linear map multiplies volumes by the absolute value of its determinant.
+
+\begin{corollary}[Factorisation into elementary matrices]
+\label{cor:elementary-product}
+Every invertible matrix $A\in\mathbb R^{n\times n}$ is a product of exchange matrices $P_{ij}$, scaling matrices $D_i(c)$ and shear matrices $E_{ij}(c)$. As maps, it is a composition of exchanges of two coordinates, scalings of one coordinate by a nonzero factor, and shears $x_i\mapsto x_i+cx_j$.
+\end{corollary}
+
+\begin{proof}
+This is (i)$\Rightarrow$(vi) of \cref{thm:invertible}, together with the description of the elementary matrices as maps in \cref{sec:elimination}.
+\end{proof}
+
+The factorisation is obtained by running Gauss--Jordan elimination and inverting the operations. For a $2\times2$ matrix with the rows $(a,b)$ and $(c,d)$, $a\ne0$ and $\Delta\coloneqq ad-bc\ne0$, eliminating $c$ with the multiplier $c/a$, scaling the rows by $1/a$ and $a/\Delta$ and eliminating $b/a$ above the second pivot gives
+\[
+\begin{bmatrix}a&b\\c&d\end{bmatrix}=E_{21}(c/a)\,D_1(a)\,D_2(\Delta/a)\,E_{12}(b/a)
+=\begin{bmatrix}1&0\\c/a&1\end{bmatrix}\begin{bmatrix}a&0\\0&1\end{bmatrix}\begin{bmatrix}1&0\\0&\Delta/a\end{bmatrix}\begin{bmatrix}1&b/a\\0&1\end{bmatrix},
+\]
+the factorisation used in the proof of \vcref{1}{thm:linear-volume}, with its middle diagonal factor split into two scalings. If $a=0$, an exchange $P_{12}$ comes first.
+
+\begin{proposition}[The image of a singular matrix]
+\label{prop:singular-image}
+If $A\in\mathbb R^{n\times n}$ is singular, there is a vector $\mathbf y\ne\mathbf 0$ with $\mathbf y^{\mathsf T}A=\mathbf 0^{\mathsf T}$. Consequently every vector $A\mathbf x$ lies in the hyperplane $\{\mathbf z\in\mathbb R^n: \langle\mathbf y,\mathbf z\rangle=0\}$.
+\end{proposition}
+
+\begin{proof}
+Let $R=GA$ be the reduced form of $A$, with $G$ a product of elementary matrices. By \cref{thm:invertible}, $\operatorname{rank}A<n$, so the last row of $R$ is zero: $\mathbf e_n^{\mathsf T}GA=\mathbf e_n^{\mathsf T}R=\mathbf 0^{\mathsf T}$. Put $\mathbf y\coloneqq G^{\mathsf T}\mathbf e_n$, so that $\mathbf y^{\mathsf T}=\mathbf e_n^{\mathsf T}G$ and $\mathbf y^{\mathsf T}A=\mathbf 0^{\mathsf T}$. Since $G$ is invertible, so is $G^{\mathsf T}$ (\cref{prop:inverse-rules}\,(iii)), and $\mathbf y\ne\mathbf 0$. Finally $\langle\mathbf y,A\mathbf x\rangle=\mathbf y^{\mathsf T}A\mathbf x=0$ for every $\mathbf x$.
+\end{proof}
+
+The vector $\mathbf y$ records a linear relation between the rows of $A$: $\mathbf y^{\mathsf T}A=\sum_iy_i\mathbf r_i^{\mathsf T}=\mathbf 0^{\mathsf T}$. For the matrix with the rows $(1,2)$ and $(2,4)$, $\mathbf y=(2,-1)$, and the image of the map is the line $\{\mathbf z: 2z_1-z_2=0\}$ spanned by the column $(1,2)$. In the hyperplane $\langle\mathbf y,\mathbf z\rangle=0$ one coordinate is a linear function of the others: if $y_k\ne0$, then $z_k=-\sum_{j\ne k}y_jz_j/y_k$. A bounded part of the hyperplane is therefore the graph of a linear function over a bounded set of $\mathbb R^{n-1}$, which has content zero; this is the step of the proof of \vcref{1}{thm:linear-volume} that treats singular matrices.
+
+\subsection{Computing the Inverse}
+
+\Cref{thm:invertible} also gives an algorithm for the inverse. The $k$th column $\mathbf c_k$ of $A^{-1}$ is the solution of $A\mathbf c_k=\mathbf e_k$, and all $n$ systems can be solved at once by reducing the $n\times2n$ matrix $[A\mid I]$.
+
+\begin{proposition}[Gauss--Jordan inversion]
+\label{prop:gauss-jordan}
+Let $A\in\mathbb R^{n\times n}$, and let $[R\mid X]$ be the reduced row echelon form of $[A\mid I]$. Then $A$ is invertible if and only if $R=I$, and in that case $X=A^{-1}$.
+\end{proposition}
+
+\begin{proof}
+If $G$ is the product of elementary matrices that reduces $[A\mid I]$, then $[R\mid X]=G[A\mid I]=[GA\mid G]$, so $R=GA$ and $X=G$. As shown before \cref{thm:solvability}, $R$ is the reduced form of $A$, which is $I$ if and only if $A$ is invertible, by \cref{thm:invertible}. If $R=I$, then $XA=GA=I$, and $X=A^{-1}$ by the last statement of \cref{thm:invertible}.
+\end{proof}
+
+For the matrix of the system \eqref{eq:example-system}, the reduction runs as follows. The first column is cleared after scaling the first row by $1/2$, the second column with the pivot $1$ in position $(2,2)$, and the third with the pivot $1$ in position $(3,3)$:
+\[
+\left[\begin{array}{rrr|rrr}2&1&-1&1&0&0\\-4&-1&3&0&1&0\\2&3&2&0&0&1\end{array}\right]
+\longrightarrow
+\left[\begin{array}{rrr|rrr}1&\frac12&-\frac12&\frac12&0&0\\0&1&1&2&1&0\\0&2&3&-1&0&1\end{array}\right]
+\]
+\[
+\longrightarrow
+\left[\begin{array}{rrr|rrr}1&0&-1&-\frac12&-\frac12&0\\0&1&1&2&1&0\\0&0&1&-5&-2&1\end{array}\right]
+\longrightarrow
+\left[\begin{array}{rrr|rrr}1&0&0&-\frac{11}2&-\frac52&1\\0&1&0&7&3&-1\\0&0&1&-5&-2&1\end{array}\right].
+\]
+So
+\[
+A^{-1}=\begin{bmatrix}-11/2&-5/2&1\\7&3&-1\\-5&-2&1\end{bmatrix},
+\]
+and indeed $A^{-1}(-1,3,3)=(11/2-15/2+3,\,-7+9-3,\,5-6+3)=(1,-1,2)$, the solution found in \cref{sec:elimination}. Counting operations as in \cref{prop:elimination-cost}, and taking into account that the right half starts with many zeros, Gauss--Jordan inversion costs about $2n^3$ operations, three times as much as the elimination of $A$; \cref{sec:lu} derives this count.
+
+\subsection{Solve, Do Not Invert}
+
+The formula $\mathbf x=A^{-1}\mathbf b$ is the right way to think about the solution of an invertible system, but almost never the right way to compute it, as \cref{sec:computing-matrices} already stated. There are three reasons. The first is the cost: forming $A^{-1}$ costs about $2n^3$ operations and the product $A^{-1}\mathbf b$ another $2n^2$, while elimination with back substitution costs about $2n^3/3$; and if many right-hand sides are to be treated, \cref{sec:lu} shows how to reuse the elimination without ever forming the inverse. The second is structure: the inverse of a banded or sparse matrix is usually full (\cref{prop:second-difference-inverse}), while its elimination can preserve the structure (\cref{sec:special-systems}). The third is accuracy: in floating-point arithmetic, the solution computed through the inverse is in general less accurate than the one computed by elimination with pivoting, an effect analysed in Volume~IX. Higham discusses these points and the rare situations in which an explicit inverse is nevertheless wanted~\cite[Chap.~14]{higham2002accuracy}. The rule is worth repeating: \emph{whenever a formula contains $A^{-1}\mathbf b$ or $A^{-1}B$, read it as the solution of a linear system}.
+\section{The LU Factorisation}
+\label{sec:lu}
+
+\subsection{Elimination as a Factorisation}
+
+Gaussian elimination transforms $A$ into an upper triangular matrix $U$ by row operations, that is, $U=GA$ with a product $G$ of elementary matrices; so $A=G^{-1}U$. The point is that, when no rows are exchanged, the factor $G^{-1}$ is a unit lower triangular matrix whose entries are exactly the multipliers of the elimination, with no further computation. To see this, we collect the operations of one step into a single matrix. In step $k$, the multiple $l_{ik}$ of row $k$ is subtracted from row $i$ for $i=k+1,\ldots,n$. With the vector
+\[
+\boldsymbol\ell_k\coloneqq(0,\ldots,0,l_{k+1,k},\ldots,l_{nk})\in\mathbb R^n,
+\]
+whose first $k$ components are zero, the step is multiplication from the left by the \term{Gauss transformation}
+\[
+M_k\coloneqq I-\boldsymbol\ell_k\mathbf e_k^{\mathsf T}=\begin{bmatrix}1&&&&&\\&\ddots&&&&\\&&1&&&\\&&-l_{k+1,k}&1&&\\&&\vdots&&\ddots&\\&&-l_{nk}&&&1\end{bmatrix},
+\]
+the identity with the negated multipliers below the diagonal in column $k$; it is the product of the shears $E_{ik}(-l_{ik})$, $i=k+1,\ldots,n$.
+
+\begin{lemma}[Gauss transformations]
+\label{lem:gauss-transforms}
+For $k=1,\ldots,n-1$ let $\boldsymbol\ell_k\in\mathbb R^n$ have its first $k$ components equal to zero, and let $M_k=I-\boldsymbol\ell_k\mathbf e_k^{\mathsf T}$.
+\begin{enumerate}
+\item $M_kA$ is $A$ with $l_{ik}$ times row $k$ subtracted from row $i$, for every $i>k$, where $l_{ik}$ is the $i$th component of $\boldsymbol\ell_k$.
+\item $M_k$ is invertible, and $M_k^{-1}=I+\boldsymbol\ell_k\mathbf e_k^{\mathsf T}$.
+\item $M_1^{-1}M_2^{-1}\cdots M_{n-1}^{-1}=I+\sum_{k=1}^{n-1}\boldsymbol\ell_k\mathbf e_k^{\mathsf T}$, the unit lower triangular matrix with the entries $l_{ik}$ below the diagonal.
+\end{enumerate}
+\end{lemma}
+
+\begin{proof}
+(i) The $i$th row of $M_kA$ is $(\mathbf e_i^{\mathsf T}-(\mathbf e_i^{\mathsf T}\boldsymbol\ell_k)\mathbf e_k^{\mathsf T})A=\mathbf r_i^{\mathsf T}-l_{ik}\mathbf r_k^{\mathsf T}$, where $l_{ik}=0$ for $i\le k$. (ii) $(I-\boldsymbol\ell_k\mathbf e_k^{\mathsf T})(I+\boldsymbol\ell_k\mathbf e_k^{\mathsf T})=I-\boldsymbol\ell_k(\mathbf e_k^{\mathsf T}\boldsymbol\ell_k)\mathbf e_k^{\mathsf T}=I$, because the $k$th component of $\boldsymbol\ell_k$ is zero, and the product in the other order is the same. (iii) By induction on the number of factors: if $M_1^{-1}\cdots M_{k-1}^{-1}=I+\sum_{j<k}\boldsymbol\ell_j\mathbf e_j^{\mathsf T}$, then multiplying by $M_k^{-1}=I+\boldsymbol\ell_k\mathbf e_k^{\mathsf T}$ from the right gives
+\[
+I+\sum_{j<k}\boldsymbol\ell_j\mathbf e_j^{\mathsf T}+\boldsymbol\ell_k\mathbf e_k^{\mathsf T}+\sum_{j<k}\boldsymbol\ell_j(\mathbf e_j^{\mathsf T}\boldsymbol\ell_k)\mathbf e_k^{\mathsf T},
+\]
+and the last sum vanishes, because the $j$th component of $\boldsymbol\ell_k$ is zero for $j<k$.
+\end{proof}
+
+The order of the factors in (iii) matters. The product $M_{n-1}\cdots M_1$ in the opposite order, which is the matrix $G$ of the elimination, is also unit lower triangular, but its entries are not simply the negated multipliers: products of multipliers appear in it. The inverse order is the one in which the multipliers fall into place untouched, and this is why one stores the multipliers rather than $G$.
+
+\begin{theorem}[Elimination computes $A=LU$]
+\label{thm:lu-elimination}
+Suppose that Gaussian elimination without row exchanges reduces $A\in\mathbb R^{n\times n}$ to an upper triangular matrix $U$, with nonzero pivots in the steps $1,\ldots,n-1$ and the multipliers $l_{ik}$, $i>k$. Then
+\[
+A=LU,\qquad L\coloneqq\begin{bmatrix}1&&&\\l_{21}&1&&\\\vdots&\ddots&\ddots&\\l_{n1}&\cdots&l_{n,n-1}&1\end{bmatrix},
+\]
+with the unit lower triangular matrix $L$ of the multipliers.
+\end{theorem}
+
+\begin{proof}
+By \cref{lem:gauss-transforms}\,(i), $U=M_{n-1}\cdots M_2M_1A$. Multiplying by the inverses in the reverse order gives $A=M_1^{-1}\cdots M_{n-1}^{-1}U$, and by part~(iii) of the lemma the product of the inverses is $L$.
+\end{proof}
+
+A factorisation $A=LU$ with $L$ unit lower triangular and $U$ upper triangular is an \term{LU factorisation} of $A$. For the system \eqref{eq:example-system}, the multipliers were $l_{21}=-2$, $l_{31}=1$ and $l_{32}=2$, and
+\[
+\begin{bmatrix}2&1&-1\\-4&-1&3\\2&3&2\end{bmatrix}=\begin{bmatrix}1&0&0\\-2&1&0\\1&2&1\end{bmatrix}\begin{bmatrix}2&1&-1\\0&1&1\\0&0&1\end{bmatrix},
+\]
+as multiplying out confirms. The factorisation separates the work on the matrix from the work on the right-hand side. Since $A\mathbf x=L(U\mathbf x)$, the system $A\mathbf x=\mathbf b$ is solved in two triangular steps,
+\begin{equation}
+L\mathbf y=\mathbf b\quad\text{(forward substitution)},\qquad U\mathbf x=\mathbf y\quad\text{(back substitution)},
+\label{eq:lu-solve}
+\end{equation}
+which cost $n(n-1)$ and $n^2$ operations (\cref{prop:triangular-solve}), about $2n^2$ together. For $\mathbf b=(-1,3,3)$, forward substitution gives $y_1=-1$, $y_2=3+2y_1=1$, $y_3=3-y_1-2y_2=2$, the right-hand side that elimination produced in \cref{sec:elimination}, and back substitution gives $\mathbf x=(1,-1,2)$ as before. Forward substitution with $L$ simply replays the operations of the elimination on the new right-hand side.
+
+\subsection{Existence and Uniqueness}
+
+Not every matrix has an LU factorisation. The matrix with the rows $(0,1)$ and $(1,1)$ is invertible, but if it were $LU$, its $(1,1)$ entry would be $l_{11}u_{11}=u_{11}=0$, and its $(2,1)$ entry would be $l_{21}u_{11}=0$ instead of $1$. Elimination fails here at the first step, with the pivot $0$. The next theorem identifies the matrices for which elimination without exchanges succeeds. For $A\in\mathbb R^{n\times n}$ and $k=1,\ldots,n$, let $A_k\in\mathbb R^{k\times k}$ be the \term{leading principal submatrix} formed by the first $k$ rows and columns of $A$. We need one observation about products: if $G$ is lower triangular, then $(GA)_k=G_kA_k$, since the entry $(GA)_{ij}=\sum_lg_{il}a_{lj}$ with $i,j\le k$ involves only $g_{il}$ with $l\le i\le k$; similarly, if $L$ is lower triangular and $U$ upper triangular, then $(LU)_k=L_kU_k$.
+
+\begin{theorem}[Existence of the LU factorisation]
+\label{thm:lu-existence}
+Let $A\in\mathbb R^{n\times n}$.
+\begin{enumerate}
+\item If the leading principal submatrices $A_1,\ldots,A_{n-1}$ are invertible, then Gaussian elimination without row exchanges finds nonzero pivots in the steps $1,\ldots,n-1$, and $A$ has the LU factorisation of \cref{thm:lu-elimination}. Its last pivot $u_{nn}$ is nonzero if and only if $A$ is invertible.
+\item Conversely, if $A$ is invertible and has an LU factorisation, then all leading principal submatrices $A_1,\ldots,A_n$ are invertible.
+\end{enumerate}
+In particular, an invertible matrix has an LU factorisation if and only if all its leading principal submatrices are invertible.
+\end{theorem}
+
+\begin{proof}
+(i) Suppose that the steps $1,\ldots,k-1$ have been carried out with nonzero pivots, for some $k\le n$, and let $B=GA$ be the current matrix, with $G=M_{k-1}\cdots M_1$ unit lower triangular. The first $k-1$ columns of $B$ are zero below the diagonal, so the leading submatrix $B_k$ is upper triangular, with the diagonal entries $u_{11},\ldots,u_{k-1,k-1}$ and the current entry $b_{kk}$ in position $(k,k)$. By the observation above, $B_k=G_kA_k$. If $A_k$ is invertible, so is $B_k$, as a product of the invertible matrices $G_k$ and $A_k$ (\cref{thm:triangular}), and by \cref{thm:triangular}\,(ii) its diagonal entry $b_{kk}$, the next pivot, is nonzero. Induction on $k=1,\ldots,n-1$ shows that elimination does not break down, and \cref{thm:lu-elimination} gives $A=LU$. Since $L$ is invertible, $A$ is invertible if and only if $U=L^{-1}A$ is, that is, if and only if $u_{nn}\ne0$.
+
+(ii) If $A=LU$ is invertible, then so is $U=L^{-1}A$, and all its diagonal entries are nonzero. Then $A_k=L_kU_k$ is the product of a unit lower triangular matrix and an upper triangular matrix with nonzero diagonal entries, and it is invertible.
+\end{proof}
+
+\begin{theorem}[Uniqueness of the LU factorisation]
+\label{thm:lu-unique}
+An invertible matrix has at most one LU factorisation.
+\end{theorem}
+
+\begin{proof}
+Suppose $A=L_1U_1=L_2U_2$. Then $U_1=L_1^{-1}A$ and $U_2=L_2^{-1}A$ are invertible, and
+\[
+L_2^{-1}L_1=U_2U_1^{-1}.
+\]
+By \cref{thm:triangular}, the left side is unit lower triangular and the right side is upper triangular. A matrix that is both is diagonal with the diagonal entries $1$, so both sides equal $I$, and $L_1=L_2$, $U_1=U_2$.
+\end{proof}
+
+For singular matrices uniqueness fails: the matrix with the rows $(0,0)$ and $(0,1)$ equals the product of the unit lower triangular matrix with the rows $(1,0)$ and $(l,1)$ and the matrix itself, for every $l$. Since the factorisation of an invertible matrix is unique, every method that produces one, whether elimination by rows, by columns or by blocks, produces the same factors in exact arithmetic.
+
+\subsection{The \texorpdfstring{$LDU$}{LDU} and \texorpdfstring{$LDL^{\mathsf T}$}{LDLT} Factorisations}
+
+The factors of $A=LU$ are not symmetric in their roles: $L$ has ones on the diagonal and $U$ carries the pivots. Dividing each row of $U$ by its pivot restores the balance.
+
+\begin{proposition}[$LDU$ and $LDL^{\mathsf T}$]
+\label{prop:ldu}
+Let $A\in\mathbb R^{n\times n}$ be invertible with the LU factorisation $A=LU$. Then $A=LDV$ with $D\coloneqq\operatorname{diag}(u_{11},\ldots,u_{nn})$ and the unit upper triangular matrix $V\coloneqq D^{-1}U$, and this is the only factorisation of $A$ into a unit lower triangular, a diagonal and a unit upper triangular matrix. If $A$ is symmetric, then $V=L^{\mathsf T}$, so that
+\[
+A=LDL^{\mathsf T}.
+\]
+\end{proposition}
+
+\begin{proof}
+$D$ is invertible since the pivots are nonzero, and $D^{-1}U$ is $U$ with its $i$th row divided by $u_{ii}$ (\cref{prop:diagonal}), which is unit upper triangular. If $A=L'D'V'$ is another such factorisation, then $D'V'$ is upper triangular, and by \cref{thm:lu-unique}, $L'=L$ and $D'V'=U$; comparing diagonals gives $D'=D$, and then $V'=D^{-1}U=V$. If $A$ is symmetric, then $A=A^{\mathsf T}=V^{\mathsf T}DL^{\mathsf T}$ is another factorisation of the same kind, with $V^{\mathsf T}$ unit lower and $L^{\mathsf T}$ unit upper triangular, and uniqueness gives $V^{\mathsf T}=L$.
+\end{proof}
+
+The second difference matrix $T_n$ of \cref{sec:special-matrices} is the standard example. In the first step of elimination the pivot is $d_1=2$, the only nonzero multiplier is $l_{21}=-1/2$, and the only entry of the active submatrix that changes is the $(2,2)$ entry, which becomes $2-1/2=3/2$; the active submatrix is again $T_{n-1}$ with a modified corner. By induction, the pivots and multipliers are
+\[
+d_k=\frac{k+1}k\quad(k=1,\ldots,n),\qquad l_{k+1,k}=-\frac1{d_k}=-\frac k{k+1}\quad(k=1,\ldots,n-1),
+\]
+since $d_{k+1}=2-1/d_k=2-k/(k+1)=(k+2)/(k+1)$. For $n=3$,
+\[
+T_3=\begin{bmatrix}2&-1&0\\-1&2&-1\\0&-1&2\end{bmatrix}=\begin{bmatrix}1&0&0\\-\frac12&1&0\\0&-\frac23&1\end{bmatrix}\begin{bmatrix}2&0&0\\0&\frac32&0\\0&0&\frac43\end{bmatrix}\begin{bmatrix}1&-\frac12&0\\0&1&-\frac23\\0&0&1\end{bmatrix}.
+\]
+All pivots of $T_n$ are positive, and this is no accident. If $A=LDL^{\mathsf T}$ with positive $d_k$, then $A$ is symmetric, and for $\mathbf x\ne\mathbf 0$ the vector $\mathbf y\coloneqq L^{\mathsf T}\mathbf x$ is nonzero, and $\langle\mathbf x,A\mathbf x\rangle=\langle\mathbf y,D\mathbf y\rangle=\sum_kd_ky_k^2>0$, so $A$ is positive definite. \Cref{ch:symmetric-matrices} proves the converse: a symmetric matrix is positive definite exactly when elimination without exchanges produces only positive pivots, which is the form of Sylvester's criterion (\vcref{1}{thm:definiteness-criteria}) that is used in computation, and the factorisation can then be written $A=GG^{\mathsf T}$ with $G=LD^{1/2}$, the Cholesky factorisation.
+
+\subsection{Row Exchanges: \texorpdfstring{$PA=LU$}{PA = LU}}
+
+When a pivot is zero, or, as \cref{sec:pivoting} shows, merely small, rows must be exchanged. The exchanges can be collected into a single permutation matrix, applied to $A$ before the elimination, so that a factorisation exists for every square matrix.
+
+\begin{theorem}[Factorisation with row exchanges]
+\label{thm:plu}
+For every $A\in\mathbb R^{n\times n}$ there are a permutation matrix $P$, a unit lower triangular matrix $L$ and an upper triangular matrix $U$ with
+\[
+PA=LU .
+\]
+The exchanges can be chosen so that $|l_{ij}|\le1$ for all $i,j$. The matrix $A$ is invertible if and only if all diagonal entries of $U$ are nonzero.
+\end{theorem}
+
+\begin{proof}
+We perform elimination with exchanges. In step $k=1,\ldots,n-1$, choose a row $r_k\ge k$ such that $|a_{r_kk}|$ is the largest of the entries $|a_{kk}|,\ldots,|a_{nk}|$ of the current matrix, and let $P_k$ be the exchange matrix of the rows $k$ and $r_k$ ($P_k=I$ if $r_k=k$). After the exchange, if the pivot is nonzero, eliminate below it with the Gauss transformation $M_k=I-\boldsymbol\ell_k\mathbf e_k^{\mathsf T}$, whose multipliers satisfy $|l_{ik}|\le1$ by the choice of the pivot; if the pivot is zero, the whole column below it is zero, and we put $M_k=I$. The result is the upper triangular matrix
+\[
+U=M_{n-1}P_{n-1}\cdots M_2P_2M_1P_1A .
+\]
+We move the exchanges to the right. We claim that for $k=1,\ldots,n-1$
+\[
+M_kP_k\cdots M_1P_1=\tilde M_k\cdots\tilde M_1P_k\cdots P_1
+\]
+with matrices $\tilde M_j=I-\tilde{\boldsymbol\ell}_j\mathbf e_j^{\mathsf T}$, where $\tilde{\boldsymbol\ell}_j$ has zeros in its first $j$ components and the same components as $\boldsymbol\ell_j$ up to their order. For $k=1$ take $\tilde M_1=M_1$. If the claim holds for $k$, insert $P_{k+1}P_{k+1}=I$ between the factors:
+\[
+\begin{aligned}
+&M_{k+1}P_{k+1}\tilde M_k\cdots\tilde M_1P_k\cdots P_1\\
+&\qquad=M_{k+1}\bigl(P_{k+1}\tilde M_kP_{k+1}\bigr)\cdots\bigl(P_{k+1}\tilde M_1P_{k+1}\bigr)P_{k+1}P_k\cdots P_1 .
+\end{aligned}
+\]
+For $j\le k$, since $P_{k+1}$ is symmetric and only exchanges the coordinates $k+1$ and $r_{k+1}\ge k+1>j$, we have $P_{k+1}\mathbf e_j=\mathbf e_j$ and
+\[
+P_{k+1}\tilde M_jP_{k+1}=I-(P_{k+1}\tilde{\boldsymbol\ell}_j)(P_{k+1}\mathbf e_j)^{\mathsf T}=I-(P_{k+1}\tilde{\boldsymbol\ell}_j)\mathbf e_j^{\mathsf T},
+\]
+and $P_{k+1}\tilde{\boldsymbol\ell}_j$ still has zeros in its first $j$ components. So the claim holds for $k+1$, with $\tilde M_{k+1}=M_{k+1}$ and the vectors $\tilde{\boldsymbol\ell}_j$ replaced by $P_{k+1}\tilde{\boldsymbol\ell}_j$. For $k=n-1$ the claim gives $U=\tilde M_{n-1}\cdots\tilde M_1PA$ with the permutation matrix $P\coloneqq P_{n-1}\cdots P_1$, and by \cref{lem:gauss-transforms}, $PA=LU$ with $L=\tilde M_1^{-1}\cdots\tilde M_{n-1}^{-1}=I+\sum_j\tilde{\boldsymbol\ell}_j\mathbf e_j^{\mathsf T}$, whose entries are multipliers and so are at most $1$ in absolute value. Finally, $P$ and $L$ are invertible, so $A$ is invertible if and only if $U=L^{-1}PA$ is, which by \cref{thm:triangular}\,(ii) means that its diagonal entries are nonzero.
+\end{proof}
+
+The proof describes what an implementation does: it stores each multiplier in the place of the entry that it eliminates, and when two rows are exchanged later, the stored multipliers in these rows are exchanged with them, which is the step from $\boldsymbol\ell_j$ to $P_{k+1}\tilde{\boldsymbol\ell}_j$. The permutation is kept as a list of row numbers, as \cref{sec:special-matrices} recommended. \Cref{alg:lu} states the method, with the rule of choosing the largest available pivot, \term{partial pivoting}, which \cref{sec:pivoting} justifies. To solve $A\mathbf x=\mathbf b$, one solves $PA\mathbf x=P\mathbf b$, that is, $L\mathbf y=P\mathbf b$ and $U\mathbf x=\mathbf y$; applying $P$ to $\mathbf b$ only reorders its entries.
+
+\begin{algorithm}
+\begin{algorithmic}[1]
+\Require $A=(a_{ij})\in\mathbb R^{n\times n}$
+\Ensure $PA=LU$, overwritten on $A$: the multipliers $l_{ij}$ below the diagonal and $U$ on and above it; the list $\pi$ of row numbers, with $(P\mathbf b)_i=b_{\pi_i}$
+\Name{LUPartialPivoting}{A}
+\State $\pi\gets(1,2,\ldots,n)$
+\For{$k=1,\ldots,n-1$}
+  \State choose $r\ge k$ with $|a_{rk}|=\max_{i\ge k}|a_{ik}|$
+  \State exchange the whole rows $k$ and $r$ of $A$, and $\pi_k$ and $\pi_r$
+  \If{$a_{kk}\ne0$} \Comment{otherwise the column is already zero below the pivot}
+    \For{$i=k+1,\ldots,n$}
+      \State $a_{ik}\gets a_{ik}/a_{kk}$ \Comment{the multiplier $l_{ik}$, stored in place}
+      \For{$j=k+1,\ldots,n$}
+        \State $a_{ij}\gets a_{ij}-a_{ik}a_{kj}$
+      \EndFor
+    \EndFor
+  \EndIf
+\EndFor
+\State \Return $A$, $\pi$
+\end{algorithmic}
+\caption{LU factorisation with partial pivoting (\cref{thm:plu}). Exchanging whole rows also exchanges the multipliers already stored in them. The arithmetic is that of \cref{prop:elimination-cost}, about $2n^3/3$ operations, and the search for the pivots adds about $n^2/2$ comparisons.}
+\label{alg:lu}
+\end{algorithm}
+
+For the matrix with the rows $(0,1)$ and $(1,1)$, partial pivoting exchanges the two rows at once, and the factorisation is $PA=LU$ with $P=P_{12}$, $L=I$ and $U$ the matrix with the rows $(1,1)$ and $(0,1)$. The factorisation $PA=LU$ also yields the determinant, once \cref{ch:determinants} has defined it: the product rule gives $\det P\det A=\det L\det U$, where $\det L=1$, $\det U=u_{11}\cdots u_{nn}$ and $\det P=\pm1$ according to the parity of the number of exchanges, so that $\det A=\pm u_{11}u_{22}\cdots u_{nn}$, the product of the pivots up to sign. For the matrix of \eqref{eq:example-system} this is $2\cdot1\cdot1=2$, and for $T_n$ it is $d_1d_2\cdots d_n=(n+1)/1=n+1$. Computing determinants in this way costs $2n^3/3$ operations instead of the $n!$ terms of the defining sum.
+
+\subsection{Factor Once, Solve Many Times}
+
+The factorisation separates the expensive part of the work, which depends only on $A$, from the cheap part, which depends on $\mathbf b$. In many applications the same matrix appears with many right-hand sides: the columns of the identity when the inverse is wanted, the load cases of a structure in engineering, the time steps of an implicit method for a differential equation, or the steps of an iterative method that solves with a fixed approximation of a matrix. Then $A$ is factorised once, at the cost of about $2n^3/3$ operations, and each right-hand side costs about $2n^2$ further operations. \Cref{tab:lu-costs} collects the counts.
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}{colspec={ll}, row{1}={font=\small\bfseries}}
+\toprule
+task & operations, leading terms \\
+\midrule
+factorisation $PA=LU$ & $2n^3/3$ \\
+solving $L\mathbf y=P\mathbf b$ and $U\mathbf x=\mathbf y$ & $2n^2$ \\
+$k$ systems with the same matrix & $2n^3/3+2kn^2$ \\
+inverse $A^{-1}$ & $2n^3$ \\
+product $A^{-1}\mathbf b$, given $A^{-1}$ & $2n^2$ \\
+tridiagonal system (\cref{alg:thomas}) & $8n$ \\
+band matrix, bandwidths $(p,q)$: factorisation, no exchanges & $2npq$ \\
+band matrix, bandwidths $(p,q)$: each solve & $2n(p+q)$ \\
+\bottomrule
+\end{sdtable}}{Operation counts for linear systems of order $n$, to leading order. The last two rows assume $p,q\ll n$ (\cref{prop:band-lu}).\label{tab:lu-costs}}
+\end{table}
+
+The count for the inverse follows from the same scheme. With $PA=LU$, the $k$th column of $A^{-1}$ solves $L\mathbf y=P\mathbf e_k$ and $U\mathbf c_k=\mathbf y$. Since $P\mathbf e_k$ is a standard basis vector $\mathbf e_j$, the forward substitution produces zeros in the components $1,\ldots,j-1$ and costs about $(n-j)^2$ operations; over all $k$, $j$ runs through $1,\ldots,n$, and the total is about $\sum_j(n-j)^2\approx n^3/3$. The back substitutions cost $n^2$ each, $n^3$ in all. With the factorisation, the total is about $2n^3/3+n^3/3+n^3=2n^3$, three times the cost of the factorisation, as stated in \cref{sec:invertible}. Gauss--Jordan elimination on $[A\mid I]$, organised to skip the zeros, performs the same count.
+
+\subsection{Block Elimination}
+
+\Cref{thm:schur-complement} factorised a matrix partitioned into blocks, with an invertible upper left block $A_{11}$, as
+\[
+\begin{bmatrix}A_{11}&A_{12}\\A_{21}&A_{22}\end{bmatrix}=\begin{bmatrix}I&0\\A_{21}A_{11}^{-1}&I\end{bmatrix}\begin{bmatrix}A_{11}&A_{12}\\0&S\end{bmatrix},\qquad S\coloneqq A_{22}-A_{21}A_{11}^{-1}A_{12},
+\]
+the last two factors of its block $LDU$ factorisation multiplied together. If the upper left block is the $1\times1$ block $a_{11}\ne0$, this is exactly the first step of Gaussian elimination: $A_{21}A_{11}^{-1}=\boldsymbol\ell$ is the column of multipliers $a_{i1}/a_{11}$, and the Schur complement $S=A_{22}-\boldsymbol\ell\,\mathbf a_{12}^{\mathsf T}$, where $\mathbf a_{12}^{\mathsf T}$ is the rest of the first row, is the active submatrix after the step, the rank-one update of \cref{fig:elimination-pattern}. If $S=L_SU_S$, then
+\[
+\begin{bmatrix}a_{11}&\mathbf a_{12}^{\mathsf T}\\\mathbf a_{21}&A_{22}\end{bmatrix}=\begin{bmatrix}1&\mathbf 0^{\mathsf T}\\\boldsymbol\ell&L_S\end{bmatrix}\begin{bmatrix}a_{11}&\mathbf a_{12}^{\mathsf T}\\\mathbf 0&U_S\end{bmatrix},
+\]
+as block multiplication confirms, since $\boldsymbol\ell\mathbf a_{12}^{\mathsf T}+L_SU_S=\boldsymbol\ell\mathbf a_{12}^{\mathsf T}+S=A_{22}$. So the LU factorisation is computed recursively: eliminate one row and column, and factorise the Schur complement. Every step of Gaussian elimination is a Schur complement, and the LU factorisation is the result of taking Schur complements repeatedly.
+
+With a larger upper left block of order $b$, the same recursion processes $b$ columns at once: factorise the narrow block column, solve a triangular system with many right-hand sides for the block row, and update the Schur complement by a matrix product, which is a level-3 operation in the sense of \cref{sec:computing-matrices}. The operation count stays about $2n^3/3$, but most of the work now takes the form of matrix--matrix products, which run much faster than the rank-one updates of the column-by-column algorithm. This \term{blocked} form of elimination is how library routines for $PA=LU$ are organised~\cite[Sect.~3.2]{golub2013}; Volume~IX studies it.
+
+\begin{note}{Elimination faster than \texorpdfstring{$n^3$}{n\^{}3}}
+The block formulas also show that the exponent $3$ in the cost of elimination is not a law of nature. Strassen's paper of 1969, which introduced the fast matrix product of the note in \cref{sec:block-matrices}, bears the title \emph{Gaussian elimination is not optimal}: applying the block inverse of \cref{thm:schur-complement} recursively, with the Schur complement computed by fast matrix products, inverts a matrix of order $n$ with $O(n^{\log_27})$ operations, provided that the pivot blocks met in the recursion are invertible~\cite{strassen1969}. Bunch and Hopcroft removed this proviso and obtained the factorisation $PA=LU$ of every invertible matrix in the same time~\cite{bunch1974}. In general, inversion, the solution of linear systems and the factorisation are no harder, up to constant factors, than matrix multiplication, so that their exponent is the exponent $\omega$ of matrix multiplication~\cite[Sect.~28.2]{cormen2022}. As for the product itself, only Strassen's scheme and its variants are of practical interest, and library routines use the blocked elimination described above.
+\end{note}
+\section{Pivoting and What Can Go Wrong}
+\label{sec:pivoting}
+
+\subsection{A Small Pivot}
+
+In exact arithmetic, a row exchange is needed only when a pivot is zero. In floating-point arithmetic a small pivot is almost as bad as a zero one. Consider, for a small number $\varepsilon>0$, the system
+\[
+\begin{bmatrix}\varepsilon&1\\1&1\end{bmatrix}\begin{bmatrix}x_1\\x_2\end{bmatrix}=\begin{bmatrix}1\\2\end{bmatrix},\qquad\text{with the solution}\qquad x_1=\frac1{1-\varepsilon},\quad x_2=\frac{1-2\varepsilon}{1-\varepsilon}.
+\]
+Both components are very close to $1$; for $\varepsilon=10^{-20}$ they differ from $1$ by about $10^{-20}$, far less than the spacing $2^{-52}$ of the binary64 numbers near $1$, so the correctly rounded solution is $(1,1)$. Elimination without exchange uses the pivot $\varepsilon$ and the multiplier $l_{21}=1/\varepsilon=10^{20}$, and produces
+\[
+u_{22}=1-10^{20},\qquad y_2=2-10^{20}.
+\]
+In binary64 arithmetic, the numbers near $10^{20}$ are $2^{14}=16384$ apart, and both differences are rounded to $-10^{20}$. Back substitution then gives $x_2=(-10^{20})/(-10^{20})=1$, which is correct, and $x_1=(1-x_2)/\varepsilon=0$, which is completely wrong. We computed these values in binary64 arithmetic, and they agree with the hand calculation. What happened can be read off from the computed factors: the product of
+\[
+\hat L=\begin{bmatrix}1&0\\10^{20}&1\end{bmatrix}\qquad\text{and}\qquad\hat U=\begin{bmatrix}\varepsilon&1\\0&-10^{20}\end{bmatrix}\qquad\text{is}\qquad\hat L\hat U=\begin{bmatrix}\varepsilon&1\\1&0\end{bmatrix}.
+\]
+The computed factors are the exact factors of a matrix whose $(2,2)$ entry is $0$ instead of $1$: the entry $a_{22}=1$ was added to the huge number $-10^{20}$ and lost entirely. The small pivot created a huge multiplier, the huge multiplier created huge entries in $U$, and the rounding of these entries swamped the information in the original matrix.
+
+With the rows exchanged, the pivot is $1$ and the multiplier $l_{21}=\varepsilon$. Now $u_{22}=1-\varepsilon$ and $y_2=1-2\varepsilon$ both round to $1$, and back substitution gives $x_2=1$ and $x_1=2-x_2=1$, the correctly rounded solution. Nothing is lost, because the multiplier is small and no entry grows. The damage without exchange depends on the size of $\varepsilon$: computed in binary64, the error of $x_1$ is about $4\times10^{-12}$ for $\varepsilon=10^{-5}$, $8\times10^{-8}$ for $\varepsilon=10^{-10}$, $8\times10^{-4}$ for $\varepsilon=10^{-15}$ and $1$ for $\varepsilon=10^{-17}$. The matrix itself is perfectly harmless; its inverse has entries of size about $1$. The failure is entirely due to the algorithm.
+
+\subsection{Partial Pivoting}
+
+The remedy is the rule of \cref{alg:lu}: in step $k$, choose as pivot the entry of largest absolute value among $a_{kk},\ldots,a_{nk}$ in the pivot column, and exchange its row into position $k$. This is \term{partial pivoting}. It makes every multiplier at most $1$ in absolute value, and it limits the growth of the entries.
+
+\begin{proposition}[Partial pivoting]
+\label{prop:partial-pivoting}
+In Gaussian elimination with partial pivoting on $A\in\mathbb R^{n\times n}$, every multiplier satisfies $|l_{ik}|\le1$, and the largest absolute value of an entry at most doubles in each step. Consequently every entry of $U$, and of every intermediate matrix, is bounded by $2^{n-1}\max_{i,j}|a_{ij}|$.
+\end{proposition}
+
+\begin{proof}
+The pivot has the largest absolute value in its column below the diagonal, so $|l_{ik}|=|a_{ik}|/|a_{kk}|\le1$. If $\mu_k$ is the largest absolute value of an entry of the matrix before step $k$, the step replaces entries by $a_{ij}-l_{ik}a_{kj}$, with $|a_{ij}-l_{ik}a_{kj}|\le|a_{ij}|+|a_{kj}|\le2\mu_k$, and leaves the other entries unchanged; so $\mu_{k+1}\le2\mu_k$. After $n-1$ steps, $\mu_n\le2^{n-1}\mu_1$.
+\end{proof}
+
+The bound $2^{n-1}$ can be attained. Wilkinson's example is the matrix with $1$ on the diagonal and in the last column and $-1$ everywhere below the diagonal; for $n=4$,
+\[
+W_4=\begin{bmatrix}1&0&0&1\\-1&1&0&1\\-1&-1&1&1\\-1&-1&-1&1\end{bmatrix},\qquad U=\begin{bmatrix}1&0&0&1\\0&1&0&2\\0&0&1&4\\0&0&0&8\end{bmatrix}.
+\]
+Partial pivoting makes no exchanges, since all candidates in a column have absolute value $1$, and each step doubles the entries of the last column, so that $u_{nn}=2^{n-1}$. For $n=60$, the entries grow by a factor of about $6\times10^{17}$, and the rounding errors committed in them, about $2^{59}u\approx64$ times the largest original entry, exceed the original entries themselves. Such matrices are very rare in practice. Wilkinson~\cite{wilkinson1961} showed that what matters is this \term{growth factor}, the ratio of the largest entry of the intermediate matrices to the largest entry of $A$; experience over many decades, and the experiments of Trefethen and Schreiber with random matrices~\cite{trefethen1990}, show that it is almost always small, and Gaussian elimination with partial pivoting is the standard method for dense systems. \term{Complete pivoting}, which searches the whole active submatrix for the largest entry and exchanges rows and columns, has a much smaller worst-case growth but costs about $n^3/3$ comparisons, and it is rarely used~\cite[Sect.~9.4]{higham2002accuracy}.
+
+The precise statement of what partial pivoting achieves is Wilkinson's \term{backward error analysis}. The solution $\hat{\mathbf x}$ computed in floating-point arithmetic is not the exact solution of $A\mathbf x=\mathbf b$, but it is the exact solution of a nearby system $(A+E)\hat{\mathbf x}=\mathbf b$, in which the perturbation $E$ is bounded by a modest multiple of $n$, the unit roundoff $u$, the growth factor and the size of $A$~\cite{wilkinson1961},~\cite[Chap.~9]{higham2002accuracy}. In the example of the small pivot, elimination without exchange computed the exact factors of a matrix that differs from $A$ by $1$ in one entry, a perturbation as large as the entries of $A$; with partial pivoting the perturbation is of the order of $u$. An algorithm whose results are always the exact results for slightly perturbed data is called \term{backward stable}. Volume~VI introduces these notions and Volume~IX proves the bounds for Gaussian elimination.
+
+\subsection{Ill-Conditioned Systems}
+
+Backward stability is the best that can be expected of an algorithm, since the data themselves are usually known only approximately and cannot even be stored exactly. Whether a small backward error implies a small error in the solution is a property of the problem, not of the algorithm. \Vcref{1}{sec:conditioning} called a problem ill conditioned if small relative changes in the data can cause large relative changes in the result, and \cref{sec:trace-norms} introduced the condition number $\kappa(A)=\|A\|\|A^{-1}\|$ of a matrix. For linear systems the connection is direct.
+
+\begin{proposition}[Perturbation of the solution]
+\label{prop:perturbed-solution}
+Let $A\in\mathbb R^{n\times n}$ be invertible, $A\mathbf x=\mathbf b$, and $(A+E)\hat{\mathbf x}=\mathbf b$. Then, in any of the operator norms $\|\cdot\|_1$, $\|\cdot\|_2$, $\|\cdot\|_\infty$,
+\[
+\frac{\|\hat{\mathbf x}-\mathbf x\|}{\|\hat{\mathbf x}\|}\le\kappa(A)\,\frac{\|E\|}{\|A\|}\qquad(\hat{\mathbf x}\ne\mathbf 0).
+\]
+\end{proposition}
+
+\begin{proof}
+Subtracting $A\mathbf x=\mathbf b$ from $A\hat{\mathbf x}+E\hat{\mathbf x}=\mathbf b$ gives $A(\hat{\mathbf x}-\mathbf x)=-E\hat{\mathbf x}$, so $\hat{\mathbf x}-\mathbf x=-A^{-1}E\hat{\mathbf x}$, and by \cref{prop:operator-norms}, $\|\hat{\mathbf x}-\mathbf x\|\le\|A^{-1}\|\|E\|\|\hat{\mathbf x}\|=\kappa(A)(\|E\|/\|A\|)\|\hat{\mathbf x}\|$.
+\end{proof}
+
+A backward stable method produces $\|E\|/\|A\|$ of the order of $u$, and the proposition then bounds the relative error of the solution by about $\kappa(A)u$. With $u\approx1.1\times10^{-16}$, a condition number of $10^k$ costs up to about $k$ of the sixteen decimal digits of binary64 arithmetic, and if $\kappa(A)$ approaches $1/u\approx10^{16}$, no digit of the solution can be trusted. The bound is attained for some perturbations, so no algorithm working in binary64 arithmetic can do better in general.
+
+The classic ill-conditioned matrices are the \term{Hilbert matrices} $H_n$, with the entries $h_{ij}=1/(i+j-1)$, introduced by Hilbert in 1894~\cite{hilbert1894}. They arise naturally: fitting a polynomial $c_0+c_1x+\cdots+c_{n-1}x^{n-1}$ to a function on $[0,1]$ by least squares in the integral sense leads to normal equations with the matrix of the integrals $\int_0^1x^{i-1}x^{j-1}\,dx=1/(i+j-1)$, which is $H_n$. The matrices are symmetric and positive definite, their inverses have integer entries, and both can be written down explicitly~\cite{choi1983}. \Cref{tab:hilbert} shows an experiment. For each $n$, the system $H_n\mathbf x=\mathbf b$ with the exact solution $\mathbf x=(1,\ldots,1)$ was set up by rounding the entries of $H_n$ and of $\mathbf b=H_n\mathbf x$, computed exactly, to binary64 numbers, and solved by the library routine of \cref{sec:systems-practice}, which uses $PA=LU$ with partial pivoting. The table lists the condition number $\kappa_\infty(H_n)$, computed exactly in rational arithmetic, the error of the computed solution, the error of the exact solution of the rounded system, also computed in rational arithmetic, and the relative residual, to which \cref{sec:systems-practice} returns.
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}{colspec={rllll}, row{1}={font=\small\bfseries}}
+\toprule
+$n$ & $\kappa_\infty(H_n)$ & error, computed & error, exact & residual \\
+\midrule
+$4$ & $2.8\times10^{4}$ & $7.2\times10^{-13}$ & $3.2\times10^{-13}$ & $2.9\times10^{-17}$ \\
+$6$ & $2.9\times10^{7}$ & $4.5\times10^{-12}$ & $1.7\times10^{-10}$ & $3.2\times10^{-17}$ \\
+$8$ & $3.4\times10^{10}$ & $4.8\times10^{-7}$ & $5.6\times10^{-7}$ & $7.3\times10^{-17}$ \\
+$10$ & $3.5\times10^{13}$ & $5.9\times10^{-4}$ & $4.7\times10^{-4}$ & $3.2\times10^{-17}$ \\
+$12$ & $4.1\times10^{16}$ & $3.5\times10^{-1}$ & $3.1\times10^{-1}$ & $4.6\times10^{-17}$ \\
+$14$ & $4.5\times10^{19}$ & $2.3\times10^{1}$ & $9.1$ & $2.9\times10^{-18}$ \\
+\bottomrule
+\end{sdtable}}{Solving the Hilbert systems $H_n\mathbf x=\mathbf b$ with the exact solution $(1,\ldots,1)$ in binary64 arithmetic. Errors are $\|\hat{\mathbf x}-(1,\ldots,1)\|_\infty$ for the computed solution and for the exact solution of the system with rounded data; the residual is $\|\mathbf b-H_n\hat{\mathbf x}\|_\infty/(\|H_n\|_\infty\|\hat{\mathbf x}\|_\infty)$, evaluated exactly for the rounded data.\label{tab:hilbert}}
+\end{table}
+
+The condition number grows by a factor of about a thousand when $n$ increases by $2$, and the errors grow with it; in every row they are smaller than $\kappa_\infty(H_n)u$. For $n=12$ the first digit of the solution is wrong, and for $n=14$ not even the size of the solution is right. The fourth column shows that this is not the fault of the algorithm: the exact solution of the system with rounded data has errors within a factor $2.5$ of those of the computed solution, and for $n=6$ and $n=8$ even larger ones, so the information was lost when the data were stored, before any elimination took place. An ill-conditioned system cannot be solved accurately in a given precision by any method; it must be reformulated, here by using a better basis of polynomials than the monomials $x^k$ (Volume~XII), or solved in higher precision. Estimating $\kappa(A)$ cheaply, without computing $A^{-1}$, is a topic of Volume~IX, and \cref{ch:svd} identifies $\kappa_2(A)$ as the ratio of the largest to the smallest singular value.
+
+\section{Special Systems}
+\label{sec:special-systems}
+
+\subsection{Tridiagonal Systems}
+
+Structure in a matrix can reduce the cost of elimination dramatically. The most important case is the tridiagonal matrix, with nonzero entries only on the diagonal and next to it. In the first step of elimination the pivot row has only two nonzero entries, $d_1$ and $c_1$, and only the second row has a nonzero entry below the pivot; so the step changes a single entry of the active submatrix, the diagonal entry $d_2$. The same holds in every step, and elimination needs only one multiplier and one update per row. This is the \term{Thomas algorithm}~\cite{thomas1949}, \cref{alg:thomas}.
+
+\begin{algorithm}
+\begin{algorithmic}[1]
+\Require a tridiagonal matrix with the subdiagonal $a_2,\ldots,a_n$, the diagonal $d_1,\ldots,d_n$ and the superdiagonal $c_1,\ldots,c_{n-1}$, for which elimination without exchanges finds nonzero pivots; $\mathbf b\in\mathbb R^n$
+\Ensure the solution $\mathbf x$
+\Name{Tridiagonal}{\mathbf a,\mathbf d,\mathbf c,\mathbf b}
+\For{$i=2,\ldots,n$}
+  \State $w\gets a_i/d_{i-1}$ \Comment{the multiplier $l_{i,i-1}$}
+  \State $d_i\gets d_i-w\,c_{i-1}$; \ $b_i\gets b_i-w\,b_{i-1}$
+\EndFor
+\State $x_n\gets b_n/d_n$
+\For{$i=n-1,\ldots,1$}
+  \State $x_i\gets(b_i-c_i\,x_{i+1})/d_i$
+\EndFor
+\State \Return $\mathbf x$
+\end{algorithmic}
+\caption{Gaussian elimination and back substitution for a tridiagonal system (the Thomas algorithm). The first loop uses five operations per row and the second three, $8n-7$ operations in all; the storage is four vectors of length $n$.}
+\label{alg:thomas}
+\end{algorithm}
+
+The algorithm computes the factorisation $A=LU$ in which $L$ is unit lower bidiagonal, with the multipliers $w$ of the first loop below the diagonal, and $U$ is upper bidiagonal, with the modified $d_i$ on the diagonal and the unchanged $c_i$ above it. For the second difference matrix, whose pivots are $d_k=(k+1)/k$ (\cref{sec:lu}), the algorithm never meets a zero pivot. As an example, take $n=5$ and $\mathbf b=(1,1,1,1,1)$. The first loop produces the pivots $2,3/2,4/3,5/4,6/5$ and the transformed right-hand side $(1,3/2,2,5/2,3)$, and back substitution gives
+\[
+\mathbf x=\Bigl(\frac52,\,4,\,\frac92,\,4,\,\frac52\Bigr),\qquad x_i=\frac{i(6-i)}2 .
+\]
+This is the discrete form of the boundary value problem $-u''=1$, $u(0)=u(1)=0$: with $h=1/6$ and the grid points $t_i=ih$, the system $T_5\mathbf u=h^2\mathbf f$ of \cref{sec:special-matrices} has the solution $\mathbf u=h^2\mathbf x$, with $u_i=h^2i(6-i)/2=t_i(1-t_i)/2$, which are exactly the values of the solution $u(t)=t(1-t)/2$ of the differential equation at the grid points, because the second difference quotient is exact for quadratic polynomials. For general $n$, the same computation shows that $T_n\mathbf x=(1,\ldots,1)$ has the solution $x_i=i(n+1-i)/2$, in agreement with the row sums of $T_n^{-1}$ in \cref{prop:second-difference-inverse}.
+
+The inverse compares badly. $T_n^{-1}$ is a full matrix, with $n^2$ entries to store and $2n^2$ operations to apply, while the Thomas algorithm stores four vectors and uses $8n-7$ operations. For $n=10^6$, a size common in the discretisation of differential equations, the inverse would need eight terabytes of storage in binary64, while the algorithm needs $32$ megabytes and about $8\times10^6$ operations.
+
+\subsection{Banded Systems}
+
+The tridiagonal case is the simplest instance of a general fact: elimination without exchanges does not create nonzero entries outside the band of a matrix.
+
+\begin{proposition}[LU factorisation of band matrices]
+\label{prop:band-lu}
+Let $A\in\mathbb R^{n\times n}$ have lower bandwidth $p$ and upper bandwidth $q$, and suppose that elimination without exchanges finds nonzero pivots in the steps $1,\ldots,n-1$. Then in $A=LU$ the factor $L$ has lower bandwidth $p$ and $U$ has upper bandwidth $q$. The factorisation uses at most $n(2pq+p)$ operations and the solution of a system with the factors at most $n(2p+2q+1)$.
+\end{proposition}
+
+\begin{proof}
+We show that every intermediate matrix of the elimination has the bandwidths $(p,q)$. Step $k$ replaces $a_{ij}$ by $a_{ij}-l_{ik}a_{kj}$ for $i,j>k$. The multiplier $l_{ik}=a_{ik}/a_{kk}$ is nonzero only if $i-k\le p$, and $a_{kj}$ is nonzero only if $j-k\le q$, by the induction hypothesis. So an entry can become nonzero only if $i\le k+p$ and $j\le k+q$, and since $i,j>k$, this gives $i-j<p$ and $j-i<q$: the entry lies in the band. The multipliers, which form $L$, are nonzero only for $i-k\le p$, and $U$ is the last intermediate matrix. In step $k$ there are at most $p$ multipliers, each with one division and at most $q$ updates of two operations; this gives at most $2pq+p$ operations per step. Forward substitution with $L$ uses at most $2p$ operations per row and back substitution with $U$ at most $2q+1$.
+\end{proof}
+
+\Cref{fig:band} shows the pattern for $p=2$ and $q=1$. The cost $2npq$ of the factorisation grows only linearly with $n$ when the bandwidths are fixed, compared with $2n^3/3$ for a full matrix, and the storage is about $(p+q+1)n$ numbers. With partial pivoting, row exchanges move rows by up to $p$ positions, and the upper bandwidth of $U$ can grow to $p+q$, which is still a band~\cite[Sect.~4.3]{golub2013}. Inside the band, however, the zeros of $A$ are not preserved: entries between the first nonzero entry of a row and the diagonal \term{fill in} during elimination, and for general sparse matrices, whose nonzero entries are scattered, controlling the fill by reordering the unknowns is the central problem of sparse direct methods (Volume~X).
+
+\begin{figure}
+\newcommand\sdbandpanel[2]{\begin{tikzpicture}[x=0.27cm, y=0.27cm]
+\draw[black!40, line width=0.3pt] (0.5,-0.5) rectangle (8.5,-8.5);
+\foreach \i in {1,...,8} {\foreach \j in {1,...,8} {
+  \pgfmathtruncatemacro\sdlo{\i-\j}\pgfmathtruncatemacro\sdup{\j-\i}%
+  \ifnum\sdlo>#1\relax\else\ifnum\sdup>#2\relax\else \fill (\j,-\i) circle (0.17);\fi\fi}}
+\end{tikzpicture}}
+\centering
+\sdpanel{A}{\sdbandpanel{2}{1}}\hspace{1.4cm}
+\sdpanel{B}{\sdbandpanel{2}{0}}\hspace{1.4cm}
+\sdpanel{C}{\sdbandpanel{0}{1}}
+\caption{The nonzero patterns (dots) of a band matrix of order $8$ with lower bandwidth $2$ and upper bandwidth $1$ and of its LU factors without row exchanges (\cref{prop:band-lu}). (A) The matrix $A$. (B) The unit lower triangular factor $L$, with lower bandwidth $2$. (C) The upper triangular factor $U$, with upper bandwidth $1$. No entry outside the band becomes nonzero.}
+\label{fig:band}
+\end{figure}
+
+\subsection{Diagonally Dominant Systems}
+
+When is elimination without exchanges safe? A useful sufficient condition is that the diagonal entries are large compared with the rest of their rows or columns.
+
+\begin{definition}[Diagonal dominance]
+\label{def:diagonal-dominance}
+A matrix $A\in\mathbb R^{n\times n}$ is \term{strictly diagonally dominant by rows} if $|a_{ii}|>\sum_{j\ne i}|a_{ij}|$ for every $i$, and \term{strictly diagonally dominant by columns} if $|a_{jj}|>\sum_{i\ne j}|a_{ij}|$ for every $j$, that is, if $A^{\mathsf T}$ is strictly diagonally dominant by rows.
+\end{definition}
+
+\begin{theorem}[Diagonally dominant matrices]
+\label{thm:diagonal-dominance}
+Let $A\in\mathbb R^{n\times n}$ be strictly diagonally dominant by rows or by columns. Then $A$ is invertible, and Gaussian elimination without row exchanges finds nonzero pivots in every step, so that $A=LU$. If $A$ is strictly diagonally dominant by columns, then all multipliers satisfy $|l_{ik}|<1$, and partial pivoting makes no exchanges.
+\end{theorem}
+
+\begin{proof}
+Suppose first that $A$ is strictly diagonally dominant by rows. Then $|a_{11}|>\sum_{j\ge2}|a_{1j}|\ge0$, so the first pivot is nonzero. After the first step, the active submatrix is the Schur complement $S$ with the entries $s_{ij}=a_{ij}-a_{i1}a_{1j}/a_{11}$, $2\le i,j\le n$, and we show that it is again strictly diagonally dominant by rows. For $i\ge2$, by the triangle inequality,
+\[
+|s_{ii}|-\sum_{\substack{j\ge2\\j\ne i}}|s_{ij}|\ \ge\ |a_{ii}|-\sum_{\substack{j\ge2\\j\ne i}}|a_{ij}|-\frac{|a_{i1}|}{|a_{11}|}\sum_{j\ge2}|a_{1j}|\ \ge\ |a_{ii}|-\sum_{\substack{j\ge2\\j\ne i}}|a_{ij}|-|a_{i1}|\ >\ 0,
+\]
+where the second inequality uses $\sum_{j\ge2}|a_{1j}|<|a_{11}|$ and the last is the dominance of row $i$ of $A$. By induction on $n$, all pivots are nonzero, including the last, which is a $1\times1$ strictly dominant matrix. So $A=LU$ with nonzero diagonal entries of $U$, and $A$ is invertible as a product of invertible matrices.
+
+If $A$ is strictly diagonally dominant by columns, then $A^{\mathsf T}$ is so by rows, and by the first part all leading principal submatrices of $A^{\mathsf T}$ are invertible, by \cref{thm:lu-existence}\,(ii). Their transposes, the leading principal submatrices of $A$, are invertible too (\cref{prop:inverse-rules}\,(iii)), and by \cref{thm:lu-existence}\,(i) elimination on $A$ finds nonzero pivots, the last one because $A=(A^{\mathsf T})^{\mathsf T}$ is invertible. The multipliers of the first step satisfy $|l_{i1}|=|a_{i1}|/|a_{11}|<1$, because $\sum_{i\ge2}|a_{i1}|<|a_{11}|$. The Schur complement of $A$ is the transpose of the Schur complement of $A^{\mathsf T}$, which is strictly dominant by rows by the first part, so it is strictly dominant by columns, and by induction all multipliers are less than $1$ in absolute value. Partial pivoting therefore always finds the largest entry on the diagonal and exchanges nothing.
+\end{proof}
+
+The invertibility part, known as the L\'evy--Desplanques theorem, has been rediscovered many times; Taussky's note traces its history~\cite{taussky1949}. Diagonally dominant matrices arise in the discretisation of differential equations, in splines (Volume~XII) and in the analysis of electrical networks. The second difference matrix $T_n$ is only weakly diagonally dominant, since $|2|=|-1|+|-1|$ in its interior rows, and the theorem does not apply to it; but \cref{sec:lu} computed its pivots directly. The condition is sufficient, not necessary: the matrix of \eqref{eq:example-system} is not diagonally dominant, and elimination without exchanges worked.
+
+\subsection{Vandermonde Systems and Polynomial Interpolation}
+
+The interpolation problem of \cref{sec:matrices-linear-maps} asks for a polynomial $p(x)=c_0+c_1x+\cdots+c_dx^d$ of degree at most $d$ that takes prescribed values $y_0,\ldots,y_d$ at given points $x_0,\ldots,x_d$. The conditions $p(x_i)=y_i$ form the linear system $V\mathbf c=\mathbf y$ with the Vandermonde matrix
+\[
+V=\begin{bmatrix}1&x_0&x_0^2&\cdots&x_0^d\\1&x_1&x_1^2&\cdots&x_1^d\\\vdots&\vdots&\vdots&&\vdots\\1&x_d&x_d^2&\cdots&x_d^d\end{bmatrix}.
+\]
+
+\begin{theorem}[Polynomial interpolation]
+\label{thm:interpolation}
+If the points $x_0,\ldots,x_d$ are pairwise different, the Vandermonde matrix $V$ is invertible. Consequently, for all values $y_0,\ldots,y_d$ there is exactly one polynomial $p$ of degree at most $d$ with $p(x_i)=y_i$ for $i=0,\ldots,d$.
+\end{theorem}
+
+\begin{proof}
+Suppose $V\mathbf c=\mathbf 0$. Then the polynomial $p(x)=c_0+c_1x+\cdots+c_dx^d$ vanishes at the $d+1$ different points $x_0,\ldots,x_d$. A polynomial of degree $k\ge1$ has at most $k$ different roots (\vcref{1}{cor:factor}), and a nonzero constant has none; so $p$ is the zero polynomial, and $\mathbf c=\mathbf 0$. By \cref{thm:invertible}, $V$ is invertible, and $V\mathbf c=\mathbf y$ has exactly one solution for every $\mathbf y$.
+\end{proof}
+
+The proof is a good example of the power of \cref{thm:invertible}: uniqueness, which is easy, gives existence, which would otherwise require a construction. For the points $0,1,2$ and the values $1,3,7$, elimination on the augmented matrix gives
+\[
+\left[\begin{array}{rrr|r}1&0&0&1\\1&1&1&3\\1&2&4&7\end{array}\right]
+\longrightarrow
+\left[\begin{array}{rrr|r}1&0&0&1\\0&1&1&2\\0&2&4&6\end{array}\right]
+\longrightarrow
+\left[\begin{array}{rrr|r}1&0&0&1\\0&1&1&2\\0&0&2&2\end{array}\right],
+\]
+and back substitution gives $c_2=1$, $c_1=2-c_2=1$ and $c_0=1$: the interpolating polynomial is $p(x)=1+x+x^2$. Solving the Vandermonde system by general elimination costs about $2(d+1)^3/3$ operations, and for many points the matrix becomes badly conditioned, because the monomials $x^k$ are nearly indistinguishable on an interval for large $k$, as for the Hilbert matrices. Volume~XII writes the interpolating polynomial in the forms of Lagrange and Newton, which need only $O(d^2)$ operations and avoid the Vandermonde matrix altogether, and it chooses the points to keep the problem well conditioned.
+
+\subsection{Symmetric Positive Definite Systems}
+
+Symmetric positive definite matrices, the Gram matrices $A^{\mathsf T}A$ of \cref{prop:gram} and the Hessians at minima among them, form the most important class of all. For them elimination without exchanges never fails and never needs pivoting for stability, and the factorisation $A=LDL^{\mathsf T}$ of \cref{prop:ldu} has positive pivots; written as $A=GG^{\mathsf T}$ with a lower triangular $G$, it is the \term{Cholesky factorisation}, which costs about $n^3/3$ operations, half as much as $PA=LU$, because it exploits the symmetry. \Cref{ch:symmetric-matrices} proves these facts, and Volume~IX develops the algorithm.
+
+\begin{note}{Iterative methods}
+Gaussian elimination is a \emph{direct} method: it produces the solution after a fixed, finite number of operations. For very large sparse systems, such as those from the discretisation of partial differential equations in three dimensions, the fill of elimination can make direct methods too expensive, and \emph{iterative} methods are used instead. They start from a guess $\mathbf x^{(0)}$ and improve it step by step, using $A$ only through products with vectors. The simplest is Jacobi's method, which solves the $i$th equation for $x_i$ with the other unknowns taken from the previous step,
+\[
+x_i^{(k+1)}=\frac1{a_{ii}}\Bigl(b_i-\sum_{j\ne i}a_{ij}x_j^{(k)}\Bigr)\qquad(i=1,\ldots,n);
+\]
+the Gauss--Seidel method uses each new value as soon as it is available. Both converge for every starting vector when $A$ is strictly diagonally dominant by rows~\cite[Sect.~11.2]{golub2013}, and in general they converge slowly. The modern methods of choice, such as the conjugate gradient method for symmetric positive definite matrices and GMRES for general ones, build the approximations from the vectors $\mathbf b,A\mathbf b,A^2\mathbf b,\ldots$, and combined with a good preconditioner they solve systems with millions of unknowns. Saad's book~\cite{saad2003} is a standard account, and Volume~X treats the iterative solvers of the library.
+\end{note}
+\section{Solving Linear Systems in Practice: A First Look}
+\label{sec:systems-practice}
+
+\subsection{How the Time Grows}
+
+The operation count $2n^3/3$ predicts that doubling the order of a system multiplies the work by eight. As in \cref{sec:computing-matrices}, we test the prediction with the stardust library, whose linear algebra is the subject of Volume~IX. Its routine \code{linalg.solve} computes the factorisation $PA=LU$ with partial pivoting, by the LAPACK routines of Apple's Accelerate library on the machine used here, and then solves the two triangular systems. The measurements were made on an Apple M4 Pro processor, with Python~3.15 and the version of stardust of 25 November 2026, for matrices and right-hand sides with random entries in $[0,1)$; each time is the best of several repetitions. \Cref{tab:solve-timing} shows the elapsed time of one call, the ratio of each time to the one in the row above, the rate in operations per second obtained by dividing $2n^3/3$ by the time, and the processor time consumed by the call divided by the elapsed time.
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}{colspec={rllll}, row{1}={font=\small\bfseries}}
+\toprule
+$n$ & time (s) & ratio & operations per second & processor time / time \\
+\midrule
+$125$ & $4.8\times10^{-5}$ & & $2.7\times10^{10}$ & $1.0$ \\
+$250$ & $2.0\times10^{-4}$ & $4.1$ & $5.3\times10^{10}$ & $1.0$ \\
+$500$ & $9.2\times10^{-4}$ & $4.6$ & $9.1\times10^{10}$ & $2.2$ \\
+$1000$ & $2.6\times10^{-3}$ & $2.8$ & $2.6\times10^{11}$ & $3.4$ \\
+$2000$ & $1.4\times10^{-2}$ & $5.5$ & $3.8\times10^{11}$ & $3.1$ \\
+$4000$ & $9.4\times10^{-2}$ & $6.7$ & $4.5\times10^{11}$ & $3.6$ \\
+$8000$ & $5.1\times10^{-1}$ & $5.4$ & $6.8\times10^{11}$ & $7.4$ \\
+$16000$ & $3.3$ & $6.5$ & $8.3\times10^{11}$ & $9.0$ \\
+\bottomrule
+\end{sdtable}}{The time in seconds for solving one system of order $n$ with a library routine based on $PA=LU$, the ratio of each time to the one in the row above, the rate $(2n^3/3)/\text{time}$, and the processor time divided by the elapsed time. The operation count predicts a ratio of $8$.\label{tab:solve-timing}}
+\end{table}
+
+Unlike the matrix product of \cref{tab:matmul-timing}, the solver does not reach the ratio $8$ anywhere in this range: the ratios lie between $2.8$ and $6.7$, and the time grows more slowly than $n^3$. The fourth column shows why the ratio is below $8$ in arithmetic terms: the rate of computation is not constant but increases with $n$, by a factor of about $30$ between the first and the last row, and a time is the work divided by the rate. The last column shows that from $n=500$ on, the routine consumed more processor time than elapsed time, which means that it ran on several processor cores at once; at $n=16000$ the processor time was nine times the elapsed time. At $n=16000$ the rate, $8.3\times10^{11}$ operations per second, is close to the rate of the matrix product of \cref{tab:matmul-timing} for large $n$, about one multiplication and one addition per $2.4\times10^{-12}$ seconds. The operation count describes the work, which grows like $n^3$; how fast the work is done depends on the size of the problem and on the machine, and it is the subject of Volumes~V and~IX. Even so, the count gives the right order of magnitude: a system of order $16000$, with about $2.7\times10^{12}$ operations, takes seconds, and one of order $10^6$, with about $6.7\times10^{17}$ operations, would take about nine days at the rate of the last row, even if its eight terabytes of entries fitted into memory.
+
+\subsection{Factor Once, Solve Many}
+
+\Cref{tab:reuse} compares ways of solving systems with one matrix and $100$ right-hand sides, for $n=1000$ and $n=4000$, measured in the same way. The library offers the factorisation as \code{linalg.lu} and the two triangular solves with its factors as \code{linalg.lu\_solve}, and \code{linalg.solve} accepts a matrix of right-hand sides as well as a single vector.
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}{colspec={lll}, row{1}={font=\small\bfseries}}
+\toprule
+computation & $n=1000$ & $n=4000$ \\
+\midrule
+one system, by \code{solve} & $2.7\times10^{-3}$ & $9.8\times10^{-2}$ \\
+one system, inverse and product & $6.8\times10^{-3}$ & $2.9\times10^{-1}$ \\
+\midrule
+$100$ systems, \code{solve} for each & $2.9\times10^{-1}$ & $10.3$ \\
+$100$ systems, factorise once, $100$ triangular solves & $1.9\times10^{-2}$ & $4.5\times10^{-1}$ \\
+$100$ systems, invert once, $100$ products & $8.5\times10^{-3}$ & $3.5\times10^{-1}$ \\
+$100$ systems at once, \code{solve} with an $n\times100$ matrix & $3.4\times10^{-3}$ & $1.1\times10^{-1}$ \\
+$100$ systems at once, inverse and matrix product & $7.0\times10^{-3}$ & $2.9\times10^{-1}$ \\
+\midrule
+the factorisation alone & $3.1\times10^{-3}$ & $1.1\times10^{-1}$ \\
+one pair of triangular solves & $1.4\times10^{-4}$ & $3.4\times10^{-3}$ \\
+one product with $A^{-1}$ & $1.4\times10^{-5}$ & $6.0\times10^{-4}$ \\
+\bottomrule
+\end{sdtable}}{Times in seconds for solving systems $A\mathbf x=\mathbf b$ of order $n$ with one matrix and one or $100$ right-hand sides, by refactorising for every right-hand side, by reusing the factorisation $PA=LU$, through the inverse, and with all right-hand sides at once. The last three rows time the parts.\label{tab:reuse}}
+\end{table}
+
+The measurements bear out the operation counts in some respects and not in others. For a single system, going through the inverse took $2.5$ times as long as solving for $n=1000$ and $3.0$ times as long for $n=4000$, close to the factor $3$ that the counts $2n^3$ and $2n^3/3$ predict. Solving $100$ systems by calling the solver for each, which refactorises the matrix every time, cost about $100$ times as much as one solution, and factorising once reduced the time by a factor of $15$ for $n=1000$ and $23$ for $n=4000$. Passing all $100$ right-hand sides at once was faster still, barely slower than solving for a single one, since the solves then work on blocks of columns. The comparison of the triangular solves with the products by a stored inverse goes the other way: both cost $2n^2$ operations, but in this experiment a pair of triangular solves took $10$ times as long as a product for $n=1000$ and about $6$ times as long for $n=4000$, so that inverting once and multiplying $100$ times was faster than factorising once and solving the $100$ systems one after the other. It was not faster than solving with all right-hand sides at once, the fastest of the methods in the table, which forms no inverse. Operation counts are a guide to the work, not a law for the time, and a timing on one machine does not decide between methods on its own. The other drawbacks of the inverse named in \cref{sec:invertible}, the loss of accuracy and the destruction of sparsity, do not show in a timing and remain in force; Volume~IX returns to the question with error bounds.
+
+\subsection{Residual and Error}
+
+How can one tell whether a computed solution $\hat{\mathbf x}$ is good? The error $\hat{\mathbf x}-\mathbf x$ cannot be computed, since $\mathbf x$ is unknown, but the \term{residual} $\mathbf r\coloneqq\mathbf b-A\hat{\mathbf x}$ can, and it is zero exactly when $\hat{\mathbf x}=\mathbf x$ for invertible $A$. It is tempting to take a small residual as evidence of a small error, but the two are different, and the following proposition says what the residual does measure.
+
+\begin{proposition}[Residual and backward error]
+\label{prop:residual}
+Let $A\in\mathbb R^{n\times n}$, $\mathbf b\in\mathbb R^n$, $\hat{\mathbf x}\ne\mathbf 0$ and $\mathbf r\coloneqq\mathbf b-A\hat{\mathbf x}$.
+\begin{enumerate}
+\item If $(A+E)\hat{\mathbf x}=\mathbf b$, then $\|\mathbf r\|\le\|E\|\|\hat{\mathbf x}\|$, in each of the operator norms $\|\cdot\|_1$, $\|\cdot\|_2$, $\|\cdot\|_\infty$.
+\item In each of these norms there is a matrix $E$ with $(A+E)\hat{\mathbf x}=\mathbf b$ and $\|E\|=\|\mathbf r\|/\|\hat{\mathbf x}\|$, namely $E_p$ for the norm $\|\cdot\|_p$, where
+\[
+\begin{gathered}
+E_\infty\coloneqq\frac{\mathbf r\,\mathbf e_k^{\mathsf T}}{\hat x_k}\quad\text{with }|\hat x_k|=\|\hat{\mathbf x}\|_\infty,\qquad
+E_2\coloneqq\frac{\mathbf r\,\hat{\mathbf x}^{\mathsf T}}{\|\hat{\mathbf x}\|_2^2},\\
+E_1\coloneqq\frac{\mathbf r\,\mathbf s^{\mathsf T}}{\|\hat{\mathbf x}\|_1}\quad\text{with }s_j\coloneqq\operatorname{sign}\hat x_j\ \ (j=1,\ldots,n).
+\end{gathered}
+\]
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) If $(A+E)\hat{\mathbf x}=\mathbf b$, then $\mathbf r=E\hat{\mathbf x}$, and $\|\mathbf r\|\le\|E\|\|\hat{\mathbf x}\|$ by \cref{prop:operator-norms}\,(i).
+
+(ii) Each of the three matrices has the form $\mathbf r\mathbf w^{\mathsf T}$ with $\mathbf w^{\mathsf T}\hat{\mathbf x}=1$: for $E_\infty$ this is $\hat x_k/\hat x_k=1$, for $E_1$ it is $\sum_j|\hat x_j|/\|\hat{\mathbf x}\|_1=1$, and for $E_2$ it is $\langle\hat{\mathbf x},\hat{\mathbf x}\rangle/\|\hat{\mathbf x}\|_2^2=1$. So $E\hat{\mathbf x}=\mathbf r$ and $(A+E)\hat{\mathbf x}=A\hat{\mathbf x}+\mathbf r=\mathbf b$. It remains to compute the norms. The only nonzero column of $E_\infty$ is $\mathbf r/\hat x_k$, so each row has the single entry $r_i/\hat x_k$, and by \cref{thm:norm-formulas} $\|E_\infty\|_\infty=\max_i|r_i|/|\hat x_k|=\|\mathbf r\|_\infty/\|\hat{\mathbf x}\|_\infty$. The $j$th column of $E_1$ is $s_j\mathbf r/\|\hat{\mathbf x}\|_1$, with $|s_j|\le1$ and $|s_j|=1$ for some $j$ since $\hat{\mathbf x}\ne\mathbf 0$, so the largest column sum is $\|E_1\|_1=\|\mathbf r\|_1/\|\hat{\mathbf x}\|_1$. Finally, for every $\mathbf y$, $\|\mathbf r\hat{\mathbf x}^{\mathsf T}\mathbf y\|_2=\|\mathbf r\|_2|\langle\hat{\mathbf x},\mathbf y\rangle|\le\|\mathbf r\|_2\|\hat{\mathbf x}\|_2\|\mathbf y\|_2$ by the Cauchy--Schwarz inequality, with equality for $\mathbf y=\hat{\mathbf x}$; so $\|\mathbf r\hat{\mathbf x}^{\mathsf T}\|_2=\|\mathbf r\|_2\|\hat{\mathbf x}\|_2$, which gives $\|E_2\|_2=\|\mathbf r\|_2/\|\hat{\mathbf x}\|_2$.
+\end{proof}
+
+By (i), no perturbation $E$ with $\|E\|<\|\mathbf r\|/\|\hat{\mathbf x}\|$ makes $\hat{\mathbf x}$ an exact solution, and by (ii) one with $\|E\|=\|\mathbf r\|/\|\hat{\mathbf x}\|$ does. So the \term{relative residual} $\|\mathbf r\|/(\|A\|\|\hat{\mathbf x}\|)$ is the smallest relative perturbation $\|E\|/\|A\|$ of the matrix for which $\hat{\mathbf x}$ is an exact solution, the backward error of $\hat{\mathbf x}$, a result of Rigal and Gaches~\cite{rigal1967}. It measures the quality of the algorithm, not that of the solution. Combined with \cref{prop:perturbed-solution}, it gives the bound
+\[
+\frac{\|\hat{\mathbf x}-\mathbf x\|}{\|\hat{\mathbf x}\|}\le\kappa(A)\,\frac{\|\mathbf r\|}{\|A\|\|\hat{\mathbf x}\|},
+\]
+in which the error is the product of the condition number, a property of the problem, and the relative residual, a property of the computation.
+
+\Cref{tab:hilbert} illustrates the difference. The relative residuals of the computed solutions of the Hilbert systems in the table are all below $10^{-16}$, smaller than the unit roundoff: each computed solution is the exact solution of a system whose matrix differs from the stored $H_n$ by less than one rounding error. Yet for $n=14$ the error is larger than the solution itself. In the opposite direction, the wrong solution $(0,1)$ of the small-pivot example of \cref{sec:pivoting} has the residual $(1-1,\,2-1)=(0,1)$ and the relative residual $1/2$ in the $\infty$-norm, which exposes the failure of the algorithm at once. A large residual proves that something went wrong; a small residual proves only that the algorithm did its job, and the error then depends on the condition number.
+
+\subsection{Systems That Are Not Square}
+
+The square systems of this section are the ones for which the theory of \cref{sec:invertible} promises a unique solution. In applications, rectangular systems are equally common. A system with more equations than unknowns, such as the fitting of a straight line to many data points, is usually inconsistent, and one asks instead for the $\mathbf x$ that makes the residual $\|\mathbf b-A\mathbf x\|$ as small as possible, the least squares solution of \vcref{1}{sec:extrema-n}; \cref{ch:inner-products} characterises it by the normal equations $A^{\mathsf T}A\mathbf x=A^{\mathsf T}\mathbf b$ and computes it through the QR factorisation, without forming $A^{\mathsf T}A$. A system with fewer equations than unknowns, if consistent, has infinitely many solutions, and one asks for the solution of smallest norm, which \cref{ch:svd} obtains from the singular value decomposition and the pseudoinverse. The library routine \code{linalg.lstsq} solves both kinds of problems, and Volume~IX describes it.
+
+\bigskip
+A linear system asks whether a vector is a combination of given columns, and Gaussian elimination answers by removing the unknowns one at a time. Row operations do not change the solutions, and they reduce every matrix to a unique reduced row echelon form, from which the solutions can be read off: a particular solution plus a combination of the special solutions of the homogeneous system, one for each free variable. The number of pivots, the rank, decides whether a system is consistent for every right-hand side and whether its solution is unique, and for a square matrix the many conditions for invertibility are all equivalent, including the existence of a one-sided inverse. Read as a factorisation, elimination is $PA=LU$, which costs about $2n^3/3$ operations once and $2n^2$ for each right-hand side; partial pivoting keeps it stable, and the condition number bounds the accuracy that any method can achieve. Banded, tridiagonal and diagonally dominant systems are cheaper and safer, and the Vandermonde systems of interpolation are solvable whenever the points are distinct. \Cref{ch:vector-spaces} reinterprets the rank as a dimension, \cref{ch:linear-maps} as the dimension of the image of a linear map, and \cref{ch:determinants} obtains the determinant as the product of the pivots.
+
+\chapternotes
+
+Elimination is much older than Gauss. The eighth chapter, \emph{Fangcheng}, of the Chinese \emph{Nine Chapters on the Mathematical Art}, compiled around the first century of the common era, solves systems of several equations by operations on columns of counting rods that are exactly the row operations of \cref{sec:elimination}, including the handling of negative numbers~\cite{shen1999}. In Europe, linear systems were solved by elimination in algebra textbooks from the sixteenth century on, and the method became a standard topic of such books in the eighteenth. Gauss used it to solve the normal equations of least squares~\cite{gauss1809}, and the notation he devised for this computation was adopted by the computers of geodetic surveys; the name \emph{Gaussian elimination} became established only after the Second World War. Grcar has traced this history in detail~\cite{grcar2011hm,grcar2011notices}. The reduction to the reduced form is named after Gauss and the geodesist Wilhelm Jordan, whose handbook of surveying popularised it; Althoen and McLaughlin sort out which Jordan it was~\cite{althoen1987}. The interpretation of elimination as a factorisation into triangular matrices emerged in the 1930s and 1940s~\cite{grcar2011hm}, and the analysis of its rounding errors began with the first electronic computers: von Neumann and Goldstine analysed the inversion of matrices in 1947~\cite{vonneumann1947}, Turing wrote elimination as a factorisation $A=LDU$ and introduced the term condition number in 1948~\cite{turing1948}, and Wilkinson's backward error analysis of 1961~\cite{wilkinson1961} explained why elimination with partial pivoting works so well; Trefethen and Schreiber studied the growth factor for random matrices~\cite{trefethen1990}, and Rigal and Gaches characterised the backward error by the residual~\cite{rigal1967}. Hilbert's matrices come from~\cite{hilbert1894}, and Choi collects their properties~\cite{choi1983}. The short proof of the uniqueness of the reduced row echelon form is Yuster's~\cite{yuster1984}, the tridiagonal algorithm is named after Thomas~\cite{thomas1949}, and the history of the theorem on diagonally dominant matrices is in Taussky's note~\cite{taussky1949}.
+
+Strang~\cite{strang2016} develops elimination, the row and column pictures and the factorisation $A=LU$ in the spirit of this chapter, and Meyer~\cite{meyer2000} treats echelon forms, rank and the solution of systems in great detail. Horn and Johnson~\cite[Sects.~0.4 and~0.5]{horn2013} collect the facts on rank and invertibility. For the computational side, Trefethen and Bau~\cite{trefethen1997} give a concise account of elimination, pivoting and stability in their Lectures~20 to~22, Golub and Van Loan~\cite[Chaps.~3 and~4]{golub2013} treat general, banded and symmetric systems, and Higham~\cite{higham2002accuracy} is the standard reference for rounding errors in triangular systems, Gaussian elimination and matrix inversion (his Chapters~8, 9 and~14). Saad~\cite{saad2003} covers iterative methods, and Cohen~\cite{cohen1993} the linear algebra over the integers mentioned in the note of \cref{sec:echelon}.
+
+\chapterreferences

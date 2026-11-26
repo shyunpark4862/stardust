@@ -1,12 +1,12 @@
 %% Foundations of Scientific Computing, Volume 2. Build: tools/build.sh vol2 (output pdf/vol2.pdf)
-%% Volume I must be built first (tools/build.sh vol1): its labels are read from build/vol1.aux.
+%% Volumes I and II refer to each other: tools/build.sh all builds them in turn until both are stable.
 \documentclass{sdbook-eng}
 
 \addbibresource{references.bib}
 \externalvolume{1}{vol1}   % results of Volume I: \vcref{1}{<label>}, \Vcref, \veqref
 
 \title{Foundations of\\Scientific Computing}
-\volume{2}{Analysis}
+\volume{2}{Linear Algebra and Differential Equations}
 \author{}
 \date{}
 
@@ -16,16 +16,74 @@
 \tableofcontents
 
 \notationchapter
-This list collects the symbols that are used in several chapters, and the conventions that differ from book to book. Every symbol, including those not listed here, is defined, with examples, where it first appears.
+This list collects the symbols that are used in several chapters, and the conventions that differ from book to book. Every symbol, including those not listed here, is defined, with examples, where it first appears, in this volume or in Volume~I. The notation of Volume~I is used without change; the first group repeats the conventions of Volume~I on which this volume relies most.
 
-% The chapter authors fill this list as the chapters are written: \symbolgroup{<name>} and a
-% symbols list per group, as in vol1.tex. Only symbols that several chapters use and
-% conventions that differ between books; at most three pages in all.
+\symbolgroup{Conventions of Volume~I}
+\begin{symbols}
+\item[$\mathbb N$] the natural numbers $0,1,2,\ldots$ (\emph{zero included})
+\item[{$[a,b]$, $(a,b)$}] the closed interval $a\le x\le b$ and the open interval $a<x<b$; similarly $[a,b)$, $(a,\infty)$, \ldots
+\item[$\bar z$, $|z|$] the conjugate $a-bi$ and the modulus $\sqrt{a^2+b^2}$ of $z=a+bi$; $\operatorname{Re}z=a$, $\operatorname{Im}z=b$
+\item[$f\colon A\to B$, $a\mapsto f(a)$] a function with domain $A$ and codomain $B$; its rule
+\item[$g\circ f$] the composition, $(g\circ f)(a)=g(f(a))$: first $f$, then $g$
+\item[$f|_S$, $\operatorname{id}_A$] the restriction of $f$ to $S$; the identity function of $A$
+\item[$C(D)$, $C^k(I)$, $C^\infty(I)$] the continuous functions on $D$; the $k$ times continuously differentiable and the smooth functions on $I$
+\item[$f'$, $f^{(n)}$, $df/dx$] derivatives, with $f^{(0)}=f$
+\item[$f=O(g)$, $f=o(g)$] $|f|\le C|g|$ near the limit point; $|f|\le\varepsilon|g|$ near it for every $\varepsilon>0$ (the limit point is stated or clear from the context)
+\item[$D\mathbf f(\mathbf a)$] the derivative of $\mathbf f$ at $\mathbf a$, the $m\times n$ Jacobian matrix $(\partial_jf_i(\mathbf a))$
+\item[$\nabla f(\mathbf a)$] the gradient of a real-valued $f$, a \emph{column} vector: $\nabla f(\mathbf a)=Df(\mathbf a)^{\mathsf T}$
+\item[$\nabla^2f(\mathbf a)$] the Hessian matrix $(\partial_i\partial_jf(\mathbf a))$
+\item[$u$] the unit roundoff $2^{-53}$ of binary64 floating-point arithmetic
+\end{symbols}
+
+\symbolgroup{Vectors and matrices}
+\begin{symbols}
+\item[$\mathbf x=(x_1,\ldots,x_n)$] a vector of $\mathbb R^n$ (bold lower case), a column in matrix products
+\item[$\mathbf 0$, $\mathbf e_i$] the zero vector; the $i$th standard basis vector
+\item[$\langle\mathbf x,\mathbf y\rangle$] the inner product $\mathbf x^{\mathsf T}\mathbf y=\sum_ix_iy_i$; $\mathbf x^{\mathsf H}\mathbf y$ if complex (linear in $\mathbf y$)
+\item[$\|\mathbf x\|$, $\|\mathbf x\|_p$] the Euclidean norm $\|\mathbf x\|_2$; $\|\mathbf x\|_1=\sum_i|x_i|$; $\|\mathbf x\|_\infty=\max_i|x_i|$
+\item[$A=(a_{ij})$, $\mathbb R^{m\times n}$] a matrix (italic capital) with entries $a_{ij}$; the real $m\times n$ matrices
+\item[$A^{\mathsf T}$, $A^{\mathsf H}$, $I_n$] the transpose; the conjugate transpose $\bar A^{\mathsf T}$; the identity matrix
+\item[$\operatorname{diag}(d_i)$, $\operatorname{tr}A$] the diagonal matrix with the entries $d_1,\ldots,d_n$; the trace $\sum_ia_{ii}$
+\item[$\|A\|_p$, $\|A\|_{\mathrm F}$] the operator norm induced by $\|\cdot\|_p$; the Frobenius norm
+\item[$\operatorname{rank}A$] the rank of $A$, the number of pivots in its row echelon forms
+\item[$\det A$, $\operatorname{sgn}\sigma$] the determinant of a square matrix; the sign $\pm1$ of a permutation $\sigma$
+\item[$\mathbb F$, $\mathcal P_n$] the scalars, $\mathbb R$ or $\mathbb C$; the polynomials of degree at most $n$
+\item[$\operatorname{span}S$, $\dim V$] the span of a set $S$; the dimension of a vector space $V$
+\item[$\mathcal C(A)$, $\mathcal N(A)$] the column space and the null space of $A$
+\item[$\ker T$, $\operatorname{im}T$, $\mathcal L(V,W)$] the kernel and the image of $T$; the linear maps from $V$ to $W$
+\item[$S^\perp$, $T^*$] the orthogonal complement of $S$; the adjoint of $T$ ($A^{\mathsf H}$ for a matrix)
+\item[$p_A$, $\rho(A)$, $E_\lambda$] the characteristic polynomial $\det(\lambda I-A)$; the spectral radius, the largest modulus of an eigenvalue; the eigenspace $\mathcal N(A-\lambda I)$
+\item[$J_k(\lambda)$, $e^A$] the Jordan block of order $k$ for $\lambda$; the matrix exponential $\sum_kA^k/k!$
+\item[$A\succeq0$, $\lambda_k(A)$] $A$ is Hermitian positive semidefinite ($A\succ0$: definite); the eigenvalues of a Hermitian $A$ in \emph{increasing} order, $\lambda_1(A)\le\cdots\le\lambda_n(A)$
+\item[$\sigma_i(A)$, $A^+$, $\kappa_2(A)$] the singular values, \emph{decreasing}; the pseudoinverse; $\sigma_1/\sigma_r$
+\item[{$[T]_{\mathcal D\leftarrow\mathcal B}$}] the matrix of $T$ with respect to the bases $\mathcal B$ and $\mathcal D$; $[T]_{\mathcal B}$ if $\mathcal D=\mathcal B$
+\end{symbols}
+
+\symbolgroup{Differential and difference equations}
+\begin{symbols}
+\item[$y'=f(t,y)$] a differential equation for $y(t)$; in Part~II primes denote $d/dt$ ($d/dx$ for plane curves and in \cref{ch:series-solutions}), and dots, $\dot y$, are not used
+\item[$E$, $\Delta$] the shift $(Ey)_n=y_{n+1}$ and the difference $\Delta=E-I$ of sequences
+\end{symbols}
 
 \mainmatter
-% Parts and chapters go here, one \input per chapter (chapters/v2-NN-<name>.tex):
-% \part{Real Analysis}
-% \input{chapters/v2-01-...}
+\part{Linear Algebra}
+\input{chapters/v2-01-vectors-and-matrices}
+\input{chapters/v2-02-linear-systems}
+\input{chapters/v2-03-vector-spaces}
+\input{chapters/v2-04-linear-maps}
+\input{chapters/v2-05-determinants}
+\input{chapters/v2-06-inner-products-and-orthogonality}
+\input{chapters/v2-07-eigenvalues-and-eigenvectors}
+\input{chapters/v2-08-symmetric-matrices-and-quadratic-forms}
+\input{chapters/v2-09-the-singular-value-decomposition}
+\input{chapters/v2-10-canonical-forms-and-matrix-functions}
+
+\part{Differential Equations}
+\input{chapters/v2-11-first-order-equations}
+\input{chapters/v2-12-linear-equations-of-higher-order}
+\input{chapters/v2-13-linear-systems-of-differential-equations}
+\input{chapters/v2-14-series-solutions}
+\input{chapters/v2-15-difference-equations-and-recurrences}
 
 \backmatter
 \end{document}

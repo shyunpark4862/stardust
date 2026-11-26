@@ -49,11 +49,11 @@
 \crefname{assumption}{Assumption}{Assumptions}
 
 % ---------------------------------------------------------------------------
-% 2a. References to earlier volumes (2026-11-27). In the preamble of a later volume, one
-% line per earlier volume (its number, roman or arabic, and the job name of its main file):
+% 2a. References to other volumes (2026-11-27). In the preamble of a volume, one line per
+% volume that it cites (its number, roman or arabic, and the job name of its main file):
 %   \externalvolume{1}{vol1}        % or \externalvolume{I}{vol1}
 % reads the labels of build/vol1.aux (with xr, loaded only here) under the prefix
-% "sd@v1@", so that no label of the earlier volume can clash with one of this volume.
+% "sd@v1@", so that no label of the other volume can clash with one of this volume.
 % In the text:
 %   \vcref{1}{thm:evt}             Theorem 5.47 of Volume I
 %   \vcref{1}{thm:a,lem:b}         Theorem 5.47 and Lemma 6.3 of Volume I (cleveref's lists)
@@ -61,9 +61,10 @@
 %   \veqref{1}{eq:taylor}          (8.12) of Volume I, the \eqref form for equations
 % The numbers are cleveref's, without links (another PDF is not linked to). A label that is
 % not found, or a missing aux file, gives ?? and LaTeX's undefined-reference warning. The
-% earlier volume must therefore be built first; latexmk records the aux file as an input
-% and rebuilds the later volume when it changes. Without \externalvolume, nothing here is
-% used and xr is not loaded.
+% cited volume must therefore have been built; latexmk records its aux file as an input and
+% rebuilds the citing volume when it changes. Volumes I and II cite each other (2026-11-27),
+% and tools/build.sh all builds them in turn until neither aux file changes. Without
+% \externalvolume, nothing here is used and xr is not loaded.
 % ---------------------------------------------------------------------------
 \def\sd@extdir{build/}
 \ExplSyntaxOn
@@ -426,7 +427,7 @@
 % ---------------------------------------------------------------------------
 % 8. Title page: SNmono's, without the publisher line
 % ---------------------------------------------------------------------------
-% \volume{1}{Calculus, Linear Algebra, and Differential Equations} sets the two lines
+% \volume{1}{Foundations and Calculus} sets the two lines
 % under the title: "Volume I" (roman numeral), then the volume's own title in smaller type. The series
 % title is set in italics (2026-11-25).
 \newcommand\volume[2]{\gdef\sd@volno{#1}\gdef\sd@voltitle{#2}}

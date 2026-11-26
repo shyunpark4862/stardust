@@ -1,0 +1,32 @@
+%% Foundations of Scientific Computing, Volume 3. Build: tools/build.sh vol3 (output pdf/vol3.pdf)
+%% Volumes I and II must be built first (tools/build.sh all): their labels are read from build/vol1.aux and build/vol2.aux.
+\documentclass{sdbook-eng}
+
+\addbibresource{references.bib}
+\externalvolume{1}{vol1}   % results of Volume I: \vcref{1}{<label>}, \Vcref, \veqref
+\externalvolume{2}{vol2}   % results of Volume II: \vcref{2}{<label>}
+
+\title{Foundations of\\Scientific Computing}
+\volume{3}{Analysis}
+\author{}
+\date{}
+
+\begin{document}
+\frontmatter
+\maketitle
+\tableofcontents
+
+\notationchapter
+This list collects the symbols that are used in several chapters, and the conventions that differ from book to book. Every symbol, including those not listed here, is defined, with examples, where it first appears.
+
+% The chapter authors fill this list as the chapters are written: \symbolgroup{<name>} and a
+% symbols list per group, as in vol1.tex and vol2.tex. Only symbols that several chapters use and
+% conventions that differ between books; at most three pages in all.
+
+\mainmatter
+% Parts and chapters go here, one \input per chapter (chapters/v3-NN-<name>.tex):
+% \part{Real Analysis}
+% \input{chapters/v3-01-...}
+
+\backmatter
+\end{document}

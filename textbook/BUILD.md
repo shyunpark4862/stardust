@@ -47,3 +47,9 @@ CMAKE_BUILD_PARALLEL_LEVEL=8 .venv/bin/pip install --no-build-isolation -e ".[te
 - 같은 커밋 그대로: 편집 가능 설치(`editable.rebuild = true`)라 소스가 바뀌면 import할 때 C++ 코어가 저절로 다시 빌드된다. 복제본의 소스는 건드리지 않는다.
 - 기준 커밋을 바꿀 때: 복제본에서 `git fetch origin && git checkout <커밋>` 뒤 위의 마지막 `pip install` 줄을 다시 돌린다(또는 그냥 import하면 다시 빌드된다). 바꾼 커밋과 날짜를 이 문서에 적고, API-INVENTORY.md를 `tools/api_inventory.py`로 다시 뽑는다.
 - 처음부터: `.sdbuild/stardust`를 지우고 위 명령을 처음부터 돌린다.
+
+# 책 PDF 빌드 (2026-11-27, 권을 나눈 뒤)
+- `tools/build.sh all`(또는 인자 없이): 1권과 2권은 서로를 가리키므로(`\externalvolume`; 1권은 build/vol2.aux, 2권은 build/vol1.aux를 읽는다) vol1, vol2를 번갈아 빌드하고, 두 aux 파일이 한 차례 동안 바뀌지 않으면 멈춘다(최대 네 차례). 그다음 나머지 문서(vol3, …)를 빌드한다. 3권은 두 aux를 모두 읽으므로 반드시 1·2권 뒤다.
+- `tools/build.sh volN`: 그 권만, build/에 있는 다른 권의 aux를 그대로 읽어 빌드한다. 1·2권의 번호를 바꾸는 편집(장·절·정리를 더하거나 빼는 일) 뒤에는 `all`을 돌려 두 권이 새 번호를 찍게 한다.
+- latexmk는 다른 권의 aux를 한 번 읽은 뒤에야 그 파일을 의존 파일로 기억한다. 그래서 빈 build/에서 처음 빌드하면 vol1의 첫 실행에는 vol2.aux가 없어 ??가 남는데, build.sh는 앞 실행의 로그에 "There were undefined references"가 있으면 `latexmk -g`로 강제로 다시 빌드한다. 한 문서 안의 latexmk 반복은 다른 권의 aux를 바꾸지 않으므로 끝없이 돌지 않는다.
+- 확인한 것: build/를 비운 상태에서 `tools/build.sh all`이 약 8분(Apple M4 Pro)에 끝나고 vol1·vol2·vol3 모두 warnings 0(2026-11-27).

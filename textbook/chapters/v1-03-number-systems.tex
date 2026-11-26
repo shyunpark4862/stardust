@@ -515,7 +515,7 @@ For every real number $x$, every integer $n$, and all integers $a$ and $b$ with 
 (vi) Write $a=bq+r$ with $0\le r<b$. If $r=0$, then $\lceil a/b\rceil=q$, and $(a+b-1)/b=q+(b-1)/b$ has floor $q$ because $0\le(b-1)/b<1$. If $r\ge1$, then $\lceil a/b\rceil=q+1$ by (iv), and $(a+b-1)/b=q+(r+b-1)/b$ with $1\le(r+b-1)/b<2$, so its floor is $q+1$.
 \end{proof}
 
-Rule (v) is the one to remember: an integer lies below $x$ exactly when it lies below $\lfloor x\rfloor$. It gives, for instance, the number of multiples of $b>0$ among $1,2,\ldots,n$. These multiples are $b,2b,\ldots,kb$ with $kb\le n$, that is, with $k\le n/b$, and by (v) this means $k\le\lfloor n/b\rfloor$; so there are $\lfloor n/b\rfloor$ of them. Similarly, $n$ items packed into boxes that hold $b$ items each need $\lceil n/b\rceil$ boxes, and rule (vi) computes this number with integer operations only. Volume~VI divides arrays into blocks for parallel processing in exactly this way.
+Rule (v) is the one to remember: an integer lies below $x$ exactly when it lies below $\lfloor x\rfloor$. It gives, for instance, the number of multiples of $b>0$ among $1,2,\ldots,n$. These multiples are $b,2b,\ldots,kb$ with $kb\le n$, that is, with $k\le n/b$, and by (v) this means $k\le\lfloor n/b\rfloor$; so there are $\lfloor n/b\rfloor$ of them. Similarly, $n$ items packed into boxes that hold $b$ items each need $\lceil n/b\rceil$ boxes, and rule (vi) computes this number with integer operations only. Volume~VII divides arrays into blocks for parallel processing in exactly this way.
 
 \subsection{Negative Operands}
 
@@ -550,7 +550,7 @@ $-7$ & $-3$ & $2$ & $-1$ & $2$ & $-1$ \\
 \end{sdtable}}{Truncated and floored division. In every row $a=bq+r$. The truncated remainder has the sign of $a$, the floored remainder the sign of $b$; the conventions differ exactly when $a$ and $b$ have opposite signs and $b\nmid a$.\label{tab:division-conventions}}
 \end{table}
 
-The difference matters in practice. A test for odd numbers of the form ``$n$ leaves remainder $1$ on division by $2$'' is correct with floored division but fails for negative $n$ with truncated division, which gives the remainder $-1$ for $n=-3$. A program that uses $k\bmod m$ as an index into an array of length $m$ needs a remainder between $0$ and $m-1$, and with truncated division a negative $k$ yields a negative index. Volume~VI describes the convention followed by the array library and the reasons for it.
+The difference matters in practice. A test for odd numbers of the form ``$n$ leaves remainder $1$ on division by $2$'' is correct with floored division but fails for negative $n$ with truncated division, which gives the remainder $-1$ for $n=-3$. A program that uses $k\bmod m$ as an index into an array of length $m$ needs a remainder between $0$ and $m-1$, and with truncated division a negative $k$ yields a negative index. Volume~VII describes the convention followed by the array library and the reasons for it.
 
 \section{Greatest Common Divisors and the Euclidean Algorithm}
 \label{sec:gcd}
@@ -1049,7 +1049,7 @@ If $\gcd(a,n)=1$, then $a^{\varphi(n)}\equiv1\pmod n$.
 Let $u_1,\ldots,u_m$, with $m=\varphi(n)$, be the integers in $\{1,\ldots,n\}$ coprime to $n$. The products $au_1,\ldots,au_m$ are coprime to $n$, because a prime dividing $n$ and $au_i$ would divide $a$ or $u_i$ by \cref{lem:euclid}. They are pairwise incongruent, because $au_i\equiv au_j$ can be multiplied by the inverse of $[a]$ to give $u_i\equiv u_j$. So their classes are the classes of $u_1,\ldots,u_m$ in some order, and as in the proof of \cref{thm:fermat}, $a^mu_1\cdots u_m\equiv u_1\cdots u_m$, where the product $u_1\cdots u_m$ is invertible modulo $n$ and can be cancelled.
 \end{proof}
 
-Fermat's theorem gives a quick way to prove that a number is \emph{not} prime: if $a^{n-1}\not\equiv1\pmod n$ for some $a$ with $n\nmid a$, then $n$ is composite, although the test does not reveal a factor. The converse fails. The smallest composite number $n$ with $2^{n-1}\equiv1\pmod n$ is $341=11\cdot31$, so the test with $a=2$ alone would wrongly accept $341$. Refinements of the test, which choose $a$ at random and check a stronger condition, are the primality tests used in practice; Volume~IV discusses them as examples of randomised algorithms.
+Fermat's theorem gives a quick way to prove that a number is \emph{not} prime: if $a^{n-1}\not\equiv1\pmod n$ for some $a$ with $n\nmid a$, then $n$ is composite, although the test does not reveal a factor. The converse fails. The smallest composite number $n$ with $2^{n-1}\equiv1\pmod n$ is $341=11\cdot31$, so the test with $a=2$ alone would wrongly accept $341$. Refinements of the test, which choose $a$ at random and check a stronger condition, are the primality tests used in practice; Volume~V discusses them as examples of randomised algorithms.
 
 Such tests need powers $a^e\bmod n$ with exponents of hundreds of digits. Multiplying $a$ by itself $e-1$ times is out of the question, but the binary digits of $e$ give a shortcut: $a^{13}=a^8\cdot a^4\cdot a$, because $13=(1101)_2$, and the powers $a,a^2,a^4,a^8,\ldots$ are obtained by repeated squaring. \Cref{alg:powmod} combines this idea with \cref{alg:binary}, reducing modulo $n$ after every multiplication.
 
@@ -1142,7 +1142,7 @@ Signed integers use the same residue classes with different representatives. In 
 \end{tikzpicture}}{Three-bit integers as $\mathbb Z/8\mathbb Z$. Each bit pattern (middle ring) represents one residue class; read as an unsigned integer it is the canonical representative (inner ring), and read in two's complement it is the representative in $\{-4,\ldots,3\}$ (outer ring). Adding $1$ moves one step clockwise. The thick marks show where each reading jumps: from $7$ to $0$ for unsigned and from $3$ to $-4$ for signed integers.\label{fig:wrap}}
 \end{figure}
 
-What does not carry over from $\mathbb Z$ is everything that depends on the representative rather than the class. The order is one example: in $8$-bit signed arithmetic $127+1<127$, because the order of the representatives is not compatible with the operations of $\mathbb Z/2^k\mathbb Z$, and no order on $\mathbb Z/n\mathbb Z$ is compatible with them in the sense of \cref{def:ordered} (a sum of $n$ copies of the positive element $1$ would be positive and equal to $0$). Division is another: $4\equiv260\pmod{256}$, but halving gives $2$ and $130$, which are not congruent. Integer division and comparison are therefore operations on the representatives, and an overflow changes their results in ways that no congruence can repair. Volume~IV describes the representation of integers in hardware, and Volume~VI the rules that the array library follows for integer overflow.
+What does not carry over from $\mathbb Z$ is everything that depends on the representative rather than the class. The order is one example: in $8$-bit signed arithmetic $127+1<127$, because the order of the representatives is not compatible with the operations of $\mathbb Z/2^k\mathbb Z$, and no order on $\mathbb Z/n\mathbb Z$ is compatible with them in the sense of \cref{def:ordered} (a sum of $n$ copies of the positive element $1$ would be positive and equal to $0$). Division is another: $4\equiv260\pmod{256}$, but halving gives $2$ and $130$, which are not congruent. Integer division and comparison are therefore operations on the representatives, and an overflow changes their results in ways that no congruence can repair. Volume~V describes the representation of integers in hardware, and Volume~VII the rules that the array library follows for integer overflow.
 
 \section{Positional Notation}
 \label{sec:positional}
@@ -1182,7 +1182,7 @@ The existence proof is an algorithm, the base-$b$ version of \cref{alg:binary}: 
 \[
 \sum_{i=0}^kd_ib^i=\Bigl(\cdots\bigl((d_kb+d_{k-1})b+d_{k-2}\bigr)b+\cdots\Bigr)b+d_0 ,
 \]
-which needs only $k$ multiplications and $k$ additions. This is \term{Horner's scheme} (\cref{alg:from-base}); applied to an arbitrary polynomial, it is the standard way of evaluating polynomials, and Volume~V analyses its rounding errors~\cite[Sect.~4.6.4]{knuth1997taocp2}.
+which needs only $k$ multiplications and $k$ additions. This is \term{Horner's scheme} (\cref{alg:from-base}); applied to an arbitrary polynomial, it is the standard way of evaluating polynomials, and Volume~VI analyses its rounding errors~\cite[Sect.~4.6.4]{knuth1997taocp2}.
 
 \begin{algorithm}
 \begin{algorithmic}[1]
@@ -1315,7 +1315,7 @@ If the expansion terminates after $m$ digits, then it is also an expansion of $s
 
 In base $10$, whose prime factors are $2$ and $5$, the fractions $1/2=0.5$, $1/8=0.125$ and $3/20=0.15$ terminate, while $1/3$, $1/7$ and $1/6=0.1\overline6$ do not. In base $2$ only fractions whose denominator is a power of $2$ terminate, and $1/10$, with the prime factor $5$ in its denominator, does not: $1/10=(0.0\overline{0011})_2$, as \cref{tab:long-division} shows.
 
-A floating-point number in the binary64 format stores $53$ significant binary digits (Volume~V). It cannot store the infinite expansion of $1/10$, and it holds instead the number nearest to $1/10$ among all numbers $m/2^e$ with integers $0\le m<2^{53}$ and $e$, which is
+A floating-point number in the binary64 format stores $53$ significant binary digits (Volume~VI). It cannot store the infinite expansion of $1/10$, and it holds instead the number nearest to $1/10$ among all numbers $m/2^e$ with integers $0\le m<2^{53}$ and $e$, which is
 \[
 \frac{3602879701896397}{2^{55}}=0.1000000000000000055511151231\ldots.
 \]
@@ -1327,7 +1327,7 @@ whereas the stored value of $0.3$ is
 \[
 0.2999999999999999888977697537\ldots.
 \]
-(All three are fractions with a power of $2$ as denominator, so their decimal expansions terminate, after $52$ to $55$ digits.) These are two different binary64 numbers, adjacent to each other, and so the comparison \code{0.1 + 0.2 == 0.3} of the abstract of \cref{ch:logic} yields false~\cite{goldberg1991,ieee754-2019}. Nothing has gone wrong in the arithmetic: each operation produced the binary64 number nearest to its exact result. The decimal numbers in the program text simply were not the numbers that the machine used. Volume~V develops the theory of such rounding errors.
+(All three are fractions with a power of $2$ as denominator, so their decimal expansions terminate, after $52$ to $55$ digits.) These are two different binary64 numbers, adjacent to each other, and so the comparison \code{0.1 + 0.2 == 0.3} of the abstract of \cref{ch:logic} yields false~\cite{goldberg1991,ieee754-2019}. Nothing has gone wrong in the arithmetic: each operation produced the binary64 number nearest to its exact result. The decimal numbers in the program text simply were not the numbers that the machine used. Volume~VI develops the theory of such rounding errors.
 
 \section{The Rational Numbers}
 \label{sec:rationals}
@@ -1652,7 +1652,7 @@ The theorem fails in $\mathbb Q$: the increasing rational sequence of truncated 
 r^n\to0\qquad\text{for }0\le r<1,
 \label{eq:rn-zero}
 \end{equation}
-a fact used constantly in the analysis of iterative methods. \Cref{ch:series} builds the theory of series on \cref{thm:monotone}, and Volume~II shows that completeness can be stated equivalently in terms of Cauchy sequences.
+a fact used constantly in the analysis of iterative methods. \Cref{ch:series} builds the theory of series on \cref{thm:monotone}, and Volume~III shows that completeness can be stated equivalently in terms of Cauchy sequences.
 
 \subsection{Expansions of Real Numbers}
 
@@ -1693,13 +1693,13 @@ Part (i) shows that the decimal expansion of a real number really is a sequence 
 \begin{note}{Dedekind cuts and Cauchy sequences}
 A \emph{Dedekind cut} is a subset $\alpha\subset\mathbb Q$ that is nonempty, not all of $\mathbb Q$, closed downwards ($p\in\alpha$ and $q<p$ imply $q\in\alpha$), and without a greatest element. Each rational number $r$ gives the cut $\{q\in\mathbb Q: q<r\}$, and the set $A$ of \cref{prop:q-gap} is a cut that comes from no rational number; it \emph{is} the real number $\sqrt2$. Cuts are ordered by inclusion, and the supremum of a bounded family of cuts is their union, which makes completeness almost automatic. Addition is defined by $\alpha+\beta\coloneqq\{p+q: p\in\alpha,\ q\in\beta\}$; multiplication requires a case distinction according to signs, and the verification of the field axioms is long but elementary. Rudin's textbook carries it out in full~\cite{rudin1976}, and Landau's book builds the whole tower $\mathbb N\subset\mathbb Z\subset\mathbb Q\subset\mathbb R\subset\mathbb C$ in this way~\cite{landau1930}.
 
-In Cantor's construction, a sequence $(q_n)$ of rational numbers is a \emph{Cauchy sequence} if for every rational $\varepsilon>0$ there is $N$ with $|q_m-q_n|<\varepsilon$ for all $m,n\ge N$, and two Cauchy sequences are equivalent if their difference tends to $0$. The real numbers are the equivalence classes, and sums and products are computed term by term; the truncated decimal expansions of $\sqrt2$ form one such sequence. This construction generalises to the completion of any metric space, which Volume~II treats~\cite{ebbinghaus1991}. Constructive mathematics, mentioned in \cref{sec:existence}, prefers it~\cite{bishop1967}, because a Cauchy sequence with a known rate of convergence is a recipe for computing the number to any accuracy.
+In Cantor's construction, a sequence $(q_n)$ of rational numbers is a \emph{Cauchy sequence} if for every rational $\varepsilon>0$ there is $N$ with $|q_m-q_n|<\varepsilon$ for all $m,n\ge N$, and two Cauchy sequences are equivalent if their difference tends to $0$. The real numbers are the equivalence classes, and sums and products are computed term by term; the truncated decimal expansions of $\sqrt2$ form one such sequence. This construction generalises to the completion of any metric space, which Volume~III treats~\cite{ebbinghaus1991}. Constructive mathematics, mentioned in \cref{sec:existence}, prefers it~\cite{bishop1967}, because a Cauchy sequence with a known rate of convergence is a recipe for computing the number to any accuracy.
 \end{note}
 
 \section{The Complex Numbers}
 \label{sec:complex}
 
-In an ordered field every square is nonnegative (\cref{prop:order-rules}\,(iv)), so the equation $x^2+1=0$ has no real solution. The complex numbers add a solution $i$ of this equation, and it turns out that nothing more needs to be added: every polynomial equation then has a solution. Complex numbers first appeared in the sixteenth century as intermediate quantities in the solution of cubic equations, and they were long regarded with suspicion; their acceptance came with their interpretation as points of a plane, and William Rowan Hamilton defined them in 1837 as pairs of real numbers~\cite{ebbinghaus1991}. We follow Hamilton. In this series they appear in the eigenvalues of matrices (Part~III), in the solution of linear differential equations (Part~IV), in the Fourier transform (Volume~XI) and as a data type of the array library (Volume~VI).
+In an ordered field every square is nonnegative (\cref{prop:order-rules}\,(iv)), so the equation $x^2+1=0$ has no real solution. The complex numbers add a solution $i$ of this equation, and it turns out that nothing more needs to be added: every polynomial equation then has a solution. Complex numbers first appeared in the sixteenth century as intermediate quantities in the solution of cubic equations, and they were long regarded with suspicion; their acceptance came with their interpretation as points of a plane, and William Rowan Hamilton defined them in 1837 as pairs of real numbers~\cite{ebbinghaus1991}. We follow Hamilton. In this series they appear in the eigenvalues of matrices (Part~I of Volume~II), in the solution of linear differential equations (Part~II of Volume~II), in the Fourier transform (Volume~XII) and as a data type of the array library (Volume~VII).
 
 \subsection{Definition and Arithmetic}
 
@@ -1800,7 +1800,7 @@ Let $z\ne0$. Then $z/|z|$ has modulus $1$, so by (iii) there is a real number $\
 z=r(\cos\theta+i\sin\theta),\qquad r=|z| .
 \label{eq:polar}
 \end{equation}
-This is the \term{polar form} of $z$. Any such $\theta$ is an \term{argument} of $z$, written $\arg z$; it is determined up to an integer multiple of $2\pi$. The arguments of $z$ form a set $\theta+2\pi\mathbb Z$, and exactly one of them lies in the interval $(-\pi,\pi]$ of length $2\pi$, namely $\theta-2\pi k$ with $k=\lceil(\theta-\pi)/(2\pi)\rceil$; it is the \term{principal argument} $\operatorname{Arg}z$. On the unit circle, $\operatorname{Arg}$ is a right inverse, in the sense of \cref{sec:injections}, of the surjection $\theta\mapsto\cos\theta+i\sin\theta$ from $\mathbb R$ onto the circle: it picks one preimage of each point. For example, $1+i=\sqrt2\,(\cos(\pi/4)+i\sin(\pi/4))$, $-2=2(\cos\pi+i\sin\pi)$ and $-i=\cos(-\pi/2)+i\sin(-\pi/2)$. The number $0$ has modulus $0$ and no argument. Numerical libraries compute the principal argument of $a+bi$ by a two-argument arctangent function, which Volume~X describes.
+This is the \term{polar form} of $z$. Any such $\theta$ is an \term{argument} of $z$, written $\arg z$; it is determined up to an integer multiple of $2\pi$. The arguments of $z$ form a set $\theta+2\pi\mathbb Z$, and exactly one of them lies in the interval $(-\pi,\pi]$ of length $2\pi$, namely $\theta-2\pi k$ with $k=\lceil(\theta-\pi)/(2\pi)\rceil$; it is the \term{principal argument} $\operatorname{Arg}z$. On the unit circle, $\operatorname{Arg}$ is a right inverse, in the sense of \cref{sec:injections}, of the surjection $\theta\mapsto\cos\theta+i\sin\theta$ from $\mathbb R$ onto the circle: it picks one preimage of each point. For example, $1+i=\sqrt2\,(\cos(\pi/4)+i\sin(\pi/4))$, $-2=2(\cos\pi+i\sin\pi)$ and $-i=\cos(-\pi/2)+i\sin(-\pi/2)$. The number $0$ has modulus $0$ and no argument. Numerical libraries compute the principal argument of $a+bi$ by a two-argument arctangent function, which Volume~XI describes.
 
 The polar form makes multiplication transparent.
 
@@ -1877,7 +1877,7 @@ which are the vertices of a regular $n$-gon inscribed in the unit circle, with o
 \[
 1+\omega+\cdots+\omega^{n-1}=\frac{\omega^n-1}{\omega-1}=0 ,
 \]
-by the geometric sum \eqref{eq:sum-geom}, whose proof is valid in every field. The roots of unity are the foundation of the discrete Fourier transform of Volume~XI.
+by the geometric sum \eqref{eq:sum-geom}, whose proof is valid in every field. The roots of unity are the foundation of the discrete Fourier transform of Volume~XII.
 
 \begin{figure}
 \tikzset{cax/.style={-{Latex[length=1.4mm]}, line width=0.4pt}, cpt/.style={circle, fill=black, inner sep=0pt, minimum size=3.4pt}}
@@ -1932,7 +1932,7 @@ Every polynomial $p(z)=a_nz^n+a_{n-1}z^{n-1}+\cdots+a_0$ of degree $n\ge1$ with 
 \end{theorem}
 
 \begin{proof}[sketch]
-The proof uses a property of continuous functions that belongs to analysis. Since the leading term dominates for large $|z|$, $|p(z)|\to\infty$ as $|z|\to\infty$, and one deduces from the compactness of closed discs that $|p|$ attains a smallest value at some point $z_0$. Suppose $p(z_0)\ne0$. Expanding $p$ around $z_0$ gives $p(z_0+h)=p(z_0)+ch^k+h^{k+1}g(h)$ with $c\ne0$, some $k\ge1$ and a polynomial $g$. By \cref{thm:complex-roots} there is $u$ with $u^k=-p(z_0)/c$. For $h=tu$ with small $t>0$, the term $ch^k=-t^kp(z_0)$ points from $p(z_0)$ towards $0$, and the remainder is too small to undo this, so $|p(z_0+tu)|<|p(z_0)|$, contradicting the minimality. Hence $p(z_0)=0$. The details are carried out in Volume~II, which also gives the shortest proof, by Liouville's theorem of complex analysis. Aigner and Ziegler present the argument sketched here in full~\cite{aigner2018proofs}, and Remmert's chapter in the book of Ebbinghaus and others discusses it together with several other proofs and their history~\cite{ebbinghaus1991}.
+The proof uses a property of continuous functions that belongs to analysis. Since the leading term dominates for large $|z|$, $|p(z)|\to\infty$ as $|z|\to\infty$, and one deduces from the compactness of closed discs that $|p|$ attains a smallest value at some point $z_0$. Suppose $p(z_0)\ne0$. Expanding $p$ around $z_0$ gives $p(z_0+h)=p(z_0)+ch^k+h^{k+1}g(h)$ with $c\ne0$, some $k\ge1$ and a polynomial $g$. By \cref{thm:complex-roots} there is $u$ with $u^k=-p(z_0)/c$. For $h=tu$ with small $t>0$, the term $ch^k=-t^kp(z_0)$ points from $p(z_0)$ towards $0$, and the remainder is too small to undo this, so $|p(z_0+tu)|<|p(z_0)|$, contradicting the minimality. Hence $p(z_0)=0$. The details are carried out in Volume~III, which also gives the shortest proof, by Liouville's theorem of complex analysis. Aigner and Ziegler present the argument sketched here in full~\cite{aigner2018proofs}, and Remmert's chapter in the book of Ebbinghaus and others discusses it together with several other proofs and their history~\cite{ebbinghaus1991}.
 \end{proof}
 
 Gauss gave a proof in his doctoral dissertation of 1799, and the argument above goes back to d'Alembert and Argand~\cite{ebbinghaus1991}. A root can be split off as a linear factor, and repeating this factors every polynomial completely.
@@ -1959,7 +1959,7 @@ and by the identity \eqref{eq:power-difference}, which holds in every commutativ
 (iii) By \cref{prop:conjugate}\,(i), $\overline{p(z)}=\sum\bar a_k\bar z^k=\sum a_k\bar z^k=p(\bar z)$ when all $a_k$ are real, so $p(\bar z_0)=\overline{p(z_0)}=0$.
 \end{proof}
 
-By (ii) and (iii), the nonreal roots of a real polynomial come in pairs $z_0,\bar z_0$, and $(z-z_0)(z-\bar z_0)=z^2-2\operatorname{Re}(z_0)z+|z_0|^2$ has real coefficients. So every real polynomial is a product of real linear factors and real quadratic factors without real roots. In Part~III these facts guarantee that every square matrix has an eigenvalue, at least among the complex numbers.
+By (ii) and (iii), the nonreal roots of a real polynomial come in pairs $z_0,\bar z_0$, and $(z-z_0)(z-\bar z_0)=z^2-2\operatorname{Re}(z_0)z+|z_0|^2$ has real coefficients. So every real polynomial is a product of real linear factors and real quadratic factors without real roots. In Volume~II these facts guarantee that every square matrix has an eigenvalue, at least among the complex numbers.
 
 \subsection{No Order on $\mathbb C$}
 
@@ -1974,7 +1974,7 @@ There is no subset $P$ of $\mathbb C$ with which $\mathbb C$ is an ordered field
 In an ordered field the square of every nonzero element is positive (\cref{prop:order-rules}\,(iv)). Then $1=1^2$ and $-1=i^2$ would both be positive, and so would their sum $0$ by axiom O2, which contradicts axiom O1.
 \end{proof}
 
-Inequalities between complex numbers are therefore meaningless; inequalities in $\mathbb C$ are always inequalities between real quantities such as moduli or real parts. In practice complex numbers are stored as pairs of floating-point numbers, and the arithmetic of \cref{def:complex} is carried out on the pairs. Even this simple representation has pitfalls: computing $|a+bi|$ as $\sqrt{a^2+b^2}$ can overflow when $a^2$ exceeds the largest floating-point number although $|a+bi|$ itself does not. Volumes~VI and~X describe how such problems are avoided.
+Inequalities between complex numbers are therefore meaningless; inequalities in $\mathbb C$ are always inequalities between real quantities such as moduli or real parts. In practice complex numbers are stored as pairs of floating-point numbers, and the arithmetic of \cref{def:complex} is carried out on the pairs. Even this simple representation has pitfalls: computing $|a+bi|$ as $\sqrt{a^2+b^2}$ can overflow when $a^2$ exceeds the largest floating-point number although $|a+bi|$ itself does not. Volumes~VII and~XI describe how such problems are avoided.
 
 \begin{note}{Algebraic and transcendental numbers}
 A complex number is \emph{algebraic} if it is a root of a nonzero polynomial with integer coefficients, and \emph{transcendental} otherwise. Every rational number $p/q$ is algebraic (a root of $qz-p$), and so are $\sqrt2$, $i$, $\sqrt[3]{5}$ and the roots of unity. Since there are only countably many polynomials with integer coefficients, each with finitely many roots, the set of algebraic numbers is countable; this was Cantor's observation~\cite{cantor1874}, mentioned in \cref{sec:cardinality}. By \cref{thm:r-uncountable}, almost all real numbers are therefore transcendental. Exhibiting a single one is much harder. Liouville constructed the first examples in 1844, Hermite proved in 1873 that $e$ is transcendental, and Lindemann proved the same for $\pi$ in 1882, which settled the ancient problem of squaring the circle with ruler and compass in the negative~\cite{baker1975,hardywright2008}. The number $\sqrt2^{\sqrt2}$ of \cref{thm:irrational-power} is transcendental by the Gelfond--Schneider theorem quoted there.
@@ -2062,7 +2062,7 @@ A typical application is an optimisation without calculus. Among all boxes with 
 
 \subsection{The Cauchy--Schwarz Inequality}
 
-The next inequality bounds a sum of products by sums of squares. It is the most frequently used inequality in linear algebra, where $\sum a_ib_i$ is the inner product of two vectors (Part~III), and in statistics, where it shows that correlation coefficients lie between $-1$ and $1$ (Volume~III). Cauchy proved it for sums in 1821~\cite{cauchy1821}; the versions for integrals were found later by Bunyakovsky and by Schwarz~\cite{steele2004}.
+The next inequality bounds a sum of products by sums of squares. It is the most frequently used inequality in linear algebra, where $\sum a_ib_i$ is the inner product of two vectors (Volume~II), and in statistics, where it shows that correlation coefficients lie between $-1$ and $1$ (Volume~IV). Cauchy proved it for sums in 1821~\cite{cauchy1821}; the versions for integrals were found later by Bunyakovsky and by Schwarz~\cite{steele2004}.
 
 \begin{theorem}[Cauchy--Schwarz inequality]
 \label{thm:cauchy-schwarz}
@@ -2090,11 +2090,11 @@ which says that the arithmetic mean is at most the root mean square. And the Euc
 \|a+b\|\le\|a\|+\|b\| ,
 \label{eq:minkowski}
 \end{equation}
-because $\|a+b\|^2=\|a\|^2+2\sum a_ib_i+\|b\|^2\le\|a\|^2+2\|a\|\,\|b\|+\|b\|^2=(\|a\|+\|b\|)^2$ by \cref{thm:cauchy-schwarz}. For $n=2$ this is the triangle inequality for complex numbers of \cref{prop:modulus}, read in the plane. Part~III develops both inequalities for vectors in $\mathbb R^n$ and $\mathbb C^n$.
+because $\|a+b\|^2=\|a\|^2+2\sum a_ib_i+\|b\|^2\le\|a\|^2+2\|a\|\,\|b\|+\|b\|^2=(\|a\|+\|b\|)^2$ by \cref{thm:cauchy-schwarz}. For $n=2$ this is the triangle inequality for complex numbers of \cref{prop:modulus}, read in the plane. Volume~II develops both inequalities for vectors in $\mathbb R^n$ and $\mathbb C^n$.
 
 \subsection{Products of Perturbations}
 
-The last inequality of the chapter is a tool of rounding error analysis. In floating-point arithmetic every operation introduces a relative error: the computed result of an operation with exact result $x$ is $x(1+\delta)$ with $|\delta|\le u$, where $u$ is a small number called the unit roundoff, $u=2^{-53}\approx1.1\times10^{-16}$ for the binary64 format (Volume~V). After $n$ operations in sequence, factors $(1+\delta_1)\cdots(1+\delta_n)$ accumulate, and their effect must be bounded. In Higham's book on the accuracy of numerical algorithms, the following lemma is the basis of the analysis of sums, products and linear systems~\cite{higham2002accuracy}.
+The last inequality of the chapter is a tool of rounding error analysis. In floating-point arithmetic every operation introduces a relative error: the computed result of an operation with exact result $x$ is $x(1+\delta)$ with $|\delta|\le u$, where $u$ is a small number called the unit roundoff, $u=2^{-53}\approx1.1\times10^{-16}$ for the binary64 format (Volume~VI). After $n$ operations in sequence, factors $(1+\delta_1)\cdots(1+\delta_n)$ accumulate, and their effect must be bounded. In Higham's book on the accuracy of numerical algorithms, the following lemma is the basis of the analysis of sums, products and linear systems~\cite{higham2002accuracy}.
 
 \begin{lemma}
 \label{lem:gamma}
@@ -2116,7 +2116,7 @@ Hence $|\theta_n|\le(1+u)^n-1$ by \cref{prop:ineq-rules}\,(ii). It remains to sh
 and taking reciprocals, $(1+u)^n\le1/(1-nu)$. Therefore $|\theta_n|\le1/(1-nu)-1=nu/(1-nu)$.
 \end{proof}
 
-For small $nu$ the bound $\gamma_n$ is only slightly larger than $nu$: the relative errors of $n$ operations add up, to first order, and their products contribute almost nothing. With $u=2^{-53}$ and a million operations, $nu\approx1.11\times10^{-10}$, and $\gamma_n$ agrees with $nu$ to ten significant digits. Volume~V uses the lemma to prove error bounds for the summation algorithms of the array library. It is a fitting end for this chapter: a statement about the fallible arithmetic of a computer, proved with nothing more than the axioms of an ordered field and an induction.
+For small $nu$ the bound $\gamma_n$ is only slightly larger than $nu$: the relative errors of $n$ operations add up, to first order, and their products contribute almost nothing. With $u=2^{-53}$ and a million operations, $nu\approx1.11\times10^{-10}$, and $\gamma_n$ agrees with $nu$ to ten significant digits. Volume~VI uses the lemma to prove error bounds for the summation algorithms of the array library. It is a fitting end for this chapter: a statement about the fallible arithmetic of a computer, proved with nothing more than the axioms of an ordered field and an induction.
 
 \chapternotes
 
@@ -2124,6 +2124,6 @@ The construction of the number systems from Peano's axioms is carried out in ful
 
 For the number theory of \cref{sec:division,sec:gcd,sec:primes,sec:congruences}, Hardy and Wright~\cite{hardywright2008} is the classic text, and Gauss's \emph{Disquisitiones Arithmeticae}~\cite{gauss1801} is the origin of the theory of congruences. Graham, Knuth and Patashnik~\cite{graham1994concrete} treat floor and ceiling functions and elementary number theory with an eye to computing. The second volume of Knuth's \emph{The Art of Computer Programming}~\cite{knuth1997taocp2} is the standard reference for the algorithmic side: positional number systems (Section~4.1), arbitrary-precision and modular arithmetic (Sections~4.3.1 and~4.3.2), the Euclidean algorithm and its analysis, including Lam\'e's theorem~\cite{lame1844} (Sections~4.5.2 and~4.5.3), and the evaluation of powers and polynomials (Sections~4.6.3 and~4.6.4). The conventions for integer division are compared by Boute~\cite{boute1992}.
 
-Hardy, Littlewood and P\'olya~\cite{hardy1952inequalities} is the classic monograph on inequalities, and Steele~\cite{steele2004} a lively modern introduction centred on the Cauchy--Schwarz inequality. Higham~\cite{higham2002accuracy} shows how the elementary inequalities of \cref{sec:inequalities} become the error analysis of numerical algorithms, the subject of Volume~V.
+Hardy, Littlewood and P\'olya~\cite{hardy1952inequalities} is the classic monograph on inequalities, and Steele~\cite{steele2004} a lively modern introduction centred on the Cauchy--Schwarz inequality. Higham~\cite{higham2002accuracy} shows how the elementary inequalities of \cref{sec:inequalities} become the error analysis of numerical algorithms, the subject of Volume~VI.
 
 \chapterreferences

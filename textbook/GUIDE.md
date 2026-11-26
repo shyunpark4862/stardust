@@ -11,7 +11,7 @@
 - 책에는 stardust의 모든 API에 대해 그 알고리즘, 그것을 이해하는 데 필요한 이론, 구현이 설명되어 있어야 한다.
 
 ## 2. 편제
-- 주제별로 여러 권으로 나눈다. 첫 한두 권은 예비 수학·컴퓨터 과학 지식에 쓴다.
+- 주제별로 여러 권으로 나눈다. 첫 한두 권은 예비 수학·컴퓨터 과학 지식에 쓴다. (확정: 예비 다섯 권, §8)
 - **예비 권(수학·컴퓨터 과학)의 규칙** (2026-11-25):
   - stardust의 API를 끌어다 설명하지 않고 순수하게 수학·컴퓨터 과학 지식을 소개한다. 뒤에 나올 것을 암시하는 취지로 stardust나 API를 언급하는 것은 괜찮다.
   - 범위는 대학 과목처럼 조금 일반적으로 잡는다(2026-11-25 사용자 제안): 미적분, 선형대수, 미분방정식, 실해석, 복소해석, 측도론, 확률론, 수리통계, 자료구조, 알고리즘, 컴퓨터 구조. stardust 이해에 꼭 필요하지 않더라도 표준적인 과목 범위 안이면 폭넓게 리뷰한다. 따라서 "필요하지 않은 고급 지식은 note 상자" 규칙은 예비 권에서는 표준 과목 범위를 넘는 내용에만 적용한다.
@@ -25,7 +25,7 @@
 - 각주는 가급적 쓰지 않는다.
 - 분량은 문제 되지 않는다(상당할 것으로 본다). 분량보다 상세하고 친절한 설명이 최우선이다.
 
-- 별권 Excursions(특별 장 모음; 2026-11-26): 예비 네 권 뒤에 두는, 책 본래 내용과 무관한 주제 모음. 목차와 방식은 OUTLINE.md의 해당 절. 리뷰 방식이되 교양서처럼 함의·의미·일화·역사를 본문에서 풀어 쓰고(이 권에만 허용), 장마다 중심 정리 하나는 완전히 증명하며, 장마다 공용 빌드로 돌린 모의실험 절을 둔다. 일화의 인용 검증은 더 엄격히.
+- 별권 Excursions(특별 장 모음; 2026-11-26): 예비 다섯 권 뒤(5권 뒤)에 두는, 책 본래 내용과 무관한 주제 모음. 목차와 방식은 OUTLINE.md의 해당 절. 리뷰 방식이되 교양서처럼 함의·의미·일화·역사를 본문에서 풀어 쓰고(이 권에만 허용), 장마다 중심 정리 하나는 완전히 증명하며, 장마다 공용 빌드로 돌린 모의실험 절을 둔다. 일화의 인용 검증은 더 엄격히.
 
 ## 3. 설명 방식과 문체
 - 논문 문체(formal academic English). 다만 논문 문체라고 설명을 압축하지 않는다. 동기부여 부분은 부드러운 문체를 써도 된다.
@@ -36,12 +36,12 @@
 - 한글판 교과서와 홈페이지를 번역하지 않는다. 참고는 하되 새로 구성한다.
 
 - 관례(2026-11-25, 1권 1장에서 정함): 자연수 ℕ은 0을 포함한다. 장 끝에는 번호 없는 Notes 절(문헌 안내와 출처)을 두고 그 뒤에 참고문헌을 둔다. 아직 없는 장은 "Chapter 3", "Volume 4"처럼 적고 그 장이 생기면 \\cref로 바꾼다.
-- 앞 권 인용(2026-11-27): 2권부터는 앞 권의 정리·장·그림 등을 번호를 직접 치지 않고 `\vcref{1}{thm:evt}`("Theorem 5.47 of Volume I"), 문장 첫머리는 `\Vcref`, 수식은 `\veqref{1}{eq:...}`("(26.10) of Volume I")로 가리킨다. 여러 개는 `\vcref{1}{thm:a,lem:b}`. 프리앰블의 `\externalvolume{1}{vol1}`이 build/vol1.aux의 라벨을 앞붙이를 달아 읽으므로 권마다 같은 라벨 이름을 써도 겹치지 않는다(링크는 없다). 그래서 **앞 권을 먼저 빌드해야 한다**(`tools/build.sh vol1` 뒤 `vol2`); 라벨이 없거나 aux가 없으면 ??와 경고가 난다.
+- 다른 권 인용(2026-11-27): 다른 권의 정리·장·그림 등은 번호를 직접 치지 않고 `\vcref{1}{thm:evt}`("Theorem 5.47 of Volume I"), 문장 첫머리는 `\Vcref`, 수식은 `\veqref{1}{eq:...}`("(8.12) of Volume I")로 가리킨다. 여러 개는 `\vcref{1}{thm:a,lem:b}`(한 권의 라벨만; 두 권이 섞이면 `\cref{a} and \vcref{1}{b}`처럼 나눈다). 프리앰블의 `\externalvolume{1}{vol1}`이 build/vol1.aux의 라벨을 앞붙이를 달아 읽으므로 권마다 같은 라벨 이름을 써도 겹치지 않는다(링크는 없다). 그래서 **인용하는 권보다 인용되는 권을 먼저 빌드해야 한다**; 라벨이 없거나 aux가 없으면 ??와 경고가 난다. 1권과 2권은 서로 가리키므로(2026-11-27 옛 1권을 나눔: 2권이 1권을 인용하고, 1권 10–12장 등이 2권의 선형대수를 앞으로 가리킨다) 둘의 빌드는 `tools/build.sh all`로 한다: 1·2권을 번갈아 aux 파일이 바뀌지 않을 때까지(최대 네 차례) 빌드한 뒤 3권 이후를 빌드한다. `tools/build.sh volN` 하나만 돌리면 build/에 있는 다른 권의 aux를 그대로 읽는다(BUILD.md).
 
 - 본문 안 수식(inline, `$...$`)의 분수는 가급적 `\frac`이 아니라 사선 `/`로 쓴다(2026-11-26 사용자 지시): `$a/b$`, `$(x+1)/(x-1)$`, `$1/2$`. `\frac`은 별행 수식(display)에서 쓴다. 수 분수가 인수 앞에 오는 `$(1/2)x$` 꼴은 `$x/2$`, `$(a+b)/2$`처럼 순서를 바꿔 쓴다(2026-11-26). 지수·첨자 안의 분수도 사선으로. 괄호를 빠뜨려 뜻이 바뀌지 않게 한다.
 - 행렬(성분을 늘어놓은 꼴: pmatrix, bmatrix, 열벡터 등)은 가급적 본문 안이 아니라 별행 수식으로 쓴다(2026-11-26 사용자 지시). 문장 속에서는 이름(A, x)이나 행 꼴 (x₁, …, xₙ)로 가리킨다. 줄 간격을 벌리는 것(큰 연산자의 위아래 첨자, 여러 층 분수 등)도 같은 원칙으로 별행에 둔다.
 - 성분을 늘어놓은 행렬과 열벡터는 대괄호 [ ]로 쓴다(bmatrix; pmatrix는 쓰지 않는다. 2026-11-26 사용자 지시). 행렬식의 세로줄(vmatrix)은 그대로.
-- 벡터·행렬 표기(2026-11-26, 1권 10장에서 정함; 책 전체 공통, 자세한 것은 vol1.tex의 Notation): 벡터는 굵은 직립 소문자(열벡터), 벡터 값 함수도 굵게, 행렬은 대문자 이탤릭, 전치 A^T(\mathsf T), 내적 ⟨x,y⟩, ‖x‖은 Euclid 노름(다른 노름과 섞이면 ‖·‖₂), 행렬 노름 ‖A‖₂·‖A‖_F, 도함수 Df(a)(m×n Jacobian), 기울기 ∇f는 열벡터, Hessian ∇²f, 구면 좌표는 ISO 80000-2(θ가 극각).
+- 벡터·행렬 표기(2026-11-26, 1권 10장에서 정함; 책 전체 공통, 자세한 것은 vol1.tex·vol2.tex의 Notation): 벡터는 굵은 직립 소문자(열벡터), 벡터 값 함수도 굵게, 행렬은 대문자 이탤릭, 전치 A^T(\mathsf T), 내적 ⟨x,y⟩, ‖x‖은 Euclid 노름(다른 노름과 섞이면 ‖·‖₂), 행렬 노름 ‖A‖₂·‖A‖_F, 도함수 Df(a)(m×n Jacobian), 기울기 ∇f는 열벡터, Hessian ∇²f, 구면 좌표는 ISO 80000-2(θ가 극각).
 
 ## 4. 그림
 - 그림과 그래프로 이해를 돕는다.
@@ -60,12 +60,13 @@
 - 작업이 반복되어도 이 지침이 흐려지지 않게 한다: 장마다 이 문서를 다시 읽고, 장을 마칠 때 지침별로 점검한다.
 - 애매한 것은 묻는다.
 - **노션 현황판** (2026-11-27 사용자 지시): 진행 상황을 노션 워크스페이스 "Stardust"의 "Stardust Project Status" 페이지(https://app.notion.com/p/3f230fceadd18063a710e0f48deb90b7)에 적는다. 작성자 이름은 "Textbook Scribe", 노션에 쓰는 글은 영어로만.
-  - Milestones(`collection://42430fce-add1-81e1-88e3-000bb890e882`)에 장 하나가 행 하나다. Name은 "Ch. 23 — First-Order Equations" 꼴, Unit은 그 권의 행(Units `collection://42430fce-add1-81c6-94c7-000b6675ed08`, Track = Textbook; 권 행은 새로 만들지 않는다), Summary는 그 장에서 다루는 것 한 줄, Author = Textbook Scribe, Order = 장 번호. Units의 State·Progress·Last done은 자동 계산이니 건드리지 않는다.
+  - Milestones(`collection://42430fce-add1-81e1-88e3-000bb890e882`)에 장 하나가 행 하나다. Name은 "Ch. 11 — First-Order Equations" 꼴, Unit은 그 권의 행(Units `collection://42430fce-add1-81c6-94c7-000b6675ed08`, Track = Textbook; 권 행은 새로 만들지 않는다), Summary는 그 장에서 다루는 것 한 줄, Author = Textbook Scribe, Order = 장 번호. Units의 State·Progress·Last done은 자동 계산이니 건드리지 않는다.
   - **Done의 기준**: 초고 커밋과 검토(서지 검증 포함) 커밋이 모두 main에 들어간 장. Done on은 검토 커밋 날짜, Commits는 그 장의 초고·검토 커밋(그 장만 다룬 후속 커밋이 있으면 함께)의 짧은 해시를 `[abc12345](https://github.com/shyunpark4862/stardust/commit/abc12345)` 꼴로 공백으로 이어 쓴다. 여러 장을 한꺼번에 손본 정리 커밋은 넣지 않는다.
   - 갱신: 장을 시작하면(얼개를 짜거나 집필 에이전트를 띄우면) 그 행을 In progress로, 검토 커밋을 push하면 Done + Done on + Commits로 바꾼다. 얼개가 바뀌어 장이 늘거나 줄면 Planned 행을 더하거나 지우고 Order를 맞춘다.
   - 상태·날짜·커밋의 진실 기준은 md 기록이 아니라 git 이력이다(`git log --format='%h %ad %s' --date=short -- textbook/`; 2026-11-26 이름 바꾸기 전 기록은 `-- textbook-eng/`). 장 본문은 읽지 않아도 된다.
   - 라이브러리·홈페이지 행과 Runs는 건드리지 않는다. 별권 Excursions는 Units에 "Excursions — Special Chapters (companion volume)" 행(Order 17)이 있고, 장 번호는 OUTLINE.md의 1–30을 그대로 쓴다.
-  - 처음 채움(2026-11-27): OUTLINE.md의 16권 235장과 Excursions 30장. 1권 1–23장 Done, 24장 In progress, 나머지 Planned.
+  - 처음 채움(2026-11-27): OUTLINE.md의 16권 235장과 Excursions 30장. 1권 1–23장 Done, 24장 In progress, 나머지 Planned. (권을 나누기 전의 번호다.)
+  - 권 나누기(2026-11-27): 옛 1권을 1권(12장)과 2권(15장)으로 나누고 뒤의 권을 하나씩 밀었다(OUTLINE.md, 17권 237장: 옛 Analysis 21장 → 3권 23장). 현황판의 권·장 번호와 Excursions 행의 Order는 기록 세션이 바꾼다(교과서 세션은 바뀐 대응을 알리기만 한다).
   - **알리기** (2026-11-27 사용자 지시): 노션 갱신은 기록 세션(현재 이름 "Project Logger2"; `ListAgents`로 확인)이 맡는다. 교과서 세션은 (i) 장을 시작할 때, (ii) 장의 검토 커밋을 push했을 때(장 번호, 커밋 해시, 날짜), (iii) 얼개가 바뀌어 장이 늘거나 줄거나 이름이 바뀔 때 그 세션에 `SendMessage`로 한두 줄 알린다. 여러 사건은 모아서 한 번에 보내도 된다. 기록 세션이 없으면 교과서 세션이 위 규칙대로 직접 고친다.
 
 ## 7. 디자인 (2026-11-25 확정, 구현은 sdbook-eng.cls)
@@ -89,6 +90,6 @@
 - 그림·표·알고리즘·상자는 쓴 자리에 놓는 것을 우선한다. 블록 앞뒤 여백은 하나의 값으로 통일한다.
 
 ## 8. 아직 정하지 않은 것
-- 권 구성은 OUTLINE.md에서 논의 중이다. 확정된 것: 예비 네 권(1 Calculus, Linear Algebra, and Differential Equations / 2 Analysis / 3 Probability and Statistics / 4 Computing), 5권 Computer Arithmetic은 별도 권.
+- 권 구성은 OUTLINE.md에서 논의 중이다. 확정된 것: 예비 다섯 권(1 Foundations and Calculus / 2 Linear Algebra and Differential Equations / 3 Analysis / 4 Probability and Statistics / 5 Computing; 2026-11-27 옛 1권 Calculus, Linear Algebra, and Differential Equations를 1·2권으로 나눔), 6권 Computer Arithmetic은 별도 권, 주제 권은 6–17권.
 - 장 단위 목차.
 - 공용 빌드를 둘 위치와 기준 커밋, 임의 정밀도 패키지(mpmath, 또는 라이브러리 참값에 쓰는 Arb).

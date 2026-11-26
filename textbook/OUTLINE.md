@@ -2,53 +2,59 @@
 
 확정된 것이 아니다. 사용자와 함께 고쳐 가는 초안이고, 정해진 것은 GUIDE.md로 옮긴다.
 
-## 권 목록 (예비 네 권 + 주제 열두 권; 예비 네 권의 묶음과 5권은 2026-11-25 확정)
+## 권 목록 (예비 다섯 권 + 주제 열두 권; 예비 권의 묶음과 Computer Arithmetic 별도 권은 2026-11-25 확정, 옛 1권을 1·2권으로 나눈 것은 2026-11-27)
 | 권 | 제목(가제) | 방식 | stardust 영역 |
 |---|---|---|---|
-| 1 | Calculus, Linear Algebra, and Differential Equations | 리뷰 | — |
-| 2 | Analysis | 리뷰 | — |
-| 3 | Probability and Statistics | 리뷰 | — |
-| 4 | Computing | 리뷰 | — |
-| 5 | Computer Arithmetic | 완전 증명 | 모든 수치 영역의 바탕 (별도 권, 2026-11-25 확정) |
-| 6 | Arrays | 완전 증명 | `sd` |
-| 7 | Data Frames | 〃 | `sd.frame` |
-| 8 | Dense Linear Algebra | 〃 | `sd.linalg` |
-| 9 | Sparse Matrices and Graphs | 〃 | `sd.sparse`, `sd.graph` |
-| 10 | Elementary and Special Functions | 〃 | 배열의 수학 함수, `sd.special` |
-| 11 | Approximation and Numerical Calculus | 〃 | `sd.interpolate`, `sd.fft`, `sd.integrate`, `sd.differentiate`, `sd.smooth` |
-| 12 | Optimization | 〃 | `sd.optimize` |
-| 13 | Random Numbers and Distributions | 〃 | `sd.random`, `sd.stats` |
-| 14 | Statistical Inference | 〃 | `sd.htest` |
-| 15 | Statistical Models | 〃 | `sd.regression` |
-| 16 | Geometry and Graphics | 〃 | `sd.spatial`, `sd.plot` |
+| 1 | Foundations and Calculus | 리뷰 | — |
+| 2 | Linear Algebra and Differential Equations | 리뷰 | — |
+| 3 | Analysis | 리뷰 | — |
+| 4 | Probability and Statistics | 리뷰 | — |
+| 5 | Computing | 리뷰 | — |
+| 6 | Computer Arithmetic | 완전 증명 | 모든 수치 영역의 바탕 (별도 권, 2026-11-25 확정) |
+| 7 | Arrays | 완전 증명 | `sd` |
+| 8 | Data Frames | 〃 | `sd.frame` |
+| 9 | Dense Linear Algebra | 〃 | `sd.linalg` |
+| 10 | Sparse Matrices and Graphs | 〃 | `sd.sparse`, `sd.graph` |
+| 11 | Elementary and Special Functions | 〃 | 배열의 수학 함수, `sd.special` |
+| 12 | Approximation and Numerical Calculus | 〃 | `sd.interpolate`, `sd.fft`, `sd.integrate`, `sd.differentiate`, `sd.smooth` |
+| 13 | Optimization | 〃 | `sd.optimize` |
+| 14 | Random Numbers and Distributions | 〃 | `sd.random`, `sd.stats` |
+| 15 | Statistical Inference | 〃 | `sd.htest` |
+| 16 | Statistical Models | 〃 | `sd.regression` |
+| 17 | Geometry and Graphics | 〃 | `sd.spatial`, `sd.plot` |
+
+### 1권을 둘로 나눔 (2026-11-27, 사용자와 관리자 결정)
+옛 1권 "Calculus, Linear Algebra, and Differential Equations"(27장, 1406쪽)를 두 권으로 나눴다. 새 1권 Foundations and Calculus = 옛 1–12장(Part I Foundations 1–4장, Part II Calculus 5–12장; 번호 그대로, 648쪽). 새 2권 Linear Algebra and Differential Equations = 옛 13–27장을 1–15장으로(Part I Linear Algebra = 옛 13–22장 → 1–10장, Part II Differential Equations = 옛 23–27장 → 11–15장; 764쪽). 뒤의 권은 하나씩 밀렸다(옛 2권 Analysis → 3권, …, 옛 16권 → 17권). 별권 Excursions는 번호 없이 5권 뒤. 장·절·정리·식·그림 번호는 권마다 1부터; 두 권은 서로 \vcref로 가리킨다(빌드는 tools/build.sh all, BUILD.md). 장 목차는 아래 "1권 장 목차"와 "2권 장 목차".
 
 ## 예비 권의 과목 구성 — 과목 하나가 부(Part) 하나
 범위는 학부 표준 과목의 첫 강의까지. 그 너머는 note 상자.
 
-### 1권 Calculus, Linear Algebra, and Differential Equations (1·2학년 수학)
+### 1권 Foundations and Calculus (1학년 수학의 기초와 미적분)
 - Part I Foundations — 논리와 증명, 집합·함수·관계, 수 체계, 셈과 이산 구조(조합, 점화식, 그래프 용어)
 - Part II Calculus — 일변수 미적분, 급수와 Taylor 전개, 다변수 미적분, 벡터 미적분
-- Part III Linear Algebra — 벡터와 행렬, 연립방정식, 벡터 공간과 선형 사상, 내적과 직교, 행렬식, 고유값과 대각화, 스펙트럼 정리, 특이값 분해, 이차 형식, Jordan 꼴
-- Part IV Differential Equations (2026-11-25 확정) — 1계 방정식, 상수 계수 선형 방정식, 선형계와 행렬 지수, 거듭제곱 급수 해, 존재와 유일성(진술), 차분방정식과 점화식. 편미분방정식은 다루지 않는다. 존재와 유일성의 증명은 2권 실해석 부에서 축약 사상 정리의 응용으로
 
-### 2권 Analysis (해석학 계열)
-- Part I Real Analysis — 실수의 완비성, 거리 공간, 연속과 컴팩트, 함수열과 고른 수렴, Riemann 적분, R^n의 미분과 역함수·음함수 정리
-- Part II Complex Analysis — 해석 함수, Cauchy 정리와 적분 공식, 거듭제곱·Laurent 급수, 유수 정리, 해석적 연속
-- Part III Measure Theory — σ-대수와 측도, Lebesgue 측도와 적분, 수렴 정리, 곱측도와 Fubini, L^p 공간, Radon–Nikodym
+### 2권 Linear Algebra and Differential Equations (1·2학년 수학)
+- Part I Linear Algebra — 벡터와 행렬, 연립방정식, 벡터 공간과 선형 사상, 내적과 직교, 행렬식, 고유값과 대각화, 스펙트럼 정리, 특이값 분해, 이차 형식, Jordan 꼴
+- Part II Differential Equations (2026-11-25 확정) — 1계 방정식, 상수 계수 선형 방정식, 선형계와 행렬 지수, 거듭제곱 급수 해, 존재와 유일성(진술), 차분방정식과 점화식. 편미분방정식은 다루지 않는다. 존재와 유일성의 증명은 3권 실해석 부에서 축약 사상 정리의 응용으로
 
-### 3권 Probability and Statistics (확률·통계 계열)
+### 3권 Analysis (해석학 계열; 2026-11-27 23장 구성으로 개편)
+- Part I Real Analysis — 실수의 구성과 완비성, 거리·노름 공간과 축약 사상, 컴팩트와 연결, 고른 수렴, 근사와 등연속, 유계 변동과 Riemann–Stieltjes 적분, 노름 공간의 미분과 역함수·음함수 정리, 고정점과 미분방정식, Fourier 급수
+- Part II Complex Analysis — 정칙 함수, Cauchy 정리와 적분 공식, 거듭제곱·Laurent 급수와 해석적 연속, 유수 정리, 등각 사상과 조화 함수, 전해석·유리형 함수(감마, zeta)
+- Part III Measure Theory — σ-대수와 측도, Lebesgue 측도와 적분, 수렴 정리, 곱측도·Fubini와 변수 변환, L^p 공간, Radon–Nikodym과 미분 정리, Hilbert 공간과 컴팩트 연산자, Fourier 변환
+
+### 4권 Probability and Statistics (확률·통계 계열)
 - Part I Probability — 확률 공간, 확률변수와 분포, 기댓값, 독립, 조건부 기댓값, 수렴의 양식, 큰 수의 법칙, 특성함수와 중심극한정리, 기본 분포, 다변량 정규, Markov 연쇄
 - Part II Mathematical Statistics — 통계 모형, 충분성, 점추정(적률법·최대우도), Fisher 정보와 Cramér–Rao, 최대우도추정량의 점근 이론, 신뢰구간, 가설검정(Neyman–Pearson, 우도비), 순서통계량과 비모수 기초, Bayes 추론 기초
 
-### 4권 Computing (컴퓨터 과학 계열)
+### 5권 Computing (컴퓨터 과학 계열)
 - Part I Data Structures — 배열과 연결 리스트, 스택·큐, 해시 테이블, 힙, 탐색 트리, union–find
 - Part II Algorithms — 복잡도와 점화식, 분할 정복, 정렬과 선택, 그래프 알고리즘, 동적 계획법, 탐욕법, 무작위 알고리즘
 - Part III Computer Architecture — 수의 표현, 명령어와 프로세서, 파이프라인과 분기 예측, 메모리 계층, SIMD와 다중 코어, 운영 체제와 언어 실행 환경의 기본
 
-## 주제 권 장 목차 (초안, 5–16권)
+## 주제 권 장 목차 (초안, 6–17권)
 완전 증명 방식. API 묶음은 한글판 목차(2026-11-27 삭제; git 이력 383da9a 이전의 textbook/OUTLINE.md)의 API 목록을 참고해 다시 나눴다. 집필 전에 공용 빌드에서 공개 API 목록을 뽑아 빠진 것이 없는지 대조한다. 각 권의 Part I은 그 권의 알고리즘이 직접 기대는 이론이다.
 
-### 5권 Computer Arithmetic (8장)
+### 6권 Computer Arithmetic (8장)
 1. Floating-Point Numbers — 집합과 간격, 비트 배치, 반올림, 특수값, 정수 변환
 2. Rounding Error Analysis — 표준 모형, 전방·후방 오차, 누적 오차의 한계
 3. Conditioning and Stability — 조건수, 후방 안정성, 소거
@@ -58,7 +64,7 @@
 7. Decimal Conversion — 십진수 읽기(Eisel–Lemire), 최단 왕복 출력(Ryū; stardust는 libc++의 `std::to_chars`에 맡긴다)
 8. Compilers and Reproducibility — 결합법칙, 축약, 스레드와 비트 재현성
 
-### 6권 Arrays (14장) — `sd`
+### 7권 Arrays (14장) — `sd`
 1. The Array Model — shape·strides·offset, 뷰와 소유, 메모리 순서
 2. Data Types and Promotion — `bool int64 float64 complex128`, `result_type can_cast finfo iinfo astype`
 3. Array Creation — `asarray zeros ones full arange linspace eye meshgrid from_dlpack` 등
@@ -74,7 +80,7 @@
 13. Printing — `repr`·`str`
 14. Interchange — 버퍼 프로토콜, DLPack, numpy와의 경계
 
-### 7권 Data Frames (13장) — `sd.frame`
+### 8권 Data Frames (13장) — `sd.frame`
 1. The Columnar Model — 열 버퍼, 유효 비트맵, `Series DataFrame`, Copy-on-Write
 2. Missing Values — NaN과 `NA`, `isna fillna dropna`
 3. Construction and Type Inference
@@ -89,7 +95,7 @@
 12. Reading CSV — 토크나이저, 타입 추론, 청크 병렬
 13. Table Display
 
-### 8권 Dense Linear Algebra (13장) — `sd.linalg`
+### 9권 Dense Linear Algebra (13장) — `sd.linalg`
 Part I Theory
 1. Matrix Norms and Perturbation Theory — 노름, 조건수, 선형계와 고유값의 섭동
 2. Orthogonal Transformations — Householder 반사, Givens 회전, 그 안정성
@@ -107,7 +113,7 @@ Part III Least Squares and Eigenvalues
 12. The Singular Value Decomposition — `svd svdvals`
 13. Matrix Functions and Matrix Equations — `expm matrix_power solve_sylvester`
 
-### 9권 Sparse Matrices and Graphs (14장) — `sd.sparse`, `sd.graph`
+### 10권 Sparse Matrices and Graphs (14장) — `sd.sparse`, `sd.graph`
 Part I Sparse Matrices
 1. Storage Formats — `coo_array csr_array csc_array dok_array`
 2. Construction and Indexing — `eye_array diags_array random_array kron hstack vstack`
@@ -125,7 +131,7 @@ Part II Graphs
 13. Connectivity and Centrality — `articulation_points bridges core_number pagerank betweenness_centrality`
 14. Spectral and Ordering Methods — `laplacian reverse_cuthill_mckee structural_rank`
 
-### 10권 Elementary and Special Functions (17장) — 배열의 수학 함수, `sd.special`
+### 11권 Elementary and Special Functions (17장) — 배열의 수학 함수, `sd.special`
 Part I Theory
 1. Asymptotic Expansions — 점근 급수, Watson 보조정리, Laplace 방법, 최급강하법
 2. Differential Equations of Special Functions — Frobenius 방법, 연결 공식, Liouville–Green 근사
@@ -147,7 +153,7 @@ Part III Special Functions
 16. Elliptic Integrals, Hypergeometric Functions, and Lambert W — `ellipk ellipe hyp1f1 hyp2f1 lambertw`
 17. Distribution Functions — `stdtr chdtr fdtr pdtr bdtr`와 역함수, 비중심 꼴
 
-### 11권 Approximation and Numerical Calculus (17장) — `sd.interpolate`, `sd.fft`, `sd.integrate`, `sd.differentiate`, `sd.smooth`
+### 12권 Approximation and Numerical Calculus (17장) — `sd.interpolate`, `sd.fft`, `sd.integrate`, `sd.differentiate`, `sd.smooth`
 Part I Interpolation
 1. Polynomial Interpolation — `BarycentricInterpolator KroghInterpolator`, 오차 공식, Runge 현상
 2. Rational Approximation — `FloaterHormannInterpolator AAA`
@@ -170,7 +176,7 @@ Part IV Smoothing
 16. Smoothing Splines — `make_smoothing_spline smoothing_spline pspline`
 17. Kernel Methods — `kernel_regression kde`, 대역폭 선택
 
-### 12권 Optimization (11장) — `sd.optimize`
+### 13권 Optimization (11장) — `sd.optimize`
 Part I Theory
 1. Convexity — 볼록 집합과 함수, 분리 정리, 부분미분
 2. Optimality Conditions and Duality — KKT 조건, 쌍대성
@@ -185,7 +191,7 @@ Part II Methods
 10. Linear Least Squares with Bounds — `lsq_linear nnls`
 11. Systems of Nonlinear Equations — `root`
 
-### 13권 Random Numbers and Distributions (9장) — `sd.random`, `sd.stats`
+### 14권 Random Numbers and Distributions (9장) — `sd.random`, `sd.stats`
 1. Computing with Probabilities — 꼬리 확률, 로그 확률, 분위수의 조건수
 2. Random Number Generation — `default_rng Generator`, Philox, 스트림과 재현성
 3. Sampling from Distributions — 역변환, 기각, ziggurat
@@ -196,7 +202,7 @@ Part II Methods
 8. Multivariate Distributions — `MultivariateNormal Dirichlet Wishart` 등
 9. Descriptive Statistics — `describe skew kurtosis moment rankdata`
 
-### 14권 Statistical Inference (10장) — `sd.htest`
+### 15권 Statistical Inference (10장) — `sd.htest`
 1. Exact and Asymptotic Null Distributions — 순열 분포, 정확 분포의 동적 계획, 점근 근사
 2. Tests for Means and Variances — `ttest_* f_oneway bartlett levene fligner`
 3. Goodness of Fit — `chisquare shapiro anderson ks_1samp cramervonmises`
@@ -208,7 +214,7 @@ Part II Methods
 9. Multiple Comparisons — `tukey_hsd dunnett multipletests combine_pvalues`
 10. Resampling and Monte Carlo — `permutation_test monte_carlo_test bootstrap`
 
-### 15권 Statistical Models (6장) — `sd.regression`
+### 16권 Statistical Models (6장) — `sd.regression`
 1. Linear Models — `ols wls gls`, 추론, 샌드위치 공분산
 2. Model Diagnostics and Comparison — `anova`, 영향력
 3. Generalized Linear Models — `glm`, IRLS
@@ -216,7 +222,7 @@ Part II Methods
 5. Robust and Quantile Regression — `rlm theilslopes quantreg`
 6. Nonlinear Regression and Variable Selection — `nls stepwise best_subset`
 
-### 16권 Geometry and Graphics (11장) — `sd.spatial`, `sd.plot`
+### 17권 Geometry and Graphics (11장) — `sd.spatial`, `sd.plot`
 Part I Geometry
 1. Distances — `pdist cdist squareform`
 2. Nearest-Neighbor Search — `KDTree kneighbors radius_neighbors`
@@ -235,27 +241,27 @@ Part II Graphics
 - 완료 영역 17개(공개 이름 738개)는 모두 권이 있다. `sd.cluster`·embed·classify는 구현 중·예정이라 뺐다.
 - 장 줄의 API 이름은 대표만 적은 것이다. 장의 얼개를 짤 때 API-INVENTORY.md의 "목차 대조 (a)" 목록으로 빠짐없이 채운다.
 - 내용 자체가 목차에 없어 넣을 자리를 정해 둔 것:
-  - 배열 `diff`, `logaddexp` → 6권 8·11장. 배열과 프레임의 경계(`to_array`, `to_numpy`) → 7권 3장
-  - 복소 인자의 특수 함수 → 10권 해당 장마다 절로. `nbdtr` 계열 → 10권 17장
-  - FFT 도우미(`fftfreq fftshift next_fast_len`) → 11권 12장. FITPACK 계열 스플라인(`make_lsq_spline make_splrep make_splprep generate_knots`) → 11권 4·16장
-  - `approx_fprime`, `check_grad` → 11권 6장
-  - 다변량 cdf의 Genz 준몬테카를로 → 13권 8장
-  - 영역 공통의 결과 객체와 `summary()` → 15권 1장에서 소개, 각 권에서 사용
-  - plot의 기본 표시(`scatter bar errorbar area step text annotate`), 벡터장(`phase vectorfield streamlines`), 모형 그림 → 16권 6·8·9장에 절 추가
+  - 배열 `diff`, `logaddexp` → 7권 8·11장. 배열과 프레임의 경계(`to_array`, `to_numpy`) → 8권 3장
+  - 복소 인자의 특수 함수 → 11권 해당 장마다 절로. `nbdtr` 계열 → 11권 17장
+  - FFT 도우미(`fftfreq fftshift next_fast_len`) → 12권 12장. FITPACK 계열 스플라인(`make_lsq_spline make_splrep make_splprep generate_knots`) → 12권 4·16장
+  - `approx_fprime`, `check_grad` → 12권 6장
+  - 다변량 cdf의 Genz 준몬테카를로 → 14권 8장
+  - 영역 공통의 결과 객체와 `summary()` → 16권 1장에서 소개, 각 권에서 사용
+  - plot의 기본 표시(`scatter bar errorbar area step text annotate`), 벡터장(`phase vectorfield streamlines`), 모형 그림 → 17권 6·8·9장에 절 추가
   - htest 32개, regression의 명세 검정·`penalized_glm`·`siegelslopes`, graph 6개 → 해당 장에 이름 보충
 
 ## 주제 권 앞머리로 보낸 이론 (완전 증명)
-- 반올림 오차 해석, 조건수와 안정성, 오차 없는 변환 → 5권
-- 행렬 섭동 이론 → 8권
-- 특수 함수가 직접 쓰는 미분방정식 이론(Frobenius 방법, 3항 점화식의 안정성, 해의 점근 전개) → 10권
-- 볼록성과 최적성 조건 → 12권
-- 분포 계산과 표본 생성에 직접 쓰이는 분포 이론 → 13권
-- 검정 통계량의 정확·점근 분포 → 14권, 선형 모형·GLM 이론 → 15권
+- 반올림 오차 해석, 조건수와 안정성, 오차 없는 변환 → 6권
+- 행렬 섭동 이론 → 9권
+- 특수 함수가 직접 쓰는 미분방정식 이론(Frobenius 방법, 3항 점화식의 안정성, 해의 점근 전개) → 11권
+- 볼록성과 최적성 조건 → 13권
+- 분포 계산과 표본 생성에 직접 쓰이는 분포 이론 → 14권
+- 검정 통계량의 정확·점근 분포 → 15권, 선형 모형·GLM 이론 → 16권
 
 ## 권 사이의 의존
-1권 → 2권(실해석은 미적분 위에), 1·2권 → 3권(확률은 측도론과 선형대수 위에, 통계는 확률 위에). 4권은 1권의 기초 부만 전제한다.
+1권 → 2권(선형대수와 미분방정식은 1권의 기초와 미적분 위에), 1·2권 → 3권(실해석은 미적분 위에, 함수 공간과 연산자는 선형대수 위에), 1–3권 → 4권(확률은 측도론과 선형대수 위에, 통계는 확률 위에). 5권은 1권의 기초 부만 전제한다. 1권과 2권은 서로 가리킨다: 2권은 1권의 결과를 쓰고, 1권은 2권에서 증명할 선형대수의 사실을 미리 진술하고 앞으로 가리킨다(10–12장).
 
-## 1권 장 목차 (초안, 27장)
+## 1권 장 목차 (12장, 648쪽; 2026-11-27 나눔, 집필·검토 완료)
 리뷰 방식: 정리는 모두 state하고 중요한 것만 증명한다. 괄호 안은 증명할 핵심 정리의 후보.
 
 ### Part I Foundations
@@ -274,59 +280,67 @@ Part II Graphics
 11. Integral Calculus in Several Variables — 중적분, 반복 적분, 변수 변환과 Jacobian, 극·구면 좌표, Gauss 적분, 감마·베타 함수 맛보기
 12. Vector Calculus — 곡선과 선적분, 면적분, Green·Stokes·발산 정리
 
-### Part III Linear Algebra
-13. Vectors and Matrices — R^n, 행렬 연산, 전치, 특수한 행렬, 블록 행렬
-14. Linear Systems — 소거법과 행 사다리꼴, LU의 생각, 역행렬, 계수
-15. Vector Spaces — 부분공간, 일차 독립, 기저와 차원, 네 기본 부분공간
-16. Linear Maps — 사상의 행렬, 핵과 상, 기저 변환과 닮음 (계수–퇴화차수 정리)
-17. Determinants — 성질, 여인수 전개, 부피, 곱의 행렬식
-18. Inner Products and Orthogonality — 노름, 직교 사영, Gram–Schmidt와 QR, 직교·유니터리 행렬, 최소제곱과 정규방정식 (Cauchy–Schwarz, 사영 정리)
-19. Eigenvalues and Eigenvectors — 특성다항식, 대각화, Cayley–Hamilton, 복소 고유값, 행렬의 거듭제곱
-20. Symmetric Matrices and Quadratic Forms — 양정치, Rayleigh 몫, 최소–최대 원리 (스펙트럼 정리)
-21. The Singular Value Decomposition — 기하적 의미, 낮은 계수 근사, 유사역행렬, 행렬 노름과 조건수 (SVD의 존재, Eckart–Young)
-22. Canonical Forms and Matrix Functions — Schur 분해, Jordan 꼴, 행렬 지수와 행렬 함수
+## 2권 장 목차 (15장, 764쪽; 2026-11-27 나눔 — 옛 1권 13–27장, 집필·검토 완료)
+리뷰 방식은 1권과 같다. 괄호 안은 증명할 핵심 정리의 후보. 옛 번호는 장 이름 뒤 [옛 N장].
 
-### Part IV Differential Equations
-23. First-Order Equations — 변수 분리, 선형, 완전 방정식, 방향장, 존재와 유일성(진술), Euler 방법 맛보기
-24. Linear Equations of Higher Order — 상수 계수와 특성방정식, 미정계수법, 매개변수 변환, Wronskian, 진동 (해 공간의 차원)
-25. Linear Systems of Differential Equations (2026-11-27 이름 바꿈: 14장 Linear Systems와 겹쳐서) — 고유값 방법, 행렬 지수, 위상 평면, 안정성
-26. Series Solutions — 정상점과 정칙 특이점, Frobenius 방법의 개요, Bessel·Legendre·Airy 방정식
-27. Difference Equations and Recurrences — 선형 점화식과 특성근, 생성함수와의 관계, 안정성, 3항 점화식
+### Part I Linear Algebra
+1. Vectors and Matrices [옛 13장] — R^n, 행렬 연산, 전치, 특수한 행렬, 블록 행렬
+2. Linear Systems [옛 14장] — 소거법과 행 사다리꼴, LU의 생각, 역행렬, 계수
+3. Vector Spaces [옛 15장] — 부분공간, 일차 독립, 기저와 차원, 네 기본 부분공간
+4. Linear Maps [옛 16장] — 사상의 행렬, 핵과 상, 기저 변환과 닮음 (계수–퇴화차수 정리)
+5. Determinants [옛 17장] — 성질, 여인수 전개, 부피, 곱의 행렬식
+6. Inner Products and Orthogonality [옛 18장] — 노름, 직교 사영, Gram–Schmidt와 QR, 직교·유니터리 행렬, 최소제곱과 정규방정식 (Cauchy–Schwarz, 사영 정리)
+7. Eigenvalues and Eigenvectors [옛 19장] — 특성다항식, 대각화, Cayley–Hamilton, 복소 고유값, 행렬의 거듭제곱
+8. Symmetric Matrices and Quadratic Forms [옛 20장] — 양정치, Rayleigh 몫, 최소–최대 원리 (스펙트럼 정리)
+9. The Singular Value Decomposition [옛 21장] — 기하적 의미, 낮은 계수 근사, 유사역행렬, 행렬 노름과 조건수 (SVD의 존재, Eckart–Young)
+10. Canonical Forms and Matrix Functions [옛 22장] — Schur 분해, Jordan 꼴, 행렬 지수와 행렬 함수
+
+### Part II Differential Equations
+11. First-Order Equations [옛 23장] — 변수 분리, 선형, 완전 방정식, 방향장, 존재와 유일성(진술), Euler 방법 맛보기
+12. Linear Equations of Higher Order [옛 24장] — 상수 계수와 특성방정식, 미정계수법, 매개변수 변환, Wronskian, 진동 (해 공간의 차원)
+13. Linear Systems of Differential Equations (2026-11-27 이름 바꿈: 2장 Linear Systems와 겹쳐서) [옛 25장] — 고유값 방법, 행렬 지수, 위상 평면, 안정성
+14. Series Solutions [옛 26장] — 정상점과 정칙 특이점, Frobenius 방법의 개요, Bessel·Legendre·Airy 방정식
+15. Difference Equations and Recurrences [옛 27장] — 선형 점화식과 특성근, 생성함수와의 관계, 안정성, 3항 점화식
 
 넣지 않은 것: Laplace 변환, 편미분방정식 (필요하면 note 상자).
 
-## 2권 Analysis 장 목차 (초안, 21장)
+## 3권 Analysis 장 목차 (초안, 23장; 2026-11-27 개편)
+plans/v3-00-preparation.md C의 권장 구성을 결정 (c)(2026-11-27)로 받아들였다. 함수해석 장은 22장 하나(Hilbert Spaces and Compact Operators)이고 Fourier 변환 장(23장)을 더했다. D의 추천도 적힌 대로 따른다: R을 구성한다(D1), 옛 Differentiation·Riemann Integral 두 장을 6장으로 바꾼다(D2), 축약 사상 정리는 거리 공간 장(2장)에 둔다(D10), 변수 변환 공식의 증명은 곱측도 장(19장)에서(D11), 다 지킬 수 없는 약속은 "진술 + 줄거리", "행렬판 증명 + note", "기초만", "note"로 고친다(D4–D6, plans/PROMISES.md의 '## 3권' 절), 1·2권 본문이 "Volume III proves"라고 알린 결과는 완전히 증명한다(D14). 1·2권이 증명한 것은 \vcref로 인용하고 다시 증명하지 않는다.
 
-### Part I Real Analysis
-1. The Real Numbers — 완비성 공리, 상한과 하한, 축소 구간, Cauchy 판정법 (Bolzano–Weierstrass)
-2. Metric Spaces — 거리, 열린·닫힌 집합, 수렴과 완비성, R^n의 노름과 그 동치
-3. Continuity and Compactness — 연속, 컴팩트, 고른 연속, 연결성 (Heine–Borel, 최대·최소 정리)
-4. Differentiation — 도함수의 엄밀한 정의, 평균값 정리, Taylor 정리, 볼록 함수와 Jensen 부등식
-5. The Riemann Integral — Darboux 합, 적분 가능성, 미적분의 기본 정리, 이상 적분
-6. Sequences and Series of Functions — 점별·고른 수렴, Weierstrass M-판정, 극한의 교환, 거듭제곱 급수, Weierstrass 근사 정리 (고른 극한 정리)
-7. Differentiation in R^n — 전미분, 평균값 부등식, 역함수 정리와 음함수 정리 (역함수 정리)
-8. Fixed Points and Existence Theorems — 축약 사상 정리, 상미분방정식의 존재와 유일성(Picard–Lindelöf), 반복법의 수렴 (축약 사상 정리)
-9. Fourier Series — 직교 함수계, 수렴, Parseval 등식, Gibbs 현상
+### Part I Real Analysis (9장)
+1. The Real Numbers — Q의 Cauchy 수열로 R을 구성하고 완비 순서체임을 증명, Dedekind 절단(줄거리), 완비 순서체의 유일성, 순서체에서 완비성의 다섯 꼴의 동치(비Archimedes 반례는 note), 확장 실수와 limsup·liminf, 연속체의 기수, 대수적·초월수(note). 중심 정리: 완비 순서체의 존재(Cantor 구성)와 유일성, 완비성의 동치 정리
+2. Metric and Normed Spaces — 거리·노름과 예(R^n의 p-노름, ℓ^p, sup 노름, C[a,b]의 세 노름), 유한 합의 Hölder·Minkowski, 열린·닫힌 집합·내부·폐포·경계·조밀, 연속 ⇔ 열린 집합의 역상, 균등 연속·Lipschitz·등거리, Cauchy 수열과 완비성(R^n, ℓ^p, C_b(X)), 완비화, Banach 고정점 정리, 노름 공간 사이 선형 사상의 유계 ⇔ 연속, 연산자 노름과 B(X,Y)의 완비성, Neumann 급수, 미분 연산자의 비유계성. 중심 정리: 완비화 정리, Banach 고정점 정리(오차 한계 포함), ℓ^p와 C_b(X)의 완비성, 유계 ⇔ 연속
+3. Compactness and Connectedness — 열린 덮개 컴팩트, 거리 공간에서 컴팩트 ⇔ 순차 컴팩트 ⇔ 완비 + 완전 유계, Heine–Borel, 컴팩트 위의 연속 함수와 Lebesgue 수, 유한 차원 노름의 동치와 Riesz 보조정리, 연결·경로 연결·성분(R^n의 연결 열린 집합은 꺾은선 연결), GL_n(R)의 두 경로 성분, Cantor 집합, Baire 범주 정리와 응용, Hamel 기저와 불연속 가법 함수(note). 중심 정리: Heine–Borel, 거리 공간 컴팩트의 세 동치, 노름 동치, Baire 범주 정리
+4. Uniform Convergence — 점별·고른 수렴, 고른 Cauchy 판정, 극한 교환 정리(연속·Riemann 적분·미분), 일반 M-판정, Dini 정리, 교환의 반례, 이중 급수, 거듭제곱 급수의 합이 수렴 구간에서 해석적(실변수), Abel 정리와 Tauber 정리(note), Weierstrass 함수의 연속성과 어디서도 미분 불가능한 연속 함수. 중심 정리: 고른 극한의 연속성·적분·미분 교환 정리, Abel 정리, 연속이지만 어디서도 미분 불가능한 함수의 존재
+5. Approximation and Equicontinuity — Weierstrass 근사(Bernstein 다항식, 연속도로 정량 한계), Stone–Weierstrass(실·복소, 삼각 다항식), 등연속과 Arzelà–Ascoli, C[0,1]에서 Baire로 어디서도 미분 불가능한 함수가 전형적(Banach), 매끄러운 bump·잘라내기 함수, Chebyshev 최소최대 근사(note). 중심 정리: Weierstrass·Stone–Weierstrass, Arzelà–Ascoli, Banach의 범주 정리
+6. Monotone Functions, Bounded Variation, and the Riemann–Stieltjes Integral — 측도 0과 Lebesgue 판정법, R^n의 Jordan 내용과 "Jordan 가측 ⇔ 1_S 적분 가능", 단조 함수, 볼록 함수의 연속성·한쪽 도함수, 유계 변동 함수와 Jordan 분해, 곡선의 길이, Riemann–Stieltjes 적분(존재, 부분적분, C^1·계단 적분자), 적분의 둘째 평균값 정리, Volterra 함수(진술 + 줄거리), 양의 선형 범함수 = RS 적분(note). 1권의 미분·적분 정리는 인용만. 중심 정리: Lebesgue 판정법, BV의 Jordan 분해, 연속 f·BV α의 RS 적분 존재와 부분적분
+7. Differential Calculus in Normed Spaces — Fréchet·Gâteaux 미분(Gâteaux는 정의·예·관계만), 연쇄 법칙, 평균값 부등식, A ↦ A⁻¹의 미분, 고계 미분, 역함수 정리와 음함수 정리(1권 thm:lagrange의 증명 완결), 계수 정리와 매끄러운 곡면(줄거리), 단순 고윳값의 매끄러운 의존, Newton–Kantorovich(진술 + 줄거리). 중심 정리: Banach 공간의 평균값 부등식, 역함수 정리, 음함수 정리
+8. Fixed Points and Differential Equations — Picard–Lindelöf(R^n 값, 완전), 선형계의 대역 존재(2권 인용), 최대 해와 폭발 양자택일, Peano(Euler 다각형 + Arzelà–Ascoli), 비유일성과 Kneser(note), 연속 의존과 미분 가능 의존(변분 방정식), 자율계의 흐름, 반복법의 수렴, Brouwer 고정점 정리(note). 중심 정리: Picard–Lindelöf, Peano, 최대 해 정리, 초기값에 대한 미분 가능 의존
+9. Fourier Series — 복소·실수 꼴, Dirichlet 핵, Riemann–Lebesgue 보조정리, 국소화, Dirichlet–Jordan 판정, Fejér 핵과 Fejér 정리, Riemann 적분 가능 함수의 평균 제곱 수렴과 Parseval, Σ1/n² = π²/6과 ζ(2k), 계수의 감소와 매끄러움, 항별 미분·적분, Gibbs 현상, 발산하는 Fourier 급수(du Bois-Reymond), Poisson 핵과 Abel 합, 이산 Fourier와 에일리어싱(L²의 완비성은 22장). 중심 정리: Dirichlet 정리, Fejér 정리, Riemann 적분 가능 함수의 Parseval 등식
 
-### Part II Complex Analysis
-10. Holomorphic Functions — 복소 미분, Cauchy–Riemann 방정식, 초등 함수와 가지
-11. Complex Integration — 경로 적분, Cauchy 정리, Cauchy 적분 공식, Liouville 정리, 최대 절댓값 원리 (Cauchy 적분 공식)
-12. Series Representations — Taylor·Laurent 급수, 영점과 특이점, 항등 정리, 해석적 연속
-13. The Residue Calculus — 유수 정리, 실적분의 계산, 편각 원리와 Rouché 정리 (유수 정리)
-14. Conformal Maps and Harmonic Functions — 등각 사상, Möbius 변환, 조화 함수
-15. Entire and Meromorphic Functions — 무한곱, 감마 함수와 그 해석적 연속, 반사 공식
+### Part II Complex Analysis (6장)
+10. Holomorphic Functions — 복소 미분, Cauchy–Riemann 방정식과 실미분 가능성, 조화 성분, 복소 거듭제곱 급수의 정칙성과 항별 미분, 가지·가지 자름·정칙 가지, 복소 거듭제곱 z^α, 등각성, Riemann 구. 중심 정리: CR 판정, 거듭제곱 급수의 정칙성, 정칙 로그 가지의 존재
+11. Complex Integration — 경로 적분, 원시함수와 경로 독립, Goursat 정리, Cauchy 정리(별꼴·단순 연결·호모토피), 일반 닫힌 곡선의 감김 수, Cauchy 적분 공식, 정칙 ⇒ 해석, Cauchy 부등식, Liouville 정리와 대수학의 기본 정리, Morera, 최대 절댓값 원리, Jordan 곡선 정리(진술 + 줄거리). 중심 정리: Cauchy–Goursat, Cauchy 적분 공식, Liouville(과 대수학의 기본 정리), 최대 절댓값 원리
+12. Series Representations and Analytic Continuation — Taylor 급수의 수렴 원판(반지름 = 가장 가까운 특이점까지 거리), 영점의 고립과 항등 정리, Laurent 급수, 고립 특이점과 Casorati–Weierstrass, 열린 사상 정리, 경로를 따른 해석적 연속과 monodromy 정리, 정칙 계수 선형 ODE의 해와 반지름, 정칙 특이점 둘레의 monodromy 행렬, Fuchs 방정식과 Riemann P-기호(note). 중심 정리: Taylor·Laurent 전개, 항등 정리, monodromy 정리, 정칙 계수 ODE의 해의 반지름
+13. The Residue Calculus — 유수 정리, 실적분의 계산(∫_0^∞ sin x/x = π/2, Jordan 보조정리), Cauchy 주값, 급수의 합, 편각 원리, Rouché와 Hurwitz 정리, 다항식의 근의 연속성, Schur–Cohn 판정의 완결, (선택) Routh–Hurwitz, 레졸벤트 적분으로 정의한 행렬 함수가 2권의 정의와 같음(작용소판은 note). 중심 정리: 유수 정리, 편각 원리, Rouché, 레졸벤트 적분과 행렬 함수의 일치
+14. Conformal Maps and Harmonic Functions — 등각 사상, Möbius 변환과 원판·반평면의 자기동형, Schwarz 보조정리, Riemann 사상 정리(진술 + 줄거리), 평면 조화 함수의 평균값 성질과 최대 원리, 조화 켤레, Poisson 적분과 원판의 Dirichlet 문제, Abel–Poisson 합, 평균값 성질 ⇒ 조화. 중심 정리: Schwarz 보조정리, Poisson 공식이 Dirichlet 문제를 푼다, 평균값 성질의 특성화
+15. Entire and Meromorphic Functions — 무한곱, Weierstrass 인수분해, Mittag-Leffler, sin의 곱 공식과 Wallis, 감마 함수(Gauss·Weierstrass 곱, 해석적 연속, 반사·배가 공식, 복소 베타, Bohr–Mollerup), Riemann zeta(Euler 곱, 해석적 연속, 함수 방정식(진술 + 줄거리), ζ(2k)와 Bernoulli 수). 중심 정리: Weierstrass 곱 정리, 반사 공식, Γ와 ζ의 해석적 연속
 
-### Part III Measure Theory
-16. Measures — σ-대수, 측도, 외측도와 Carathéodory 구성, Lebesgue 측도
-17. Measurable Functions and the Lebesgue Integral — 단순 함수, 적분의 정의, Riemann 적분과의 관계
-18. Convergence Theorems — 단조 수렴, Fatou 보조정리, 지배 수렴, 수렴의 여러 양식 (단조 수렴, 지배 수렴)
-19. Product Measures — Fubini–Tonelli 정리, 합성곱
-20. L^p Spaces — Hölder·Minkowski 부등식, 완비성, L^2와 직교 사영
-21. Signed Measures and Differentiation — Radon–Nikodym 정리, Lebesgue 분해, 절대 연속, 변수 변환
+### Part III Measure Theory (8장)
+16. Measures — σ-대수와 Borel 집합, 측도, π–λ 정리와 유일성, 외측도와 Carathéodory 구성, R과 R^n의 Lebesgue 측도, Lebesgue–Stieltjes 측도, 정칙성, 평행이동 불변성과 선형 사상의 |det| 배율, 측도 0, Jordan 내용과의 관계, Cantor 집합, 비가측 집합(Vitali). 중심 정리: Carathéodory 확장, Lebesgue(–Stieltjes) 측도의 존재와 유일성, π–λ 정리
+17. Measurable Functions and the Lebesgue Integral — 가측 함수, 단순 함수 근사, 음 아닌 함수와 적분 가능 함수의 적분, 거의 어디서나, Riemann 적분과의 일치(Dirichlet 함수, 이상 적분과의 관계), 상 측도와 추상 변수 변환, Volterra 함수의 도함수. 중심 정리: 단순 함수 근사, Riemann 적분과 Lebesgue 적분의 일치
+18. Convergence Theorems — 단조 수렴, Fatou 보조정리, 지배 수렴, 함수 급수의 항별 적분, 매개변수 적분의 연속·미분, 수렴의 양식(Egorov, Riesz 부분수열), 고른 적분 가능성과 Vitali 수렴 정리, 유계 도함수의 ∫F' = F(b) − F(a). 중심 정리: 단조 수렴, Fatou, 지배 수렴, Vitali
+19. Product Measures and Change of Variables — 곱 σ-대수와 곱측도, Tonelli·Fubini, 완비화, R^{p+q}의 Lebesgue 측도, C^1 미분동형의 변수 변환 공식(1권의 Jordan판은 따름 정리), 극좌표와 구면 측도, 합성곱, 확률측도의 가산 곱. 중심 정리: Tonelli·Fubini, 변수 변환 정리
+20. L^p Spaces — 적분 꼴 Jensen, Hölder·Minkowski, 거의 어디서나 같은 함수의 몫, Riesz–Fischer, L^∞, 단순·계단·C_c·C_c^∞ 함수의 조밀성(mollifier), 합성곱과 근사 항등(Young 부등식), 포함 관계, L²는 완비 내적 공간. 중심 정리: Hölder·Minkowski, Riesz–Fischer, C_c^∞의 조밀성
+21. Signed Measures and Differentiation — 부호 측도, Hahn·Jordan 분해, Radon–Nikodym, Lebesgue 분해, (L^p)* = L^q(1 ≤ p < ∞), Lebesgue 미분 정리, 절대 연속 함수와 미적분의 기본 정리, BV 함수의 거의 어디서나 미분 가능성, Cantor 함수, C[a,b]의 쌍대 = BV(note). 중심 정리: Radon–Nikodym, Lebesgue 미분 정리, 절대 연속 함수의 미적분 기본 정리
+22. Hilbert Spaces and Compact Operators — Hilbert 공간, 닫힌 볼록 집합·부분공간으로의 사영 정리, Riesz 표현, 정규직교 기저와 Parseval, 가분 Hilbert 공간 ≅ ℓ², L²(−π, π)에서 삼각계의 완비성, Legendre 다항식의 완비성, 유계 연산자와 수반(기초만), 경계 조건이 있는 미분 연산자의 수반, 컴팩트 연산자와 적분 연산자, 컴팩트 자기 수반 연산자의 스펙트럼 정리, Schmidt 전개와 Hilbert–Schmidt 연산자, Fredholm 대안, 정칙 Sturm–Liouville 문제의 고유함수 전개. 장 머리에서 다루지 않는 것을 밝힌다: Hahn–Banach, 열린 사상 정리, 균등 유계성 원리, 약위상, 비유계 자기 수반 연산자의 스펙트럼 정리, 초함수(note). 중심 정리: 사영 정리, Riesz 표현, 컴팩트 자기 수반 연산자의 스펙트럼 정리, Sturm–Liouville 전개 정리
+23. The Fourier Transform — L^1의 Fourier 변환, Riemann–Lebesgue, 합성곱 정리, Gauss 함수, 반전 정리, Plancherel(L²), R^n의 변환, Poisson 합 공식, 표본화 정리와 에일리어싱, Fourier 급수·DFT와의 관계, 불확정성 원리·Laplace 변환·Mellin 변환(note). 중심 정리: 반전 정리, Plancherel, Poisson 합 공식
 
-넣지 않은 것: 적분의 점근 계산(Laplace 방법, 최급강하법)은 10권 앞머리에서 완전 증명으로. 함수해석, 초함수는 다루지 않는다.
+옛 21장 목차와의 차이: 1장 범위를 공리에서 구성으로; 2장 Metric Spaces → Metric and Normed Spaces(완비화, 축약 사상 정리를 옛 8장에서 옮김, 유계 선형 사상; 노름 동치는 3장으로); 3장 Continuity and Compactness → Compactness and Connectedness(노름 동치, Riesz 보조정리, Baire, GL_n의 성분); 옛 4장 Differentiation 삭제(1권 6·8장이 전부 증명), 옛 5장 The Riemann Integral은 새 6장 Monotone Functions, Bounded Variation, and the Riemann–Stieltjes Integral로 바꿈; 옛 6장 Sequences and Series of Functions를 4장 Uniform Convergence와 5장 Approximation and Equicontinuity로 나눔; 7장 Differentiation in R^n → Differential Calculus in Normed Spaces; 8장 Fixed Points and Existence Theorems → Fixed Points and Differential Equations; 12장 Series Representations → Series Representations and Analytic Continuation; 13장에 Rouché 응용과 행렬 해석 함수 연산, 15장에 zeta, 16장에 Lebesgue–Stieltjes 측도와 π–λ; 19장 Product Measures → Product Measures and Change of Variables(옛 21장의 변수 변환을 옮김); 21장은 Lebesgue 미분 정리와 L^p 쌍대를 넣음; 새 22장 Hilbert Spaces and Compact Operators, 새 23장 The Fourier Transform. 장 수 21 → 23(9 + 6 + 8).
 
-## 3권 Probability and Statistics 장 목차 (초안, 20장)
+넣지 않은 것: 적분의 점근 계산(Laplace 방법, 최급강하법)은 11권 앞머리에서 완전 증명으로. 함수해석 일반(Hahn–Banach, 열린 사상·균등 유계성 원리, 약위상, 비유계 연산자의 스펙트럼 정리)과 초함수는 다루지 않는다(2026-11-27: 옛 금지문 "함수해석, 초함수는 다루지 않는다"를 이렇게 좁히고 22장 한 장만 둔다). 기호 결정(D15)은 3권을 시작할 때 v3-00-preparation.md E의 추천안으로 Notation을 짠다.
+
+## 4권 Probability and Statistics 장 목차 (초안, 20장)
 
 ### Part I Probability
 1. Probability Spaces — 공리, 셈 모형, 조건부 확률과 Bayes 정리, 사건의 독립
@@ -352,9 +366,9 @@ Part II Graphics
 19. Nonparametric Methods — 순위와 순열 검정, Kolmogorov–Smirnov, 붓스트랩
 20. Bayesian Inference — 사전·사후 분포, 켤레족, 신용 구간, 결정 이론의 기초
 
-넣지 않은 것: 마팅게일, 연속 시간 과정은 note 상자. 다중 비교와 검정별 분포는 14권, GLM은 15권.
+넣지 않은 것: 마팅게일, 연속 시간 과정은 note 상자. 다중 비교와 검정별 분포는 15권, GLM은 16권.
 
-## 4권 Computing 장 목차 (초안, 24장)
+## 5권 Computing 장 목차 (초안, 24장)
 
 ### Part I Data Structures
 1. Abstract Data Types and Cost — 추상 자료형, 비용 모형, 분할상환 분석
@@ -386,11 +400,11 @@ Part II Graphics
 23. From Source to Execution — 컴파일과 링크, 인터프리터, 메모리 관리, 운영 체제의 기초
 24. Language Interoperability — 호출 규약, 외부 함수 인터페이스, 객체 모델과 참조 계수
 
-넣지 않은 것: k-d 트리 같은 공간 자료구조는 16권, 부동소수점의 오차 해석은 5권.
+넣지 않은 것: k-d 트리 같은 공간 자료구조는 17권, 부동소수점의 오차 해석은 6권.
 
 
 ## 별권 Excursions — 특별 장 모음 (이름 확정 2026-11-26) (2026-11-26 사용자와 논의해 정함)
-책의 본래 내용과 무관하게, 사용자가 평소 관심 있게 생각하는 주제들을 모은 권. 예비 네 권 뒤(4권 이후)에 둔다. 번호 없는 별권으로 둔다(2026-11-26 확정): 이름만 "Excursions"이고 주제 권의 번호(5–16권)는 그대로다. 본문에서 가리킬 때는 "the Excursions volume"처럼 이름으로 부른다. 집필은 4권을 다 쓴 뒤.
+책의 본래 내용과 무관하게, 사용자가 평소 관심 있게 생각하는 주제들을 모은 권. 예비 다섯 권 뒤(5권 이후)에 둔다. 번호 없는 별권으로 둔다(2026-11-26 확정): 이름만 "Excursions"이고 주제 권의 번호(6–17권)는 그대로다. 본문에서 가리킬 때는 "the Excursions volume"처럼 이름으로 부른다. 집필은 5권을 다 쓴 뒤.
 
 방식: 리뷰 권과 같되 수학 교양서처럼 쓴다. 결과의 함의와 의미를 충분히 서술하고, 도입·일화·역사·곁이야기를 note 상자가 아니라 본문에서 풀어낸다(이 권에만 허용하는 예외; 서술체 허용). 증명을 대충 한다는 뜻이 아니다: 장마다 중심 정리 하나는 완전히 증명하고 나머지는 진술 + 줄거리 + 참고 문헌. 일화는 출처가 불확실한 것이 많으므로 인용 검증을 본문 권보다 더 엄격히 한다. 장마다 stardust(공용 빌드)로 돌린 작은 모의실험 절을 둔다. 장 단위는 주제 하나에 장 하나를 기본으로 하고, 같은 원리인 것만 합친다. 분량 제한 없음.
 
@@ -399,7 +413,7 @@ Part II Graphics
 (추가) = 메인이 추천해 사용자가 받아들인 주제.
 
 ### Part A — Love and Choice
-1. The Romeo and Juliet Equations — 2×2 선형계와 위상 평면(1권 25장)
+1. The Romeo and Juliet Equations — 2×2 선형계와 위상 평면(2권 13장)
 2. When to Stop — 비서 문제와 1/e 규칙, 변형(되돌아가기, 전체 정보), Bruss의 odds 정리, (추가) prophet 부등식
 3. Stable Marriage — Gale–Shapley, 제안하는 쪽 최적성, 전략적 조작, 병원–전공의 매칭, 룸메이트 문제의 반례
 4. Becker's Marriage Market — 배정 문제와 쌍대성, 초모듈성 ⇒ 끼리끼리 짝, 최적 수송과의 연결
@@ -439,5 +453,5 @@ Part II Graphics
 30. The Continuum Hypothesis — Cantor의 물음(1권 2장의 대각선 논법에서 이어짐), Hilbert의 첫째 문제, Gödel(1940)의 무모순성과 Cohen(1963)의 독립성, "참도 거짓도 증명할 수 없다"는 것의 뜻(29장의 불완전성 바로 뒤에 둔다; 2026-11-26 사용자 추가)
 
 ## 아직 정하지 않은 것
-- 1–16권 장 목차의 세부(초안 확인 대기). 주제 권은 공용 빌드의 공개 API 목록과 대조가 남았다.
+- 1–17권 장 목차의 세부(초안 확인 대기). 주제 권은 공용 빌드의 공개 API 목록과 대조가 남았다.
 - 집필 순서

@@ -500,133 +500,133 @@
 
 ## 목차 대조
 
-OUTLINE.md "주제 권 장 목차"(5–16권)의 장 줄에 백틱으로 적힌 이름(약어 `ttest_*` 등은 와일드카드로 풀었다)과 위 목록을 기계적으로 견준 뒤, 장 제목·설명이 분명히 다루는 것(예: 6.8의 "산술·비교·논리·비트", 10.11·10.17의 "와 역함수", "비중심 꼴", 13.5의 "Continuous Distributions")은 손으로 걸렀다. 완료 영역만 대상이다.
+OUTLINE.md "주제 권 장 목차"(6–17권)의 장 줄에 백틱으로 적힌 이름(약어 `ttest_*` 등은 와일드카드로 풀었다)과 위 목록을 기계적으로 견준 뒤, 장 제목·설명이 분명히 다루는 것(예: 7.8의 "산술·비교·논리·비트", 11.11·11.17의 "와 역함수", "비중심 꼴", 14.5의 "Continuous Distributions")은 손으로 걸렀다. 완료 영역만 대상이다.
 
 ### (a) 어느 장도 분명히 다루지 않는 공개 API
 
 표기: **[주제 없음]** = 그 내용 자체가 목차에 없다(절을 새로 넣거나 새 장이 필요). 표시 없는 줄 = 장의 주제에는 들어 있으나 장 줄의 API 목록에 이름이 없다(목록에 더하면 된다).
 
-**6권 Arrays (`sd`)**
-- 6.2: `string`(다섯째 dtype; 장 줄은 넷만 적음), `isdtype`, 상수 `e pi inf nan`, 결과 `FinfoResult IinfoResult`
-- 6.3: `empty zeros_like ones_like empty_like full_like diag tril triu block`
-- 6.4: `matrix_transpose moveaxis squeeze expand_dims unstack`
-- 6.5: `newaxis`; 6.10: `count_nonzero`
-- 6.6: `broadcast_to broadcast_arrays`
-- 6.7: `get_num_threads`
-- 6.8: 산술·비교·논리·비트 함수 전부(`add … bitwise_right_shift`, `maximum minimum isnan isinf isfinite real imag conj reciprocal signbit sign abs square`)와 반올림 `floor ceil trunc round`, `sqrt`(정확히 반올림되는 연산이므로 5권 또는 6.8), `deg2rad rad2deg`
-- 6.9: `argmin argmax`, `nanargmin nanargmax`(`nan*`에 들어 있음)
-- **[주제 없음]** `diff`(이웃 차분, n차): 6.9나 6.4에 절 추천
-- 6.11: 결과 `UniqueAllResult UniqueCountsResult UniqueInverseResult`; 6.10: `HistogramResult`
-- `ndarray`의 메서드·속성(`T mT base itemsize nbytes strides tolist copy` 등): 6.1
-- **[주제 없음]** 10.5 또는 10.12: `logaddexp`(배열 영역의 로그 합; `logsumexp`와 짝)
+**7권 Arrays (`sd`)**
+- 7.2: `string`(다섯째 dtype; 장 줄은 넷만 적음), `isdtype`, 상수 `e pi inf nan`, 결과 `FinfoResult IinfoResult`
+- 7.3: `empty zeros_like ones_like empty_like full_like diag tril triu block`
+- 7.4: `matrix_transpose moveaxis squeeze expand_dims unstack`
+- 7.5: `newaxis`; 7.10: `count_nonzero`
+- 7.6: `broadcast_to broadcast_arrays`
+- 7.7: `get_num_threads`
+- 7.8: 산술·비교·논리·비트 함수 전부(`add … bitwise_right_shift`, `maximum minimum isnan isinf isfinite real imag conj reciprocal signbit sign abs square`)와 반올림 `floor ceil trunc round`, `sqrt`(정확히 반올림되는 연산이므로 6권 또는 7.8), `deg2rad rad2deg`
+- 7.9: `argmin argmax`, `nanargmin nanargmax`(`nan*`에 들어 있음)
+- **[주제 없음]** `diff`(이웃 차분, n차): 7.9나 7.4에 절 추천
+- 7.11: 결과 `UniqueAllResult UniqueCountsResult UniqueInverseResult`; 7.10: `HistogramResult`
+- `ndarray`의 메서드·속성(`T mT base itemsize nbytes strides tolist copy` 등): 7.1
+- **[주제 없음]** 11.5 또는 11.12: `logaddexp`(배열 영역의 로그 합; `logsumexp`와 짝)
 
-**7권 Data Frames (`sd.frame`)**
-- 7.12: `read_csv`(장 제목이 다룸, 이름만 없음)
-- 7.7: `count nunique head tail`, `isnan notna`(7.2)
-- 7.9: `GroupBy`의 `first last size count`
-- 7.4: `Index.equals`, `is_unique`
-- **[주제 없음]** `Series.to_array DataFrame.to_array to_numpy`(배열과의 경계, 복사 없는 읽기 전용 뷰와 F-order 행렬): 7.1 또는 6.14에 절 추천
+**8권 Data Frames (`sd.frame`)**
+- 8.12: `read_csv`(장 제목이 다룸, 이름만 없음)
+- 8.7: `count nunique head tail`, `isnan notna`(8.2)
+- 8.9: `GroupBy`의 `first last size count`
+- 8.4: `Index.equals`, `is_unique`
+- **[주제 없음]** `Series.to_array DataFrame.to_array to_numpy`(배열과의 경계, 복사 없는 읽기 전용 뷰와 F-order 행렬): 8.1 또는 7.14에 절 추천
 
-**8권 Dense Linear Algebra (`sd.linalg`)**
-- 8.3: `diagonal kronsum block_diag`
-- 8.5: `bandwidth`(`BandwidthResult`)
-- 8.4: `LinAlgError`(특이 행렬의 처리)
+**9권 Dense Linear Algebra (`sd.linalg`)**
+- 9.3: `diagonal kronsum block_diag`
+- 9.5: `bandwidth`(`BandwidthResult`)
+- 9.4: `LinAlgError`(특이 행렬의 처리)
 
-**9권 Sparse Matrices and Graphs**
-- 9.1: `sparray issparse`, 형식 메서드(`tocsr tocsc tocoo todok asformat sum_duplicates eliminate_zeros has_canonical_format`)
-- 9.2: `block_array block_diag kronsum tril triu find matrix_transpose`, 메서드 `setdiag diagonal trace resize reshape`
-- 9.3: 원소별 메서드(`sin sqrt expm1 … power multiply maximum minimum`)와 리덕션 메서드(`sum mean max min argmax nanmax count_nonzero`)
-- 9.4: `inv spsolve_triangular is_sptriangular spbandwidth`, 결과 `SparseLU`
-- 9.5: `aslinearoperator`
-- 9.6–9.8: 결과 `CgResult GmresResult MinresResult BicgstabResult LsqrResult LsmrResult EigshResult EigsResult SvdsResult`; 9.9: `OnenormestResult`
-- 9.10: `csgraph_from_dense csgraph_to_dense`(변환 도구)
-- 9.11: `construct_dist_matrix reconstruct_path NegativeCycleError`
-- 9.12: `min_weight_full_bipartite_matching`
-- 9.13: `biconnected_components`
+**10권 Sparse Matrices and Graphs**
+- 10.1: `sparray issparse`, 형식 메서드(`tocsr tocsc tocoo todok asformat sum_duplicates eliminate_zeros has_canonical_format`)
+- 10.2: `block_array block_diag kronsum tril triu find matrix_transpose`, 메서드 `setdiag diagonal trace resize reshape`
+- 10.3: 원소별 메서드(`sin sqrt expm1 … power multiply maximum minimum`)와 리덕션 메서드(`sum mean max min argmax nanmax count_nonzero`)
+- 10.4: `inv spsolve_triangular is_sptriangular spbandwidth`, 결과 `SparseLU`
+- 10.5: `aslinearoperator`
+- 10.6–10.8: 결과 `CgResult GmresResult MinresResult BicgstabResult LsqrResult LsmrResult EigshResult EigsResult SvdsResult`; 10.9: `OnenormestResult`
+- 10.10: `csgraph_from_dense csgraph_to_dense`(변환 도구)
+- 10.11: `construct_dist_matrix reconstruct_path NegativeCycleError`
+- 10.12: `min_weight_full_bipartite_matching`
+- 10.13: `biconnected_components`
 
-**10권 Elementary and Special Functions (`sd.special`)**
-- 10.9: `erfcinv ndtri_exp`
-- 10.10: `rgamma betaln loggamma`
-- 10.11: `gammaincinv gammainccinv betaincc betaincinv betainccinv`(장 줄의 "역함수"가 다룸)
-- 10.12: `log_expit xlog1py rel_entr log_softmax`
-- 10.14: 지수 배율 판 `i0e i1e k0e k1e`; 10.15: `jve yve ive kve`
-- 10.17: `stdtrit chdtrc chdtri fdtrc fdtri pdtrc bdtrc`, **`nbdtr nbdtrc`(음이항; 장 줄의 다섯 계열에 없음)**, 비중심 `chndtr chndtrc chndtrix nctdtr nctdtrc nctdtrit ncfdtr ncfdtrc ncfdtri`
-- **[주제 없음]** 복소수 인자: `erf erfc erfcx lambertw wofz loggamma`의 복소 판(README가 따로 적는 기능). 10.8이나 각 장에 복소 계산 절 추천
-- `airy`의 결과 `AiryResult`: 10.15
+**11권 Elementary and Special Functions (`sd.special`)**
+- 11.9: `erfcinv ndtri_exp`
+- 11.10: `rgamma betaln loggamma`
+- 11.11: `gammaincinv gammainccinv betaincc betaincinv betainccinv`(장 줄의 "역함수"가 다룸)
+- 11.12: `log_expit xlog1py rel_entr log_softmax`
+- 11.14: 지수 배율 판 `i0e i1e k0e k1e`; 11.15: `jve yve ive kve`
+- 11.17: `stdtrit chdtrc chdtri fdtrc fdtri pdtrc bdtrc`, **`nbdtr nbdtrc`(음이항; 장 줄의 다섯 계열에 없음)**, 비중심 `chndtr chndtrc chndtrix nctdtr nctdtrc nctdtrit ncfdtr ncfdtrc ncfdtri`
+- **[주제 없음]** 복소수 인자: `erf erfc erfcx lambertw wofz loggamma`의 복소 판(README가 따로 적는 기능). 11.8이나 각 장에 복소 계산 절 추천
+- `airy`의 결과 `AiryResult`: 11.15
 
-**11권 Approximation and Numerical Calculus**
-- 11.1: `barycentric_interpolate krogh_interpolate`
-- 11.3: `CubicHermiteSpline pchip_interpolate`
-- 11.4: `PPoly.from_spline`, `BSpline`의 `design_matrix insert_knot from_power_basis basis_element`
-- 11.5: `interpn NearestNDInterpolator CloughTocher2DInterpolator`(뒤의 둘과 `LinearNDInterpolator griddata`는 16권의 `Delaunay`에 기대므로 순서 주의)
-- 11.7: `cumulative_trapezoid cumulative_simpson`
-- 11.12–11.13: 다차원·역변환 `ifft2 ifftn rfft2 irfft2 rfftn irfftn hfft2 ihfft2 hfftn ihfftn ihfft idct idst dctn idctn dstn idstn`
-- 11.14: `fhtoffset`
-- **[주제 없음]** 11.11 또는 11.12: 도우미 `fftfreq rfftfreq fftshift ifftshift next_fast_len prev_fast_len`(특히 `next_fast_len`은 혼합 기수 길이 고르기와 이어짐)
-- **[주제 없음]** 최소제곱 스플라인과 매듭 고르기 `make_lsq_spline make_splrep make_splprep generate_knots`(FITPACK 계열): 11.4 또는 11.16에 절 추천
-- 11.17: 대역폭 규칙 `bw_scott bw_silverman bw_nrd0 bw_nrd bw_sj bw_isj bw_cv_ls bw_cv_ml bw_dpill`("대역폭 선택"이 다룸), 결과 `KDEResult`(`marginal cdf sample`) `DensityResult`
-- 11.15–11.17: 결과 `LowessResult LoessResult SmoothingSplineResult PSplineResult KernelRegressionResult`의 `predict_interval`
+**12권 Approximation and Numerical Calculus**
+- 12.1: `barycentric_interpolate krogh_interpolate`
+- 12.3: `CubicHermiteSpline pchip_interpolate`
+- 12.4: `PPoly.from_spline`, `BSpline`의 `design_matrix insert_knot from_power_basis basis_element`
+- 12.5: `interpn NearestNDInterpolator CloughTocher2DInterpolator`(뒤의 둘과 `LinearNDInterpolator griddata`는 17권의 `Delaunay`에 기대므로 순서 주의)
+- 12.7: `cumulative_trapezoid cumulative_simpson`
+- 12.12–12.13: 다차원·역변환 `ifft2 ifftn rfft2 irfft2 rfftn irfftn hfft2 ihfft2 hfftn ihfftn ihfft idct idst dctn idctn dstn idstn`
+- 12.14: `fhtoffset`
+- **[주제 없음]** 12.11 또는 12.12: 도우미 `fftfreq rfftfreq fftshift ifftshift next_fast_len prev_fast_len`(특히 `next_fast_len`은 혼합 기수 길이 고르기와 이어짐)
+- **[주제 없음]** 최소제곱 스플라인과 매듭 고르기 `make_lsq_spline make_splrep make_splprep generate_knots`(FITPACK 계열): 12.4 또는 12.16에 절 추천
+- 12.17: 대역폭 규칙 `bw_scott bw_silverman bw_nrd0 bw_nrd bw_sj bw_isj bw_cv_ls bw_cv_ml bw_dpill`("대역폭 선택"이 다룸), 결과 `KDEResult`(`marginal cdf sample`) `DensityResult`
+- 12.15–12.17: 결과 `LowessResult LoessResult SmoothingSplineResult PSplineResult KernelRegressionResult`의 `predict_interval`
 
-**12권 Optimization (`sd.optimize`)**
-- **[주제 없음]** `approx_fprime check_grad`(고정 간격 유한 차분 기울기와 검사): 11.6과 묶거나 12.5 앞에 절 추천
-- 12.5–12.8: `minimize`(장들이 방법을 다루지만 함수 이름이 어느 장 줄에도 없음; 12.5에 적기 추천)
+**13권 Optimization (`sd.optimize`)**
+- **[주제 없음]** `approx_fprime check_grad`(고정 간격 유한 차분 기울기와 검사): 12.6과 묶거나 13.5 앞에 절 추천
+- 13.5–13.8: `minimize`(장들이 방법을 다루지만 함수 이름이 어느 장 줄에도 없음; 13.5에 적기 추천)
 - 공통: `OptimizeResult`
 
-**13권 Random Numbers and Distributions**
-- 13.2: `Generator`의 `spawn state choice permutation integers`
-- 13.4: `ContinuousDistribution DiscreteDistribution`, 메서드 `logpdf logcdf logccdf ilogcdf ilogccdf iccdf support mode median entropy skewness kurtosis`
-- 13.5·13.6·13.7: 분포 클래스 31개(장 제목이 다룸)
-- 13.8: `MultivariateT Multinomial InverseWishart MatrixNormal`, `CdfResult`(`cdf(..., return_error=True)`; d ≤ 3 정규는 정확한 공식, 그 밖은 Genz의 준몬테카를로. **[주제 없음]** 다변량 cdf 계산의 절 추천)
-- 13.9: `zscore sem iqr mode entropy differential_entropy`, 결과 `DescribeResult ModeResult`
+**14권 Random Numbers and Distributions**
+- 14.2: `Generator`의 `spawn state choice permutation integers`
+- 14.4: `ContinuousDistribution DiscreteDistribution`, 메서드 `logpdf logcdf logccdf ilogcdf ilogccdf iccdf support mode median entropy skewness kurtosis`
+- 14.5·14.6·14.7: 분포 클래스 31개(장 제목이 다룸)
+- 14.8: `MultivariateT Multinomial InverseWishart MatrixNormal`, `CdfResult`(`cdf(..., return_error=True)`; d ≤ 3 정규는 정확한 공식, 그 밖은 Genz의 준몬테카를로. **[주제 없음]** 다변량 cdf 계산의 절 추천)
+- 14.9: `zscore sem iqr mode entropy differential_entropy`, 결과 `DescribeResult ModeResult`
 
-**14권 Statistical Inference (`sd.htest`)**
-- 14.2: `alexandergovern`
-- 14.3: `power_divergence skewtest kurtosistest normaltest jarque_bera`
-- 14.4: `ranksums brunnermunzel ansari mood median_test page_trend_test`
-- 14.5: `cramervonmises_2samp bws_test`
-- 14.6: `spearmanrho pointbiserialr weightedtau chatterjeexi multiscale_graphcorr`
-- 14.7: `boschloo_exact cochrans_q odds_ratio relative_risk`
-- 14.8: `quantile_test poisson_means_test test_proportions_2indep confint_proportions_2indep`
-- 14.9: `false_discovery_control`
-- 14.10: `PermutationMethod MonteCarloMethod BootstrapMethod goodness_of_fit`
-- 결과 클래스 64개(`__all__` 밖)의 공통 꼴과 `summary`: 14.1이나 권 머리
+**15권 Statistical Inference (`sd.htest`)**
+- 15.2: `alexandergovern`
+- 15.3: `power_divergence skewtest kurtosistest normaltest jarque_bera`
+- 15.4: `ranksums brunnermunzel ansari mood median_test page_trend_test`
+- 15.5: `cramervonmises_2samp bws_test`
+- 15.6: `spearmanrho pointbiserialr weightedtau chatterjeexi multiscale_graphcorr`
+- 15.7: `boschloo_exact cochrans_q odds_ratio relative_risk`
+- 15.8: `quantile_test poisson_means_test test_proportions_2indep confint_proportions_2indep`
+- 15.9: `false_discovery_control`
+- 15.10: `PermutationMethod MonteCarloMethod BootstrapMethod goodness_of_fit`
+- 결과 클래스 64개(`__all__` 밖)의 공통 꼴과 `summary`: 15.1이나 권 머리
 
-**15권 Statistical Models (`sd.regression`)**
-- 15.1: 결과 `OLSResult WLSResult GLSResult`, `predict_interval`, `cov_type`, `TTestResult`
-- 15.2: 진단·명세 검정 `breusch_pagan white_test goldfeld_quandt reset_test jarque_bera durbin_watson vif`, 영향력 `leverage cooks_distance dfbetas dffits resid_studentized_*`, 모형 비교 `t_test wald_test compare_f_test compare_lr_test`, 결과 `AnovaResult WaldTestResult CompareFTestResult CompareLRTestResult WhiteTestResult GoldfeldQuandtResult ResetTestResult BreuschPaganResult JarqueBeraResult`
-- 15.3: `GLMResult`(`separation pseudo_rsquared` 등)
-- 15.4: `penalized_glm`(정규화 GLM; 장 줄에 없음), 결과 `RidgeResult … ElasticNetCVResult PenalizedGLMResult`
-- 15.5: `siegelslopes`, 결과 `RLMResult TheilslopesResult SiegelslopesResult QuantRegResult`
-- 15.6: 결과 `NLSResult StepwiseResult BestSubsetResult SelectionStep SkippedFit SkippedSubset`
-- **[주제 없음]** 영역을 넘는 결과 객체와 `summary()`(회귀·검정·최적화·평활이 함께 쓰는 상자 꼴 렌더러, 읽기 전용 배열): 15.1이나 6.13에 절 추천
+**16권 Statistical Models (`sd.regression`)**
+- 16.1: 결과 `OLSResult WLSResult GLSResult`, `predict_interval`, `cov_type`, `TTestResult`
+- 16.2: 진단·명세 검정 `breusch_pagan white_test goldfeld_quandt reset_test jarque_bera durbin_watson vif`, 영향력 `leverage cooks_distance dfbetas dffits resid_studentized_*`, 모형 비교 `t_test wald_test compare_f_test compare_lr_test`, 결과 `AnovaResult WaldTestResult CompareFTestResult CompareLRTestResult WhiteTestResult GoldfeldQuandtResult ResetTestResult BreuschPaganResult JarqueBeraResult`
+- 16.3: `GLMResult`(`separation pseudo_rsquared` 등)
+- 16.4: `penalized_glm`(정규화 GLM; 장 줄에 없음), 결과 `RidgeResult … ElasticNetCVResult PenalizedGLMResult`
+- 16.5: `siegelslopes`, 결과 `RLMResult TheilslopesResult SiegelslopesResult QuantRegResult`
+- 16.6: 결과 `NLSResult StepwiseResult BestSubsetResult SelectionStep SkippedFit SkippedSubset`
+- **[주제 없음]** 영역을 넘는 결과 객체와 `summary()`(회귀·검정·최적화·평활이 함께 쓰는 상자 꼴 렌더러, 읽기 전용 배열): 16.1이나 7.13에 절 추천
 
-**16권 Geometry and Graphics**
-- 16.1: 거리 함수 14개 `braycurtis canberra chebyshev cityblock correlation cosine euclidean hamming haversine jaccard mahalanobis minkowski seuclidean sqeuclidean`(장 제목이 다룸)
-- 16.2: `KDTree`의 `query query_ball_point query_ball_tree query_pairs count_neighbors sparse_distance_matrix`, 결과 `QueryResult RadiusResult`
-- 16.4: `Delaunay.find_simplex vertex_neighbor_vertices transform`
-- 16.6: `Figure`의 꾸밈과 배치 `title xlabel ylabel zlabel xlim ylim xscale yscale xticks yticks legend inset twin grid facet`, `save to_pdf to_png to_svg`(16.11)
-- 16.8: `polar region`
-- 16.9: `heatmap hexbin hist2d strip distribution pairs`
-- 16.10: `parametric_surface`
-- **[주제 없음]** 기본 표시 `scatter bar errorbar area step hline vline text annotate`: 어느 장 줄에도 없다. 16.6을 늘리거나 "Basic Marks" 새 장 추천
-- **[주제 없음]** 벡터장과 위상 그림 `phase vectorfield streamlines`: 16.8에 절 또는 새 장 추천
-- **[주제 없음]** 모형·검정 결과의 그림 `coefficients diagnostics`, `Figure.fit Figure.compare`(회귀선, 검정 괄호): 16.9에 절 추천(15·14권과 이어짐)
+**17권 Geometry and Graphics**
+- 17.1: 거리 함수 14개 `braycurtis canberra chebyshev cityblock correlation cosine euclidean hamming haversine jaccard mahalanobis minkowski seuclidean sqeuclidean`(장 제목이 다룸)
+- 17.2: `KDTree`의 `query query_ball_point query_ball_tree query_pairs count_neighbors sparse_distance_matrix`, 결과 `QueryResult RadiusResult`
+- 17.4: `Delaunay.find_simplex vertex_neighbor_vertices transform`
+- 17.6: `Figure`의 꾸밈과 배치 `title xlabel ylabel zlabel xlim ylim xscale yscale xticks yticks legend inset twin grid facet`, `save to_pdf to_png to_svg`(17.11)
+- 17.8: `polar region`
+- 17.9: `heatmap hexbin hist2d strip distribution pairs`
+- 17.10: `parametric_surface`
+- **[주제 없음]** 기본 표시 `scatter bar errorbar area step hline vline text annotate`: 어느 장 줄에도 없다. 17.6을 늘리거나 "Basic Marks" 새 장 추천
+- **[주제 없음]** 벡터장과 위상 그림 `phase vectorfield streamlines`: 17.8에 절 또는 새 장 추천
+- **[주제 없음]** 모형·검정 결과의 그림 `coefficients diagnostics`, `Figure.fit Figure.compare`(회귀선, 검정 괄호): 17.9에 절 추천(16·15권과 이어짐)
 
 ### (b) 목차에 있으나 이 빌드에 없는 이름
 
 | 장 | 목차의 이름 | 실제 | 현재 이름 |
 |---|---|---|---|
-| 7.8 | `unique` | `Series`·`DataFrame`에 `unique` 없음 | `Series.unique_values` (배열 영역의 Array API 이름과 맞춘 것) |
-| 6.13 | `repr`·`str` | 공개 API 이름이 아니라 Python 프로토콜 | `ndarray.__repr__`·`__str__` (그대로 두어도 됨) |
+| 8.8 | `unique` | `Series`·`DataFrame`에 `unique` 없음 | `Series.unique_values` (배열 영역의 Array API 이름과 맞춘 것) |
+| 7.13 | `repr`·`str` | 공개 API 이름이 아니라 Python 프로토콜 | `ndarray.__repr__`·`__str__` (그대로 두어도 됨) |
 
-- 그 밖의 백틱 이름은 모두 있다. `agg`(7.9)는 `__all__` 밖의 `GroupBy.agg`, `pdf cdf ccdf icdf`(13.4)는 분포 메서드, `sd.interp`(11.3)는 최상위에 있다.
+- 그 밖의 백틱 이름은 모두 있다. `agg`(8.9)는 `__all__` 밖의 `GroupBy.agg`, `pdf cdf ccdf icdf`(14.4)는 분포 메서드, `sd.interp`(12.3)는 최상위에 있다.
 - 장 설명의 방법 이름도 맞다: Nelder–Mead·BFGS·L-BFGS-B·Newton-CG·trust 방법(`minimize`), Philox(`Generator`), ziggurat(`csrc/stats/sample_dist.hpp`의 정규·지수 표본), Eisel–Lemire(`csrc/frame/ops/parse.hpp`).
-- 참고: 5.7의 "최단 왕복 출력(Ryū)"은 stardust가 직접 구현하지 않고 `std::to_chars`(libc++)에 맡긴다(`csrc/frame/ops/cast.cpp`). 소스에 "Ryu"라는 말은 없다. 그 장은 libc++의 알고리즘을 설명해야 한다.
+- 참고: 6.7의 "최단 왕복 출력(Ryū)"은 stardust가 직접 구현하지 않고 `std::to_chars`(libc++)에 맡긴다(`csrc/frame/ops/cast.cpp`). 소스에 "Ryu"라는 말은 없다. 그 장은 libc++의 알고리즘을 설명해야 한다.
 
 ### (c) 빼야 할 장·권, 권이 없는 영역
 
-- **15.7 Hierarchical Clustering, 15.8 Partitioning and Density-Based Clustering**: `sd.cluster`는 이 커밋에서 설계만 있고 구현 전(CL0 시작 전)이다. 빼야 한다.
-- **15.9 Embedding and Classification**: `sd.embed`, `sd.classify`는 계획만 있다. 빼야 한다.
-- 그러면 15권은 `sd.regression`만의 6장이 된다. 권 표의 제목 "Statistical Models and Learning"과 영역 칸의 `sd.cluster`, `(embed, classify)`, 장 수 "(9장+)"도 고쳐야 한다(예: "Statistical Models", 6장).
-- 완료된 영역 가운데 권이 없는 것은 없다. 완료 17개 이름공간(`sd linalg frame special stats random regression optimize htest sparse integrate differentiate spatial graph interpolate fft smooth plot`)이 모두 5–16권 어딘가에 배정되어 있다.
+- **16.7 Hierarchical Clustering, 16.8 Partitioning and Density-Based Clustering**: `sd.cluster`는 이 커밋에서 설계만 있고 구현 전(CL0 시작 전)이다. 빼야 한다.
+- **16.9 Embedding and Classification**: `sd.embed`, `sd.classify`는 계획만 있다. 빼야 한다.
+- 그러면 16권은 `sd.regression`만의 6장이 된다. 권 표의 제목 "Statistical Models and Learning"과 영역 칸의 `sd.cluster`, `(embed, classify)`, 장 수 "(9장+)"도 고쳐야 한다(예: "Statistical Models", 6장).
+- 완료된 영역 가운데 권이 없는 것은 없다. 완료 17개 이름공간(`sd linalg frame special stats random regression optimize htest sparse integrate differentiate spatial graph interpolate fft smooth plot`)이 모두 6–17권 어딘가에 배정되어 있다.
 - 다만 영역 안의 기능 가운데 장이 없는 것은 (a)의 **[주제 없음]** 줄이다: `optimize`의 유한 차분 기울기, 영역을 넘는 결과 객체와 `summary()`, 배열–프레임 경계(`to_array`), 다변량 cdf의 적분, FITPACK 계열 스플라인, FFT 도우미, 복소 특수함수, `plot`의 기본 표시·벡터장·모형 그림, `diff`, `logaddexp`.

@@ -1,0 +1,1172 @@
+%% Volume II, Chapter 4: Linear Maps
+\chapter{Linear Maps}
+\label{ch:linear-maps}
+
+\abstract{Differentiating a polynomial, integrating a function, rotating a picture, sampling a signal at a few points, taking the differences of a time series: most operations of scientific computing are linear maps. A matrix records such a map, but only after a basis has been chosen for the inputs and another for the outputs, and different choices give different matrices of the same map. Two dimensions belong to every map, that of what it annihilates and that of what it produces, and they always add up to the dimension of its domain. A well-chosen basis can make the matrix strikingly simple, and the search for such bases drives the rest of linear algebra.}
+
+\Cref{ch:vectors-matrices} showed that the linear maps from $\mathbb R^n$ to $\mathbb R^m$ are exactly the maps $\mathbf x\mapsto A\mathbf x$ given by $m\times n$ matrices (\cref{thm:matrices-linear-maps}), and it derived the product of matrices from the composition of such maps (\cref{thm:product-composition}). \Cref{ch:vector-spaces} then replaced the lists of numbers by abstract vector spaces: polynomials, functions, sequences and matrices, all of which can be added and multiplied by scalars. This chapter brings the two together. It studies the maps between vector spaces that respect addition and multiplication by scalars, and it shows that once a basis is chosen in each space, every such map between finite-dimensional spaces becomes a matrix. The guiding idea is to keep the map and its matrix apart. The map is the object of interest, differentiation of polynomials say; the matrix is a record of it in particular coordinates, and the same map has many matrices, one for each choice of bases. Some of these matrices are much simpler than others, and finding a basis in which the matrix of a given map is simple is one of the central problems of linear algebra.
+
+Several statements of the previous chapters were announced for this one. The rank--nullity theorem, which \cref{thm:four-dimensions} proved for matrices, takes its general form $\dim V=\dim\ker T+\dim\operatorname{im}T$ for a linear map $T$ defined on a finite-dimensional space $V$, and it shows that a linear map of a finite-dimensional space to itself is injective if and only if it is surjective, the fact that \cref{sec:inverse} found to fail in infinite dimensions. The coordinate maps of \cref{sec:coordinates} become isomorphisms, and the change-of-basis matrices of \cref{thm:change-of-basis} tell us how the matrix of a map changes with the bases; this leads to the notions of equivalent and of similar matrices. The rank of a product, which \cref{prop:rank-sum} bounded through column spaces, is bounded again through null spaces and sharpened to the inequalities of Sylvester and Frobenius. The quotient spaces of the note in \cref{sec:basis-dimension} receive a proper treatment, and they explain why the solution sets of the systems $A\mathbf x=\mathbf b$ and the right-hand sides $\mathbf b\in\mathcal C(A)$ form spaces of the same dimension.
+
+As in \cref{ch:vector-spaces}, $\mathbb F$ denotes either $\mathbb R$ or $\mathbb C$, and everything holds for both fields with the same proofs. Most results concern finite-dimensional spaces, and the infinite-dimensional examples, spaces of functions and of sequences, serve mainly to show which statements depend on finite dimension. Determinants and eigenvalues are not used; they are the subjects of \cref{ch:determinants,ch:eigenvalues}, and we indicate along the way where they will enter. Every result of the chapter is proved.
+
+The chapter is organised as follows. \Cref{sec:linear-maps} defines linear maps, collects examples and shows that a linear map is determined by its values on a basis, and \cref{sec:kernel-image} introduces the kernel and the image. \Cref{sec:rank-nullity} proves the rank--nullity theorem and draws its consequences, among them existence theorems obtained from uniqueness by counting dimensions. \Cref{sec:isomorphisms} treats isomorphisms, \cref{sec:matrix-of-map} the matrix of a linear map with respect to two bases, and \cref{sec:change-of-basis-maps,sec:similarity} the effect of a change of basis, for maps between two spaces and for maps of a space to itself. \Cref{sec:rank-inequalities} proves the inequalities for the rank of a product and studies the powers of a single map, \cref{sec:invariant-quotient-dual} gives a brief account of invariant subspaces, quotient spaces and dual spaces, and \cref{sec:computing-maps} looks at linear maps that are given not by a matrix but by a procedure, as they often are in computation.
+
+\section{Linear Maps}
+\label{sec:linear-maps}
+
+\subsection{Definition and First Properties}
+
+\Vcref{1}{def:linear-map} called a map between spaces $\mathbb R^n$ linear if it preserves sums and multiples. The definition makes sense between any two vector spaces over the same field.
+
+\begin{definition}[Linear map]
+\label{def:linear-map-general}
+Let $V$ and $W$ be vector spaces over $\mathbb F$. A map $T\colon V\to W$ is \term{linear} if
+\[
+T(\mathbf u+\mathbf v)=T\mathbf u+T\mathbf v\qquad\text{and}\qquad T(t\mathbf v)=t\,T\mathbf v
+\]
+for all $\mathbf u,\mathbf v\in V$ and $t\in\mathbb F$. A linear map from $V$ to itself is a \term{linear operator}, or simply an \term{operator}, on $V$, and a linear map from $V$ to $\mathbb F$ is a \term{linear functional} on $V$. The set of all linear maps from $V$ to $W$ is denoted $\mathcal L(V,W)$, and $\mathcal L(V)\coloneqq\mathcal L(V,V)$.
+\end{definition}
+
+It is customary to write $T\mathbf v$ instead of $T(\mathbf v)$, as for matrices, and to keep the parentheses only around compound arguments. The two sums in $T(\mathbf u+\mathbf v)=T\mathbf u+T\mathbf v$ are different operations: the one on the left is the addition of $V$, the one on the right that of $W$. The field must be the same on both sides, since $t$ multiplies a vector of $V$ on the left and a vector of $W$ on the right.
+
+\begin{proposition}[First properties of linear maps]
+\label{prop:linear-basic}
+Let $T\colon V\to W$ be linear.
+\begin{enumerate}
+\item $T\mathbf 0=\mathbf 0$ and $T(-\mathbf v)=-T\mathbf v$ for every $\mathbf v\in V$.
+\item $T$ preserves linear combinations: $T(t_1\mathbf v_1+\cdots+t_k\mathbf v_k)=t_1T\mathbf v_1+\cdots+t_kT\mathbf v_k$.
+\item A map $T\colon V\to W$ is linear if and only if $T(s\mathbf u+t\mathbf v)=s\,T\mathbf u+t\,T\mathbf v$ for all $\mathbf u,\mathbf v\in V$ and $s,t\in\mathbb F$.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) By \cref{prop:vector-space-rules}\,(iv), $T\mathbf 0=T(0\cdot\mathbf 0)=0\cdot T\mathbf 0=\mathbf 0$, and by \cref{prop:vector-space-rules}\,(v), $T(-\mathbf v)=T((-1)\mathbf v)=(-1)T\mathbf v=-T\mathbf v$. (ii) For $k=1$ this is the second condition of the definition; if it holds for $k$ terms, then $T(\sum_{j\le k+1}t_j\mathbf v_j)=T(\sum_{j\le k}t_j\mathbf v_j)+T(t_{k+1}\mathbf v_{k+1})=\sum_{j\le k+1}t_jT\mathbf v_j$ by the first condition. (iii) A linear map satisfies the condition by (ii). Conversely, $s=t=1$ gives $T(\mathbf u+\mathbf v)=T\mathbf u+T\mathbf v$, and $t=0$ gives $T(s\mathbf u)=s\,T\mathbf u+0\,T\mathbf v=s\,T\mathbf u$.
+\end{proof}
+
+Part (i) gives the quickest test for non-linearity: a map that does not send $\mathbf 0$ to $\mathbf 0$ is not linear. Part (iii) is often the most economical way to verify linearity, since it checks both conditions at once.
+
+\subsection{Examples}
+
+Linear maps are everywhere, and the following examples will accompany us through the chapter.
+
+\emph{Matrices.} For $A\in\mathbb F^{m\times n}$, the map $L_A\colon\mathbb F^n\to\mathbb F^m$, $\mathbf x\mapsto A\mathbf x$, is linear, and by \cref{thm:matrices-linear-maps}, whose proof holds verbatim for complex entries, every linear map from $\mathbb F^n$ to $\mathbb F^m$ is of this form, with the columns $L(\mathbf e_1),\ldots,L(\mathbf e_n)$. As in \cref{ch:vectors-matrices}, we often identify $A$ with $L_A$ and speak of the matrix $A$ mapping $\mathbf x$ to $A\mathbf x$. The rotations, reflections, projections, shears and scalings of \cref{fig:linear-maps} are linear operators on $\mathbb R^2$, and the mean and the differences of \cref{sec:matrices-linear-maps} are linear maps on $\mathbb R^n$.
+
+\emph{Differentiation.} On an interval $I$, the map $D\colon C^1(I)\to C(I)$, $f\mapsto f'$, is linear, since $(sf+tg)'=sf'+tg'$ (\vcref{1}{thm:diff-algebra}). Restricted to polynomials, it gives linear maps $D\colon\mathcal P_n\to\mathcal P_n$, $D\colon\mathcal P_n\to\mathcal P_{n-1}$ for $n\ge1$, and $D\colon\mathcal P\to\mathcal P$; strictly speaking these are different maps, since their domains or codomains differ, but we use the same letter for all of them. Combinations of derivatives are linear as well: $f\mapsto a_kf^{(k)}+\cdots+a_1f'+a_0f$ with constants $a_i$ is a linear map from $C^k(\mathbb R)$ to $C(\mathbb R)$, and the solutions of the differential equation $a_kf^{(k)}+\cdots+a_0f=0$ of \cref{sec:vector-spaces} are the functions that it maps to $0$.
+
+\emph{Integration.} The map $J\colon C[a,b]\to C[a,b]$ with $(Jf)(x)\coloneqq\int_a^xf(t)\,dt$ is linear, by the linearity of the integral (\vcref{1}{thm:integral-linear}), and the definite integral $f\mapsto\int_a^bf$ is a linear functional on $C[a,b]$. On polynomials, $p\mapsto\int_0^xp(t)\,dt$ is a linear map from $\mathcal P_n$ to $\mathcal P_{n+1}$, which we also call $J$.
+
+\emph{Evaluation.} For points $t_1,\ldots,t_k\in\mathbb F$, the map
+\[
+E\colon\mathcal P_d\to\mathbb F^k,\qquad p\mapsto\bigl(p(t_1),\ldots,p(t_k)\bigr),
+\]
+is linear, since $(sp+tq)(t_i)=s\,p(t_i)+t\,q(t_i)$ by the definition of the operations on functions. For a single point it is the linear functional $p\mapsto p(t_1)$. The interpolation problem of \cref{sec:special-systems} asks for a polynomial $p$ with a prescribed value $Ep$.
+
+\emph{Shifts.} On the space $\mathbb F^{\mathbb N}$ of sequences, the \term{right shift} $S_+$ and the \term{left shift} $S_-$,
+\[
+S_+(x_0,x_1,x_2,\ldots)\coloneqq(0,x_0,x_1,\ldots),\qquad S_-(x_0,x_1,x_2,\ldots)\coloneqq(x_1,x_2,x_3,\ldots),
+\]
+are the linear operators that \cref{sec:inverse} met as $S$ and $T$. The \term{forward difference} $(x_k)\mapsto(x_{k+1}-x_k)$ is the operator $S_--\operatorname{id}$, in the notation for sums of maps introduced below.
+
+\emph{Coordinates.} For a basis $\mathcal B$ of an $n$-dimensional space $V$, the coordinate map $\mathbf v\mapsto[\mathbf v]_{\mathcal B}$ is a linear map from $V$ to $\mathbb F^n$, by \cref{thm:coordinate-map}\,(i), and its inverse $(t_1,\ldots,t_n)\mapsto t_1\mathbf b_1+\cdots+t_n\mathbf b_n$ is linear as well.
+
+\emph{Operations on matrices.} The transposition $A\mapsto A^{\mathsf T}$ is a linear map from $\mathbb F^{m\times n}$ to $\mathbb F^{n\times m}$, and the trace is a linear functional on $\mathbb F^{n\times n}$, by \cref{prop:transpose-rules,prop:trace}. For fixed matrices $A$ and $B$ of suitable shapes, the maps $X\mapsto AX$, $X\mapsto XB$, $X\mapsto AXB$ and $X\mapsto AX-XA$ are linear, by the distributive laws of \cref{thm:product-rules}.
+
+\emph{Complex conjugation.} The map $z\mapsto\bar z$ on $\mathbb C$ is additive, and $\overline{tz}=t\bar z$ for real $t$, so it is a linear operator on $\mathbb C$ regarded as a real vector space. It is not linear on $\mathbb C$ regarded as a complex vector space, since $\overline{iz}=-i\bar z\ne i\bar z$ for $z\ne0$. Whether a map is linear depends on the field of scalars, just as the dimension does (\cref{sec:basis-dimension}).
+
+\emph{Maps that are not linear.} A translation $\mathbf v\mapsto\mathbf v+\mathbf w_0$ with $\mathbf w_0\ne\mathbf 0$ moves the origin, and so does the map $f\mapsto f(0)+1$ on functions. The norm $\mathbf x\mapsto\|\mathbf x\|$ is not linear, and neither is the squaring $p\mapsto p^2$ of polynomials, which maps $2p$ to $4p^2$. The determinant of $2\times2$ matrices is not linear either: $\det(2I)=4\ne2\det I$. The affine maps $\mathbf x\mapsto A\mathbf x+\mathbf b$ of \cref{sec:matrices-linear-maps} are linear only for $\mathbf b=\mathbf 0$.
+
+\subsection{Linear Maps Are Determined by a Basis}
+
+A matrix is a table of the images of the standard basis vectors, and \cref{thm:matrices-linear-maps} says that this table determines the map. The same is true in every vector space.
+
+\begin{theorem}[Linear maps and bases]
+\label{thm:linear-map-basis}
+Let $(\mathbf b_1,\ldots,\mathbf b_n)$ be a basis of $V$, and let $\mathbf w_1,\ldots,\mathbf w_n$ be any vectors of $W$. There is exactly one linear map $T\colon V\to W$ with $T\mathbf b_j=\mathbf w_j$ for $j=1,\ldots,n$, namely
+\[
+T(t_1\mathbf b_1+\cdots+t_n\mathbf b_n)\coloneqq t_1\mathbf w_1+\cdots+t_n\mathbf w_n .
+\]
+\end{theorem}
+
+\begin{proof}
+If $T$ is linear with $T\mathbf b_j=\mathbf w_j$, then $T(\sum_jt_j\mathbf b_j)=\sum_jt_j\mathbf w_j$ by \cref{prop:linear-basic}\,(ii), so there is at most one such map. Conversely, every $\mathbf v\in V$ has exactly one representation $\mathbf v=\sum_jt_j\mathbf b_j$ (\cref{thm:basis-unique}), so the formula defines a map $T\colon V\to W$, and $T\mathbf b_j=\mathbf w_j$ because the coordinate vector of $\mathbf b_j$ is $\mathbf e_j$. If $\mathbf u=\sum_js_j\mathbf b_j$ and $\mathbf v=\sum_jt_j\mathbf b_j$, then $s\mathbf u+t\mathbf v=\sum_j(ss_j+tt_j)\mathbf b_j$, and therefore
+\[
+T(s\mathbf u+t\mathbf v)=\sum_j(ss_j+tt_j)\mathbf w_j=s\sum_js_j\mathbf w_j+t\sum_jt_j\mathbf w_j=s\,T\mathbf u+t\,T\mathbf v,
+\]
+so $T$ is linear by \cref{prop:linear-basic}\,(iii).
+\end{proof}
+
+The values on a basis can be prescribed freely, with no condition at all, and they determine everything else. In particular, two linear maps that agree on a basis, or on any spanning set, agree everywhere, since every vector is a combination of the spanning vectors. The proof works for an infinite basis as well, since every vector is a combination of finitely many basis vectors; a linear map on $\mathcal P$, for instance, may be defined by its values on the monomials $1,x,x^2,\ldots$.
+
+The theorem has a surprising consequence for linear functionals. On $\mathcal P_3$, consider the integral $I(p)\coloneqq\int_{-1}^1p(x)\,dx$ and the sum $G(p)\coloneqq p(-1/\sqrt3)+p(1/\sqrt3)$ of two values. Both are linear functionals, and on the monomial basis
+\[
+\begin{aligned}
+I(1)&=2,&I(x)&=0,&I(x^2)&=\tfrac23,&I(x^3)&=0,\\
+G(1)&=2,&G(x)&=0,&G(x^2)&=\tfrac23,&G(x^3)&=0,
+\end{aligned}
+\]
+since $G$ adds the values of an odd monomial at two opposite points, and $2\cdot(1/\sqrt3)^2=2/3$. The two functionals agree on a basis, so they are equal: $\int_{-1}^1p=p(-1/\sqrt3)+p(1/\sqrt3)$ for \emph{every} polynomial of degree at most $3$, although the right-hand side looks at only two points. This is the two-point Gauss rule of numerical integration, and Volume~XII develops the theory of such rules from exactly this observation; the four checks above are all that is needed to prove it.
+
+\subsection{The Space of Linear Maps and Composition}
+
+Linear maps can be added, multiplied by scalars and composed, and the results are again linear. For $S,T\in\mathcal L(V,W)$ and $t\in\mathbb F$, the sum and the multiple are defined pointwise,
+\[
+(S+T)\mathbf v\coloneqq S\mathbf v+T\mathbf v,\qquad(tT)\mathbf v\coloneqq t\,T\mathbf v,
+\]
+and for $T\in\mathcal L(U,V)$ and $S\in\mathcal L(V,W)$ we write $ST\coloneqq S\circ T$ for the composition, $(ST)\mathbf u=S(T\mathbf u)$: first $T$, then $S$, as for matrices.
+
+\begin{proposition}[Sums and compositions of linear maps]
+\label{prop:linear-map-space}
+Let $U$, $V$ and $W$ be vector spaces over $\mathbb F$.
+\begin{enumerate}
+\item $\mathcal L(V,W)$, with the pointwise operations, is a vector space; its zero vector is the zero map $\mathbf v\mapsto\mathbf 0$.
+\item If $T\in\mathcal L(U,V)$ and $S\in\mathcal L(V,W)$, then $ST\in\mathcal L(U,W)$.
+\item Whenever the compositions are defined, $R(ST)=(RS)T$, $(S_1+S_2)T=S_1T+S_2T$, $S(T_1+T_2)=ST_1+ST_2$, $(tS)T=t(ST)=S(tT)$, and $\operatorname{id}_WT=T=T\operatorname{id}_V$ for $T\in\mathcal L(V,W)$.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) The functions from $V$ to $W$ form a vector space with the pointwise operations, by the argument of the example of functions in \cref{sec:vector-spaces}, carried out with values in $W$ instead of $\mathbb F$: each axiom holds because it holds in $W$ at every point. We show that $\mathcal L(V,W)$ is a subspace (\cref{thm:subspace-test}). The zero map is linear. If $S$ and $T$ are linear, then
+\[
+(S+T)(a\mathbf u+b\mathbf v)=aS\mathbf u+bS\mathbf v+aT\mathbf u+bT\mathbf v=a(S+T)\mathbf u+b(S+T)\mathbf v,
+\]
+and similarly $(tT)(a\mathbf u+b\mathbf v)=a(tT)\mathbf u+b(tT)\mathbf v$; so $S+T$ and $tT$ are linear by \cref{prop:linear-basic}\,(iii). (ii) $S(T(a\mathbf u+b\mathbf v))=S(aT\mathbf u+bT\mathbf v)=a\,ST\mathbf u+b\,ST\mathbf v$. (iii) The first identity is the associativity of composition (\vcref{1}{prop:composition}). The others are checked at each vector: $(S_1+S_2)T\mathbf u=S_1T\mathbf u+S_2T\mathbf u$ by the definition of the sum, $S(T_1+T_2)\mathbf u=S(T_1\mathbf u+T_2\mathbf u)=ST_1\mathbf u+ST_2\mathbf u$ by the linearity of $S$, and $(tS)T\mathbf u=t\,S(T\mathbf u)=S(t\,T\mathbf u)$, again by the linearity of $S$. The statements about the identity are clear.
+\end{proof}
+
+These are the rules of \cref{thm:product-rules} for matrices, and \cref{sec:matrix-of-map} shows that they are the same rules. Powers of an operator are defined by $T^0\coloneqq\operatorname{id}$ and $T^{k+1}\coloneqq TT^k$, and for a polynomial $p(x)=c_0+c_1x+\cdots+c_dx^d$ we put $p(T)\coloneqq c_0\operatorname{id}+c_1T+\cdots+c_dT^d$. By the rules of the proposition, $p(T)q(T)=(pq)(T)=q(T)p(T)$ for polynomials $p$ and $q$; in particular, two polynomials in the same operator commute.
+
+As for matrices, the composition of operators is not commutative. On $\mathcal P$, let $X$ be the multiplication by $x$, $(Xp)(x)\coloneqq xp(x)$. By the product rule, $DXp=(xp)'=p+xp'$ and $XDp=xp'$, so that
+\[
+DX-XD=\operatorname{id}\qquad\text{on }\mathcal P .
+\]
+No two square matrices $A$ and $B$ of the same order $n\ge1$ satisfy the corresponding equation $AB-BA=I$, since the trace of the left-hand side is $\operatorname{tr}(AB)-\operatorname{tr}(BA)=0$ by \cref{prop:trace}, while $\operatorname{tr}I=n$. The identity $DX-XD=\operatorname{id}$ is therefore possible only in infinite dimensions; indeed $X$ maps $\mathcal P_n$ into $\mathcal P_{n+1}$, not into $\mathcal P_n$, and the equation cannot be restricted to a finite-dimensional space of polynomials. The relation is the commutation relation of position and momentum in quantum mechanics, and the trace argument shows that these cannot be represented by matrices of finite size.
+
+\section{Kernel and Image}
+\label{sec:kernel-image}
+
+\subsection{Definitions}
+
+Two subspaces belong to every linear map: the vectors it annihilates and the vectors it produces. For a matrix they are the null space and the column space of \cref{sec:four-subspaces}.
+
+\begin{definition}[Kernel, image and rank]
+\label{def:kernel-image}
+Let $T\colon V\to W$ be linear. The \term{kernel} and the \term{image} of $T$ are
+\[
+\ker T\coloneqq\{\mathbf v\in V: T\mathbf v=\mathbf 0\}\subseteq V,\qquad\operatorname{im}T\coloneqq\{T\mathbf v: \mathbf v\in V\}\subseteq W .
+\]
+If $\operatorname{im}T$ is finite-dimensional, its dimension is the \term{rank} of $T$, $\operatorname{rank}T\coloneqq\dim\operatorname{im}T$, and if $\ker T$ is finite-dimensional, its dimension is the \term{nullity} of $T$.
+\end{definition}
+
+The image is the set $T(V)$ of \vcref{1}{sec:injections}, and the kernel is the preimage $T^{-1}(\{\mathbf 0\})$. For a matrix $A\in\mathbb F^{m\times n}$ and its map $L_A$,
+\[
+\ker L_A=\mathcal N(A),\qquad\operatorname{im}L_A=\mathcal C(A),\qquad\operatorname{rank}L_A=\dim\mathcal C(A)=\operatorname{rank}A,
+\]
+the last equality by \cref{thm:rank-characterisations}. The rank of a matrix, defined in \cref{ch:linear-systems} by counting pivots, is therefore the dimension of the image of its linear map, and the definition of the rank of a linear map extends that of a matrix.
+
+\begin{proposition}[Kernel and image]
+\label{prop:kernel-image}
+Let $T\colon V\to W$ be linear.
+\begin{enumerate}
+\item $\ker T$ is a subspace of $V$, and $\operatorname{im}T$ is a subspace of $W$. More generally, $T$ maps every subspace of $V$ to a subspace of $W$, and the preimage of every subspace of $W$ is a subspace of $V$.
+\item $T\mathbf u=T\mathbf v$ if and only if $\mathbf u-\mathbf v\in\ker T$. In particular, $T$ is injective if and only if $\ker T=\{\mathbf 0\}$.
+\item If $\mathbf v_1,\ldots,\mathbf v_k$ span $V$, then $T\mathbf v_1,\ldots,T\mathbf v_k$ span $\operatorname{im}T$; so $T$ is surjective if and only if they span $W$.
+\item If $T$ is injective and $\mathbf v_1,\ldots,\mathbf v_k$ are linearly independent, then $T\mathbf v_1,\ldots,T\mathbf v_k$ are linearly independent. Conversely, if $T$ maps some basis of $V$ to a linearly independent list, then $T$ is injective.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) Let $U\subseteq V$ be a subspace. $T(U)$ contains $T\mathbf 0=\mathbf 0$, and $sT\mathbf u+tT\mathbf u'=T(s\mathbf u+t\mathbf u')\in T(U)$ for $\mathbf u,\mathbf u'\in U$; so $T(U)$ is a subspace by the subspace test. Let $Y\subseteq W$ be a subspace. Its preimage contains $\mathbf 0$, since $T\mathbf 0=\mathbf 0\in Y$, and if $T\mathbf u,T\mathbf u'\in Y$, then $T(s\mathbf u+t\mathbf u')=sT\mathbf u+tT\mathbf u'\in Y$. The image is $T(V)$ and the kernel the preimage of $\{\mathbf 0\}$.
+
+(ii) $T\mathbf u=T\mathbf v$ means $T(\mathbf u-\mathbf v)=\mathbf 0$. If $\ker T=\{\mathbf 0\}$, this forces $\mathbf u=\mathbf v$, so $T$ is injective; conversely, if $T$ is injective, then $T\mathbf v=\mathbf 0=T\mathbf 0$ forces $\mathbf v=\mathbf 0$.
+
+(iii) Every $\mathbf v\in V$ is a combination $\sum_jt_j\mathbf v_j$, and $T\mathbf v=\sum_jt_jT\mathbf v_j$. So $\operatorname{im}T$ is the span of the $T\mathbf v_j$, and $T$ is surjective exactly when this span is $W$.
+
+(iv) If $\sum_jt_jT\mathbf v_j=\mathbf 0$, then $T(\sum_jt_j\mathbf v_j)=\mathbf 0$, so $\sum_jt_j\mathbf v_j\in\ker T=\{\mathbf 0\}$, and independence gives $t_j=0$ for all $j$. Conversely, let $T$ map the basis $\mathbf b_1,\ldots,\mathbf b_n$ to an independent list. If $T\mathbf v=\mathbf 0$ with $\mathbf v=\sum_jt_j\mathbf b_j$, then $\sum_jt_jT\mathbf b_j=\mathbf 0$, so all $t_j$ vanish and $\mathbf v=\mathbf 0$; by (ii), $T$ is injective.
+\end{proof}
+
+Part (ii) is worth dwelling on. For an arbitrary function, injectivity requires a comparison of all pairs of inputs. For a linear map it suffices to look at the single value $\mathbf 0$: if nothing but $\mathbf 0$ is mapped to $\mathbf 0$, no two vectors are mapped to the same vector, because the difference of two vectors with the same image lies in the kernel. Part (iii) is the general form of the column picture of \cref{sec:systems}: the image is spanned by the images of a spanning list, just as $\mathcal C(A)$ is spanned by the columns $A\mathbf e_j$.
+
+\subsection{Linear Equations and Their Solutions}
+
+An equation $T\mathbf v=\mathbf w$, with $T$ linear and $\mathbf w$ given, is a \term{linear equation}, and every linear system $A\mathbf x=\mathbf b$ is one. So are many problems that do not look like systems at all: the differential equation $f''+\omega^2f=g$, in which the unknown is a function, the interpolation problem $Ep=\mathbf y$, and a linear recurrence with a prescribed right-hand side. The structure of the solution set, which \cref{thm:solution-structure} established for systems, is the same for all of them.
+
+\begin{proposition}[Solutions of a linear equation]
+\label{prop:preimage-flat}
+Let $T\colon V\to W$ be linear and $\mathbf w\in W$. The equation $T\mathbf v=\mathbf w$ has a solution if and only if $\mathbf w\in\operatorname{im}T$. If $\mathbf v_0$ is a solution, the set of all solutions is the flat
+\[
+T^{-1}(\{\mathbf w\})=\mathbf v_0+\ker T,
+\]
+whose direction is the kernel of $T$. The solution sets for the different $\mathbf w\in\operatorname{im}T$ are disjoint flats with this common direction, and together they fill $V$.
+\end{proposition}
+
+\begin{proof}
+The first statement is the definition of the image. If $T\mathbf v_0=\mathbf w$, then $T\mathbf v=\mathbf w$ holds if and only if $T(\mathbf v-\mathbf v_0)=\mathbf 0$, that is, $\mathbf v-\mathbf v_0\in\ker T$, that is, $\mathbf v\in\mathbf v_0+\ker T$. Every $\mathbf v\in V$ solves the equation with $\mathbf w=T\mathbf v$, and with no other right-hand side; so the solution sets cover $V$ and are disjoint.
+\end{proof}
+
+The solution sets $T^{-1}(\{\mathbf w\})$ are called the \term{fibres} of $T$. \Cref{fig:fibres} shows them for the linear functional $T(x_1,x_2)=x_1+x_2$ on $\mathbb R^2$: the kernel is the line $x_1+x_2=0$, and each fibre is a parallel line $x_1+x_2=c$, which $T$ collapses to the single number $c$. In the language of \vcref{1}{sec:equivalence}, the fibres are the equivalence classes of the relation $T\mathbf u=T\mathbf v$, which by \cref{prop:kernel-image}\,(ii) is the relation $\mathbf u-\mathbf v\in\ker T$; \cref{sec:invariant-quotient-dual} makes them into a vector space.
+
+\begin{figure}
+\sdfloat{%
+\begin{tikzpicture}[scale=0.78, font=\scriptsize]
+\begin{scope}
+\clip (-2.4,-2.2) rectangle (2.4,2.4);
+\foreach \c in {-2,-1,1,2} {\draw[black!55, dashed, line width=0.5pt] ({\c-3},3) -- ({\c+3},-3);}
+\draw[line width=1.1pt] (-3,3) -- (3,-3);
+\end{scope}
+\draw[line width=0.4pt, -{Latex[length=1.5mm]}] (-2.4,0) -- (2.7,0) node[above left=-1pt] {$x_1$};
+\draw[line width=0.4pt, -{Latex[length=1.5mm]}] (0,-2.2) -- (0,2.7) node[left] {$x_2$};
+\node[right] at (-2.2,2.25) {$\ker T$};
+\draw[line width=0.7pt, -{Latex[length=1.8mm]}] (0,0) -- (0.5,0.5);
+\fill (0.5,0.5) circle (1.8pt) node[above right=-1pt] {$\mathbf v_0$};
+\begin{scope}[xshift=5.0cm]
+\draw[line width=0.5pt, -{Latex[length=1.5mm]}] (0,-2.3) -- (0,2.7) node[right] {$\mathbb R$};
+\foreach \c in {-2,-1,0,1,2} {\draw[line width=0.4pt] (-0.08,{\c}) -- (0.08,{\c}); \node[right] at (0.1,{\c}) {$\c$};}
+\foreach \c in {0,1,2} {\fill (0,{\c}) circle (1.8pt);}
+\end{scope}
+\draw[black!70, line width=0.6pt, -{Latex[length=1.8mm]}] (2.5,-0.4) to[bend left=12] (4.9,2);
+\draw[black!70, line width=0.6pt, -{Latex[length=1.8mm]}] (2.5,-1.4) to[bend left=12] (4.9,1);
+\draw[black!70, line width=0.6pt, -{Latex[length=1.8mm]}] (2.3,-2.3) to[bend left=12] (4.9,0);
+\node at (3.75,2.0) {$T$};
+\end{tikzpicture}}{The fibres of the linear functional $T(x_1,x_2)=x_1+x_2$ on $\mathbb R^2$. The kernel (thick line) is the line $x_1+x_2=0$, which $T$ maps to $0$. Every other fibre is a parallel line $x_1+x_2=c$ (dashed; $c=-2,-1,1,2$ from left to right), the flat $\mathbf v_0+\ker T$ through any of its points; the fibre through $\mathbf v_0=(1/2,1/2)$ is the line $x_1+x_2=1$, which $T$ maps to $1$. The arrows show where three of the fibres go. The fibres are disjoint and fill the plane.\label{fig:fibres}}
+\end{figure}
+
+For the differential equation $f''+f=1$ on $\mathbb R$, the map is $T\colon C^2(\mathbb R)\to C(\mathbb R)$, $f\mapsto f''+f$, and its kernel consists of the functions $a\cos x+b\sin x$ (\vcref{1}{lem:harmonic-unique}). The constant function $1$ is a solution, so the solutions are exactly the functions $1+a\cos x+b\sin x$. The \emph{method of a particular solution}, find one solution and add the kernel, is the same for systems, for differential equations and for recurrences, because it rests only on linearity. Part~II of this volume uses it throughout.
+
+\subsection{Examples of Kernels and Images}
+
+\Cref{tab:kernel-image} lists the kernels and images of the examples of \cref{sec:linear-maps}, and we justify the entries.
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}{colspec={lll}, row{1}={font=\small\bfseries}}
+\toprule
+map & kernel & image \\
+\midrule
+$D\colon\mathcal P_n\to\mathcal P_n$, $p\mapsto p'$ & constants $\mathcal P_0$ & $\mathcal P_{n-1}$ \\
+$D\colon C^1(I)\to C(I)$ & constant functions & $C(I)$ \\
+$J\colon C[a,b]\to C[a,b]$ & $\{0\}$ & $\{g\in C^1[a,b]: g(a)=0\}$ \\
+$E\colon\mathcal P_d\to\mathbb F^k$, $k\le d$ & multiples $\omega q$, $q\in\mathcal P_{d-k}$ & $\mathbb F^k$ \\
+$E\colon\mathcal P_d\to\mathbb F^k$, $k\ge d+1$ & $\{0\}$ & dimension $d+1$ \\
+right shift $S_+$ on $\mathbb F^{\mathbb N}$ & $\{\mathbf 0\}$ & sequences with $x_0=0$ \\
+left shift $S_-$ on $\mathbb F^{\mathbb N}$ & $\operatorname{span}\{(1,0,0,\ldots)\}$ & $\mathbb F^{\mathbb N}$ \\
+$\operatorname{tr}\colon\mathbb F^{n\times n}\to\mathbb F$ & matrices with trace $0$ & $\mathbb F$ \\
+$A\mapsto A-A^{\mathsf T}$ on $\mathbb F^{n\times n}$ & symmetric matrices & antisymmetric matrices \\
+\bottomrule
+\end{sdtable}}{Kernels and images of some linear maps. $E$ is the evaluation at $k$ distinct points $t_1,\ldots,t_k$, and $\omega(x)=(x-t_1)\cdots(x-t_k)$; for $k=d+1$ the map $E$ is bijective. The image of $J$ consists of the continuously differentiable functions that vanish at $a$.\label{tab:kernel-image}}
+\end{table}
+
+\emph{Differentiation.} The derivative of $p=\sum_kc_kx^k\in\mathcal P_n$ is $\sum_{k\ge1}kc_kx^{k-1}$, which vanishes exactly when $kc_k=0$ for all $k\ge1$, that is, when $p$ is constant; and every $x^k$ with $k<n$ is the derivative of $x^{k+1}/(k+1)\in\mathcal P_n$, so the image is $\mathcal P_{n-1}$. On $C^1(I)$, the functions with $f'=0$ are the constants, by \vcref{1}{cor:zero-derivative}, and every $g\in C(I)$ is a derivative: for a point $a\in I$, the function $x\mapsto\int_a^xg$ has the derivative $g$, by \vcref{1}{thm:ftc1}. So $D\colon C^1(I)\to C(I)$ is surjective.
+
+\emph{Integration.} If $Jf=0$, then $f=(Jf)'=0$ by \vcref{1}{thm:ftc1}, so $J$ is injective. Every $Jf$ is continuously differentiable and vanishes at $a$; conversely, if $g\in C^1[a,b]$ with $g(a)=0$, then $g=Jg'$ by the second fundamental theorem (\vcref{1}{thm:ftc2}). So the image of $J$ is the subspace stated in the table, much smaller than $C[a,b]$.
+
+\emph{Evaluation.} Let $t_1,\ldots,t_k$ be distinct and $\omega(x)\coloneqq(x-t_1)\cdots(x-t_k)$. If $p\ne0$ vanishes at all $t_i$, then splitting off the roots one at a time by \vcref{1}{cor:factor}\,(i) gives $p=\omega q$ for a polynomial $q$; the roots $t_2,\ldots,t_k$ of $p=(x-t_1)p_1$ are roots of $p_1$, since $t_i-t_1\ne0$, and so on. Conversely every multiple of $\omega$ vanishes at the points. So $\ker E$ consists of the polynomials $\omega q$ of degree at most $d$: for $k\le d$ these are the $\omega q$ with $q\in\mathcal P_{d-k}$, and for $k>d$ only the zero polynomial, since $\omega q$ has degree at least $k$ unless $q=0$. The images are computed in \cref{sec:rank-nullity}, which shows that $E$ is surjective for $k\le d+1$ without constructing a single interpolating polynomial.
+
+\emph{Shifts.} $S_+\mathbf x=\mathbf 0$ forces $x_0=x_1=\cdots=0$, and the image of $S_+$ consists of the sequences whose first term is $0$. $S_-\mathbf x=\mathbf 0$ means $x_1=x_2=\cdots=0$, so the kernel of $S_-$ is spanned by the sequence $(1,0,0,\ldots)$, and every sequence $\mathbf y$ is $S_-$ of $(0,y_0,y_1,\ldots)$. Thus $S_+$ is injective and not surjective, and $S_-$ is surjective and not injective, which is impossible for an operator on a finite-dimensional space, as \cref{sec:rank-nullity} shows.
+
+\emph{Matrices.} The trace is surjective, since $\operatorname{tr}(tE_{11})=t$, and its kernel is the space of matrices with trace zero. The map $A\mapsto A-A^{\mathsf T}$ annihilates exactly the symmetric matrices, and its values are antisymmetric, since $(A-A^{\mathsf T})^{\mathsf T}=A^{\mathsf T}-A$; every antisymmetric $K$ is a value, $K=K/2-(K/2)^{\mathsf T}$.
+
+\section{The Rank--Nullity Theorem}
+\label{sec:rank-nullity}
+
+\subsection{The Theorem}
+
+A linear map annihilates its kernel and carries the rest of its domain onto its image. The dimensions of the two parts add up to the dimension of the domain: whatever the map loses in the kernel is missing from the image, and nothing else is lost.
+
+\begin{theorem}[Rank--nullity theorem]
+\label{thm:rank-nullity}
+Let $V$ be finite-dimensional and $T\colon V\to W$ linear. Then $\operatorname{im}T$ is finite-dimensional, and
+\[
+\dim V=\dim\ker T+\dim\operatorname{im}T .
+\]
+More precisely, if $\mathbf u_1,\ldots,\mathbf u_k$ is a basis of $\ker T$ and $\mathbf u_1,\ldots,\mathbf u_k,\mathbf v_1,\ldots,\mathbf v_r$ is a basis of $V$, then $T\mathbf v_1,\ldots,T\mathbf v_r$ is a basis of $\operatorname{im}T$.
+\end{theorem}
+
+\begin{proof}
+The kernel is a subspace of $V$ (\cref{prop:kernel-image}), so it is finite-dimensional and every basis $\mathbf u_1,\ldots,\mathbf u_k$ of it can be extended to a basis $\mathbf u_1,\ldots,\mathbf u_k,\mathbf v_1,\ldots,\mathbf v_r$ of $V$ (\cref{prop:subspace-dimension}). We show that $T\mathbf v_1,\ldots,T\mathbf v_r$ is a basis of $\operatorname{im}T$. It spans: every $\mathbf v\in V$ is $\mathbf v=\sum_ia_i\mathbf u_i+\sum_jb_j\mathbf v_j$, and since $T\mathbf u_i=\mathbf 0$,
+\[
+T\mathbf v=\sum_jb_j\,T\mathbf v_j .
+\]
+It is independent: if $\sum_jb_jT\mathbf v_j=\mathbf 0$, then $T(\sum_jb_j\mathbf v_j)=\mathbf 0$, so $\sum_jb_j\mathbf v_j$ lies in the kernel and equals $\sum_ia_i\mathbf u_i$ for some scalars $a_i$. The relation $\sum_ia_i\mathbf u_i-\sum_jb_j\mathbf v_j=\mathbf 0$ among the vectors of a basis of $V$ forces all coefficients to vanish, in particular all $b_j$. So $\dim\operatorname{im}T=r$, and $\dim V=k+r=\dim\ker T+\dim\operatorname{im}T$.
+\end{proof}
+
+The codomain $W$ plays no role and may be infinite-dimensional; only the domain is counted. For a matrix $A\in\mathbb F^{m\times n}$ and its map $L_A$, the theorem reads
+\[
+n=\dim\mathcal N(A)+\operatorname{rank}A,
+\]
+which is the rank--nullity theorem of \cref{thm:four-dimensions} in its matrix form. The proof given there counted pivot variables and free variables of the reduced row echelon form; the proof here uses no elimination and no matrix at all, only a basis adapted to the map. Such a basis, which begins with a basis of the kernel, underlies most of what follows: \cref{sec:change-of-basis-maps} uses it to find the simplest possible matrix of a linear map. The theorem also gives back the count of \cref{ch:linear-systems}: the solution set of a consistent system $A\mathbf x=\mathbf b$ is a flat of dimension $n-\operatorname{rank}A$, by \cref{prop:preimage-flat}.
+
+The theorem computes dimensions that would otherwise require a basis. The matrices of trace zero form a space of dimension $n^2-1$, since the trace is a surjective linear functional on the space $\mathbb F^{n\times n}$ of dimension $n^2$. More generally, the kernel of a nonzero linear functional on an $n$-dimensional space, a \term{hyperplane}, has dimension $n-1$: the image of the functional is a nonzero subspace of $\mathbb F$, hence $\mathbb F$ itself. Thus the polynomials $p\in\mathcal P_n$ with $p(1)=0$ form a space of dimension $n$, and so do those with $\int_0^1p=0$. For the map $A\mapsto A-A^{\mathsf T}$ of \cref{tab:kernel-image}, the theorem gives
+\[
+n^2=\dim\{\text{symmetric matrices}\}+\dim\{\text{antisymmetric matrices}\},
+\]
+so either of the dimensions $n(n+1)/2$ and $n(n-1)/2$ of \cref{prop:dimension-examples} follows from the other. For the evaluation map $E\colon\mathcal P_d\to\mathbb F^k$ at $k\le d$ distinct points, the kernel consists of the multiples $\omega q$ with $q\in\mathcal P_{d-k}$, a space of dimension $d-k+1$ (multiplication by $\omega$ maps the basis $1,x,\ldots,x^{d-k}$ of $\mathcal P_{d-k}$ to polynomials of the distinct degrees $k,\ldots,d$, which are independent), and for $k=d+1$ the kernel is $\{0\}$, of the same dimension $d-k+1=0$. So the image has dimension $(d+1)-(d-k+1)=k$ and is all of $\mathbb F^k$. For any $k\le d+1$ prescribed values at distinct points there is a polynomial of degree at most $d$ that takes them.
+
+\subsection{Injective, Surjective and Bijective}
+
+For maps between spaces of the same finite dimension, the theorem merges injectivity and surjectivity into one property.
+
+\begin{corollary}[Injective if and only if surjective]
+\label{cor:injective-surjective}
+Let $V$ and $W$ be finite-dimensional with $\dim V=\dim W$, and let $T\colon V\to W$ be linear.
+\begin{enumerate}
+\item $T$ is injective if and only if it is surjective, and then it is bijective.
+\item If $V=W$ and $ST=\operatorname{id}$ for some map $S\colon V\to V$, then $T$ is bijective, $S=T^{-1}$, and $TS=\operatorname{id}$ as well. The same holds if $TS=\operatorname{id}$ for a linear $S$.
+\end{enumerate}
+\end{corollary}
+
+\begin{proof}
+(i) $T$ is injective if and only if $\dim\ker T=0$ (\cref{prop:kernel-image}\,(ii)), if and only if $\dim\operatorname{im}T=\dim V=\dim W$ (\cref{thm:rank-nullity}), if and only if $\operatorname{im}T=W$ (\cref{prop:subspace-dimension}). (ii) If $ST=\operatorname{id}$, then $T\mathbf v=\mathbf 0$ implies $\mathbf v=ST\mathbf v=\mathbf 0$, so $T$ is injective and, by (i), bijective. Composing $ST=\operatorname{id}$ with the inverse function $T^{-1}$ on the right gives $S=S(TT^{-1})=(ST)T^{-1}=T^{-1}$, and then $TS=TT^{-1}=\operatorname{id}$. If $TS=\operatorname{id}$ with $S$ linear, apply what has been shown to the pair $(T,S)$ in the other roles: $S$ has the left inverse $T$, so $S$ is bijective with $S^{-1}=T$, and $T$ is bijective as well.
+\end{proof}
+
+This is the statement that \cref{ch:vectors-matrices} anticipated after \cref{thm:one-sided-square} and that \cref{sec:rank-revisited} proved for square matrices: in finite dimensions, a one-sided inverse of an operator is automatically two-sided. Part (ii) contains \cref{thm:one-sided-square}, with a proof that counts dimensions instead of performing elimination; the elimination has not disappeared, however, but moved into the proof that the dimension is well defined, which rests on \cref{thm:more-unknowns}. The corollary is often used in practice, because injectivity is usually easier to check than surjectivity: one has to show that an equation has at most one solution rather than to construct a solution. \Cref{sec:rank-nullity-applications} exploits this.
+
+When the dimensions differ, the theorem rules out one of the two properties.
+
+\begin{corollary}[Maps between spaces of different dimensions]
+\label{cor:dimension-inequalities}
+Let $V$ and $W$ be finite-dimensional and $T\colon V\to W$ linear.
+\begin{enumerate}
+\item $\operatorname{rank}T\le\min(\dim V,\dim W)$.
+\item If $\dim V>\dim W$, then $T$ is not injective: there is a $\mathbf v\ne\mathbf 0$ with $T\mathbf v=\mathbf 0$.
+\item If $\dim V<\dim W$, then $T$ is not surjective.
+\item There is an injective linear map from $V$ to $W$ if and only if $\dim V\le\dim W$, and a surjective one if and only if $\dim V\ge\dim W$.
+\end{enumerate}
+\end{corollary}
+
+\begin{proof}
+(i) $\operatorname{rank}T=\dim V-\dim\ker T\le\dim V$, and $\operatorname{im}T$ is a subspace of $W$, so its dimension is at most $\dim W$ (\cref{prop:subspace-dimension}). (ii) $\dim\ker T=\dim V-\operatorname{rank}T\ge\dim V-\dim W>0$. (iii) $\operatorname{rank}T\le\dim V<\dim W$, so $\operatorname{im}T\ne W$. (iv) The necessity of the conditions is (ii) and (iii). Conversely, let $(\mathbf b_1,\ldots,\mathbf b_n)$ and $(\mathbf d_1,\ldots,\mathbf d_m)$ be bases of $V$ and $W$. If $n\le m$, the linear map with $\mathbf b_j\mapsto\mathbf d_j$ (\cref{thm:linear-map-basis}) is injective by \cref{prop:kernel-image}\,(iv); if $n\ge m$, the linear map with $\mathbf b_j\mapsto\mathbf d_j$ for $j\le m$ and $\mathbf b_j\mapsto\mathbf 0$ for $j>m$ is surjective by \cref{prop:kernel-image}\,(iii).
+\end{proof}
+
+The corollary is the linear counterpart of the pigeonhole principle (\vcref{1}{thm:pigeonhole}), with dimensions in place of numbers of elements: a linear map into a space of smaller dimension must identify some vectors, and a linear map from a space of smaller dimension cannot reach every vector. For $L_A$ with $A\in\mathbb F^{m\times n}$, part (ii) is \cref{thm:more-unknowns}: a homogeneous system with more unknowns than equations has a nonzero solution. The analogy has a limit: a map between finite sets of the same size is injective if and only if it is surjective, by counting, while an arbitrary map between vector spaces of the same dimension need not be either, since $\mathbb R$ and $\mathbb R^2$ have the same cardinality, as Cantor showed~\cite{cantor1878}; it is linearity that makes dimension the right measure of size.
+
+\subsection{Existence from Uniqueness}
+\label{sec:rank-nullity-applications}
+
+\Cref{cor:injective-surjective} turns uniqueness theorems into existence theorems. To show that an equation $T\mathbf v=\mathbf w$ is solvable for every right-hand side, when $T$ maps between spaces of the same finite dimension, it suffices to show that the homogeneous equation $T\mathbf v=\mathbf 0$ has only the solution $\mathbf v=\mathbf 0$. We give three examples.
+
+\emph{Polynomial interpolation.} For distinct points $t_0,\ldots,t_d$, the evaluation map $E\colon\mathcal P_d\to\mathbb F^{d+1}$ is injective, because a polynomial of degree at most $d$ with $d+1$ distinct roots is zero (\vcref{1}{cor:factor}). Both spaces have dimension $d+1$, so $E$ is surjective: for all values $y_0,\ldots,y_d$ there is exactly one polynomial $p\in\mathcal P_d$ with $p(t_i)=y_i$. This is \cref{thm:interpolation}, proved without the Vandermonde matrix; the proof in \cref{ch:linear-systems} followed the same logic in the language of matrices, through \cref{thm:invertible}.
+
+\emph{Hermite interpolation.} One may prescribe the derivatives as well as the values.
+
+\begin{proposition}[Hermite interpolation]
+\label{prop:hermite}
+Let $t_1,\ldots,t_k\in\mathbb F$ be distinct and $y_1,\ldots,y_k,z_1,\ldots,z_k\in\mathbb F$. There is exactly one polynomial $p\in\mathcal P_{2k-1}$ with
+\[
+p(t_i)=y_i\quad\text{and}\quad p'(t_i)=z_i\qquad(i=1,\ldots,k).
+\]
+\end{proposition}
+
+\begin{proof}
+The map $H\colon\mathcal P_{2k-1}\to\mathbb F^{2k}$, $p\mapsto(p(t_1),p'(t_1),\ldots,p(t_k),p'(t_k))$, is linear, since evaluation and differentiation are, and both spaces have dimension $2k$. For complex polynomials the derivative is given by the coefficient formula $(\sum_jc_jx^j)'=\sum_jjc_jx^{j-1}$, and the product rule holds for it as well: both sides of $(pq)'=p'q+pq'$ are linear in $p$ and in $q$, so it suffices to check monomials, for which $(x^{a+b})'=(a+b)x^{a+b-1}=ax^{a-1}x^b+x^a\,bx^{b-1}$. By \cref{cor:injective-surjective} it suffices to show that $H$ is injective. First, if a polynomial $q$ satisfies $q(t)=q'(t)=0$, then $q=(x-t)^2r$ for a polynomial $r$: if $q\ne0$, \vcref{1}{cor:factor}\,(i) gives $q=(x-t)s$, the product rule gives $q'=s+(x-t)s'$, so that $s(t)=q'(t)=0$, and a second application of \vcref{1}{cor:factor}\,(i) gives $s=(x-t)r$. Now let $Hp=\mathbf 0$. Then $p=(x-t_1)^2p_1$. For $i\ge2$, put $c\coloneqq t_i-t_1\ne0$; then $0=p(t_i)=c^2p_1(t_i)$ and $0=p'(t_i)=2c\,p_1(t_i)+c^2p_1'(t_i)$, so that $p_1(t_i)=p_1'(t_i)=0$. Repeating the argument with $p_1$ and the points $t_2,\ldots,t_k$, and so on, gives $p=(x-t_1)^2\cdots(x-t_k)^2q$ for a polynomial $q$. The product of the squares has degree $2k$, so $p$ has degree at least $2k$ unless $q=0$. Since $\deg p\le2k-1$, $p=0$.
+\end{proof}
+
+The proof never constructs the polynomial, yet the proposition asserts that it exists. For $k=2$ and the points $0$ and $1$, the four polynomials
+\[
+\begin{aligned}
+h_{00}(x)&=2x^3-3x^2+1,&h_{10}(x)&=x^3-2x^2+x,\\
+h_{01}(x)&=-2x^3+3x^2,&h_{11}(x)&=x^3-x^2
+\end{aligned}
+\]
+are mapped by $H$ to the standard basis vectors of $\mathbb F^4$; for instance $h_{10}$ has the value $0$ and the derivative $1$ at $0$ and the value and derivative $0$ at $1$. By the proposition they form a basis of $\mathcal P_3$, and the cubic with the data $(y_0,z_0,y_1,z_1)$ at $0$ and $1$ is $y_0h_{00}+z_0h_{10}+y_1h_{01}+z_1h_{11}$. Piecewise cubic polynomials built in this way from values and slopes are the cubic Hermite splines of Volume~XII.
+
+\emph{Partial fractions.} The decomposition of \vcref{1}{thm:partial-fractions} is an existence and uniqueness statement of the same kind, and counting dimensions completes the proof that \vcref{1}{ch:integration} gave only in outline. Let $s$ be as in the theorem, of degree $d=\sum_im_i+2\sum_jn_j$, which is also the number of unknown coefficients $A_{i,\mu}$, $B_{j,\nu}$, $C_{j,\nu}$. Write $Q_j(x)\coloneqq x^2+p_jx+q_j$ for the quadratic factors. For a list $\mathbf c\in\mathbb R^d$ of coefficients let
+\[
+\Psi\mathbf c\coloneqq\sum_{i=1}^k\sum_{\mu=1}^{m_i}A_{i,\mu}\,\frac{s}{(x-\alpha_i)^\mu}+\sum_{j=1}^l\sum_{\nu=1}^{n_j}(B_{j,\nu}x+C_{j,\nu})\,\frac{s}{Q_j^\nu},
+\]
+the right-hand side of the decomposition multiplied by $s$. Each quotient is a polynomial, of degree $d-\mu$ or $d-2\nu$, and the numerators $B_{j,\nu}x+C_{j,\nu}$ raise the degree by at most $1$; so $\Psi\mathbf c$ is a polynomial of degree at most $d-1$, and $\Psi\colon\mathbb R^d\to\mathcal P_{d-1}$ is linear. Both spaces have dimension $d$. The decomposition holds for a numerator $\rho$ exactly when $\Psi\mathbf c=\rho$: the two polynomials then agree at all $x$ with $s(x)\ne0$, infinitely many points, and so they are equal (\vcref{1}{cor:factor}). The theorem therefore says that $\Psi$ is bijective, and by \cref{cor:injective-surjective} it suffices to show that $\Psi\mathbf c=0$ implies $\mathbf c=\mathbf 0$.
+
+We prove this by induction on $d$; for $d=0$ there is nothing to prove. Let $d\ge1$ and $\Psi\mathbf c=0$. Suppose first that $s$ has a real root, say $\alpha_1$, of multiplicity $m\coloneqq m_1$. Every term of $\Psi\mathbf c$ except $A_{1,m}s/(x-\alpha_1)^m$ contains the factor $x-\alpha_1$, and $s/(x-\alpha_1)^m$ does not vanish at $\alpha_1$; evaluating at $\alpha_1$ gives $A_{1,m}=0$. Otherwise $s$ has a quadratic factor, say $Q_1$, with a root $\beta\notin\mathbb R$, and $n\coloneqq n_1$. Every term except $(B_{1,n}x+C_{1,n})s/Q_1^n$ contains the factor $Q_1$, and $s/Q_1^n$ does not vanish at $\beta$, since a real quadratic factor with the root $\beta$ also has the root $\bar\beta$ (\vcref{1}{cor:factor}\,(iii)) and is therefore $Q_1$ itself. Evaluating at $\beta$ gives $B_{1,n}\beta+C_{1,n}=0$, and since $B_{1,n}$ and $C_{1,n}$ are real and $\beta$ is not, $B_{1,n}=C_{1,n}=0$. In both cases $\Psi\mathbf c=f\cdot\tilde\Psi\tilde{\mathbf c}$, where $f$ is the factor $x-\alpha_1$ or $Q_1$ that was split off, $\tilde\Psi$ is the map of the same kind for the polynomial $s/f$ of smaller degree, and $\tilde{\mathbf c}$ consists of the remaining coefficients. A product of polynomials vanishes only if a factor does, since the degrees add, so $\tilde\Psi\tilde{\mathbf c}=0$, and $\tilde{\mathbf c}=\mathbf 0$ by the induction hypothesis. Hence $\mathbf c=\mathbf 0$, and \vcref{1}{thm:partial-fractions} is proved, existence included, without the Euclidean algorithm of the outline in \vcref{1}{ch:integration}.
+
+\subsection{Infinite Dimensions}
+
+Everything in \cref{cor:injective-surjective} depends on the finite dimension, and the examples of \cref{tab:kernel-image} show how it fails otherwise. The right shift $S_+$ on $\mathbb F^{\mathbb N}$ is injective and not surjective, and the left shift $S_-$ is surjective and not injective; moreover $S_-S_+=\operatorname{id}$ while $S_+S_-\ne\operatorname{id}$, so the one-sided inverse $S_-$ of $S_+$ is not two-sided. On $\mathcal P$, differentiation $D$ is surjective with a one-dimensional kernel, and the integration $J$ is injective but misses the polynomials with a nonzero constant term; $DJ=\operatorname{id}$ by \vcref{1}{thm:ftc1}, but $JDp=p-p(0)$. In infinite dimensions the formula of \cref{thm:rank-nullity} carries no information, since both sides are infinite, and a space can be mapped injectively onto a proper subspace of itself, as $S_+$ maps $\mathbb F^{\mathbb N}$ onto the sequences with $x_0=0$.
+
+\begin{note}{Linear operators in infinite dimensions}
+In the function spaces of analysis, linearity alone is a weak property, and one asks in addition that a linear map be \emph{continuous} with respect to a norm. For a linear map $T$ between normed spaces this is equivalent to \emph{boundedness}: there is a constant $C$ with $\|T\mathbf v\|\le C\|\mathbf v\|$ for all $\mathbf v$, and the smallest such $C$ is the operator norm, as for matrices in \cref{sec:trace-norms}~\cite[Sect.~5.1]{folland1999}. On finite-dimensional spaces every linear map is bounded. In infinite dimensions many are not, and differentiation is the standard example: on the continuously differentiable functions on $[0,\pi]$ with the norm $\|f\|_\infty=\max|f|$, the functions $f_k(x)=\sin kx$ have $\|f_k\|_\infty=1$ and $\|f_k'\|_\infty=k$, so no constant $C$ bounds $\|Df\|_\infty$ by $C\|f\|_\infty$. Small changes of a function can cause large changes of its derivative, and numerical differentiation is correspondingly more delicate than numerical integration, whose operator $J$ is bounded with $\|Jf\|_\infty\le(b-a)\|f\|_\infty$. Volume~III develops bounded operators on Banach and Hilbert spaces, and Volume~XII meets the unboundedness of $D$ again in the rounding errors of difference quotients.
+\end{note}
+
+\section{Isomorphisms}
+\label{sec:isomorphisms}
+
+\subsection{Definition and Basic Properties}
+
+\Cref{sec:coordinates} observed that a basis turns an $n$-dimensional space into a copy of $\mathbb F^n$: the coordinate map is a bijection that preserves sums and multiples. Such maps identify two spaces as far as linear algebra is concerned.
+
+\begin{definition}[Isomorphism]
+\label{def:isomorphism}
+A linear map $T\colon V\to W$ that is bijective is an \term{isomorphism}. The spaces $V$ and $W$ are \term{isomorphic}, written $V\cong W$, if there is an isomorphism from $V$ to $W$. An isomorphism from $V$ to itself is an \term{invertible operator} on $V$.
+\end{definition}
+
+\begin{proposition}[Properties of isomorphisms]
+\label{prop:isomorphism}
+\leavevmode
+\begin{enumerate}
+\item The inverse function of an isomorphism is linear, and hence an isomorphism.
+\item The composition of two isomorphisms $T\colon U\to V$ and $S\colon V\to W$ is an isomorphism, with $(ST)^{-1}=T^{-1}S^{-1}$.
+\item Isomorphism of vector spaces is an equivalence relation: $V\cong V$; $V\cong W$ implies $W\cong V$; and $U\cong V$ and $V\cong W$ imply $U\cong W$.
+\item A linear map $T\colon V\to W$ is an isomorphism if and only if there is a linear map $S\colon W\to V$ with $ST=\operatorname{id}_V$ and $TS=\operatorname{id}_W$.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) Let $T$ be an isomorphism and $\mathbf w,\mathbf w'\in W$, say $\mathbf w=T\mathbf v$ and $\mathbf w'=T\mathbf v'$. Then $T(s\mathbf v+t\mathbf v')=s\mathbf w+t\mathbf w'$, so $T^{-1}(s\mathbf w+t\mathbf w')=s\mathbf v+t\mathbf v'=sT^{-1}\mathbf w+tT^{-1}\mathbf w'$. (ii) A composition of bijections is a bijection, with the inverse $T^{-1}S^{-1}$ (\vcref{1}{sec:injections}), and it is linear by \cref{prop:linear-map-space}. (iii) The identity is an isomorphism, and (i) and (ii) give the other two properties. (iv) If $T$ is an isomorphism, take $S=T^{-1}$, which is linear by (i). Conversely, $ST=\operatorname{id}$ makes $T$ injective and $TS=\operatorname{id}$ makes it surjective.
+\end{proof}
+
+Part (i) is the general form of the argument in \cref{prop:one-sided-inverses}\,(iv): the inverse of a bijective linear map is automatically linear, and nothing has to be checked. An isomorphism transports every notion of linear algebra from one space to the other.
+
+\begin{proposition}[Isomorphisms and bases]
+\label{prop:isomorphism-bases}
+Let $T\colon V\to W$ be linear and $(\mathbf b_1,\ldots,\mathbf b_n)$ a basis of $V$. Then $T$ is an isomorphism if and only if $(T\mathbf b_1,\ldots,T\mathbf b_n)$ is a basis of $W$. An isomorphism maps linearly independent lists to linearly independent lists, spanning lists to spanning lists, and subspaces to subspaces of the same dimension; in particular, isomorphic finite-dimensional spaces have the same dimension.
+\end{proposition}
+
+\begin{proof}
+By \cref{prop:kernel-image}\,(iii) and (iv), the list $T\mathbf b_1,\ldots,T\mathbf b_n$ spans $W$ exactly when $T$ is surjective, and it is independent exactly when $T$ is injective (one direction of (iv) uses that the list is a basis). The statements about independent and spanning lists are (iii) and (iv) of the same proposition. If $U\subseteq V$ is a subspace with a basis $\mathbf u_1,\ldots,\mathbf u_k$, then $T(U)$ is a subspace spanned by $T\mathbf u_1,\ldots,T\mathbf u_k$, and these vectors are independent; so $\dim T(U)=k$. For $U=V$ this gives $\dim W=\dim V$.
+\end{proof}
+
+\subsection{Classification by Dimension}
+
+Up to isomorphism, a finite-dimensional vector space is described by a single number.
+
+\begin{theorem}[Isomorphic spaces]
+\label{thm:isomorphic-dimension}
+Two finite-dimensional vector spaces over $\mathbb F$ are isomorphic if and only if they have the same dimension. In particular, every vector space of dimension $n$ is isomorphic to $\mathbb F^n$, by the coordinate map with respect to any of its bases.
+\end{theorem}
+
+\begin{proof}
+Isomorphic spaces have the same dimension by \cref{prop:isomorphism-bases}. Conversely, if $V$ and $W$ have bases $(\mathbf b_1,\ldots,\mathbf b_n)$ and $(\mathbf d_1,\ldots,\mathbf d_n)$ of the same length, the linear map $T$ with $T\mathbf b_j=\mathbf d_j$ (\cref{thm:linear-map-basis}) maps a basis to a basis and is an isomorphism by \cref{prop:isomorphism-bases}. For $W=\mathbb F^n$ with the standard basis, $T$ is the coordinate map $\mathbf v\mapsto[\mathbf v]_{\mathcal B}$, since both are linear and map $\mathbf b_j$ to $\mathbf e_j$.
+\end{proof}
+
+The theorem is a classification: it lists all finite-dimensional vector spaces over $\mathbb F$, up to isomorphism, as $\mathbb F^0,\mathbb F^1,\mathbb F^2,\ldots$, and it tells us that the dimension is a \term{complete invariant}, a number that is the same for isomorphic spaces and different for non-isomorphic ones. It is the precise form of the remark after \cref{thm:coordinate-map} that the theory of finite-dimensional spaces is, at bottom, the theory of $\mathbb F^n$.
+
+Two cautions are in order. First, an isomorphism identifies only the linear structure. The space $\mathcal P_2$ of polynomials and the space $\mathbb F^3$ are isomorphic, but polynomials can be multiplied and composed, and these operations have no meaning in $\mathbb F^3$ until one transports them along a chosen isomorphism; the same holds for inner products, norms and every other additional structure. Second, an isomorphism between two spaces of the same dimension is in general not unique, and different isomorphisms identify different vectors. The coordinate maps with respect to the monomial basis and to the Lagrange basis of \cref{sec:coordinates} are two isomorphisms from $\mathcal P_2$ to $\mathbb F^3$, which send the polynomial $1+x+x^2$ to $(1,1,1)$ and to $(1,3,7)$. Saying that $V$ \emph{is} $\mathbb F^n$ always means: after a basis has been chosen. Much of the rest of linear algebra consists of choosing it well.
+
+\subsection{Examples}
+
+\emph{Polynomials.} The coordinate map with respect to the monomial basis is the isomorphism $\mathcal P_n\to\mathbb F^{n+1}$, $\sum_kc_kx^k\mapsto(c_0,\ldots,c_n)$, under which a computer stores a polynomial. The evaluation map $E\colon\mathcal P_n\to\mathbb F^{n+1}$ at $n+1$ distinct points is another isomorphism, by \cref{sec:rank-nullity-applications}, and it stores the polynomial by its values.
+
+\emph{Matrices and the vec map.} The map $\operatorname{vec}\colon\mathbb F^{m\times n}\to\mathbb F^{mn}$ that stacks the columns of a matrix on top of each other,
+\[
+\operatorname{vec}A\coloneqq(a_{11},\ldots,a_{m1},a_{12},\ldots,a_{m2},\ldots,a_{1n},\ldots,a_{mn}),
+\]
+is linear and bijective; it is the coordinate map with respect to the matrix units ordered by columns, $E_{11},\ldots,E_{m1},E_{12},\ldots,E_{mn}$. The entry $a_{ij}$ becomes the component $i+(j-1)m$, which is the position of $a_{ij}$ in memory when a matrix is stored by columns (Volume~VII). For real matrices, the Frobenius inner product of \cref{sec:trace-norms} is the Euclidean inner product transported by vec, $\langle A,B\rangle_{\mathrm F}=\langle\operatorname{vec}A,\operatorname{vec}B\rangle$, and $\|A\|_{\mathrm F}=\|\operatorname{vec}A\|$; this is what \cref{sec:trace-norms} expressed by saying that $\mathbb R^{m\times n}$ is a copy of $\mathbb R^{mn}$.
+
+\emph{Symmetric matrices.} The map that lists the entries on and above the diagonal, row by row, is an isomorphism from the space of symmetric $n\times n$ matrices onto $\mathbb F^{n(n+1)/2}$, by the proof of \cref{prop:dimension-examples}\,(i); it halves the storage of a symmetric matrix, roughly.
+
+\emph{Complex numbers.} As a real vector space, $\mathbb C$ is isomorphic to $\mathbb R^2$ by $a+bi\mapsto(a,b)$, the coordinate map with respect to the basis $(1,i)$, and $\mathbb C^n$ is isomorphic to $\mathbb R^{2n}$. Multiplication by a fixed $z=a+bi$ is a real linear operator on $\mathbb C$, and under this isomorphism it becomes the matrix with the rows $(a,-b)$ and $(b,a)$ of \cref{sec:complex-matrices}.
+
+\emph{Positive numbers and solutions of equations.} The logarithm is an isomorphism from the space $\mathbb R_{>0}$ with the operations $\oplus$ and $\odot$ of \cref{sec:vector-spaces} onto $\mathbb R$, since $\ln(xy)=\ln x+\ln y$ and $\ln x^t=t\ln x$, and it is bijective. The map $f\mapsto(f(0),f'(0))$ is an isomorphism from the space of solutions of $f''=-\omega^2f$ onto $\mathbb R^2$, and $(a_k)\mapsto(a_0,a_1)$ one from the Fibonacci-type sequences onto $\mathbb R^2$; both are linear, and they are bijective because a solution is determined by its two initial values, and every pair of initial values occurs.
+
+\emph{Maps from $\mathbb F$.} For every space $W$, the map $\mathcal L(\mathbb F,W)\to W$, $T\mapsto T(1)$, is an isomorphism: a linear map from $\mathbb F$ is the multiplication $t\mapsto t\mathbf w$ by the vector $\mathbf w=T(1)$, by \cref{thm:linear-map-basis} with the basis $(1)$ of $\mathbb F$. \Cref{sec:matrix-of-map} identifies $\mathcal L(V,W)$ for all finite-dimensional $V$ and $W$.
+
+\emph{Infinite dimensions.} The coefficient map $\sum_kc_kx^k\mapsto(c_0,c_1,\ldots)$ is an isomorphism from $\mathcal P$ onto the subspace of $\mathbb F^{\mathbb N}$ consisting of the sequences with only finitely many nonzero terms, a proper subspace. Unlike finite-dimensional spaces, an infinite-dimensional space can be isomorphic to a proper subspace of itself: the right shift $S_+$ is an isomorphism from $\mathbb F^{\mathbb N}$ onto the sequences with $x_0=0$, and multiplication by $x$ is one from $\mathcal P$ onto the polynomials without constant term.
+
+\section{The Matrix of a Linear Map}
+\label{sec:matrix-of-map}
+
+\subsection{Definition}
+
+By \cref{thm:linear-map-basis}, a linear map is determined by the images of the vectors of a basis, and by \cref{sec:coordinates}, each image is determined by its coordinate vector with respect to a basis of the codomain. Writing these coordinate vectors as columns gives a matrix.
+
+\begin{definition}[Matrix of a linear map]
+\label{def:matrix-of-map}
+Let $\mathcal B=(\mathbf b_1,\ldots,\mathbf b_n)$ be a basis of $V$, $\mathcal D=(\mathbf d_1,\ldots,\mathbf d_m)$ a basis of $W$, and $T\colon V\to W$ linear. The \term{matrix of $T$} with respect to $\mathcal B$ and $\mathcal D$ is the matrix $[T]_{\mathcal D\leftarrow\mathcal B}\in\mathbb F^{m\times n}$ whose $j$th column is $[T\mathbf b_j]_{\mathcal D}$. Thus its entries $a_{ij}$ are defined by
+\[
+T\mathbf b_j=a_{1j}\mathbf d_1+a_{2j}\mathbf d_2+\cdots+a_{mj}\mathbf d_m\qquad(j=1,\ldots,n).
+\]
+For an operator $T$ on $V$ and a single basis $\mathcal B$ we write $[T]_{\mathcal B}\coloneqq[T]_{\mathcal B\leftarrow\mathcal B}$.
+\end{definition}
+
+The arrow records the direction: the matrix takes coordinates with respect to $\mathcal B$, on the right, and produces coordinates with respect to $\mathcal D$, on the left, as the next theorem shows. The recipe of \cref{sec:matrices-linear-maps} generalises accordingly: \emph{to find the matrix of a linear map, apply it to the basis vectors of the domain and write the coordinate vectors of the images, with respect to the basis of the codomain, as columns}. For $A\in\mathbb F^{m\times n}$ and the standard bases $\mathcal E_n=(\mathbf e_1,\ldots,\mathbf e_n)$ of $\mathbb F^n$ and $\mathcal E_m$ of $\mathbb F^m$, the coordinate vector of $A\mathbf e_j$ is $A\mathbf e_j$ itself, the $j$th column of $A$, so $[L_A]_{\mathcal E_m\leftarrow\mathcal E_n}=A$.
+
+\begin{theorem}[Coordinates of the image]
+\label{thm:matrix-of-map}
+With the notation of \cref{def:matrix-of-map}:
+\begin{enumerate}
+\item $[T\mathbf v]_{\mathcal D}=[T]_{\mathcal D\leftarrow\mathcal B}\,[\mathbf v]_{\mathcal B}$ for every $\mathbf v\in V$;
+\item $[T]_{\mathcal D\leftarrow\mathcal B}$ is the only matrix $M\in\mathbb F^{m\times n}$ with $[T\mathbf v]_{\mathcal D}=M[\mathbf v]_{\mathcal B}$ for all $\mathbf v\in V$;
+\item $T=\Phi_{\mathcal D}^{-1}\circ L_M\circ\Phi_{\mathcal B}$ with $M=[T]_{\mathcal D\leftarrow\mathcal B}$, where $\Phi_{\mathcal B}\colon\mathbf v\mapsto[\mathbf v]_{\mathcal B}$ and $\Phi_{\mathcal D}\colon\mathbf w\mapsto[\mathbf w]_{\mathcal D}$ are the coordinate maps.
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+(i) Let $[\mathbf v]_{\mathcal B}=\mathbf t$, so that $\mathbf v=\sum_jt_j\mathbf b_j$. Then $T\mathbf v=\sum_jt_jT\mathbf b_j$, and by the linearity of the coordinate map (\cref{thm:coordinate-map})
+\[
+[T\mathbf v]_{\mathcal D}=\sum_jt_j\,[T\mathbf b_j]_{\mathcal D},
+\]
+the combination of the columns of $[T]_{\mathcal D\leftarrow\mathcal B}$ with the coefficients $t_j$, which is $[T]_{\mathcal D\leftarrow\mathcal B}\mathbf t$. (ii) If $[T\mathbf v]_{\mathcal D}=M[\mathbf v]_{\mathcal B}$ for all $\mathbf v$, then for $\mathbf v=\mathbf b_j$, whose coordinate vector is $\mathbf e_j$, the $j$th column of $M$ is $M\mathbf e_j=[T\mathbf b_j]_{\mathcal D}$. (iii) By (i), $\Phi_{\mathcal D}\circ T=L_M\circ\Phi_{\mathcal B}$, and $\Phi_{\mathcal D}$ is invertible.
+\end{proof}
+
+Part (iii) is displayed in \cref{fig:matrix-of-map}A as a square of maps. The two ways from the top left corner to the bottom right corner give the same result: applying $T$ and then taking coordinates is the same as taking coordinates and then multiplying by the matrix. A diagram with this property is said to \term{commute}. The theorem is what makes linear algebra computable: every question about a linear map between finite-dimensional spaces, however abstract the spaces, can be transported along the coordinate maps to a question about a matrix, answered there by elimination, and transported back.
+
+\begin{figure}
+\newcommand\sdcdarrow[3][]{\draw[line width=0.5pt, -{Latex[length=1.8mm]}, #1] (#2) -- (#3);}
+\sdpanel{A}{\begin{tikzpicture}[font=\small]
+\node (V) at (0,2.2) {$V$};
+\node (W) at (3.4,2.2) {$W$};
+\node (Fn) at (0,0) {$\mathbb F^n$};
+\node (Fm) at (3.4,0) {$\mathbb F^m$};
+\sdcdarrow{V}{W}
+\sdcdarrow{V}{Fn}
+\sdcdarrow{W}{Fm}
+\sdcdarrow{Fn}{Fm}
+\node[above, font=\scriptsize] at (1.7,2.2) {$T$};
+\node[left, font=\scriptsize] at (0,1.1) {$\mathbf v\mapsto[\mathbf v]_{\mathcal B}$};
+\node[right, font=\scriptsize] at (3.4,1.1) {$\mathbf w\mapsto[\mathbf w]_{\mathcal D}$};
+\node[below, font=\scriptsize] at (1.7,0) {$[T]_{\mathcal D\leftarrow\mathcal B}$};
+\end{tikzpicture}}\hfill
+\sdpanel{B}{\begin{tikzpicture}[font=\small]
+\node (A1) at (0,2.2) {$\mathbb F^n$};
+\node (A2) at (3.4,2.2) {$\mathbb F^m$};
+\node (B1) at (0,0) {$\mathbb F^n$};
+\node (B2) at (3.4,0) {$\mathbb F^m$};
+\sdcdarrow{A1}{A2}
+\sdcdarrow{B1}{A1}
+\sdcdarrow{B2}{A2}
+\sdcdarrow{B1}{B2}
+\node[above, font=\scriptsize] at (1.7,2.2) {$[T]_{\mathcal D\leftarrow\mathcal B}$};
+\node[left, font=\scriptsize] at (0,1.1) {$P$};
+\node[right, font=\scriptsize] at (3.4,1.1) {$Q$};
+\node[below, font=\scriptsize] at (1.7,0) {$[T]_{\mathcal D'\leftarrow\mathcal B'}$};
+\end{tikzpicture}}
+\caption{Commutative diagrams. (A) The matrix of a linear map (\cref{thm:matrix-of-map}): taking coordinates and multiplying by $[T]_{\mathcal D\leftarrow\mathcal B}$ gives the same result as applying $T$ and then taking coordinates. (B) A change of basis (\cref{thm:change-of-basis-map}): the bottom row works with coordinates with respect to the new bases $\mathcal B'$ and $\mathcal D'$, the vertical maps convert them into coordinates with respect to $\mathcal B$ and $\mathcal D$, with the change-of-basis matrices $P=[\operatorname{id}]_{\mathcal B\leftarrow\mathcal B'}$ and $Q=[\operatorname{id}]_{\mathcal D\leftarrow\mathcal D'}$, and $Q\,[T]_{\mathcal D'\leftarrow\mathcal B'}=[T]_{\mathcal D\leftarrow\mathcal B}\,P$.}
+\label{fig:matrix-of-map}
+\end{figure}
+
+\subsection{Matrices Represent Linear Maps}
+
+The correspondence between maps and matrices respects all operations: sums, multiples, compositions and inverses.
+
+\begin{theorem}[Linear maps and matrices]
+\label{thm:matrix-isomorphism}
+Let $V$ and $W$ have the bases $\mathcal B$ and $\mathcal D$, of lengths $n$ and $m$. The map
+\[
+\mathcal L(V,W)\to\mathbb F^{m\times n},\qquad T\mapsto[T]_{\mathcal D\leftarrow\mathcal B},
+\]
+is an isomorphism of vector spaces. In particular $\dim\mathcal L(V,W)=mn=\dim V\cdot\dim W$.
+\end{theorem}
+
+\begin{proof}
+The map is linear: the $j$th column of $[sS+tT]_{\mathcal D\leftarrow\mathcal B}$ is $[sS\mathbf b_j+tT\mathbf b_j]_{\mathcal D}=s[S\mathbf b_j]_{\mathcal D}+t[T\mathbf b_j]_{\mathcal D}$. It is injective: if $[T]_{\mathcal D\leftarrow\mathcal B}=0$, then $T\mathbf b_j=\mathbf 0$ for every $j$, and $T=0$ by the uniqueness in \cref{thm:linear-map-basis}. It is surjective: for $M\in\mathbb F^{m\times n}$, the linear map with $T\mathbf b_j\coloneqq\sum_im_{ij}\mathbf d_i$, which exists by \cref{thm:linear-map-basis}, has the matrix $M$. The dimension follows from \cref{prop:isomorphism-bases} and $\dim\mathbb F^{m\times n}=mn$.
+\end{proof}
+
+\begin{theorem}[Composition and inverse]
+\label{thm:composition-matrix}
+Let $U$, $V$ and $W$ have the bases $\mathcal A$, $\mathcal B$ and $\mathcal D$, and let $T\in\mathcal L(U,V)$ and $S\in\mathcal L(V,W)$.
+\begin{enumerate}
+\item $[ST]_{\mathcal D\leftarrow\mathcal A}=[S]_{\mathcal D\leftarrow\mathcal B}\,[T]_{\mathcal B\leftarrow\mathcal A}$.
+\item $[\operatorname{id}_V]_{\mathcal B}=I_n$, where $n=\dim V$.
+\item Let $\dim V=\dim W=n$. A linear map $T\colon V\to W$ is an isomorphism if and only if $[T]_{\mathcal D\leftarrow\mathcal B}$ is invertible, and then $[T^{-1}]_{\mathcal B\leftarrow\mathcal D}=([T]_{\mathcal D\leftarrow\mathcal B})^{-1}$.
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+(i) For every $\mathbf u\in U$, \cref{thm:matrix-of-map}\,(i) applied twice gives
+\[
+[ST\mathbf u]_{\mathcal D}=[S]_{\mathcal D\leftarrow\mathcal B}[T\mathbf u]_{\mathcal B}=[S]_{\mathcal D\leftarrow\mathcal B}[T]_{\mathcal B\leftarrow\mathcal A}[\mathbf u]_{\mathcal A},
+\]
+and by the uniqueness in \cref{thm:matrix-of-map}\,(ii) the product is the matrix of $ST$. (ii) $\operatorname{id}\mathbf b_j=\mathbf b_j$ has the coordinate vector $\mathbf e_j$. (iii) If $T$ is an isomorphism, then by (i) and (ii)
+\[
+[T^{-1}]_{\mathcal B\leftarrow\mathcal D}[T]_{\mathcal D\leftarrow\mathcal B}=[T^{-1}T]_{\mathcal B}=I_n,\qquad[T]_{\mathcal D\leftarrow\mathcal B}[T^{-1}]_{\mathcal B\leftarrow\mathcal D}=[TT^{-1}]_{\mathcal D}=I_n .
+\]
+Conversely, let $M=[T]_{\mathcal D\leftarrow\mathcal B}$ be invertible. By \cref{thm:matrix-isomorphism} there is a linear $S\colon W\to V$ with $[S]_{\mathcal B\leftarrow\mathcal D}=M^{-1}$, and then $[ST]_{\mathcal B}=M^{-1}M=I_n=[\operatorname{id}_V]_{\mathcal B}$ and similarly $[TS]_{\mathcal D}=I_n$. Since a map is determined by its matrix, $ST=\operatorname{id}_V$ and $TS=\operatorname{id}_W$, and $T$ is an isomorphism by \cref{prop:isomorphism}\,(iv).
+\end{proof}
+
+Part (i) completes the story begun in \cref{sec:matrix-multiplication}. There, the product of matrices was derived from the composition of the maps $\mathbf x\mapsto A\mathbf x$; here it turns out to describe the composition of arbitrary linear maps between finite-dimensional spaces, once bases are fixed. The two theorems together say that $\mathcal L(V,W)$ with its operations and $\mathbb F^{m\times n}$ with the matrix operations are the same algebraic structure, as long as the bases are kept fixed. The kernel, the image and the rank also pass to the matrix.
+
+\begin{proposition}[Kernel, image and rank of the matrix]
+\label{prop:rank-of-matrix}
+With the notation of \cref{def:matrix-of-map} and $M=[T]_{\mathcal D\leftarrow\mathcal B}$, the coordinate map $\Phi_{\mathcal B}$ maps $\ker T$ isomorphically onto $\mathcal N(M)$, and $\Phi_{\mathcal D}$ maps $\operatorname{im}T$ isomorphically onto $\mathcal C(M)$. In particular $\operatorname{rank}T=\operatorname{rank}M$ and $\dim\ker T=\dim\mathcal N(M)$.
+\end{proposition}
+
+\begin{proof}
+By \cref{thm:matrix-of-map}, $T\mathbf v=\mathbf 0$ if and only if $[T\mathbf v]_{\mathcal D}=M[\mathbf v]_{\mathcal B}=\mathbf 0$, so $\Phi_{\mathcal B}$ maps $\ker T$ into $\mathcal N(M)$, and every $\mathbf x\in\mathcal N(M)$ is the coordinate vector of a vector of the kernel, since $\Phi_{\mathcal B}$ is surjective. Similarly $\mathbf w=T\mathbf v$ gives $[\mathbf w]_{\mathcal D}=M[\mathbf v]_{\mathcal B}\in\mathcal C(M)$, and every $M\mathbf x$ is $[T\mathbf v]_{\mathcal D}$ for the $\mathbf v$ with $[\mathbf v]_{\mathcal B}=\mathbf x$. The restrictions of the injective linear maps $\Phi_{\mathcal B}$ and $\Phi_{\mathcal D}$ are injective, and isomorphisms preserve dimensions (\cref{prop:isomorphism-bases}).
+\end{proof}
+
+So the kernel of differentiation on $\mathcal P_3$ can be found by computing the null space of its $4\times4$ matrix, and the dimension of the space of solutions of a homogeneous linear equation in any finite-dimensional space is $n$ minus the rank of a matrix.
+
+\subsection{Examples}
+
+\emph{Differentiation and integration of polynomials.} Let $\mathcal M_n=(1,x,\ldots,x^n)$ denote the monomial basis of $\mathcal P_n$. The matrix of $D\colon\mathcal P_3\to\mathcal P_3$ with respect to $\mathcal M_3$ is the matrix $D$ of \cref{sec:matrices-linear-maps}. Regarded as a map $D\colon\mathcal P_3\to\mathcal P_2$, differentiation has a $3\times4$ matrix, since the images now have three coordinates; and the integration $J\colon\mathcal P_2\to\mathcal P_3$, $p\mapsto\int_0^xp$, which maps $1$, $x$ and $x^2$ to $x$, $x^2/2$ and $x^3/3$, has a $4\times3$ matrix:
+\[
+[D]_{\mathcal M_2\leftarrow\mathcal M_3}=\begin{bmatrix}0&1&0&0\\0&0&2&0\\0&0&0&3\end{bmatrix},\qquad
+[J]_{\mathcal M_3\leftarrow\mathcal M_2}=\begin{bmatrix}0&0&0\\1&0&0\\0&\frac12&0\\0&0&\frac13\end{bmatrix}.
+\]
+By \cref{thm:composition-matrix}, the products of these matrices are the matrices of $DJ$ and $JD$:
+\[
+[D][J]=I_3,\qquad[J][D]=\begin{bmatrix}0&0&0&0\\0&1&0&0\\0&0&1&0\\0&0&0&1\end{bmatrix}.
+\]
+The first product expresses the fundamental theorem of calculus, $(\int_0^xp)'=p$, and the second the fact that $\int_0^xp'=p-p(0)$, which forgets the constant term. The matrix $[J]$ is a right inverse of $[D]$ but not a left inverse, as must be the case for a $3\times4$ matrix, which has no left inverse (\cref{thm:full-rank}).
+
+\emph{Evaluation.} The matrix of the evaluation map $E\colon\mathcal P_d\to\mathbb F^k$ at the points $t_1,\ldots,t_k$, with respect to the monomial basis and the standard basis, has as its $j$th column the values of $x^{j-1}$ at the points: it is the $k\times(d+1)$ Vandermonde matrix with the rows $(1,t_i,\ldots,t_i^d)$. For $k=d+1$ points and the Lagrange basis $\mathcal B_{\mathrm L}$ of these points (\cref{sec:coordinates}), the matrix of $E$ is the identity, since $EL_j=\mathbf e_j$. The Vandermonde matrix is also the change-of-basis matrix that \cref{sec:coordinates} found between the monomial and the Lagrange basis of $\mathcal P_2$; this is no coincidence, since in the Lagrange basis the coordinate map \emph{is} the evaluation map.
+
+\emph{The difference operator.} The operator $\Delta$ on $\mathcal P_3$ defined by $(\Delta p)(x)\coloneqq p(x+1)-p(x)$ maps $1$, $x$, $x^2$ and $x^3$ to $0$, $1$, $2x+1$ and $3x^2+3x+1$. With respect to the basis $\mathcal F=(1,x,x^{\underline2},x^{\underline3})$ of falling factorials, the identity $\Delta x^{\underline k}=kx^{\underline{k-1}}$ of \veqref{1}{eq:falling-difference} gives the images $0$, $1$, $2x$ and $3x^{\underline2}$. So
+\[
+[\Delta]_{\mathcal M_3}=\begin{bmatrix}0&1&1&1\\0&0&2&3\\0&0&0&3\\0&0&0&0\end{bmatrix},\qquad
+[\Delta]_{\mathcal F}=\begin{bmatrix}0&1&0&0\\0&0&2&0\\0&0&0&3\\0&0&0&0\end{bmatrix}=[D]_{\mathcal M_3}.
+\]
+In the basis of falling factorials, the difference operator has exactly the matrix that differentiation has in the basis of powers. This is the precise sense of the analogy between differences and derivatives noted in \vcref{1}{sec:recurrences}, and it shows how much the matrix of a map depends on the basis.
+
+\emph{Maps on matrices.} The transposition $X\mapsto X^{\mathsf T}$ on $\mathbb F^{2\times2}$ maps the matrix units $E_{11}$, $E_{21}$, $E_{12}$, $E_{22}$ to $E_{11}$, $E_{12}$, $E_{21}$, $E_{22}$, so with respect to this basis, the one of the vec map of \cref{sec:isomorphisms}, its matrix is the permutation matrix that exchanges the second and the third coordinate. The multiplication $X\mapsto AX$ by a fixed $A\in\mathbb F^{m\times m}$ on $\mathbb F^{m\times n}$ acts on each column separately, since the $j$th column of $AX$ is $A\mathbf x_j$; in the vec coordinates its matrix is therefore block diagonal, with $n$ copies of $A$ on the diagonal. The note below gives the matrix of $X\mapsto AXB$.
+
+\begin{note}{The Kronecker product}
+The \emph{Kronecker product} of $A\in\mathbb F^{m\times n}$ and $B\in\mathbb F^{p\times q}$ is the $mp\times nq$ matrix $A\otimes B$ made of the blocks $a_{ij}B$, arranged as the entries of $A$. It describes the linear map $X\mapsto AXB$ from $\mathbb F^{n\times p}$ to $\mathbb F^{m\times q}$ in the vec coordinates: $\operatorname{vec}(AXB)=(B^{\mathsf T}\otimes A)\operatorname{vec}X$. Indeed, the $k$th column of $AXB$ is $AX\mathbf b_k=\sum_jb_{jk}A\mathbf x_j$, with the columns $\mathbf x_j$ of $X$ and $\mathbf b_k$ of $B$, and the block in position $(k,j)$ of $B^{\mathsf T}\otimes A$ is $b_{jk}A$. The block diagonal matrix above is $I_n\otimes A$. In this form a matrix equation such as the Sylvester equation $AX+XB=C$ becomes an ordinary linear system $(I\otimes A+B^{\mathsf T}\otimes I)\operatorname{vec}X=\operatorname{vec}C$ of order $mn$ for an $m\times n$ unknown $X$. The matrix of this system has $m^2n^2$ entries, and practical methods, such as the routine \code{linalg.solve\_sylvester} treated in Volume~IX, never form it. Van Loan surveys the uses of the Kronecker product in matrix computations~\cite{vanloan2000}, and Golub and Van Loan treat it among the basic operations~\cite{golub2013}.
+\end{note}
+
+\section{Change of Basis}
+\label{sec:change-of-basis-maps}
+
+\subsection{How the Matrix Changes}
+
+The matrix of a linear map depends on two bases, and \cref{thm:change-of-basis} told us how coordinates change with the basis. Combining the two gives the change of the matrix. Recall that for two bases $\mathcal B$ and $\mathcal B'$ of $V$, the change-of-basis matrix of \cref{sec:coordinates} has as its $j$th column the coordinate vector $[\mathbf b_j']_{\mathcal B}$ and converts coordinates with respect to $\mathcal B'$ into coordinates with respect to $\mathcal B$. By \cref{def:matrix-of-map} it is the matrix of the identity map,
+\[
+[\operatorname{id}_V]_{\mathcal B\leftarrow\mathcal B'},\qquad[\mathbf v]_{\mathcal B}=[\operatorname{id}_V]_{\mathcal B\leftarrow\mathcal B'}[\mathbf v]_{\mathcal B'},
+\]
+and \cref{thm:change-of-basis} is the case $T=\operatorname{id}$ of \cref{thm:matrix-of-map}. Its inverse is $[\operatorname{id}_V]_{\mathcal B'\leftarrow\mathcal B}$, by \cref{thm:composition-matrix}\,(iii).
+
+\begin{theorem}[Change of basis for a linear map]
+\label{thm:change-of-basis-map}
+Let $\mathcal B,\mathcal B'$ be bases of $V$ and $\mathcal D,\mathcal D'$ bases of $W$, and let
+\[
+P\coloneqq[\operatorname{id}_V]_{\mathcal B\leftarrow\mathcal B'},\qquad Q\coloneqq[\operatorname{id}_W]_{\mathcal D\leftarrow\mathcal D'}
+\]
+be the change-of-basis matrices. For every linear map $T\colon V\to W$,
+\[
+[T]_{\mathcal D'\leftarrow\mathcal B'}=Q^{-1}\,[T]_{\mathcal D\leftarrow\mathcal B}\,P .
+\]
+\end{theorem}
+
+\begin{proof}
+Write $T=\operatorname{id}_W\circ T\circ\operatorname{id}_V$ and apply \cref{thm:composition-matrix}\,(i) with the bases $\mathcal B'$, $\mathcal B$, $\mathcal D$, $\mathcal D'$ in turn:
+\[
+[T]_{\mathcal D'\leftarrow\mathcal B'}=[\operatorname{id}_W]_{\mathcal D'\leftarrow\mathcal D}\,[T]_{\mathcal D\leftarrow\mathcal B}\,[\operatorname{id}_V]_{\mathcal B\leftarrow\mathcal B'},
+\]
+and $[\operatorname{id}_W]_{\mathcal D'\leftarrow\mathcal D}=Q^{-1}$ by \cref{thm:composition-matrix}\,(iii).
+\end{proof}
+
+The formula is read from right to left, as products of matrices always are: given coordinates with respect to $\mathcal B'$, the matrix $P$ converts them into coordinates with respect to $\mathcal B$, the old matrix applies the map and produces coordinates with respect to $\mathcal D$, and $Q^{-1}$ converts these into coordinates with respect to $\mathcal D'$. \Cref{fig:matrix-of-map}B shows the corresponding commutative square. The arrows in the notation keep the bookkeeping straight: adjacent bases in a product must agree, as in $[\,\cdot\,]_{\mathcal D'\leftarrow\mathcal D}[\,\cdot\,]_{\mathcal D\leftarrow\mathcal B}[\,\cdot\,]_{\mathcal B\leftarrow\mathcal B'}$, and they cancel like the shapes of matrices in \cref{sec:matrix-multiplication}.
+
+The most frequent case is $V=\mathbb F^n$ and $W=\mathbb F^m$ with the standard bases $\mathcal B=\mathcal E_n$ and $\mathcal D=\mathcal E_m$ and a matrix $A$. Then $P$ is the matrix whose columns are the new basis vectors $\mathbf b_1',\ldots,\mathbf b_n'$ and $Q$ the one whose columns are $\mathbf d_1',\ldots,\mathbf d_m'$, and the matrix of $\mathbf x\mapsto A\mathbf x$ with respect to the new bases is $Q^{-1}AP$. To compute it, one solves the systems $Q\mathbf y_j=A\mathbf b_j'$ for its columns $\mathbf y_j$, rather than forming $Q^{-1}$.
+
+\subsection{Equivalent Matrices and the Rank Normal Form}
+
+If the bases of the domain and of the codomain may be chosen independently, the matrix of a linear map can be made very simple.
+
+\begin{definition}[Equivalent matrices]
+\label{def:equivalent-matrices}
+Two matrices $A,B\in\mathbb F^{m\times n}$ are \term{equivalent} if $B=MAN$ for some invertible $M\in\mathbb F^{m\times m}$ and $N\in\mathbb F^{n\times n}$.
+\end{definition}
+
+Equivalence is an equivalence relation in the sense of \vcref{1}{sec:equivalence}: $A=IAI$; $B=MAN$ gives $A=M^{-1}BN^{-1}$; and $B=MAN$, $C=M'BN'$ give $C=(M'M)A(NN')$, with invertible products (\cref{prop:inverse-rules}). By \cref{thm:change-of-basis-map}, two matrices are equivalent if and only if they are the matrices of the same linear map $\mathbb F^n\to\mathbb F^m$ with respect to two pairs of bases: every invertible matrix is a change-of-basis matrix, by the remark after \cref{thm:change-of-basis}, and conversely. Let
+\[
+N_r\coloneqq\begin{bmatrix}I_r&0\\0&0\end{bmatrix}\in\mathbb F^{m\times n}
+\]
+denote the $m\times n$ matrix with $r$ ones at the beginning of the diagonal and zeros elsewhere, $0\le r\le\min(m,n)$.
+
+\begin{theorem}[Rank normal form]
+\label{thm:rank-normal-form}
+\leavevmode
+\begin{enumerate}
+\item Let $V$ and $W$ have dimensions $n$ and $m$, and let $T\colon V\to W$ be linear of rank $r$. There are bases $\mathcal B$ of $V$ and $\mathcal D$ of $W$ with $[T]_{\mathcal D\leftarrow\mathcal B}=N_r$.
+\item Every $A\in\mathbb F^{m\times n}$ of rank $r$ is equivalent to $N_r$: there are invertible $M$ and $N$ with $MAN=N_r$.
+\item Two matrices in $\mathbb F^{m\times n}$ are equivalent if and only if they have the same rank.
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+(i) Let $\mathbf u_1,\ldots,\mathbf u_k$ be a basis of $\ker T$, extended to a basis $\mathbf v_1,\ldots,\mathbf v_r,\mathbf u_1,\ldots,\mathbf u_k$ of $V$; the order of the vectors does not matter for \cref{thm:rank-nullity}, so $\mathbf w_1\coloneqq T\mathbf v_1,\ldots,\mathbf w_r\coloneqq T\mathbf v_r$ is a basis of $\operatorname{im}T$. Extend it to a basis $\mathbf w_1,\ldots,\mathbf w_m$ of $W$. With $\mathcal B\coloneqq(\mathbf v_1,\ldots,\mathbf v_r,\allowbreak\mathbf u_1,\ldots,\mathbf u_k)$ and $\mathcal D\coloneqq(\mathbf w_1,\ldots,\mathbf w_m)$, the first $r$ basis vectors of $V$ are mapped to the first $r$ basis vectors of $W$ and the others to $\mathbf 0$; so the first $r$ columns of $[T]_{\mathcal D\leftarrow\mathcal B}$ are $\mathbf e_1,\ldots,\mathbf e_r$ and the others are zero.
+
+(ii) Apply (i) to $T=L_A$, whose rank is $\operatorname{rank}A$, and \cref{thm:change-of-basis-map} with the standard bases $\mathcal E_n$, $\mathcal E_m$ as the old bases: $N_r=Q^{-1}AP$, where $P$ and $Q$ are the invertible matrices whose columns are the vectors of $\mathcal B$ and of $\mathcal D$.
+
+(iii) If $B=MAN$ with invertible $M$ and $N$, then $B$ is the matrix of the map $L_A$ with respect to other bases, so $\operatorname{rank}B=\operatorname{rank}L_A=\operatorname{rank}A$ by \cref{prop:rank-of-matrix}. Conversely, two matrices of the same rank $r$ are both equivalent to $N_r$ by (ii), hence to each other.
+\end{proof}
+
+The theorem says that, up to the choice of coordinates in the domain and in the codomain, there is only one linear map of each rank: the map $(x_1,\ldots,x_n)\mapsto(x_1,\ldots,x_r,0,\ldots,0)$, which keeps $r$ coordinates and discards the others. \Cref{fig:rank-normal-form} shows the bases of the proof. The rank is a complete invariant of equivalence, as the dimension is of isomorphism, and the $m\times n$ matrices fall into exactly $\min(m,n)+1$ equivalence classes, one for each possible rank. All the information in a matrix beyond its rank is information about the particular bases in which it is written.
+
+\begin{figure}
+\sdfloat{%
+\begin{tikzpicture}[font=\scriptsize, x=1cm, y=0.62cm]
+\draw[line width=0.5pt, rounded corners=3pt] (-0.7,-0.6) rectangle (0.7,6.6);
+\draw[line width=0.5pt, rounded corners=3pt] (3.6,-0.6) rectangle (5.0,6.6);
+\node at (0,7.1) {$V$};
+\node at (4.3,7.1) {$W$};
+\foreach \y/\l in {6/{\mathbf v_1}, 5/{\vdots}, 4/{\mathbf v_r}, 2.5/{\mathbf u_1}, 1.5/{\vdots}, 0.5/{\mathbf u_k}} {\node at (0,\y) {$\l$};}
+\foreach \y/\l in {6/{\mathbf w_1}, 5/{\vdots}, 4/{\mathbf w_r}, 2.5/{\mathbf w_{r+1}}, 1.5/{\vdots}, 0.5/{\mathbf w_m}} {\node at (4.3,\y) {$\l$};}
+\draw[line width=0.6pt, -{Latex[length=1.6mm]}] (0.4,6) -- (3.85,6);
+\draw[line width=0.6pt, -{Latex[length=1.6mm]}] (0.4,4) -- (3.85,4);
+\node[above] at (2.1,6) {$T$};
+\node (z) at (2.1,1.5) {$\mathbf 0$};
+\draw[line width=0.6pt, -{Latex[length=1.6mm]}] (0.4,2.5) -- (z);
+\draw[line width=0.6pt, -{Latex[length=1.6mm]}] (0.4,0.5) -- (z);
+\draw[decorate, decoration={brace, amplitude=3pt}, line width=0.4pt] (-0.85,3.6) -- (-0.85,6.4) node[midway, left=3pt] {$r$};
+\draw[decorate, decoration={brace, amplitude=3pt}, line width=0.4pt] (-0.85,0.1) -- (-0.85,2.9) node[midway, left=3pt, align=right] {$\ker T$\\$k=n-r$};
+\draw[decorate, decoration={brace, amplitude=3pt, mirror}, line width=0.4pt] (5.15,3.6) -- (5.15,6.4) node[midway, right=3pt] {$\operatorname{im}T$};
+\draw[decorate, decoration={brace, amplitude=3pt, mirror}, line width=0.4pt] (5.15,0.1) -- (5.15,2.9) node[midway, right=3pt] {$m-r$};
+\end{tikzpicture}}{The bases of the rank normal form (\cref{thm:rank-normal-form}). The basis of $V$ consists of $r$ vectors $\mathbf v_j$, which $T$ maps to a basis $\mathbf w_1,\ldots,\mathbf w_r$ of the image, followed by a basis $\mathbf u_1,\ldots,\mathbf u_k$ of the kernel, which $T$ maps to $\mathbf 0$. The basis of the image is completed by $m-r$ further vectors to a basis of $W$, which $T$ does not reach. With respect to these bases the matrix of $T$ is $N_r$.\label{fig:rank-normal-form}}
+\end{figure}
+
+For the matrix $A$ of \cref{sec:four-subspaces}, of rank $2$, the bases of the proof can be read off from its four subspaces. The pivot columns $1$ and $3$ suggest $\mathbf v_1=\mathbf e_1$ and $\mathbf v_2=\mathbf e_3$, with the images $A\mathbf e_1=\mathbf a_1=(1,2,-1)$ and $A\mathbf e_3=\mathbf a_3=(0,1,1)$, the basis of $\mathcal C(A)$ of \cref{thm:four-bases}; the special solutions $\mathbf s_1=(-2,1,0,0)$ and $\mathbf s_2=(-3,0,-2,1)$ form a basis of the kernel; and $\mathbf a_1$, $\mathbf a_3$ are completed to a basis of $\mathbb R^3$ by $\mathbf e_3$. With
+\[
+P=\begin{bmatrix}1&0&-2&-3\\0&0&1&0\\0&1&0&-2\\0&0&0&1\end{bmatrix},\qquad
+Q=\begin{bmatrix}1&0&0\\2&1&0\\-1&1&1\end{bmatrix},
+\]
+whose columns are these vectors, $Q^{-1}AP=N_2$. Here $Q^{-1}$ is the matrix $G$ with $GA=R$ found in \cref{sec:four-subspaces}, which records the row operations of the elimination, and multiplying $R$ on the right by $P$ performs column operations: the columns $\mathbf e_1$ and $\mathbf e_3$ of $P$ move the pivot columns of $R$ to the front, and the special solutions annihilate the free columns. In general, row operations reduce $A$ to $R=GA$, and column operations, which subtract multiples of the pivot columns of $R$ from the free columns and then permute the columns, reduce $R$ to $N_r$; each column operation is multiplication on the right by an elementary matrix (\cref{sec:elimination}).
+
+The rank normal form is too coarse to be useful for computation, since it throws away all information but the rank. Its refinement is the singular value decomposition of \cref{ch:svd}. If $V$ and $W$ carry inner products and the bases are required to be orthonormal, the best one can achieve is a matrix that is zero except for the numbers $\sigma_1\ge\cdots\ge\sigma_r>0$ on its diagonal, the singular values; the rank is still the number of nonzero entries, but now the entries themselves carry information about the map.
+
+\section{Similarity}
+\label{sec:similarity}
+
+\subsection{Operators and Similar Matrices}
+
+For an operator $T$ on $V$, the input and the output live in the same space, and it is natural to describe both with the same basis. The matrix $[T]_{\mathcal B}$ then depends on a single basis, and \cref{thm:change-of-basis-map} with $\mathcal D=\mathcal B$ and $\mathcal D'=\mathcal B'$, so that $Q=P$, gives
+\[
+[T]_{\mathcal B'}=P^{-1}\,[T]_{\mathcal B}\,P,\qquad P=[\operatorname{id}_V]_{\mathcal B\leftarrow\mathcal B'} .
+\]
+The freedom is now much smaller: instead of two independent invertible matrices there is only one, and it acts on both sides.
+
+\begin{definition}[Similar matrices]
+\label{def:similar}
+Two matrices $A,B\in\mathbb F^{n\times n}$ are \term{similar} if $B=P^{-1}AP$ for some invertible $P\in\mathbb F^{n\times n}$.
+\end{definition}
+
+\begin{proposition}[Similarity]
+\label{prop:similarity}
+\leavevmode
+\begin{enumerate}
+\item Similarity is an equivalence relation on $\mathbb F^{n\times n}$.
+\item Two matrices are similar if and only if they are the matrices of the same operator on $\mathbb F^n$ with respect to two bases, and then they are the matrices of one operator with respect to two bases on every $n$-dimensional space $V$.
+\item Similar matrices are equivalent; the converse is false.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) $A=I^{-1}AI$; if $B=P^{-1}AP$, then $A=PBP^{-1}=(P^{-1})^{-1}BP^{-1}$; and if moreover $C=R^{-1}BR$, then $C=R^{-1}P^{-1}APR=(PR)^{-1}A(PR)$. (ii) If $A=[T]_{\mathcal B}$ and $B=[T]_{\mathcal B'}$, they are similar by the formula above. Conversely, let $B=P^{-1}AP$, let $\mathcal B$ be a basis of $V$ and $T$ the operator with $[T]_{\mathcal B}=A$ (\cref{thm:matrix-isomorphism}). The vectors $\mathbf b_j'$ with $[\mathbf b_j']_{\mathcal B}=\mathbf p_j$, the columns of $P$, form a basis $\mathcal B'$ with $[\operatorname{id}]_{\mathcal B\leftarrow\mathcal B'}=P$ (the remark after \cref{thm:change-of-basis}), and then $[T]_{\mathcal B'}=P^{-1}AP=B$. (iii) $P^{-1}AP=MAN$ with $M=P^{-1}$ and $N=P$. For the converse, the matrices
+\[
+E_{11}=\begin{bmatrix}1&0\\0&0\end{bmatrix},\qquad N=\begin{bmatrix}0&1\\0&0\end{bmatrix}
+\]
+both have rank $1$ and are equivalent by \cref{thm:rank-normal-form}. If $N=P^{-1}E_{11}P$, then $N^2=P^{-1}E_{11}^2P=P^{-1}E_{11}P=N$; but $N^2=0\ne N$. So they are not similar.
+\end{proof}
+
+The example in (iii) shows the general principle: a similarity transformation $A\mapsto P^{-1}AP$ preserves every property of $A$ that can be expressed in terms of the operator alone, without reference to a basis, and $E_{11}$ and $N$ differ in such a property, since one is idempotent and the other squares to zero.
+
+\begin{proposition}[Similarity invariants]
+\label{prop:similarity-invariants}
+Let $B=P^{-1}AP$ with $A,B,P\in\mathbb F^{n\times n}$ and $P$ invertible.
+\begin{enumerate}
+\item $\operatorname{rank}B=\operatorname{rank}A$ and $\operatorname{tr}B=\operatorname{tr}A$.
+\item $B^k=P^{-1}A^kP$ for every $k\in\mathbb N$, and $p(B)=P^{-1}p(A)P$ for every polynomial $p$; in particular $p(B)=0$ if and only if $p(A)=0$.
+\item $B$ is invertible if and only if $A$ is, and then $B^{-1}=P^{-1}A^{-1}P$.
+\item For every $\lambda\in\mathbb F$, $\dim\mathcal N(B-\lambda I)=\dim\mathcal N(A-\lambda I)$.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) The rank is preserved by equivalence (\cref{thm:rank-normal-form}), and $\operatorname{tr}(P^{-1}AP)=\operatorname{tr}A$ is \cref{prop:trace}\,(iv), whose proof holds verbatim for complex matrices. (ii) The factors $PP^{-1}$ in the middle cancel: $B^2=P^{-1}APP^{-1}AP=P^{-1}A^2P$, and by induction $B^k=P^{-1}A^kP$; then $p(B)=\sum_kc_kP^{-1}A^kP=P^{-1}p(A)P$, and $p(B)=0$ if and only if $p(A)=Pp(B)P^{-1}=0$. (iii) If $A$ is invertible, then $(P^{-1}AP)(P^{-1}A^{-1}P)=I$, and the converse follows by symmetry, since $A=PBP^{-1}$. (iv) $B-\lambda I=P^{-1}(A-\lambda I)P$, so the two matrices are similar and have the same rank by (i), and the same nullity by \cref{thm:rank-nullity}.
+\end{proof}
+
+By (i), the rank and the trace of an operator $T$ on a finite-dimensional space are well defined as the rank and the trace of any of its matrices $[T]_{\mathcal B}$; for the rank this agrees with \cref{def:kernel-image}, by \cref{prop:rank-of-matrix}. The trace of differentiation on $\mathcal P_n$ is $0$, since its matrix in the monomial basis has zeros on the diagonal. The trace of the transposition on $\mathbb F^{n\times n}$ is $n$: in the basis of matrix units, it fixes the $n$ units $E_{ii}$ and exchanges $E_{ij}$ and $E_{ji}$ for $i\ne j$, so its matrix is a permutation matrix with exactly $n$ ones on the diagonal. \Cref{ch:determinants} adds the determinant to the list of invariants, so that the determinant of an operator is well defined, and \cref{ch:eigenvalues} adds the eigenvalues, the numbers $\lambda$ for which the dimension in (iv) is positive; it shows that the trace is their sum, counted with multiplicity.
+
+The invariants of the proposition do not decide similarity. The identity $I_2$ and the shear
+\[
+K=\begin{bmatrix}1&1\\0&1\end{bmatrix}
+\]
+have the same rank $2$ and the same trace $2$, but they are not similar, since $P^{-1}IP=I$ for every $P$: the identity is similar only to itself, and so is every multiple $cI$. Part (iv) does distinguish them, since $\dim\mathcal N(I-I)=2$ and $\dim\mathcal N(K-I)=1$. Whether a finite list of such numbers decides similarity in general is the question of a canonical form, which \cref{ch:canonical-forms} answers with the Jordan form.
+
+\subsection{Projections}
+
+A projection has a particularly simple matrix in a well-chosen basis. \Cref{sec:special-matrices} called a square matrix $P$ idempotent if $P^2=P$, and observed that it splits every vector into a part fixed by $P$ and a part mapped to $\mathbf 0$. For operators the observation becomes a theorem.
+
+\begin{proposition}[Projections]
+\label{prop:projection}
+Let $P$ be an operator on $V$ with $P^2=P$.
+\begin{enumerate}
+\item $\operatorname{im}P=\{\mathbf v: P\mathbf v=\mathbf v\}=\ker(\operatorname{id}-P)$ and $\ker P=\operatorname{im}(\operatorname{id}-P)$.
+\item $V=\operatorname{im}P\oplus\ker P$, and $\mathbf v=P\mathbf v+(\mathbf v-P\mathbf v)$ is the decomposition of $\mathbf v$.
+\item If $V$ is finite-dimensional and $\operatorname{rank}P=r$, then with respect to a basis $\mathcal B$ that consists of a basis of $\operatorname{im}P$ followed by a basis of $\ker P$,
+\[
+[P]_{\mathcal B}=\begin{bmatrix}I_r&0\\0&0\end{bmatrix}.
+\]
+\item Consequently $\operatorname{tr}P=\operatorname{rank}P$. In particular, every idempotent matrix has its rank as its trace.
+\item Conversely, if $V=U\oplus W$, the map $P(\mathbf u+\mathbf w)\coloneqq\mathbf u$ for $\mathbf u\in U$, $\mathbf w\in W$ is an operator with $P^2=P$, $\operatorname{im}P=U$ and $\ker P=W$.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) If $\mathbf v=P\mathbf x$, then $P\mathbf v=P^2\mathbf x=P\mathbf x=\mathbf v$; conversely, $P\mathbf v=\mathbf v$ shows $\mathbf v\in\operatorname{im}P$. The condition $P\mathbf v=\mathbf v$ says $(\operatorname{id}-P)\mathbf v=\mathbf 0$. If $P\mathbf v=\mathbf 0$, then $\mathbf v=(\operatorname{id}-P)\mathbf v$ lies in $\operatorname{im}(\operatorname{id}-P)$; conversely $P(\operatorname{id}-P)=P-P^2=0$. (ii) The first part $P\mathbf v$ lies in $\operatorname{im}P$, and the second, $(\operatorname{id}-P)\mathbf v$, lies in $\ker P$ by (i). If $\mathbf v\in\operatorname{im}P\cap\ker P$, then $\mathbf v=P\mathbf v=\mathbf 0$ by (i). So $V=\operatorname{im}P+\ker P$, and the sum is direct (\cref{def:sum}). (iii) By (ii), the two bases together span $V$, and by \cref{thm:dimension-formula} their number is $\dim V$; so they form a basis of $V$ (\cref{thm:basis-extension}\,(iii)). $P$ fixes each basis vector of the image, by (i), and annihilates each basis vector of the kernel, which gives the columns $\mathbf e_1,\ldots,\mathbf e_r,\mathbf 0,\ldots,\mathbf 0$. (iv) The trace of the matrix in (iii) is $r$, and the trace is a similarity invariant (\cref{prop:similarity-invariants}). (v) The decomposition is unique (\cref{thm:direct-sum}), so $P$ is well defined, and it is linear because the decomposition of $s\mathbf v+t\mathbf v'$ is obtained from those of $\mathbf v$ and $\mathbf v'$ by forming $s\mathbf u+t\mathbf u'$ and $s\mathbf w+t\mathbf w'$. Since $P\mathbf u=\mathbf u$ for $\mathbf u\in U$, $P^2=P$; the image is $U$ and the kernel is $W$.
+\end{proof}
+
+An idempotent operator is therefore called a \term{projection}, more precisely the projection onto $\operatorname{im}P$ along $\ker P$; by (v), projections correspond one-to-one to decompositions $V=U\oplus W$. Part (iv) extends to all idempotent matrices the fact that \cref{sec:trace-norms} observed for the orthogonal projection onto a line, whose trace is $1$; \cref{ch:inner-products} identifies the orthogonal projections as the symmetric idempotent matrices. The trace makes the rank of a projection computable without elimination.
+
+For the oblique projection of \cref{sec:special-matrices},
+\[
+P=\begin{bmatrix}1&1\\0&0\end{bmatrix},\qquad\operatorname{im}P=\operatorname{span}\{(1,0)\},\qquad\ker P=\operatorname{span}\{(1,-1)\},
+\]
+the adapted basis $\mathbf b_1=(1,0)$, $\mathbf b_2=(1,-1)$ gives the change-of-basis matrix $S$ with these columns and
+\[
+S^{-1}PS=\begin{bmatrix}1&1\\0&-1\end{bmatrix}^{-1}\begin{bmatrix}1&1\\0&0\end{bmatrix}\begin{bmatrix}1&1\\0&-1\end{bmatrix}=\begin{bmatrix}1&0\\0&0\end{bmatrix},
+\]
+in accordance with $\operatorname{tr}P=1=\operatorname{rank}P$. In the coordinates of the adapted basis, the projection keeps the first coordinate and sets the second to zero, as \cref{fig:oblique-projection} shows.
+
+\begin{figure}
+\sdfloat{%
+\begin{tikzpicture}[scale=0.9, font=\scriptsize]
+\begin{scope}
+\clip (-1.9,-1.7) rectangle (3.1,2.2);
+\foreach \c in {-3,...,5} {\draw[black!20, line width=0.35pt] ({\c-4},4) -- ({\c+4},-4);}
+\draw[line width=1.1pt] (-3,3) -- (3,-3);
+\end{scope}
+\draw[line width=0.4pt, -{Latex[length=1.5mm]}] (-1.9,0) -- (3.3,0) node[below] {$x_1$};
+\draw[line width=0.4pt, -{Latex[length=1.5mm]}] (0,-1.7) -- (0,2.4) node[left] {$x_2$};
+\draw[line width=1.1pt] (-1.9,0) -- (3.1,0);
+\node[right] at (-1.05,1.75) {$\ker P$};
+\node[above] at (2.75,0) {$\operatorname{im}P$};
+\draw[line width=0.8pt, -{Latex[length=2mm]}] (0,0) -- (1,0) node[below] {$\mathbf b_1$};
+\draw[line width=0.8pt, -{Latex[length=2mm]}] (0,0) -- (1,-1) node[below right=-1pt] {$\mathbf b_2$};
+\draw[black!60, dashed, line width=0.6pt] (0.5,1.5) -- (2,0);
+\fill (0.5,1.5) circle (1.8pt) node[above right] {$\mathbf x$};
+\fill (2,0) circle (1.8pt) node[below] {$P\mathbf x$};
+\end{tikzpicture}}{The oblique projection $P(x_1,x_2)=(x_1+x_2,0)$ onto the $x_1$-axis along the line $\ker P$ spanned by $(1,-1)$ (both thick). A point $\mathbf x$ moves parallel to the kernel (dashed) until it reaches the image; here $\mathbf x=(1/2,3/2)$ and $P\mathbf x=(2,0)$. The thin lines are the fibres of $P$. With respect to the basis $\mathbf b_1=(1,0)$, $\mathbf b_2=(1,-1)$ the matrix of $P$ is $\operatorname{diag}(1,0)$: the first coordinate is kept and the second discarded.\label{fig:oblique-projection}}
+\end{figure}
+
+Reflections are related to projections. If $P$ is a projection, the operator $R\coloneqq2P-\operatorname{id}$ fixes $\operatorname{im}P$ and reverses $\ker P$, so in the adapted basis of \cref{prop:projection}\,(iii) its matrix is $\operatorname{diag}(1,\ldots,1,-1,\ldots,-1)$, and $R^2=\operatorname{id}$. Conversely, every operator $R$ with $R^2=\operatorname{id}$ arises in this way, since $P\coloneqq(\operatorname{id}+R)/2$ satisfies $P^2=(\operatorname{id}+2R+R^2)/4=(\operatorname{id}+R)/2=P$. The reflection $S_\alpha=2P_\alpha-I$ of \cref{sec:matrices-linear-maps} is the case in which $P_\alpha$ is the orthogonal projection onto a line: with respect to the basis of the unit vectors $\mathbf u=(\cos\alpha,\sin\alpha)$ and $\mathbf u^\perp=(-\sin\alpha,\cos\alpha)$ its matrix is $\operatorname{diag}(1,-1)$, so all reflections of the plane are similar to each other, and their trace is $0$.
+
+\subsection{The Search for a Good Basis}
+
+The examples suggest the central question about an operator $T$ on a finite-dimensional space: \emph{in which basis is the matrix of $T$ as simple as possible?} The simplest matrices are the diagonal ones. A matrix $[T]_{\mathcal B}$ is diagonal, $\operatorname{diag}(\lambda_1,\ldots,\lambda_n)$, exactly when $T\mathbf b_j=\lambda_j\mathbf b_j$ for every basis vector: when the basis consists of vectors that $T$ merely stretches. Projections and reflections have such bases. \Cref{ch:eigenvalues} calls these vectors eigenvectors and shows how to find them, but even our few examples show that a diagonal matrix cannot always be reached.
+
+The rotation $R_\varphi$ of the plane by an angle $\varphi$ that is not a multiple of $\pi$ is not similar to a real diagonal matrix. If $R_\varphi\mathbf v=\lambda\mathbf v$ for a real $\lambda$ and a real vector $\mathbf v\ne\mathbf 0$, then $\lambda\|\mathbf v\|^2=\langle\mathbf v,R_\varphi\mathbf v\rangle=\|\mathbf v\|^2\cos\varphi$, as a short computation with the entries of $R_\varphi$ shows, and $|\lambda|\,\|\mathbf v\|=\|R_\varphi\mathbf v\|=\|\mathbf v\|$, since rotations preserve lengths. So $\lambda=\cos\varphi$ and $|\cos\varphi|=1$, which forces $\sin\varphi=0$. Over $\mathbb C$, however, the vectors $(1,-i)$ and $(1,i)$ satisfy
+\[
+R_\varphi\begin{bmatrix}1\\-i\end{bmatrix}=e^{i\varphi}\begin{bmatrix}1\\-i\end{bmatrix},\qquad R_\varphi\begin{bmatrix}1\\i\end{bmatrix}=e^{-i\varphi}\begin{bmatrix}1\\i\end{bmatrix},
+\]
+by Euler's formula (\vcref{1}{sec:complex-exp}), so that $R_\varphi$ is similar to $\operatorname{diag}(e^{i\varphi},e^{-i\varphi})$ as a complex matrix, with the trace $2\cos\varphi$ as it must be. Whether a matrix can be diagonalised depends on the field, and \cref{ch:eigenvalues} explains the role of complex numbers.
+
+The matrix $N$ of \cref{prop:similarity}\,(iii) cannot be diagonalised over any field. If it were similar to a diagonal matrix $\operatorname{diag}(\lambda_1,\lambda_2)$, then $\operatorname{diag}(\lambda_1^2,\lambda_2^2)$ would be similar to $N^2=0$, so $\lambda_1=\lambda_2=0$ and $N$ would be similar to the zero matrix, which is similar only to itself. Differentiation on $\mathcal P_n$ is of the same kind. With respect to the basis $1,x,x^2/2!,\ldots,x^n/n!$, it maps each basis vector to the previous one and the first to $0$, so its matrix has ones just above the diagonal and zeros elsewhere; for $n=3$,
+\[
+[D]=\begin{bmatrix}0&1&0&0\\0&0&1&0\\0&0&0&1\\0&0&0&0\end{bmatrix}.
+\]
+This matrix is a \term{Jordan block}, and \cref{ch:canonical-forms} shows that every complex matrix is similar to a block diagonal matrix built from such blocks, shifted by multiples of the identity. The difference operator $\Delta$ has the same matrix with respect to the basis of the binomial coefficients
+\[
+\binom x0,\ \binom x1,\ \ldots,\ \binom xn,\qquad\text{where}\quad\binom xk=\frac{x^{\underline k}}{k!},\qquad\text{since}\quad\Delta\binom xk=\binom x{k-1}
+\]
+by Pascal's rule. So $D$ and $\Delta$, two different operators on $\mathcal P_n$, have the same matrix in suitable bases: the isomorphism of $\mathcal P_n$ that maps the $k$th vector of the first basis to the $k$th vector of the second transforms one into the other.
+
+\begin{note}{Isomorphism, invariants and canonical forms}
+This chapter has classified three kinds of objects up to a change of coordinates. Finite-dimensional vector spaces up to isomorphism are classified by one number, the dimension (\cref{thm:isomorphic-dimension}). Linear maps between two spaces, up to a change of basis in each, are classified by one number, the rank, and each class has the representative $N_r$ (\cref{thm:rank-normal-form}). Operators on one space, up to a change of basis, are much harder: the rank and the trace do not suffice, and the classification, with the Jordan form as representative, occupies \cref{ch:canonical-forms}. The pattern of objects, structure-preserving maps, invariants and canonical forms runs through all of mathematics, from the cardinality of sets in \vcref{1}{ch:sets} to the groups and spaces of later volumes, and \emph{category theory} is the language that describes it in general. It was introduced by Eilenberg and Mac Lane to make precise the observation that some isomorphisms, such as the one between a finite-dimensional space and its double dual in \cref{sec:invariant-quotient-dual}, are \emph{natural}, defined without any choice, while others, such as $V\cong\mathbb F^n$, depend on a basis~\cite{eilenberg1945}; Mac Lane's book is the standard introduction~\cite{maclane1998}.
+\end{note}
+
+\section{Rank Inequalities and Powers of an Operator}
+\label{sec:rank-inequalities}
+
+\subsection{The Rank of a Composition}
+
+\Cref{prop:rank-sum}\,(iii) showed that $\operatorname{rank}(AD)\le\operatorname{rank}A$ because the columns of $AD$ lie in the column space of $A$. The second inequality, $\operatorname{rank}(AD)\le\operatorname{rank}D$, is now a statement about kernels.
+
+\begin{proposition}[Rank of a composition]
+\label{prop:rank-composition}
+Let $U$, $V$ and $W$ be finite-dimensional, $T\in\mathcal L(U,V)$ and $S\in\mathcal L(V,W)$.
+\begin{enumerate}
+\item $\operatorname{im}(ST)\subseteq\operatorname{im}S$, and $\operatorname{rank}(ST)\le\operatorname{rank}S$.
+\item $\ker T\subseteq\ker(ST)$, and $\operatorname{rank}(ST)\le\operatorname{rank}T$.
+\item If $S$ is injective, then $\operatorname{rank}(ST)=\operatorname{rank}T$; if $T$ is surjective, then $\operatorname{rank}(ST)=\operatorname{rank}S$.
+\end{enumerate}
+For matrices $A\in\mathbb F^{m\times n}$ and $D\in\mathbb F^{n\times p}$, consequently, $\mathcal N(D)\subseteq\mathcal N(AD)$ and $\operatorname{rank}(AD)\le\min(\operatorname{rank}A,\operatorname{rank}D)$, and $\operatorname{rank}(MAN)=\operatorname{rank}A$ for all invertible $M$ and $N$.
+\end{proposition}
+
+\begin{proof}
+(i) $ST\mathbf u=S(T\mathbf u)$ lies in $\operatorname{im}S$, and a subspace has at most the dimension of the space containing it. (ii) If $T\mathbf u=\mathbf 0$, then $ST\mathbf u=\mathbf 0$. By \cref{thm:rank-nullity}, applied to $T$ and to $ST$, both defined on $U$,
+\[
+\operatorname{rank}(ST)=\dim U-\dim\ker(ST)\le\dim U-\dim\ker T=\operatorname{rank}T .
+\]
+(iii) If $S$ is injective, then $ST\mathbf u=\mathbf 0$ forces $T\mathbf u=\mathbf 0$, so $\ker(ST)=\ker T$ and the computation in (ii) is an equality. If $T$ is surjective, then $\operatorname{im}(ST)=S(T(U))=S(V)=\operatorname{im}S$. The matrix statements are the case $T=L_D$, $S=L_A$, with $ST=L_{AD}$ (\cref{thm:product-composition}), and for invertible $M$ and $N$ the maps $L_M$ and $L_N$ are injective and surjective.
+\end{proof}
+
+The proof of (ii) is the null-space proof of the inequality $\operatorname{rank}(AD)\le\operatorname{rank}D$: whatever $D$ annihilates, $AD$ annihilates as well, and a larger kernel means a smaller image. Unlike the proof in \cref{ch:linear-systems}, it does not use the rank of the transpose. The inequalities can be sharpened from below.
+
+\begin{theorem}[Rank inequalities of Sylvester and Frobenius]
+\label{thm:rank-inequalities}
+Let $U$, $V$ and $W$ be finite-dimensional, $T\in\mathcal L(U,V)$ and $S\in\mathcal L(V,W)$.
+\begin{enumerate}
+\item $\dim\ker(ST)\le\dim\ker S+\dim\ker T$.
+\item (Sylvester's inequality) $\operatorname{rank}S+\operatorname{rank}T-\dim V\le\operatorname{rank}(ST)$. For matrices $A\in\mathbb F^{m\times n}$ and $D\in\mathbb F^{n\times p}$,
+\[
+\operatorname{rank}A+\operatorname{rank}D-n\le\operatorname{rank}(AD).
+\]
+\item (Frobenius' inequality) For matrices $A$, $B$ and $C$ for which the product $ABC$ is defined,
+\[
+\operatorname{rank}(AB)+\operatorname{rank}(BC)\le\operatorname{rank}B+\operatorname{rank}(ABC).
+\]
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+(i) Let $K\coloneqq\ker(ST)\subseteq U$. For $\mathbf u\in K$, $S(T\mathbf u)=\mathbf 0$, so $T$ maps $K$ into $\ker S$. Apply \cref{thm:rank-nullity} to the restriction $T|_K\colon K\to V$: its kernel is $\ker T\cap K=\ker T$, by \cref{prop:rank-composition}\,(ii), and its image lies in $\ker S$. Hence
+\[
+\dim\ker(ST)=\dim\ker T+\dim T(K)\le\dim\ker T+\dim\ker S .
+\]
+(ii) By \cref{thm:rank-nullity}, (i) reads $\dim U-\operatorname{rank}(ST)\le(\dim V-\operatorname{rank}S)+(\dim U-\operatorname{rank}T)$, which rearranges to the claim. For matrices take $S=L_A$, $T=L_D$ and $V=\mathbb F^n$.
+
+(iii) Let $Y\coloneqq\mathcal C(B)$ and $Z\coloneqq\mathcal C(BC)$, so that $Z\subseteq Y$ by \cref{prop:rank-sum}\,(iii). The map $\mathbf y\mapsto A\mathbf y$ restricted to $Y$ has the image $A(\mathcal C(B))=\mathcal C(AB)$ and the kernel $\mathcal N(A)\cap Y$, so by \cref{thm:rank-nullity}
+\[
+\operatorname{rank}(AB)=\dim Y-\dim(\mathcal N(A)\cap Y),
+\]
+and in the same way, with $Z$ in place of $Y$, $\operatorname{rank}(ABC)=\dim Z-\dim(\mathcal N(A)\cap Z)$.
+Subtracting, and using $\dim Y=\operatorname{rank}B$ and $\dim Z=\operatorname{rank}(BC)$,
+\[
+\begin{aligned}
+\operatorname{rank}(AB)-\operatorname{rank}(ABC)&=\operatorname{rank}B-\operatorname{rank}(BC)-\bigl(\dim(\mathcal N(A)\cap Y)-\dim(\mathcal N(A)\cap Z)\bigr)\\
+&\le\operatorname{rank}B-\operatorname{rank}(BC),
+\end{aligned}
+\]
+since $\mathcal N(A)\cap Z\subseteq\mathcal N(A)\cap Y$.
+\end{proof}
+
+Sylvester's inequality is the case $B=I_n$ of Frobenius' inequality, and both hold for linear maps between finite-dimensional spaces, by passing to matrices with \cref{thm:composition-matrix,prop:rank-of-matrix}. Together with \cref{prop:rank-composition},
+\[
+\operatorname{rank}A+\operatorname{rank}D-n\le\operatorname{rank}(AD)\le\min(\operatorname{rank}A,\operatorname{rank}D),
+\]
+so the rank of a product of two matrices of nearly full rank is nearly full as well. Both inequalities are sharp. If $AD=0$, Sylvester's inequality gives $\operatorname{rank}A+\operatorname{rank}D\le n$, since the column space of $D$ lies in the null space of $A$; for the two zero divisors of \cref{sec:matrix-multiplication} both sides are $0$, since both factors have rank $1$ and their product is the zero matrix. For a projection $P\in\mathbb F^{n\times n}$, the product $P(I-P)=0$ gives $\operatorname{rank}P+\operatorname{rank}(I-P)\le n$, and \cref{prop:rank-sum}\,(i) gives $n=\operatorname{rank}I\le\operatorname{rank}P+\operatorname{rank}(I-P)$; so $\operatorname{rank}P+\operatorname{rank}(I-P)=n$. Since every $\mathbf x$ is $P\mathbf x+(I-P)\mathbf x$, the column spaces of $P$ and $I-P$ span $\mathbb F^n$, and by the dimension formula (\cref{thm:dimension-formula}) their sum is direct: this is the decomposition of \cref{prop:projection}\,(ii) once more, obtained from the ranks alone. Horn and Johnson collect both inequalities among the basic facts about the rank~\cite[Sect.~0.4]{horn2013}.
+
+\subsection{Powers of an Operator}
+
+For an operator $T$ on a finite-dimensional space, the kernels and the images of the powers $T^k$ form two chains, and the rank inequalities control how these chains behave. The result prepares the canonical forms of \cref{ch:canonical-forms}.
+
+\begin{proposition}[Kernels and images of powers]
+\label{prop:kernel-chain}
+Let $T$ be an operator on a space $V$ of dimension $n$.
+\begin{enumerate}
+\item $\{\mathbf 0\}=\ker T^0\subseteq\ker T\subseteq\ker T^2\subseteq\cdots$ and $V=\operatorname{im}T^0\supseteq\operatorname{im}T\supseteq\operatorname{im}T^2\supseteq\cdots$.
+\item If $\ker T^q=\ker T^{q+1}$ for some $q$, then $\ker T^k=\ker T^q$ and $\operatorname{im}T^k=\operatorname{im}T^q$ for all $k\ge q$.
+\item There is a smallest $q$ with $\ker T^q=\ker T^{q+1}$, and $q\le n$; the inclusions in (i) are strict up to the index $q$ and equalities from $q$ on.
+\item The increments $d_k\coloneqq\dim\ker T^k-\dim\ker T^{k-1}$, $k\ge1$, satisfy $d_1\ge d_2\ge d_3\ge\cdots$.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) If $T^k\mathbf v=\mathbf 0$, then $T^{k+1}\mathbf v=T(T^k\mathbf v)=\mathbf 0$; and $T^{k+1}\mathbf v=T^k(T\mathbf v)$ lies in $\operatorname{im}T^k$. (ii) Suppose that $\ker T^k=\ker T^{k+1}$ for some $k\ge q$, which holds for $k=q$. If $T^{k+2}\mathbf v=\mathbf 0$, then $T\mathbf v\in\ker T^{k+1}=\ker T^k$, so $T^{k+1}\mathbf v=\mathbf 0$; hence $\ker T^{k+2}=\ker T^{k+1}$, and by induction all later kernels coincide. Equal kernels have equal dimensions, so $\operatorname{rank}T^k=n-\dim\ker T^k$ is constant for $k\ge q$, and the decreasing images, of the same dimension, are equal (\cref{prop:subspace-dimension}). (iii) As long as the inclusions are strict, the dimension of the kernels increases by at least $1$ at each step, starting from $0$; it cannot exceed $n$, so equality must occur at some $q\le n$, and by (ii) it persists. (iv) By \cref{thm:rank-nullity}, $d_k=\operatorname{rank}T^{k-1}-\operatorname{rank}T^k$. Frobenius' inequality with $A=C=[T]_{\mathcal B}$ and $B=[T^{k-1}]_{\mathcal B}$ for a basis $\mathcal B$ gives $2\operatorname{rank}T^k\le\operatorname{rank}T^{k-1}+\operatorname{rank}T^{k+1}$, which says $d_{k+1}\le d_k$.
+\end{proof}
+
+By (iv), the kernels grow fastest at the beginning: the first power adds the most new vectors to the kernel, and each further power adds at most as many as the one before. An operator is \term{nilpotent} if $T^k=0$ for some $k$, as the strictly upper triangular matrices of \cref{prop:nilpotent} are. For a nilpotent operator the kernels must reach $V$, and by (iii) they reach it no later than at the power $n$: \emph{a nilpotent operator on an $n$-dimensional space satisfies $T^n=0$}. For the Jordan block $[D]$ of order $n+1$ in \cref{sec:similarity} every increment is $1$, and the kernels are $\mathcal P_0\subset\mathcal P_1\subset\cdots\subset\mathcal P_n$.
+
+\begin{theorem}[Fitting decomposition]
+\label{thm:fitting}
+Let $T$ be an operator on a finite-dimensional space $V$, let $q$ be the index of \cref{prop:kernel-chain}\,(iii), and let $m\ge q$ (for instance $m=\dim V$). Then
+\[
+V=\ker T^m\oplus\operatorname{im}T^m,
+\]
+$T$ maps each of the two subspaces into itself, the restriction of $T$ to $\ker T^m$ is nilpotent, and the restriction of $T$ to $\operatorname{im}T^m$ is an invertible operator on $\operatorname{im}T^m$.
+\end{theorem}
+
+\begin{proof}
+If $T^m\mathbf v=\mathbf 0$, then $T^m(T\mathbf v)=T(T^m\mathbf v)=\mathbf 0$, and for $\mathbf v=T^m\mathbf w$ the image $T\mathbf v=T^m(T\mathbf w)$ lies in $\operatorname{im}T^m$; so both subspaces are mapped into themselves. If $\mathbf v\in\ker T^m\cap\operatorname{im}T^m$, then $\mathbf v=T^m\mathbf w$ with $T^{2m}\mathbf w=T^m\mathbf v=\mathbf 0$, so $\mathbf w\in\ker T^{2m}=\ker T^m$ by \cref{prop:kernel-chain}\,(ii), and $\mathbf v=T^m\mathbf w=\mathbf 0$. The sum is therefore direct, and its dimension is $\dim\ker T^m+\operatorname{rank}T^m=\dim V$, by \cref{thm:dimension-formula,thm:rank-nullity}; so it is $V$ (\cref{prop:subspace-dimension}). The $m$th power of the restriction to $\ker T^m$ is zero. The restriction to $\operatorname{im}T^m$ maps this space onto $T(\operatorname{im}T^m)=\operatorname{im}T^{m+1}=\operatorname{im}T^m$, so it is surjective, and by \cref{cor:injective-surjective} it is bijective.
+\end{proof}
+
+The theorem splits every operator into a nilpotent part and an invertible part, which act on complementary subspaces. For the matrix
+\[
+A=\begin{bmatrix}0&1&0\\0&0&0\\0&0&2\end{bmatrix},\qquad A^2=\begin{bmatrix}0&0&0\\0&0&0\\0&0&4\end{bmatrix},
+\]
+the kernels are $\ker A=\operatorname{span}\{\mathbf e_1\}$ and $\ker A^2=\ker A^3=\operatorname{span}\{\mathbf e_1,\mathbf e_2\}$, so $q=2$, and $\operatorname{im}A^2=\operatorname{span}\{\mathbf e_3\}$; on the first space $A$ acts as the nilpotent matrix $N$ of \cref{prop:similarity}, and on the second as multiplication by $2$. For a projection $P$, $q\le1$, and the Fitting decomposition is the decomposition $V=\ker P\oplus\operatorname{im}P$ of \cref{prop:projection}. Applied to the operators $T-\lambda\operatorname{id}$ for the eigenvalues $\lambda$ of \cref{ch:eigenvalues}, the theorem is the first step towards the Jordan form of \cref{ch:canonical-forms}. The decomposition carries the name of Hans Fitting~\cite{fitting1933}; Axler bases his account of operators on complex spaces on decompositions of this kind~\cite[Chap.~8]{axler2024}.
+
+\section{Invariant Subspaces, Quotients and Duals: A Brief Look}
+\label{sec:invariant-quotient-dual}
+
+This section collects three constructions that later chapters use: subspaces that an operator maps into themselves, the quotient of a space by a subspace, and the space of linear functionals.
+
+\subsection{Invariant Subspaces and Block Triangular Matrices}
+
+\begin{definition}[Invariant subspace]
+\label{def:invariant}
+Let $T$ be an operator on $V$. A subspace $U\subseteq V$ is \term{invariant} under $T$, or $T$-invariant, if $T\mathbf u\in U$ for every $\mathbf u\in U$. The \term{restriction} $T|_U$ is then an operator on $U$.
+\end{definition}
+
+The trivial subspaces $\{\mathbf 0\}$ and $V$ are invariant under every operator, and so are $\ker T$ and $\operatorname{im}T$. More generally, $\ker p(T)$ and $\operatorname{im}p(T)$ are invariant for every polynomial $p$, because $p(T)$ commutes with $T$: if $p(T)\mathbf v=\mathbf 0$, then $p(T)T\mathbf v=Tp(T)\mathbf v=\mathbf 0$, and $Tp(T)\mathbf w=p(T)(T\mathbf w)$. The Fitting decomposition of \cref{thm:fitting} is the case $p(x)=x^m$. The subspaces $\mathcal P_k\subseteq\mathcal P_n$ are invariant under differentiation and under the difference operator $\Delta$, the even and the odd functions are invariant under $f\mapsto f''$, and a line $\operatorname{span}\{\mathbf v\}$ is invariant exactly when $T\mathbf v$ is a multiple of $\mathbf v$, the situation that \cref{ch:eigenvalues} studies. For an upper triangular matrix $A$, the subspaces $\operatorname{span}\{\mathbf e_1,\ldots,\mathbf e_k\}$, $k=1,\ldots,n$, are all invariant, since the $j$th column $A\mathbf e_j$ has zeros below position $j$. Conversely, if $\operatorname{span}\{\mathbf b_1,\ldots,\mathbf b_k\}$ is invariant for every $k$, the matrix with respect to the basis $\mathbf b_1,\ldots,\mathbf b_n$ is upper triangular, by the following proposition applied to each $k$; the proposition also explains the importance of block matrices (\cref{sec:block-matrices}).
+
+\begin{proposition}[Invariant subspaces and block matrices]
+\label{prop:block-triangular}
+Let $T$ be an operator on a finite-dimensional space $V$, let $\mathbf u_1,\ldots,\mathbf u_k$ be a basis of a subspace $U$, extended by $\mathbf w_1,\ldots,\mathbf w_l$ to a basis $\mathcal B$ of $V$, and let $W\coloneqq\operatorname{span}\{\mathbf w_1,\ldots,\mathbf w_l\}$.
+\begin{enumerate}
+\item $U$ is $T$-invariant if and only if
+\[
+[T]_{\mathcal B}=\begin{bmatrix}A_{11}&A_{12}\\0&A_{22}\end{bmatrix}\qquad\text{with }A_{11}\in\mathbb F^{k\times k},
+\]
+and then $A_{11}$ is the matrix of $T|_U$ with respect to $(\mathbf u_1,\ldots,\mathbf u_k)$.
+\item Both $U$ and $W$ are $T$-invariant if and only if $[T]_{\mathcal B}$ is block diagonal, $A_{12}=0$ as well.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) The first $k$ columns of $[T]_{\mathcal B}$ are the coordinate vectors of $T\mathbf u_1,\ldots,T\mathbf u_k$. A vector lies in $U$ if and only if its last $l$ coordinates vanish, since $V=U\oplus W$ and the coordinates split accordingly. So $T\mathbf u_j\in U$ for all $j$, which is equivalent to the invariance of $U$ because the $\mathbf u_j$ span $U$, holds exactly when the lower left block vanishes; the upper left block then contains the coordinates of $T\mathbf u_j$ with respect to the $\mathbf u_i$. (ii) In the same way, $W$ is invariant exactly when the upper right block of the last $l$ columns vanishes.
+\end{proof}
+
+An upper triangular matrix is thus the record of a chain of invariant subspaces of dimensions $1,2,\ldots,n$, and Schur's theorem in \cref{ch:canonical-forms} shows that every operator on a complex space has such a chain, so that every complex square matrix is similar to an upper triangular one. A block diagonal matrix splits the operator into independent operators on the two subspaces; the Fitting decomposition, for instance, puts the matrix of every operator into the block diagonal form with a nilpotent block and an invertible block.
+
+\subsection{Quotient Spaces}
+
+The note on quotient spaces in \cref{sec:basis-dimension} described the set $V/U$ of the flats with direction $U$; we now prove its properties and connect it with linear maps. Recall from \cref{prop:flats} that $\mathbf x+U=\mathbf x'+U$ if and only if $\mathbf x-\mathbf x'\in U$.
+
+\begin{proposition}[Quotient spaces]
+\label{prop:quotient}
+Let $U$ be a subspace of $V$, and let $V/U$ be the set of flats $\mathbf x+U$, $\mathbf x\in V$.
+\begin{enumerate}
+\item The operations $(\mathbf x+U)+(\mathbf y+U)\coloneqq(\mathbf x+\mathbf y)+U$ and $t(\mathbf x+U)\coloneqq t\mathbf x+U$ are well defined, and they make $V/U$ a vector space, the \term{quotient space} of $V$ by $U$, with the zero vector $U$.
+\item The \term{quotient map} $\pi\colon V\to V/U$, $\mathbf x\mapsto\mathbf x+U$, is linear and surjective, with $\ker\pi=U$.
+\item If $V$ is finite-dimensional, then $\dim V/U=\dim V-\dim U$.
+\item If $V=U\oplus W$, then $\pi$ restricted to $W$ is an isomorphism from $W$ onto $V/U$; in particular, the flats $\mathbf w_1+U,\ldots,\mathbf w_l+U$ form a basis of $V/U$ for every basis $\mathbf w_1,\ldots,\mathbf w_l$ of $W$.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) If $\mathbf x+U=\mathbf x'+U$ and $\mathbf y+U=\mathbf y'+U$, then $\mathbf x-\mathbf x'$ and $\mathbf y-\mathbf y'$ lie in $U$, hence so do $(\mathbf x+\mathbf y)-(\mathbf x'+\mathbf y')$ and $t\mathbf x-t\mathbf x'$; so the results do not depend on the base points. Each axiom of \cref{def:vector-space} for $V/U$ follows from the same axiom in $V$, by computing with base points; for instance $((\mathbf x+U)+(\mathbf y+U))+(\mathbf z+U)=((\mathbf x+\mathbf y)+\mathbf z)+U=(\mathbf x+(\mathbf y+\mathbf z))+U=(\mathbf x+U)+((\mathbf y+U)+(\mathbf z+U))$. The zero vector is $\mathbf 0+U=U$, and the negative of $\mathbf x+U$ is $(-\mathbf x)+U$. (ii) Linearity is the definition of the operations, every flat $\mathbf x+U$ is $\pi\mathbf x$, and $\pi\mathbf x=U$ holds if and only if $\mathbf x-\mathbf 0\in U$. (iii) This is \cref{thm:rank-nullity} for $\pi$. (iv) The restriction $\pi|_W$ is linear, and its kernel is $W\cap\ker\pi=W\cap U=\{\mathbf 0\}$. It is surjective: every $\mathbf x\in V$ is $\mathbf u+\mathbf w$ with $\mathbf u\in U$, $\mathbf w\in W$, and $\mathbf x+U=\mathbf w+U$. So $\pi|_W$ is an isomorphism, and it maps a basis to a basis (\cref{prop:isomorphism-bases}).
+\end{proof}
+
+Part (iv) supplies the verification that the note in \cref{sec:basis-dimension} left to the reader. A vector of $V/U$ is a whole flat, and computing in $V/U$ means computing in $V$ while ignoring everything in $U$. If $U$ is $T$-invariant, the operator $T$ induces an operator $\bar T$ on $V/U$ by $\bar T(\mathbf x+U)\coloneqq T\mathbf x+U$, which is well defined because $\mathbf x-\mathbf x'\in U$ implies $T\mathbf x-T\mathbf x'\in U$. In the block triangular matrix of \cref{prop:block-triangular}, the block $A_{22}$ is the matrix of $\bar T$ with respect to the basis $\mathbf w_1+U,\ldots,\mathbf w_l+U$: the $\mathbf w$-coordinates of $T\mathbf w_j$ are those of $\bar T(\mathbf w_j+U)$, since the $U$-part is ignored.
+
+\begin{theorem}[First isomorphism theorem]
+\label{thm:first-isomorphism}
+Let $T\colon V\to W$ be linear, $K\coloneqq\ker T$, $\pi\colon V\to V/K$ the quotient map and $\iota\colon\operatorname{im}T\to W$ the inclusion. The rule
+\[
+\bar T(\mathbf v+K)\coloneqq T\mathbf v
+\]
+defines an isomorphism $\bar T\colon V/K\to\operatorname{im}T$, and $T=\iota\circ\bar T\circ\pi$.
+\end{theorem}
+
+\begin{proof}
+If $\mathbf v+K=\mathbf v'+K$, then $\mathbf v-\mathbf v'\in K$ and $T\mathbf v=T\mathbf v'$; so $\bar T$ is well defined. It is linear, since $\bar T((\mathbf v+K)+(\mathbf v'+K))=T(\mathbf v+\mathbf v')=T\mathbf v+T\mathbf v'$ and similarly for multiples. It is injective, because $\bar T(\mathbf v+K)=\mathbf 0$ means $\mathbf v\in K$, that is, $\mathbf v+K=K$, the zero vector of $V/K$; and it is surjective onto $\operatorname{im}T$ by the definition of the image. Finally $\iota(\bar T(\pi\mathbf v))=T\mathbf v$ for every $\mathbf v$.
+\end{proof}
+
+This is the factorisation of \vcref{1}{thm:factorisation} in linear form. There, every function was written as a surjection onto the classes of inputs with the same value, followed by a bijection and an inclusion; for a linear map, two inputs have the same value exactly when their difference lies in the kernel, the classes are the fibres of \cref{fig:fibres}, and all three maps are linear. For finite-dimensional $V$, taking dimensions gives $\dim V-\dim\ker T=\dim\operatorname{im}T$ by \cref{prop:quotient}\,(iii), the rank--nullity theorem once more. For a matrix $A\in\mathbb F^{m\times n}$, the theorem gives the isomorphism
+\[
+\mathbb F^n/\mathcal N(A)\to\mathcal C(A),\qquad\mathbf x+\mathcal N(A)\mapsto A\mathbf x,
+\]
+which explains the coincidence noted in \cref{sec:basis-dimension}: the solution set $\mathbf x+\mathcal N(A)$ of the system $A\mathbf y=\mathbf b$ with $\mathbf b=A\mathbf x$ corresponds to its right-hand side $\mathbf b$, one-to-one and linearly. The theorem needs no finite dimension. Since differentiation $D\colon C^1(I)\to C(I)$ is surjective with the constant functions as kernel (\cref{tab:kernel-image}), it gives $C^1(I)/\{\text{constants}\}\cong C(I)$: a continuously differentiable function is determined by its derivative up to a constant, and every continuous function is a derivative.
+
+\subsection{Dual Spaces}
+
+\begin{definition}[Dual space]
+\label{def:dual}
+The \term{dual space} of $V$ is the space $V^*\coloneqq\mathcal L(V,\mathbb F)$ of linear functionals on $V$.
+\end{definition}
+
+The linear functionals on $\mathbb F^n$ are the maps $\mathbf x\mapsto\mathbf y^{\mathsf T}\mathbf x=y_1x_1+\cdots+y_nx_n$, by \cref{thm:matrices-linear-maps} with $m=1$: a functional on column vectors is a row vector. The evaluations $p\mapsto p(t)$, the definite integral and the trace are functionals on the spaces of the earlier examples.
+
+\begin{proposition}[Dual basis]
+\label{prop:dual-basis}
+Let $\mathcal B=(\mathbf b_1,\ldots,\mathbf b_n)$ be a basis of $V$, and let $\beta_i\in V^*$ be the functional that assigns to $\mathbf v$ its $i$th coordinate with respect to $\mathcal B$, so that $\beta_i(\mathbf b_j)=\delta_{ij}$. Then $(\beta_1,\ldots,\beta_n)$ is a basis of $V^*$, the \term{dual basis}, and every $\varphi\in V^*$ is
+\[
+\varphi=\varphi(\mathbf b_1)\,\beta_1+\cdots+\varphi(\mathbf b_n)\,\beta_n .
+\]
+In particular $\dim V^*=\dim V$.
+\end{proposition}
+
+\begin{proof}
+The $\beta_i$ are linear, since the coordinate map is. The two sides of the displayed formula are linear functionals that agree on every $\mathbf b_j$, where both have the value $\varphi(\mathbf b_j)$; by \cref{thm:linear-map-basis} they are equal, so the $\beta_i$ span $V^*$. If $\sum_ic_i\beta_i=0$, evaluating at $\mathbf b_j$ gives $c_j=0$; so the $\beta_i$ are independent.
+\end{proof}
+
+For the standard basis of $\mathbb F^n$, the dual basis consists of the coordinate functionals $\mathbf x\mapsto x_i$, the rows $\mathbf e_i^{\mathsf T}$. For the Lagrange basis of $\mathcal P_d$ at the points $t_0,\ldots,t_d$, it consists of the evaluations $p\mapsto p(t_i)$, since the Lagrange coordinates of a polynomial are its values (\cref{sec:coordinates}); for the monomial basis it consists of the functionals $p\mapsto p^{(k)}(0)/k!$, which extract the Taylor coefficients at $0$. In the dual basis of the monomials of $\mathcal P_3$, the functional $p\mapsto\int_{-1}^1p$ of \cref{sec:linear-maps} has the coordinates $(2,0,2/3,0)$, its values on the monomials.
+
+Every linear map has a counterpart between the dual spaces, which runs in the opposite direction.
+
+\begin{definition}[Dual map]
+\label{def:dual-map}
+The \term{dual map}, or \term{transpose}, of $T\in\mathcal L(V,W)$ is the map $T'\colon W^*\to V^*$, $T'(\psi)\coloneqq\psi\circ T$.
+\end{definition}
+
+The functional $\psi\circ T$ is linear as a composition of linear maps, and $T'$ is linear, since $(s\psi+t\chi)\circ T=s(\psi\circ T)+t(\chi\circ T)$ by the definition of the operations on functionals.
+
+\begin{proposition}[The matrix of the dual map]
+\label{prop:dual-map}
+Let $\mathcal B$ and $\mathcal D$ be bases of $V$ and $W$, with the dual bases $\mathcal B^*=(\beta_1,\ldots,\beta_n)$ and $\mathcal D^*=(\delta_1,\ldots,\delta_m)$, and let $T\in\mathcal L(V,W)$.
+\begin{enumerate}
+\item $[T']_{\mathcal B^*\leftarrow\mathcal D^*}=\bigl([T]_{\mathcal D\leftarrow\mathcal B}\bigr)^{\mathsf T}$.
+\item $\operatorname{rank}T'=\operatorname{rank}T$.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) Let $A=[T]_{\mathcal D\leftarrow\mathcal B}$, so that $T\mathbf b_j=\sum_ka_{kj}\mathbf d_k$. By \cref{prop:dual-basis}, the coordinates of the functional $T'(\delta_i)=\delta_i\circ T$ with respect to $\mathcal B^*$ are its values on the $\mathbf b_j$, and
+\[
+(\delta_i\circ T)(\mathbf b_j)=\delta_i\Bigl(\sum_ka_{kj}\mathbf d_k\Bigr)=a_{ij}.
+\]
+So the $i$th column of $[T']_{\mathcal B^*\leftarrow\mathcal D^*}$ is $(a_{i1},\ldots,a_{in})$, the $i$th row of $A$.
+
+(ii) The kernel of $T'$ consists of the functionals $\psi$ on $W$ with $\psi\circ T=0$, that is, those that vanish on $\operatorname{im}T$. Let $r=\operatorname{rank}T$, choose a basis $\mathbf w_1,\ldots,\mathbf w_r$ of $\operatorname{im}T$, extend it to a basis $\mathbf w_1,\ldots,\mathbf w_m$ of $W$ and take the dual basis $\eta_1,\ldots,\eta_m$. A functional $\psi=\sum_ic_i\eta_i$ vanishes on $\operatorname{im}T$ if and only if it vanishes on $\mathbf w_1,\ldots,\mathbf w_r$, that is, if and only if $c_1=\cdots=c_r=0$. So $\dim\ker T'=m-r$, and \cref{thm:rank-nullity} for $T'$, whose domain $W^*$ has dimension $m$, gives $\operatorname{rank}T'=m-(m-r)=r$.
+\end{proof}
+
+The proposition explains the transpose of a matrix: it is the matrix of the dual map, which pulls functionals on the codomain back to functionals on the domain. Together, (i) and (ii) give a second proof that $\operatorname{rank}A^{\mathsf T}=\operatorname{rank}A$, independent of the one in \cref{thm:four-dimensions}, and it uses neither the reduced row echelon form nor the rows of $A$: the rank of the dual map equals the rank of the map because a functional that vanishes on the image is the same thing as a functional that the dual map annihilates. For finite-dimensional real spaces with an inner product, every functional has the form $\mathbf v\mapsto\langle\mathbf a,\mathbf v\rangle$ for a unique vector $\mathbf a$, and the dual map becomes the adjoint map of \cref{ch:inner-products}, whose matrix with respect to orthonormal bases is again the transpose.
+
+\begin{note}{The double dual}
+For every $\mathbf v\in V$, evaluation at $\mathbf v$ is a linear functional on $V^*$, $\varphi\mapsto\varphi(\mathbf v)$, and the map $\mathbf v\mapsto(\varphi\mapsto\varphi(\mathbf v))$ from $V$ to the double dual $V^{**}$ is linear. It is injective, since for $\mathbf v\ne\mathbf 0$ some functional does not vanish at $\mathbf v$ (extend $\mathbf v$ to a basis and take the first dual basis functional), and for finite-dimensional $V$ it is an isomorphism, by \cref{cor:injective-surjective}, since $\dim V^{**}=\dim V^*=\dim V$. The space $V^*$ is isomorphic to $V$ as well, by \cref{thm:isomorphic-dimension}, but every isomorphism between them depends on a choice, for instance of a basis and its dual basis, while the isomorphism $V\to V^{**}$ is defined without any choice. This distinction between a \emph{natural} isomorphism and an arbitrary one was the example with which Eilenberg and Mac Lane motivated the definitions of category theory~\cite{eilenberg1945}. Halmos treats dual spaces and the double dual in his classic~\cite{halmos1958}.
+\end{note}
+
+\section{Linear Maps in Computation: A First Look}
+\label{sec:computing-maps}
+
+\subsection{Maps without Matrices}
+
+In computation, a linear map is often available not as a matrix but as a procedure that computes $T\mathbf x$ from $\mathbf x$. The differences of consecutive components, the cumulative sums, the derivative of a polynomial given by its coefficients, the evaluation of a polynomial at given points by Horner's scheme (\vcref{1}{alg:from-base}), and the discrete Fourier transform of Volume~XII are all of this kind. Such a procedure contains the whole map, and by \cref{thm:matrices-linear-maps} its matrix can be recovered by applying it to the standard basis vectors, as \cref{alg:matrix-of-procedure} does.
+
+\begin{algorithm}
+\begin{algorithmic}[1]
+\Require a procedure $\textsc{Apply}$ that returns $T\mathbf x\in\mathbb F^m$ for $\mathbf x\in\mathbb F^n$, where $T$ is linear
+\Ensure the matrix $A\in\mathbb F^{m\times n}$ with $A\mathbf x=T\mathbf x$ for all $\mathbf x$
+\Name{MatrixOfMap}{\textsc{Apply},n}
+\For{$j=1,\ldots,n$}
+  \State $\mathbf a_j\gets\textsc{Apply}(\mathbf e_j)$ \Comment{the $j$th column is the image of $\mathbf e_j$}
+\EndFor
+\State \Return the matrix $A$ with the columns $\mathbf a_1,\ldots,\mathbf a_n$
+\end{algorithmic}
+\caption{The matrix of a linear map given by a procedure (\cref{thm:matrices-linear-maps}). It calls the procedure $n$ times, so it costs $n$ times the cost of one application, and it stores $mn$ numbers.}
+\label{alg:matrix-of-procedure}
+\end{algorithm}
+
+Applied to the cumulative sum $\mathbf x\mapsto(x_1,x_1+x_2,\ldots,x_1+\cdots+x_n)$, the algorithm returns the lower triangular matrix $L$ all of whose entries on and below the diagonal are $1$; applied to the differences $\mathbf x\mapsto(x_2-x_1,\ldots,x_n-x_{n-1})$, it returns the bidiagonal matrix $\Delta$ of \cref{sec:matrices-linear-maps}. We ran both experiments with the stardust library, whose routines \code{cumulative\_sum} and \code{diff} applied to the columns of the identity matrix returned exactly these matrices, the first for $n=5$ and $n=1000$ and the second for $n=4$. The cumulative sum and the differences are related: on $\mathbb F^n$, the inverse of the cumulative sum is the map $\mathbf y\mapsto(y_1,y_2-y_1,\ldots,y_n-y_{n-1})$, whose matrix has the diagonal $1$ and the subdiagonal $-1$. The matrix $L$ has $n(n+1)/2$ nonzero entries, while its inverse has only $2n-1$; as for the matrix $T_n$ of \cref{sec:special-matrices}, whose inverse is full, the number of nonzero entries of a matrix says nothing about that of its inverse.
+
+\subsection{The Cost of a Matrix and of a Procedure}
+
+Whether a map should be stored as a matrix depends on the cost. A product with a general $m\times n$ matrix costs $mn$ multiplications and $m(n-1)$ additions (\cref{tab:op-counts}), while a procedure may be much cheaper. \Cref{tab:operator-costs} compares the two for the examples.
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}{colspec={lll}, row{1}={font=\small\bfseries}}
+\toprule
+map & matrix--vector product & procedure \\
+\midrule
+cumulative sum on $\mathbb F^n$ & $n^2$ mult., $n(n-1)$ add. & $n-1$ additions \\
+differences $\mathbb F^n\to\mathbb F^{n-1}$ & $n(n-1)$ mult., $(n-1)^2$ add. & $n-1$ subtractions \\
+derivative on $\mathcal P_d$ & $(d+1)^2$ mult., $d(d+1)$ add. & $d$ multiplications \\
+values in $\mathcal P_d$ at $k$ points & $k(d+1)$ mult., $kd$ add. & $kd$ mult., $kd$ add. \\
+Fourier transform of order $n$ & $n^2$ complex mult. & $O(n\log n)$ (FFT) \\
+\bottomrule
+\end{sdtable}}{Operation counts for applying some linear maps, by a product with their full matrix and by a direct procedure. The derivative acts on the coefficient vector, and the values are computed by Horner's scheme; the matrix of the evaluation is the Vandermonde matrix, whose construction is not counted. For the discrete Fourier transform the bound $O(n\log n)$ is attained by the fast Fourier transform, most simply for $n$ a power of $2$; the algorithm is the subject of Volume~XII.\label{tab:operator-costs}}
+\end{table}
+
+For the cumulative sum, the ratio of the counts grows in proportion to $n$. We measured the time of one product $L\mathbf x$ with the explicitly stored matrix, by the routine \code{matmul}, and of one call of \code{cumulative\_sum}, for vectors $\mathbf x$ with random entries in $[0,1)$, on the machine and with the version of the library described in \cref{sec:systems-practice}; each time is the best of at least fifteen repetitions. \Cref{tab:cumsum-timing} shows the results. The ratio of the two times grows from about $20$ for $n=1000$ to about $1000$ for $n=16000$, and from $n=2000$ on it roughly doubles when $n$ doubles, as the operation counts predict. The matrix for $n=16000$ occupies $2$ GB of memory, while the procedure needs none beyond the vectors. In ten runs with different random vectors for each $n$, the two results agreed to a relative difference of at most $6\times10^{-15}$ in every component, but they were not identical in all bits. How the rounding errors of such sums arise is a subject of Volume~VI.
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}{colspec={rlll}, row{1}={font=\small\bfseries}}
+\toprule
+$n$ & product $L\mathbf x$ (s) & \code{cumulative\_sum} (s) & ratio \\
+\midrule
+$1000$ & $1.3\times10^{-5}$ & $5.8\times10^{-7}$ & $23$ \\
+$2000$ & $1.7\times10^{-4}$ & $1.1\times10^{-6}$ & $150$ \\
+$4000$ & $5.6\times10^{-4}$ & $2.1\times10^{-6}$ & $260$ \\
+$8000$ & $2.3\times10^{-3}$ & $4.1\times10^{-6}$ & $560$ \\
+$16000$ & $9.3\times10^{-3}$ & $9.3\times10^{-6}$ & $1000$ \\
+\bottomrule
+\end{sdtable}}{The time in seconds for computing the cumulative sums of a vector of length $n$ as a product with the stored $n\times n$ matrix $L$ and by the library routine \code{cumulative\_sum}, and the ratio of the two times (best of at least fifteen repetitions; the times and the ratios are rounded to two digits).\label{tab:cumsum-timing}}
+\end{table}
+
+For the derivative of a polynomial, each component of the product of the matrix $D$ of \cref{sec:matrices-linear-maps} with a coefficient vector is, in exact arithmetic, a single product $kc_k$ plus terms that are zero. In our test, the product with \code{matmul} and the direct computation of the coefficients $kc_k$ agreed exactly, in all bits, for $1000$ random coefficient vectors with entries in $[-1,1)$ each for the degrees $d=3$, $20$ and $200$; for the polynomial $1+2x-x^2+4x^3$ of \cref{sec:matrices-linear-maps}, both gave the coefficients $(2,-2,12,0)$ of its derivative.
+
+Many algorithms of later volumes use only the products $\mathbf x\mapsto T\mathbf x$ and never look at the entries of a matrix. The iterative methods for large linear systems and eigenvalue problems of Volume~X are of this kind~\cite{saad2003}; they accept the map as a procedure, which the sparse module of the stardust library wraps as a \emph{linear operator}. The fast Fourier transform of Cooley and Tukey~\cite{cooley1965} applies the dense matrix of the discrete Fourier transform in a number of operations proportional to $n\log n$, and Volume~XII develops it together with the differentiation matrices of spectral methods. In each case the linear map, not its matrix, is the primary object, as it has been throughout this chapter.
+
+\bigskip
+A linear map is a map between vector spaces that preserves sums and multiples, and it is determined by its values on a basis, which can be prescribed freely. Its kernel and its image are subspaces, a linear map is injective exactly when its kernel is zero, and the solutions of a linear equation $T\mathbf v=\mathbf w$ form a flat parallel to the kernel. The rank--nullity theorem $\dim V=\dim\ker T+\dim\operatorname{im}T$ shows that an operator on a finite-dimensional space is injective if and only if it is surjective, which turns uniqueness theorems, such as those of polynomial and Hermite interpolation, into existence theorems. Finite-dimensional spaces are classified up to isomorphism by their dimension. With respect to bases $\mathcal B$ and $\mathcal D$, a linear map has the matrix $[T]_{\mathcal D\leftarrow\mathcal B}$, the product of matrices is the composition of maps, and a change of bases replaces the matrix by $Q^{-1}[T]P$. Up to such changes, a linear map is determined by its rank, with the normal form $N_r$, while an operator, whose matrices change by similarity $P^{-1}[T]P$, has many more invariants: the rank, the trace and the dimensions of the kernels of $T-\lambda\operatorname{id}$. Projections have the diagonal matrix $\operatorname{diag}(1,\ldots,1,0,\ldots,0)$ in an adapted basis, so that their trace is their rank. The kernels of composed maps give the inequalities of Sylvester and Frobenius, and the powers of an operator split the space into a part on which it is nilpotent and a part on which it is invertible. Invariant subspaces correspond to block triangular matrices, quotient spaces turn the kernel into the zero vector, and the dual map has the transposed matrix. \Cref{ch:determinants} adds the determinant as a similarity invariant, \cref{ch:inner-products} brings in inner products and orthogonal projections, and \cref{ch:eigenvalues,ch:symmetric-matrices,ch:svd,ch:canonical-forms} pursue the search for a good basis through eigenvalues, the spectral theorem, the singular value decomposition and the Jordan form.
+
+\chapternotes
+
+Linear substitutions and their composition, which are the linear maps of $\mathbb F^n$ written in coordinates, were studied long before abstract vector spaces existed, and Cayley's memoir~\cite{cayley1858} made their matrices the objects of an algebra, as the notes of \cref{ch:vectors-matrices} describe; Katz~\cite{katz2009} gives an account of the development of linear algebra as a whole, and the history of the abstract notions of this chapter is part of the history of the vector space axioms traced in the notes of \cref{ch:vector-spaces}. Horn and Johnson~\cite[Sect.~0.4]{horn2013} collect the inequalities of Sylvester and Frobenius among the basic facts about the rank; the decomposition of \cref{thm:fitting} carries the name of Hans Fitting, the author of a study of the automorphism rings of abelian groups~\cite{fitting1933}. Category theory, which made the ideas of natural isomorphism and of invariants precise, was founded by Eilenberg and Mac Lane~\cite{eilenberg1945,maclane1998}, and the fast Fourier transform was published by Cooley and Tukey~\cite{cooley1965}.
+
+Axler~\cite[Chap.~3]{axler2024} develops linear maps, their kernels and images, the rank--nullity theorem (which he calls the fundamental theorem of linear maps), isomorphisms, the matrix of a map, quotient spaces and duality with complete proofs and with maps rather than matrices at the centre, and his Chapter~8 treats the powers of an operator and the decompositions that lead to the Jordan form. Halmos~\cite{halmos1958} and Hoffman and Kunze~\cite{hoffman1971} are the classical rigorous accounts, the second including dual spaces and the transpose of a linear map. Strang~\cite{strang2016} and Meyer~\cite{meyer2000} treat change of basis and similarity with many examples from applications, and Horn and Johnson~\cite[Sects.~0.4 and~1.3]{horn2013} collect the facts about rank, equivalence and similarity used in matrix analysis. Golub and Van Loan~\cite{golub2013} and Van Loan~\cite{vanloan2000} treat the Kronecker product, Folland~\cite[Sect.~5.1]{folland1999} bounded linear maps between normed spaces, and Saad~\cite{saad2003} the iterative methods that use a linear map only through its products.
+
+\chapterreferences
