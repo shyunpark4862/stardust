@@ -160,5 +160,5 @@
 - 8권: (1권 27장에서) 대칭 삼중대각 행렬의 고윳값 계산(prop:jacobi-matrix 뒤)
 - 9권: (1권 27장에서) 정상 반복법(Jacobi, Gauss–Seidel)의 수렴 ρ(G)<1과 느린 수렴(prop:stationary-iteration, T_d에서 약 2.8(d+1)² 단계), 그보다 나은 방법
 - 10권: (1권 27장에서) 3항 점화식의 방향 선택과 Miller 알고리즘(thm:miller, 합 정규화의 수렴 분석), 연분수로 특수 함수 계산(thm:pincherle 줄거리), 정수 차수 Bessel 함수 계산(tab:bessel-recurrence), Chebyshev 급수와 Clenshaw 알고리즘의 정확도(prop:clenshaw·alg:clenshaw), cos(n arccos x)와 점화식의 오차(tab:chebyshev-evaluation 뒤)
-- 11권: (1권 27장에서) Jacobi 행렬에서 Gauss 규칙(Golub–Welsch; prop:jacobi-matrix 뒤), 미분 연산자의 이산화 일반(prop:discrete-bvp 뒤)
+- 11권: (1권 27장에서) Jacobi 행렬에서 Gauss 규칙(Golub–Welsch; prop:jacobi-matrix 뒤), 수치 미분에서 차분 몫을 다시 다룸(prop:discrete-bvp 뒤; 경계값 문제의 이산화 일반은 약속하지 않음 — OUTLINE 11권에 없음)
 - (약속하지 않음) 1권 27장: 선형 다단계법 이론(Dahlquist 동치 정리 thm:dahlquist는 줄거리, 제1 장벽은 진술만)은 hairer1993·henrici1962discrete 인용만; 본문에 "not among the subjects of the later volumes"라고 적음. Poincaré–Perron 정리(thm:poincare-perron 줄거리)도 elaydi2005 인용만
