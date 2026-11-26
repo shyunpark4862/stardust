@@ -815,7 +815,7 @@ and $\det A\det B=\det(AB)$ (\cref{thm:invertible-matrices}\,(ii), which for $n=
 
 \emph{Factorisation.} Let $A$ have the rows $(a,b)$ and $(c,d)$, with $\det A=ad-bc\ne0$. If $a\ne0$, then
 \[
-A=\begin{pmatrix}1&0\\c/a&1\end{pmatrix}\begin{pmatrix}a&0\\0&\det A/a\end{pmatrix}\begin{pmatrix}1&b/a\\0&1\end{pmatrix},
+A=\begin{bmatrix}1&0\\c/a&1\end{bmatrix}\begin{bmatrix}a&0\\0&\det A/a\end{bmatrix}\begin{bmatrix}1&b/a\\0&1\end{bmatrix},
 \]
 as one checks by multiplying out: the product of the last two factors has the rows $(a,b)$ and $(0,\det A/a)$, and the first factor adds $c/a$ times the first row to the second, which gives $(c,\,bc/a+(ad-bc)/a)=(c,d)$. This writes $A$ as a product of shears and scalings. If $a=0$, then $c\ne0$, and $A$ is the exchange of the two rows applied to a matrix with nonzero upper left entry, which factors as before. By the step on products, $A$ has property (V).
 
@@ -1311,7 +1311,7 @@ Let $S\coloneqq(0,\infty)^2$ and $F(s,t)\coloneqq s^{a-1}t^{b-1}e^{-s-t}$, a pos
 \]
 so $\iint_SF=\Gamma(a)\Gamma(b)$. Now let $U\coloneqq(0,\infty)\times(0,1)$ and $\mathbf g(u,v)\coloneqq(uv,\,u(1-v))$. This map is a bijection of $U$ onto $S$, with the continuous inverse $u=s+t$, $v=s/(s+t)$, and
 \[
-D\mathbf g(u,v)=\begin{pmatrix}v&u\\1-v&-u\end{pmatrix},\qquad\det D\mathbf g(u,v)=-uv-u(1-v)=-u\ne0 .
+D\mathbf g(u,v)=\begin{bmatrix}v&u\\1-v&-u\end{bmatrix},\qquad\det D\mathbf g(u,v)=-uv-u(1-v)=-u\ne0 .
 \]
 The rectangles $L_j\coloneqq[1/j,j]\times[1/j,1-1/j]$, $j\ge3$, exhaust $U$, and their images $\mathbf g(L_j)$ exhaust $S$: they are closed, bounded and Jordan measurable by \cref{thm:change-variables}, each lies in the interior of the next because $\mathbf g$ and its inverse are continuous, and they cover $S$ because the $L_j$ cover $U$. Since $F(\mathbf g(u,v))\,u=(uv)^{a-1}(u(1-v))^{b-1}e^{-u}u=u^{a+b-1}e^{-u}\,v^{a-1}(1-v)^{b-1}$, \cref{thm:change-variables} and \cref{cor:product-integral} give
 \[

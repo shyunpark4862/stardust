@@ -272,7 +272,7 @@ The three norms belong to a family. For $1\le p<\infty$ the \emph{$p$-norm} is $
 
 A matrix $A=(a_{ij})\in\mathbb R^{m\times n}$ is a rectangular array of $m$ rows and $n$ columns (\cref{def:matrix}). We write its columns as $\mathbf a_1,\ldots,\mathbf a_n\in\mathbb R^m$ and its rows as $\mathbf r_1^{\mathsf T},\ldots,\mathbf r_m^{\mathsf T}$, with $\mathbf r_i\in\mathbb R^n$, and display the two decompositions as
 \[
-A=\begin{pmatrix}\mathbf a_1&\mathbf a_2&\cdots&\mathbf a_n\end{pmatrix}=\begin{pmatrix}\mathbf r_1^{\mathsf T}\\\vdots\\\mathbf r_m^{\mathsf T}\end{pmatrix}.
+A=\begin{bmatrix}\mathbf a_1&\mathbf a_2&\cdots&\mathbf a_n\end{bmatrix}=\begin{bmatrix}\mathbf r_1^{\mathsf T}\\\vdots\\\mathbf r_m^{\mathsf T}\end{bmatrix}.
 \]
 The \term{zero matrix}, all of whose entries are zero, is written $0$, and the \term{identity matrix} $I=I_n$ has the columns $\mathbf e_1,\ldots,\mathbf e_n$, so that its entries are $\delta_{ij}$. An $n\times1$ matrix is a column vector, a $1\times n$ matrix a row vector, and a $1\times1$ matrix is identified with its single entry. Matrices of the same shape are added and multiplied by scalars entry by entry, and these operations satisfy the eight rules of \cref{prop:vector-rules}, since $\mathbb R^{m\times n}$ is $\mathbb R^{mn}$ with the entries arranged in a rectangle.
 
@@ -315,7 +315,7 @@ The theorem gives a recipe that is used constantly: \emph{to find the matrix of 
 
 In the plane, the recipe produces the matrices of the familiar geometric maps, shown in \cref{fig:linear-maps}. The \term{rotation} by the angle $\varphi$ about the origin maps $\mathbf e_1$ to $(\cos\varphi,\sin\varphi)$ and $\mathbf e_2$ to $(-\sin\varphi,\cos\varphi)$, so its matrix is $R_\varphi$ of \cref{sec:vectors-rn}:
 \[
-R_\varphi=\begin{pmatrix}\cos\varphi&-\sin\varphi\\\sin\varphi&\cos\varphi\end{pmatrix}.
+R_\varphi=\begin{bmatrix}\cos\varphi&-\sin\varphi\\\sin\varphi&\cos\varphi\end{bmatrix}.
 \]
 That rotation is linear at all is a geometric fact: rotating the parallelogram spanned by $\mathbf x$ and $\mathbf y$ gives the parallelogram spanned by the rotated vectors, so the rotation of $\mathbf x+\mathbf y$ is the sum of the rotations. \Cref{sec:vectors-rn} confirmed it algebraically with the addition formulas.
 
@@ -344,15 +344,15 @@ That rotation is linear at all is a geometric fact: rotating the parallelogram s
 
 The \term{reflection} in the line through the origin at the angle $\alpha$ to the $x_1$-axis maps a unit vector at the angle $\beta$ to the unit vector at the angle $2\alpha-\beta$. Thus $\mathbf e_1$ (angle $0$) goes to $(\cos2\alpha,\sin2\alpha)$ and $\mathbf e_2$ (angle $\pi/2$) to $(\cos(2\alpha-\pi/2),\sin(2\alpha-\pi/2))=(\sin2\alpha,-\cos2\alpha)$, and the matrix is
 \[
-S_\alpha=\begin{pmatrix}\cos2\alpha&\sin2\alpha\\\sin2\alpha&-\cos2\alpha\end{pmatrix}.
+S_\alpha=\begin{bmatrix}\cos2\alpha&\sin2\alpha\\\sin2\alpha&-\cos2\alpha\end{bmatrix}.
 \]
 For $\alpha=0$ this is $\operatorname{diag}(1,-1)$, the reflection in the $x_1$-axis, which changes the sign of the second coordinate, and for $\alpha=\pi/4$ it exchanges the two coordinates. The \term{orthogonal projection} onto the same line, whose unit direction vector is $\mathbf u=(\cos\alpha,\sin\alpha)$, maps $\mathbf x$ to $\langle\mathbf u,\mathbf x\rangle\mathbf u$, so $\mathbf e_1\mapsto\cos\alpha\,\mathbf u$ and $\mathbf e_2\mapsto\sin\alpha\,\mathbf u$, and
 \[
-P_\alpha=\begin{pmatrix}\cos^2\alpha&\cos\alpha\sin\alpha\\\cos\alpha\sin\alpha&\sin^2\alpha\end{pmatrix}=\mathbf u\mathbf u^{\mathsf T}.
+P_\alpha=\begin{bmatrix}\cos^2\alpha&\cos\alpha\sin\alpha\\\cos\alpha\sin\alpha&\sin^2\alpha\end{bmatrix}=\mathbf u\mathbf u^{\mathsf T}.
 \]
 By the double angle formulas, $S_\alpha=2P_\alpha-I$: the reflection of $\mathbf x$ is obtained by going from $\mathbf x$ to its projection $\mathbf p$ and then the same distance further, $\mathbf x+2(\mathbf p-\mathbf x)=2\mathbf p-\mathbf x$. Finally, the \term{shear} with the factor $k$ and the \term{scaling} with the factors $s_1$, $s_2$ have the matrices
 \[
-K=\begin{pmatrix}1&k\\0&1\end{pmatrix},\qquad\operatorname{diag}(s_1,s_2)=\begin{pmatrix}s_1&0\\0&s_2\end{pmatrix}.
+K=\begin{bmatrix}1&k\\0&1\end{bmatrix},\qquad\operatorname{diag}(s_1,s_2)=\begin{bmatrix}s_1&0\\0&s_2\end{bmatrix}.
 \]
 The shear moves each point horizontally by $k$ times its height, $K(x_1,x_2)=(x_1+kx_2,x_2)$, as a deck of cards is sheared by pushing its top sideways; the scaling stretches the two axes by different factors.
 
@@ -360,7 +360,7 @@ The figure makes visible what linearity means geometrically. Straight lines go t
 
 Not every map that looks simple is linear. A \term{translation} $\mathbf x\mapsto\mathbf x+\mathbf b$ with $\mathbf b\ne\mathbf 0$ is not, since it moves the origin, and neither is $\mathbf x\mapsto\|\mathbf x\|$, since $\|-\mathbf x\|\ne-\|\mathbf x\|$ for $\mathbf x\ne\mathbf 0$. Maps of the form $\mathbf x\mapsto A\mathbf x+\mathbf b$ are called \term{affine}; the parametrisations of lines and planes in \cref{sec:vectors-in-rn} are examples. Computer graphics handles them with matrices all the same, by appending a component $1$ to every point of the plane, so that $\mathbf x\mapsto A\mathbf x+\mathbf b$ becomes the linear map of $\mathbb R^3$ with the matrix
 \[
-\begin{pmatrix}A&\mathbf b\\\mathbf 0^{\mathsf T}&1\end{pmatrix},\qquad\begin{pmatrix}A&\mathbf b\\\mathbf 0^{\mathsf T}&1\end{pmatrix}\begin{pmatrix}\mathbf x\\1\end{pmatrix}=\begin{pmatrix}A\mathbf x+\mathbf b\\1\end{pmatrix},
+\begin{bmatrix}A&\mathbf b\\\mathbf 0^{\mathsf T}&1\end{bmatrix},\qquad\begin{bmatrix}A&\mathbf b\\\mathbf 0^{\mathsf T}&1\end{bmatrix}\begin{bmatrix}\mathbf x\\1\end{bmatrix}=\begin{bmatrix}A\mathbf x+\mathbf b\\1\end{bmatrix},
 \]
 a matrix written in blocks, as \cref{sec:block-matrices} explains; these \term{homogeneous coordinates} reappear in the geometry and graphics of Volume~XVI.
 
@@ -368,13 +368,13 @@ a matrix written in blocks, as \cref{sec:block-matrices} explains; these \term{h
 
 Linear maps are not only geometric. Many operations on lists of numbers are linear, and their matrices are found by the same recipe. The \term{mean} $\bar x=(x_1+\cdots+x_n)/n$ is the linear map from $\mathbb R^n$ to $\mathbb R$ with the $1\times n$ matrix $(1/n,\ldots,1/n)$. The \term{differences} of consecutive components, $\mathbf x\mapsto(x_2-x_1,x_3-x_2,\ldots,x_n-x_{n-1})$, form a linear map from $\mathbb R^n$ to $\mathbb R^{n-1}$ whose matrix has $-1$ on the diagonal and $1$ just above it; for $n=4$,
 \[
-\Delta=\begin{pmatrix}-1&1&0&0\\0&-1&1&0\\0&0&-1&1\end{pmatrix}.
+\Delta=\begin{bmatrix}-1&1&0&0\\0&-1&1&0\\0&0&-1&1\end{bmatrix}.
 \]
 Divided by a step $h$, it computes the forward difference quotients of \cref{ch:differentiation} from the values of a function at equally spaced points, and it is the first example of a \emph{banded} matrix, studied in \cref{sec:special-matrices}.
 
 A polynomial $p(x)=c_0+c_1x+\cdots+c_dx^d$ of degree at most $d$ is described by its vector of coefficients $\mathbf c=(c_0,\ldots,c_d)\in\mathbb R^{d+1}$, and many operations on polynomials become matrices. Differentiation maps $p$ to $p'(x)=c_1+2c_2x+\cdots+dc_dx^{d-1}$, and since $(p+q)'=p'+q'$ and $(tp)'=tp'$ (\cref{thm:diff-algebra}), it is linear. The images of the basis polynomials $1,x,x^2,x^3$ for $d=3$ are $0$, $1$, $2x$ and $3x^2$, with the coefficient vectors $\mathbf 0$, $\mathbf e_1$, $2\mathbf e_2$ and $3\mathbf e_3$ in $\mathbb R^4$, and these are the columns of
 \[
-D=\begin{pmatrix}0&1&0&0\\0&0&2&0\\0&0&0&3\\0&0&0&0\end{pmatrix}.
+D=\begin{bmatrix}0&1&0&0\\0&0&2&0\\0&0&0&3\\0&0&0&0\end{bmatrix}.
 \]
 For $p(x)=1+2x-x^2+4x^3$, $D(1,2,-1,4)=(2,-2,12,0)$, the coefficients of $p'(x)=2-2x+12x^2$. Evaluation at given points $x_0,\ldots,x_d$ is also linear: the vector of values $(p(x_0),\ldots,p(x_d))$ is $V\mathbf c$, where the \term{Vandermonde matrix} $V$ has the rows $(1,x_i,x_i^2,\ldots,x_i^d)$. Finding the polynomial that takes given values at given points, the interpolation problem, therefore means solving the linear system $V\mathbf c=\mathbf y$, which Chapter~14 and Volume~XI take up. Integration, multiplication by a fixed polynomial and the change of variable $x\mapsto x+1$ are linear in the same way. In each case, the recipe of \cref{thm:matrices-linear-maps} turns an operation on functions into a table of numbers, and that is how such operations are carried out by a computer.
 
@@ -389,7 +389,7 @@ If a linear map $B$ is followed by a linear map $A$, the composition is again li
 \label{thm:product-composition}
 Let $A\in\mathbb R^{m\times n}$ and $B\in\mathbb R^{n\times p}$, with columns $\mathbf b_1,\ldots,\mathbf b_p$. The composition $L_A\circ L_B\colon\mathbb R^p\to\mathbb R^m$, $\mathbf x\mapsto A(B\mathbf x)$, is linear, and its matrix is the product $AB\in\mathbb R^{m\times p}$ of \cref{def:matrix-product}, with the entries and columns
 \[
-(AB)_{ik}=\sum_{j=1}^na_{ij}b_{jk},\qquad AB=\begin{pmatrix}A\mathbf b_1&A\mathbf b_2&\cdots&A\mathbf b_p\end{pmatrix}.
+(AB)_{ik}=\sum_{j=1}^na_{ij}b_{jk},\qquad AB=\begin{bmatrix}A\mathbf b_1&A\mathbf b_2&\cdots&A\mathbf b_p\end{bmatrix}.
 \]
 That is, $(AB)\mathbf x=A(B\mathbf x)$ for every $\mathbf x\in\mathbb R^p$.
 \end{theorem}
@@ -402,7 +402,7 @@ The product $AB$ is defined only when the number of columns of $A$ equals the nu
 
 \Cref{fig:linear-maps}F is the shear $K$ followed by the rotation $R_{\pi/4}$. Its matrix is the product
 \[
-R_{\pi/4}K=\frac1{\sqrt2}\begin{pmatrix}1&-1\\1&1\end{pmatrix}\begin{pmatrix}1&1\\0&1\end{pmatrix}=\frac1{\sqrt2}\begin{pmatrix}1&0\\1&2\end{pmatrix},
+R_{\pi/4}K=\frac1{\sqrt2}\begin{bmatrix}1&-1\\1&1\end{bmatrix}\begin{bmatrix}1&1\\0&1\end{bmatrix}=\frac1{\sqrt2}\begin{bmatrix}1&0\\1&2\end{bmatrix},
 \]
 whose first column is $R_{\pi/4}\mathbf e_1$, since the shear fixes $\mathbf e_1$, and whose second column is the rotation of $K\mathbf e_2=(1,1)$, namely $(0,\sqrt2)$. The product of two rotations is a rotation, $R_\alpha R_\beta=R_{\alpha+\beta}$: multiplying out gives the entries $\cos\alpha\cos\beta-\sin\alpha\sin\beta=\cos(\alpha+\beta)$ and so on, and the addition formulas of \cref{thm:addition} are thereby exactly the statement that rotating by $\beta$ and then by $\alpha$ is rotating by $\alpha+\beta$.
 
@@ -427,13 +427,13 @@ Associativity is the most important of these rules. It allows us to write $ABC$ 
 
 The rules of \cref{thm:product-rules} are those of the arithmetic of numbers, with one omission: there is no rule $AB=BA$. Even when both products are defined and have the same shape, they usually differ. With the rotation $R\coloneqq R_{\pi/2}$ by a right angle and the reflection $S\coloneqq\operatorname{diag}(1,-1)$ in the $x_1$-axis,
 \[
-RS=\begin{pmatrix}0&-1\\1&0\end{pmatrix}\begin{pmatrix}1&0\\0&-1\end{pmatrix}=\begin{pmatrix}0&1\\1&0\end{pmatrix},\qquad SR=\begin{pmatrix}1&0\\0&-1\end{pmatrix}\begin{pmatrix}0&-1\\1&0\end{pmatrix}=\begin{pmatrix}0&-1\\-1&0\end{pmatrix}.
+RS=\begin{bmatrix}0&-1\\1&0\end{bmatrix}\begin{bmatrix}1&0\\0&-1\end{bmatrix}=\begin{bmatrix}0&1\\1&0\end{bmatrix},\qquad SR=\begin{bmatrix}1&0\\0&-1\end{bmatrix}\begin{bmatrix}0&-1\\1&0\end{bmatrix}=\begin{bmatrix}0&-1\\-1&0\end{bmatrix}.
 \]
 Reflecting in the $x_1$-axis and then rotating by a right angle is the reflection in the line $x_2=x_1$, while doing the same in the other order is the reflection in the line $x_2=-x_1$. Putting on socks and then shoes is not the same as putting on shoes and then socks, and the same is true of most pairs of operations. Some pairs do commute: two rotations, two diagonal matrices, any matrix and a multiple $tI$ of the identity, and any two powers of the same matrix. The \term{commutator} $AB-BA$ measures the failure; it is a basic object of quantum mechanics and of the theory of Lie groups.
 
 A second difference from the arithmetic of numbers is that a product can be zero although neither factor is:
 \[
-\begin{pmatrix}1&1\\1&1\end{pmatrix}\begin{pmatrix}1&-1\\-1&1\end{pmatrix}=\begin{pmatrix}0&0\\0&0\end{pmatrix},\qquad N\coloneqq\begin{pmatrix}0&1\\0&0\end{pmatrix},\quad N^2=0 .
+\begin{bmatrix}1&1\\1&1\end{bmatrix}\begin{bmatrix}1&-1\\-1&1\end{bmatrix}=\begin{bmatrix}0&0\\0&0\end{bmatrix},\qquad N\coloneqq\begin{bmatrix}0&1\\0&0\end{bmatrix},\quad N^2=0 .
 \]
 Nonzero matrices with a zero product are \term{zero divisors}. Geometrically, the first factor on the left squeezes the plane onto the line spanned by $(1,1)$, and the second factor squeezes it onto the line spanned by $(1,-1)$, which the first one maps to $\mathbf 0$. As a consequence, matrices cannot be cancelled: $AB=AC$ with $A\ne0$ does not imply $B=C$, since $A(B-C)=0$ is possible with $B\ne C$. The familiar algebraic identities must be revised accordingly. By the distributive law, $(A+B)^2=A^2+AB+BA+B^2$, which equals $A^2+2AB+B^2$ only if $AB=BA$, and $(A+B)(A-B)=A^2-AB+BA-B^2$. Whenever $A$ and $B$ commute, the identities of ordinary algebra hold for them again; in particular the binomial theorem, which \cref{thm:binomial} proved for any two elements of a commutative ring, holds by the same induction:
 \[
@@ -461,11 +461,11 @@ All four are rearrangements of the formula $(AB)_{ik}=\sum_ja_{ij}b_{jk}$. (i) T
 
 \Cref{fig:product-views} illustrates the four readings, and a small example shows them at work. For
 \[
-A=\begin{pmatrix}1&2&0\\-1&3&1\end{pmatrix},\qquad B=\begin{pmatrix}2&1\\0&-1\\1&4\end{pmatrix},\qquad AB=\begin{pmatrix}2&-1\\-1&0\end{pmatrix},
+A=\begin{bmatrix}1&2&0\\-1&3&1\end{bmatrix},\qquad B=\begin{bmatrix}2&1\\0&-1\\1&4\end{bmatrix},\qquad AB=\begin{bmatrix}2&-1\\-1&0\end{bmatrix},
 \]
 the entry $(AB)_{21}=-1$ is the inner product of the second row $(-1,3,1)$ of $A$ with the first column $(2,0,1)$ of $B$; the first column $(2,-1)$ of $AB$ is $2\mathbf a_1+0\mathbf a_2+1\mathbf a_3$; the first row $(2,-1)$ of $AB$ is $1\cdot(2,1)+2\cdot(0,-1)+0\cdot(1,4)$; and the sum of outer products is
 \[
-\begin{pmatrix}1\\-1\end{pmatrix}\begin{pmatrix}2&1\end{pmatrix}+\begin{pmatrix}2\\3\end{pmatrix}\begin{pmatrix}0&-1\end{pmatrix}+\begin{pmatrix}0\\1\end{pmatrix}\begin{pmatrix}1&4\end{pmatrix}=\begin{pmatrix}2&1\\-2&-1\end{pmatrix}+\begin{pmatrix}0&-2\\0&-3\end{pmatrix}+\begin{pmatrix}0&0\\1&4\end{pmatrix}=\begin{pmatrix}2&-1\\-1&0\end{pmatrix}.
+\begin{bmatrix}1\\-1\end{bmatrix}\begin{bmatrix}2&1\end{bmatrix}+\begin{bmatrix}2\\3\end{bmatrix}\begin{bmatrix}0&-1\end{bmatrix}+\begin{bmatrix}0\\1\end{bmatrix}\begin{bmatrix}1&4\end{bmatrix}=\begin{bmatrix}2&1\\-2&-1\end{bmatrix}+\begin{bmatrix}0&-2\\0&-3\end{bmatrix}+\begin{bmatrix}0&0\\1&4\end{bmatrix}=\begin{bmatrix}2&-1\\-1&0\end{bmatrix}.
 \]
 
 \begin{figure}
@@ -505,7 +505,7 @@ Because powers of $A$ commute, products of such matrices multiply out like polyn
 
 Powers of a matrix describe repeated application of a linear map, and they appear wherever a linear rule is iterated. The rotations satisfy $R_\varphi^k=R_{k\varphi}$, by the product of rotations computed above. The nilpotent matrix $N$ of the previous subsection has $N^2=0$, so the binomial theorem, applied to the commuting matrices $I$ and $N$, gives $(I+N)^k=I+kN$: the $k$th power of a shear is the shear with $k$ times the factor. A recurrence also becomes a matrix power. The Fibonacci numbers of \cref{sec:gcd}, with $F_0=0$, $F_1=1$ and $F_{k+1}=F_k+F_{k-1}$, satisfy
 \[
-\begin{pmatrix}F_{k+1}\\F_k\end{pmatrix}=\begin{pmatrix}1&1\\1&0\end{pmatrix}\begin{pmatrix}F_k\\F_{k-1}\end{pmatrix},\qquad\text{so}\qquad\begin{pmatrix}1&1\\1&0\end{pmatrix}^k=\begin{pmatrix}F_{k+1}&F_k\\F_k&F_{k-1}\end{pmatrix}\quad(k\ge1),
+\begin{bmatrix}F_{k+1}\\F_k\end{bmatrix}=\begin{bmatrix}1&1\\1&0\end{bmatrix}\begin{bmatrix}F_k\\F_{k-1}\end{bmatrix},\qquad\text{so}\qquad\begin{bmatrix}1&1\\1&0\end{bmatrix}^k=\begin{bmatrix}F_{k+1}&F_k\\F_k&F_{k-1}\end{bmatrix}\quad(k\ge1),
 \]
 the second identity by induction on $k$, since multiplying the right side by the matrix gives the rows $(F_{k+1}+F_k,F_{k+1})=(F_{k+2},F_{k+1})$ and $(F_k+F_{k-1},F_k)=(F_{k+1},F_k)$. For $k=10$ the power is the matrix with the rows $(89,55)$ and $(55,34)$. Comparing the entries of $F^{j+k}=F^jF^k$, where $F$ is the matrix on the left, gives identities such as $F_{j+k}=F_{j+1}F_k+F_jF_{k-1}$, and the power $F^k$ can be computed with about $2\log_2k$ matrix products by repeated squaring, $F^{2k}=(F^k)^2$. Chapter~27 solves linear recurrences in general, and Chapter~19 explains the growth of $F^k$, like $\phi^k$, through the eigenvalues of $F$.
 
@@ -552,7 +552,7 @@ The six orders differ in the order in which they read the entries of $A$ and $B$
 
 The transpose $A^{\mathsf T}\in\mathbb R^{n\times m}$ of $A\in\mathbb R^{m\times n}$ has the entries $(A^{\mathsf T})_{ji}=a_{ij}$ (\cref{def:matrix-product}): its rows are the columns of $A$, and its columns are the rows of $A$. For example,
 \[
-\begin{pmatrix}1&2&0\\-1&3&1\end{pmatrix}^{\mathsf T}=\begin{pmatrix}1&-1\\2&3\\0&1\end{pmatrix},\qquad\begin{pmatrix}x_1\\\vdots\\x_n\end{pmatrix}^{\mathsf T}=\begin{pmatrix}x_1&\cdots&x_n\end{pmatrix}.
+\begin{bmatrix}1&2&0\\-1&3&1\end{bmatrix}^{\mathsf T}=\begin{bmatrix}1&-1\\2&3\\0&1\end{bmatrix},\qquad\begin{bmatrix}x_1\\\vdots\\x_n\end{bmatrix}^{\mathsf T}=\begin{bmatrix}x_1&\cdots&x_n\end{bmatrix}.
 \]
 Geometrically, a square matrix is transposed by reflecting it in its \term{main diagonal}, the entries $a_{11},a_{22},\ldots,a_{nn}$, which stay in place. Transposition is a purely formal operation on the table of entries, but it has a meaning for the linear map, which part~(v) of the following proposition reveals.
 
@@ -578,7 +578,7 @@ Part (ii), the \term{reversal rule}, is the same rule as for inverse functions, 
 
 A square matrix is \term{symmetric} if $A^{\mathsf T}=A$, that is, $a_{ij}=a_{ji}$ for all $i,j$, and \term{antisymmetric}, or skew-symmetric, if $A^{\mathsf T}=-A$. The diagonal entries of an antisymmetric matrix vanish, since $a_{ii}=-a_{ii}$. Hessian matrices are symmetric, by Schwarz's theorem (\cref{thm:schwarz}), as are the adjacency matrices of undirected graphs (\cref{sec:graphs}) and the distance tables of road atlases. The cross product with a fixed vector $\mathbf a\in\mathbb R^3$ is an antisymmetric linear map: from the formula for $\mathbf a\times\mathbf x$ in \cref{sec:surfaces},
 \[
-\mathbf a\times\mathbf x=\begin{pmatrix}0&-a_3&a_2\\a_3&0&-a_1\\-a_2&a_1&0\end{pmatrix}\mathbf x .
+\mathbf a\times\mathbf x=\begin{bmatrix}0&-a_3&a_2\\a_3&0&-a_1\\-a_2&a_1&0\end{bmatrix}\mathbf x .
 \]
 
 \begin{proposition}[Symmetric and antisymmetric parts]
@@ -596,7 +596,7 @@ By \cref{prop:transpose-rules}\,(i), $A_{\mathrm s}^{\mathsf T}=(A^{\mathsf T}+A
 
 For example,
 \[
-\begin{pmatrix}1&2\\4&3\end{pmatrix}=\begin{pmatrix}1&3\\3&3\end{pmatrix}+\begin{pmatrix}0&-1\\1&0\end{pmatrix}.
+\begin{bmatrix}1&2\\4&3\end{bmatrix}=\begin{bmatrix}1&3\\3&3\end{bmatrix}+\begin{bmatrix}0&-1\\1&0\end{bmatrix}.
 \]
 The antisymmetric part here is the rotation $R_{\pi/2}$, which maps every vector to an orthogonal one, in accordance with $\langle\mathbf x,K\mathbf x\rangle=0$. The proposition explains why \cref{def:definite} considered definiteness for symmetric matrices only: the quadratic form $\langle\mathbf x,A\mathbf x\rangle$ sees only the symmetric part of $A$, so nothing is lost by assuming $A$ symmetric from the start.
 
@@ -619,7 +619,7 @@ The $(j,k)$ entry of $A^{\mathsf T}A$ is the $j$th row of $A^{\mathsf T}$, which
 
 The matrix $A^{\mathsf T}A$ is the \term{Gram matrix} of the vectors $\mathbf a_1,\ldots,\mathbf a_n$, the table of all their inner products. It contains all the geometry of the family, the lengths and the angles, but forgets its position in space. For the columns $(1,1,0)$ and $(1,0,1)$,
 \[
-A=\begin{pmatrix}1&1\\1&0\\0&1\end{pmatrix},\qquad A^{\mathsf T}A=\begin{pmatrix}2&1\\1&2\end{pmatrix},\qquad AA^{\mathsf T}=\begin{pmatrix}2&1&1\\1&1&0\\1&0&1\end{pmatrix};
+A=\begin{bmatrix}1&1\\1&0\\0&1\end{bmatrix},\qquad A^{\mathsf T}A=\begin{bmatrix}2&1\\1&2\end{bmatrix},\qquad AA^{\mathsf T}=\begin{bmatrix}2&1&1\\1&1&0\\1&0&1\end{bmatrix};
 \]
 the two vectors have length $\sqrt2$ and the angle $\pi/3$, since $\cos\theta=1/2$. The Gram matrix of an orthonormal family is the identity, and conversely: \emph{the columns of $Q$ are orthonormal if and only if $Q^{\mathsf T}Q=I$}, a criterion that \cref{sec:special-matrices} uses. In statistics, if the columns of $X$ hold centred measurements of several variables, $X^{\mathsf T}X/(N-1)$ is the sample covariance matrix (Volume~III), and its positive semidefiniteness reflects the fact that no combination of the variables can have a negative variance.
 
@@ -687,7 +687,7 @@ The reversal rule (ii) appears again: to undo $B$ followed by $A$, first undo $A
 
 The geometric maps of \cref{sec:matrices-linear-maps} have evident inverses. The rotation by $\varphi$ is undone by the rotation by $-\varphi$, so $R_\varphi^{-1}=R_{-\varphi}$, and since $\cos(-\varphi)=\cos\varphi$ and $\sin(-\varphi)=-\sin\varphi$ this is also $R_\varphi^{\mathsf T}$. A reflection is its own inverse, $S_\alpha^2=I$. The shear by $k$ is undone by the shear by $-k$, and a scaling $\operatorname{diag}(s_1,s_2)$ with $s_1s_2\ne0$ by $\operatorname{diag}(1/s_1,1/s_2)$. For $2\times2$ matrices in general, \cref{prop:inverse-2x2} gives the inverse explicitly; for instance
 \[
-\begin{pmatrix}2&1\\1&2\end{pmatrix}^{-1}=\frac13\begin{pmatrix}2&-1\\-1&2\end{pmatrix}.
+\begin{bmatrix}2&1\\1&2\end{bmatrix}^{-1}=\frac13\begin{bmatrix}2&-1\\-1&2\end{bmatrix}.
 \]
 
 \subsection{Singular Matrices}
@@ -696,7 +696,7 @@ A matrix fails to be invertible exactly when its map loses information, by \cref
 
 For a $2\times2$ matrix, singularity means $\det A=ad-bc=0$, by \cref{prop:inverse-2x2}, and for $n\times n$ matrices it means $\det A=0$, by \cref{thm:invertible-matrices}. Since $\det A$ is a polynomial in the entries, the singular matrices form a thin set, a hypersurface in the space $\mathbb R^{n\times n}$, and a matrix whose entries are drawn independently from a continuous probability distribution, such as the uniform distribution on $[0,1]$, is invertible with probability one. This does not make singular matrices irrelevant: matrices that are \emph{close} to singular are common in practice, and the inverse of such a matrix has huge entries. The matrix with the rows $(1,1)$ and $(1,1+\varepsilon)$, for example, has the determinant $\varepsilon$ and the inverse
 \[
-\frac1\varepsilon\begin{pmatrix}1+\varepsilon&-1\\-1&1\end{pmatrix},
+\frac1\varepsilon\begin{bmatrix}1+\varepsilon&-1\\-1&1\end{bmatrix},
 \]
 which blows up as $\varepsilon\to0$. How close a matrix is to being singular, relative to its size, is measured by its condition number, which \cref{sec:trace-norms} prepares and Chapter~21 and Volume~VIII develop.
 
@@ -758,7 +758,7 @@ Conversely, suppose that some diagonal entry vanishes, and let $k$ be the smalle
 
 For example,
 \[
-U=\begin{pmatrix}1&2&3\\0&1&4\\0&0&1\end{pmatrix},\qquad U^{-1}=\begin{pmatrix}1&-2&5\\0&1&-4\\0&0&1\end{pmatrix},
+U=\begin{bmatrix}1&2&3\\0&1&4\\0&0&1\end{bmatrix},\qquad U^{-1}=\begin{bmatrix}1&-2&5\\0&1&-4\\0&0&1\end{bmatrix},
 \]
 as multiplying out confirms. Triangular matrices are central because triangular systems are easy: back substitution solves $U\mathbf x=\mathbf b$ with about $n^2$ operations (\cref{sec:computing-matrices}), and Chapter~14 reduces a general system to two triangular ones by writing $A=LU$ with $L$ unit lower triangular and $U$ upper triangular. Parts (i) and (iii) of the theorem are what make this factorisation work.
 
@@ -766,7 +766,7 @@ as multiplying out confirms. Triangular matrices are central because triangular 
 
 A permutation of a set is a bijection of the set onto itself (\cref{sec:injections}), and the $n!$ permutations of $\{1,\ldots,n\}$ (\cref{sec:perm-comb}) rearrange the components of vectors. For a permutation $\sigma$ of $\{1,\ldots,n\}$, the \term{permutation matrix} $P_\sigma\in\mathbb R^{n\times n}$ is the matrix with the columns $\mathbf e_{\sigma(1)},\ldots,\mathbf e_{\sigma(n)}$; its entries are $1$ in the positions $(\sigma(j),j)$ and $0$ elsewhere, so it has exactly one $1$ in every row and every column. For $n=3$ and the permutation $\sigma$ with $\sigma(1)=2$, $\sigma(2)=3$, $\sigma(3)=1$,
 \[
-P_\sigma=\begin{pmatrix}0&0&1\\1&0&0\\0&1&0\end{pmatrix},\qquad P_\sigma\begin{pmatrix}x_1\\x_2\\x_3\end{pmatrix}=\begin{pmatrix}x_3\\x_1\\x_2\end{pmatrix}:
+P_\sigma=\begin{bmatrix}0&0&1\\1&0&0\\0&1&0\end{bmatrix},\qquad P_\sigma\begin{bmatrix}x_1\\x_2\\x_3\end{bmatrix}=\begin{bmatrix}x_3\\x_1\\x_2\end{bmatrix}:
 \]
 the component $x_j$ moves to position $\sigma(j)$.
 
@@ -838,7 +838,7 @@ Symmetric matrices were introduced in \cref{sec:transpose}, and the positive def
 
 A square matrix $P$ is \term{idempotent} if $P^2=P$: applying it twice is the same as applying it once. The orthogonal projection $P_\alpha=\mathbf u\mathbf u^{\mathsf T}$ onto a line, with a unit vector $\mathbf u$, is idempotent, since $(\mathbf u\mathbf u^{\mathsf T})^2=\mathbf u(\mathbf u^{\mathsf T}\mathbf u)\mathbf u^{\mathsf T}=\mathbf u\mathbf u^{\mathsf T}$, and so is the \term{oblique projection}
 \[
-P=\begin{pmatrix}1&1\\0&0\end{pmatrix},\qquad P\begin{pmatrix}x_1\\x_2\end{pmatrix}=\begin{pmatrix}x_1+x_2\\0\end{pmatrix},
+P=\begin{bmatrix}1&1\\0&0\end{bmatrix},\qquad P\begin{bmatrix}x_1\\x_2\end{bmatrix}=\begin{bmatrix}x_1+x_2\\0\end{bmatrix},
 \]
 which maps the plane onto the $x_1$-axis along the lines $x_1+x_2=c$, in the direction $(1,-1)$ rather than orthogonally. Every idempotent $P$ splits vectors into two parts, $\mathbf x=P\mathbf x+(I-P)\mathbf x$: the first part is fixed by $P$, since $P(P\mathbf x)=P\mathbf x$, and the second is mapped to $\mathbf 0$, since $P(I-P)=P-P^2=0$. If $P$ is moreover symmetric, the two parts are orthogonal, $\langle P\mathbf x,(I-P)\mathbf y\rangle=\langle\mathbf x,(P-P^2)\mathbf y\rangle=0$, and $P$ is an \term{orthogonal projection}; Chapter~18 shows that every symmetric idempotent matrix is the orthogonal projection onto a subspace. The identity is the only invertible idempotent matrix, since $P^2=P$ gives $P=P^{-1}P^2=P^{-1}P=I$.
 
@@ -858,7 +858,7 @@ By induction on $j$: for $j=1$ the statement is the definition of a strictly upp
 
 The proposition gives another way to invert a unit upper triangular matrix. The matrix $U$ of the example after \cref{thm:triangular} is $I-N$ with
 \[
-N=\begin{pmatrix}0&-2&-3\\0&0&-4\\0&0&0\end{pmatrix},\qquad N^2=\begin{pmatrix}0&0&8\\0&0&0\\0&0&0\end{pmatrix},\qquad N^3=0,
+N=\begin{bmatrix}0&-2&-3\\0&0&-4\\0&0&0\end{bmatrix},\qquad N^2=\begin{bmatrix}0&0&8\\0&0&0\\0&0&0\end{bmatrix},\qquad N^3=0,
 \]
 and $U^{-1}=I+N+N^2$ is the matrix computed there. The formula is the finite version of the geometric series $1/(1-x)=\sum_kx^k$, and \cref{sec:trace-norms} extends it to infinite series of matrices.
 
@@ -877,7 +877,7 @@ A term $a_{ij}b_{jk}$ of $(AB)_{ik}$ can be nonzero only if $i-j\le p_1$ and $j-
 
 The most important tridiagonal matrix is the \term{second difference matrix}
 \[
-T_n=\begin{pmatrix}2&-1&&&\\-1&2&-1&&\\&\ddots&\ddots&\ddots&\\&&-1&2&-1\\&&&-1&2\end{pmatrix}\in\mathbb R^{n\times n},
+T_n=\begin{bmatrix}2&-1&&&\\-1&2&-1&&\\&\ddots&\ddots&\ddots&\\&&-1&2&-1\\&&&-1&2\end{bmatrix}\in\mathbb R^{n\times n},
 \]
 with $2$ on the diagonal, $-1$ next to it and zeros elsewhere (blank entries in a displayed matrix are zero). It comes from the second difference quotient of \cref{prop:difference-taylor}\,(iii). Divide $[0,1]$ into $n+1$ intervals of length $h=1/(n+1)$, with the grid points $x_i=ih$, and let $u$ be a smooth function with $u(0)=u(1)=0$. With $u_i\coloneqq u(x_i)$, the $i$th component of $T_n\mathbf u/h^2$ is $-(u_{i-1}-2u_i+u_{i+1})/h^2=-u''(x_i)+O(h^2)$, where $u_0=u_{n+1}=0$ are the boundary values. So $T_n/h^2$ is the matrix that approximates the operator $u\mapsto-u''$, and the boundary value problem $-u''=f$, $u(0)=u(1)=0$, becomes the linear system $T_n\mathbf u=h^2\mathbf f$, which Part~IV and Volume~XI solve.
 
@@ -905,7 +905,7 @@ since $(n+1-j)(j+1)-j(n-j)=n+1$. So the $j$th column of $T_nG$ is $\mathbf e_j$.
 
 For $n=3$,
 \[
-T_3=\begin{pmatrix}2&-1&0\\-1&2&-1\\0&-1&2\end{pmatrix},\qquad T_3^{-1}=\frac14\begin{pmatrix}3&2&1\\2&4&2\\1&2&3\end{pmatrix}.
+T_3=\begin{bmatrix}2&-1&0\\-1&2&-1\\0&-1&2\end{bmatrix},\qquad T_3^{-1}=\frac14\begin{bmatrix}3&2&1\\2&4&2\\1&2&3\end{bmatrix}.
 \]
 The inverse of the tridiagonal matrix $T_n$ has no zero entries at all. This is typical: the inverse of a banded or otherwise sparse matrix is usually full, and forming it would destroy the very structure that makes the matrix cheap to store and to use. It is one more reason to solve systems without forming inverses; Chapter~14 solves systems with $T_n$ in a number of operations proportional to $n$.
 
@@ -939,7 +939,7 @@ nilpotent & not in general & never invertible & nilpotent \\
 
 A matrix can be cut by horizontal and vertical lines into smaller matrices, its \term{blocks}. For example, a $5\times5$ matrix cut after the second row and the second column is written
 \[
-M=\begin{pmatrix}A&B\\C&D\end{pmatrix},\qquad A\in\mathbb R^{2\times2},\ B\in\mathbb R^{2\times3},\ C\in\mathbb R^{3\times2},\ D\in\mathbb R^{3\times3}.
+M=\begin{bmatrix}A&B\\C&D\end{bmatrix},\qquad A\in\mathbb R^{2\times2},\ B\in\mathbb R^{2\times3},\ C\in\mathbb R^{3\times2},\ D\in\mathbb R^{3\times3}.
 \]
 We have already met partitioned matrices without the name: a matrix written as a row of its columns, $A=(\mathbf a_1\ \cdots\ \mathbf a_n)$, is partitioned into blocks of one column each, and the affine map in homogeneous coordinates in \cref{sec:matrices-linear-maps} was a $2\times2$ arrangement of blocks of different sizes. The point of partitioning is that blocks can be multiplied as if they were numbers, provided that the cuts match and the order of the factors is kept.
 
@@ -947,7 +947,7 @@ We have already met partitioned matrices without the name: a matrix written as a
 \label{thm:block-multiplication}
 Let $A\in\mathbb R^{m\times n}$ and $B\in\mathbb R^{n\times p}$ be partitioned as
 \[
-A=\begin{pmatrix}A_{11}&\cdots&A_{1s}\\\vdots&&\vdots\\A_{r1}&\cdots&A_{rs}\end{pmatrix},\qquad B=\begin{pmatrix}B_{11}&\cdots&B_{1t}\\\vdots&&\vdots\\B_{s1}&\cdots&B_{st}\end{pmatrix},
+A=\begin{bmatrix}A_{11}&\cdots&A_{1s}\\\vdots&&\vdots\\A_{r1}&\cdots&A_{rs}\end{bmatrix},\qquad B=\begin{bmatrix}B_{11}&\cdots&B_{1t}\\\vdots&&\vdots\\B_{s1}&\cdots&B_{st}\end{bmatrix},
 \]
 where $A_{IJ}\in\mathbb R^{m_I\times n_J}$ and $B_{JK}\in\mathbb R^{n_J\times p_K}$; that is, the columns of $A$ and the rows of $B$ are cut in the same places. Then $AB$, partitioned into rows of heights $m_1,\ldots,m_r$ and columns of widths $p_1,\ldots,p_t$, has the blocks
 \[
@@ -961,7 +961,7 @@ Let the entry $(i,k)$ of $AB$ lie in the block $(I,K)$. The sum $(AB)_{ik}=\sum_
 
 For two blocks in each direction,
 \[
-\begin{pmatrix}A&B\\C&D\end{pmatrix}\begin{pmatrix}E&F\\G&H\end{pmatrix}=\begin{pmatrix}AE+BG&AF+BH\\CE+DG&CF+DH\end{pmatrix},
+\begin{bmatrix}A&B\\C&D\end{bmatrix}\begin{bmatrix}E&F\\G&H\end{bmatrix}=\begin{bmatrix}AE+BG&AF+BH\\CE+DG&CF+DH\end{bmatrix},
 \]
 the formula for $2\times2$ matrices with the order of every product preserved. The four readings of \cref{thm:four-readings} are special cases: cutting $B$ into columns gives the column reading, cutting $A$ into rows the row reading, and cutting $A$ into columns and $B$ into rows the outer product reading. A \term{block diagonal} matrix $\operatorname{diag}(A_1,\ldots,A_k)$, with square blocks $A_i$ on the diagonal and zero blocks elsewhere, acts on each group of coordinates separately, and by the theorem the product of two block diagonal matrices with the same block sizes is block diagonal with the products $A_iB_i$ as blocks.
 
@@ -975,17 +975,17 @@ Elimination, the subject of Chapter~14, removes unknowns from a system one at a 
 \label{thm:schur-complement}
 Let
 \[
-M=\begin{pmatrix}A&B\\C&D\end{pmatrix}
+M=\begin{bmatrix}A&B\\C&D\end{bmatrix}
 \]
 with $A\in\mathbb R^{k\times k}$ invertible and $D\in\mathbb R^{l\times l}$, and let $S\coloneqq D-CA^{-1}B\in\mathbb R^{l\times l}$ be the \term{Schur complement} of $A$ in $M$.
 \begin{enumerate}
 \item $M$ has the block $LDU$ factorisation
 \[
-M=\begin{pmatrix}I&0\\CA^{-1}&I\end{pmatrix}\begin{pmatrix}A&0\\0&S\end{pmatrix}\begin{pmatrix}I&A^{-1}B\\0&I\end{pmatrix}.
+M=\begin{bmatrix}I&0\\CA^{-1}&I\end{bmatrix}\begin{bmatrix}A&0\\0&S\end{bmatrix}\begin{bmatrix}I&A^{-1}B\\0&I\end{bmatrix}.
 \]
 \item $M$ is invertible if and only if $S$ is invertible, and then
 \[
-M^{-1}=\begin{pmatrix}A^{-1}+A^{-1}BS^{-1}CA^{-1}&-A^{-1}BS^{-1}\\-S^{-1}CA^{-1}&S^{-1}\end{pmatrix}.
+M^{-1}=\begin{bmatrix}A^{-1}+A^{-1}BS^{-1}CA^{-1}&-A^{-1}BS^{-1}\\-S^{-1}CA^{-1}&S^{-1}\end{bmatrix}.
 \]
 \end{enumerate}
 \end{theorem}
@@ -995,34 +995,34 @@ M^{-1}=\begin{pmatrix}A^{-1}+A^{-1}BS^{-1}CA^{-1}&-A^{-1}BS^{-1}\\-S^{-1}CA^{-1}
 
 (ii) The outer factors of (i) are invertible, and their inverses are obtained by changing the sign of the off-diagonal block: for instance
 \[
-\begin{pmatrix}I&0\\CA^{-1}&I\end{pmatrix}\begin{pmatrix}I&0\\-CA^{-1}&I\end{pmatrix}=\begin{pmatrix}I&0\\CA^{-1}-CA^{-1}&I\end{pmatrix}=I,
+\begin{bmatrix}I&0\\CA^{-1}&I\end{bmatrix}\begin{bmatrix}I&0\\-CA^{-1}&I\end{bmatrix}=\begin{bmatrix}I&0\\CA^{-1}-CA^{-1}&I\end{bmatrix}=I,
 \]
 and similarly in the other order and for the third factor. If $S$ is invertible, the middle factor $\Delta\coloneqq\operatorname{diag}(A,S)$ has the inverse $\operatorname{diag}(A^{-1},S^{-1})$, by block multiplication, so $M$ is a product of invertible matrices and is invertible, with
 \[
-M^{-1}=\begin{pmatrix}I&-A^{-1}B\\0&I\end{pmatrix}\begin{pmatrix}A^{-1}&0\\0&S^{-1}\end{pmatrix}\begin{pmatrix}I&0\\-CA^{-1}&I\end{pmatrix}
+M^{-1}=\begin{bmatrix}I&-A^{-1}B\\0&I\end{bmatrix}\begin{bmatrix}A^{-1}&0\\0&S^{-1}\end{bmatrix}\begin{bmatrix}I&0\\-CA^{-1}&I\end{bmatrix}
 \]
 by \cref{prop:inverse-rules}\,(ii); multiplying out gives the formula. Conversely, if $M$ is invertible, so is $\Delta$, as a product of $M$ and the inverses of the outer factors. Partition $X\coloneqq\Delta^{-1}$ like $\Delta$. The lower right blocks of $\Delta X=I$ and $X\Delta=I$ give $SX_{22}=I$ and $X_{22}S=I$, so $S$ is invertible.
 \end{proof}
 
 The factorisation (i) records block elimination. Multiplying $M$ from the left by the inverse of the first factor subtracts $CA^{-1}$ times the first block row from the second, which clears the block $C$ and leaves $S$ in the corner:
 \[
-\begin{pmatrix}I&0\\-CA^{-1}&I\end{pmatrix}\begin{pmatrix}A&B\\C&D\end{pmatrix}=\begin{pmatrix}A&B\\0&S\end{pmatrix}.
+\begin{bmatrix}I&0\\-CA^{-1}&I\end{bmatrix}\begin{bmatrix}A&B\\C&D\end{bmatrix}=\begin{bmatrix}A&B\\0&S\end{bmatrix}.
 \]
 In terms of the system $A\mathbf x+B\mathbf y=\mathbf f$, $C\mathbf x+D\mathbf y=\mathbf g$, solving the first equation for $\mathbf x=A^{-1}(\mathbf f-B\mathbf y)$ and substituting into the second leaves the smaller system $S\mathbf y=\mathbf g-CA^{-1}\mathbf f$ for $\mathbf y$ alone. For $k=l=1$ the Schur complement of the number $a\ne0$ is $d-cb/a$, the entry that one step of Gaussian elimination leaves behind, and Chapter~14 obtains the LU factorisation by repeating this step. The determinant of $M$ is $\det A\det S$, by the factorisation and the product rule for determinants (Chapter~17), and when $M$ is symmetric and positive definite, so is $S$ (Chapter~20); both facts are used often. The name was given by Haynsworth in 1968 in reference to a determinant lemma of Schur~\cite{schur1917}; Zhang's collection~\cite{zhang2005schur} surveys the history and the many uses of the notion.
 
 With $C=0$ the theorem gives the inverse of a \term{block upper triangular} matrix: if $A$ and $D$ are invertible, then
 \[
-\begin{pmatrix}A&B\\0&D\end{pmatrix}^{-1}=\begin{pmatrix}A^{-1}&-A^{-1}BD^{-1}\\0&D^{-1}\end{pmatrix},
+\begin{bmatrix}A&B\\0&D\end{bmatrix}^{-1}=\begin{bmatrix}A^{-1}&-A^{-1}BD^{-1}\\0&D^{-1}\end{bmatrix},
 \]
 since $S=D$; with $B=C=0$ as well, the inverse of a block diagonal matrix is block diagonal with the inverses of the blocks. These are the block versions of \cref{thm:triangular,prop:diagonal}.
 
 A typical use is a \term{bordered matrix}, a matrix enlarged by one row and one column. Suppose that the inverse of $A\in\mathbb R^{k\times k}$ is known and that
 \[
-M=\begin{pmatrix}A&\mathbf b\\\mathbf c^{\mathsf T}&d\end{pmatrix}
+M=\begin{bmatrix}A&\mathbf b\\\mathbf c^{\mathsf T}&d\end{bmatrix}
 \]
 with $\mathbf b,\mathbf c\in\mathbb R^k$ and a number $d$. The Schur complement is the number $s=d-\mathbf c^{\mathsf T}A^{-1}\mathbf b$, and $M$ is invertible exactly when $s\ne0$; the theorem then gives $M^{-1}$ from $A^{-1}$ with about $4k^2$ operations instead of the $k^3$ or so of a fresh inversion. For
 \[
-A=\begin{pmatrix}2&1\\1&2\end{pmatrix},\quad\mathbf b=\begin{pmatrix}1\\0\end{pmatrix},\quad\mathbf c=\begin{pmatrix}0\\1\end{pmatrix},\quad d=3,\qquad M^{-1}=\begin{pmatrix}3/5&-1/5&-1/5\\-3/10&3/5&1/10\\1/10&-1/5&3/10\end{pmatrix},
+A=\begin{bmatrix}2&1\\1&2\end{bmatrix},\quad\mathbf b=\begin{bmatrix}1\\0\end{bmatrix},\quad\mathbf c=\begin{bmatrix}0\\1\end{bmatrix},\quad d=3,\qquad M^{-1}=\begin{bmatrix}3/5&-1/5&-1/5\\-3/10&3/5&1/10\\1/10&-1/5&3/10\end{bmatrix},
 \]
 we have $A^{-1}\mathbf b=(2,-1)/3$, $\mathbf c^{\mathsf T}A^{-1}=(-1,2)/3$ and $s=3-(-1/3)=10/3$, so the lower right entry of $M^{-1}$ is $1/s=3/10$, the last column above it is $-A^{-1}\mathbf b/s=(-1/5,1/10)$, and the upper left block is $A^{-1}+(A^{-1}\mathbf b)(\mathbf c^{\mathsf T}A^{-1})/s$. Adding one row and column at a time in this way builds up inverses and factorisations recursively, and it is how many updating algorithms of statistics and signal processing work.
 
@@ -1048,13 +1048,13 @@ and by \cref{thm:one-sided-square} the matrix in the second factor is the invers
 
 For $A=\operatorname{diag}(1,2,4)$ and $\mathbf u=\mathbf v=(1,1,1)$, the formula needs only $A^{-1}\mathbf u=(1,1/2,1/4)$ and $\beta=1+1+1/2+1/4=11/4$:
 \[
-\bigl(A+\mathbf u\mathbf u^{\mathsf T}\bigr)^{-1}=\begin{pmatrix}1&0&0\\0&1/2&0\\0&0&1/4\end{pmatrix}-\frac4{11}\begin{pmatrix}1\\1/2\\1/4\end{pmatrix}\begin{pmatrix}1&1/2&1/4\end{pmatrix}=\frac1{22}\begin{pmatrix}14&-4&-2\\-4&9&-1\\-2&-1&5\end{pmatrix}.
+\bigl(A+\mathbf u\mathbf u^{\mathsf T}\bigr)^{-1}=\begin{bmatrix}1&0&0\\0&1/2&0\\0&0&1/4\end{bmatrix}-\frac4{11}\begin{bmatrix}1\\1/2\\1/4\end{bmatrix}\begin{bmatrix}1&1/2&1/4\end{bmatrix}=\frac1{22}\begin{bmatrix}14&-4&-2\\-4&9&-1\\-2&-1&5\end{bmatrix}.
 \]
 The cost of the update is a few matrix--vector products and one outer product, about $3n^2$ multiplications, instead of the $n^3$ or so of a new inversion, and if only the solution of a system is needed, even the outer product can be avoided: $(A+\mathbf u\mathbf v^{\mathsf T})^{-1}\mathbf b=\mathbf z-\mathbf w\,(\mathbf v^{\mathsf T}\mathbf z)/\beta$ with $\mathbf z=A^{-1}\mathbf b$ and $\mathbf w=A^{-1}\mathbf u$. Such updates occur in the quasi-Newton methods of optimisation (Volume~XII), where an approximate Hessian is corrected by rank-one or rank-two matrices in every step, and in statistics, where deleting one observation from a regression changes $X^{\mathsf T}X$ by a rank-one matrix (Volume~XV). Their numerical reliability is a separate question, which Volume~VIII discusses; Hager's survey~\cite{hager1989} describes the formula and its applications.
 
 The formula generalises from rank one to rank $k$. A heuristic derivation shows where it comes from. For the matrix
 \[
-M=\begin{pmatrix}A&U\\V&-C^{-1}\end{pmatrix}
+M=\begin{bmatrix}A&U\\V&-C^{-1}\end{bmatrix}
 \]
 with invertible $A\in\mathbb R^{n\times n}$ and $C\in\mathbb R^{k\times k}$, $U\in\mathbb R^{n\times k}$ and $V\in\mathbb R^{k\times n}$, \cref{thm:schur-complement} with the pivot block $A$ gives the upper left block of $M^{-1}$ as $A^{-1}-A^{-1}U(C^{-1}+VA^{-1}U)^{-1}VA^{-1}$. Eliminating with the other diagonal block $-C^{-1}$ as pivot instead, the same theorem with the roles of the blocks exchanged gives this block as the inverse of the Schur complement $A-U(-C^{-1})^{-1}V=A+UCV$. Equating the two expressions gives the following identity, which we now verify directly.
 
@@ -1252,7 +1252,7 @@ Vectors and matrices with complex entries arise as soon as eigenvalues are compl
 
 The \term{conjugate} $\bar A$ of a complex matrix has the entries $\bar a_{ij}$, and the \term{conjugate transpose} is $A^{\mathsf H}\coloneqq\bar A^{\mathsf T}$, with the entries $(A^{\mathsf H})_{ji}=\bar a_{ij}$. For a real matrix, $A^{\mathsf H}=A^{\mathsf T}$. For example,
 \[
-\begin{pmatrix}1+i&2\\3i&4-i\end{pmatrix}^{\mathsf H}=\begin{pmatrix}1-i&-3i\\2&4+i\end{pmatrix}.
+\begin{bmatrix}1+i&2\\3i&4-i\end{bmatrix}^{\mathsf H}=\begin{bmatrix}1-i&-3i\\2&4+i\end{bmatrix}.
 \]
 Many authors write $A^*$ instead of $A^{\mathsf H}$; we keep the star for other uses, such as the optimal value $t^*$ of \cref{prop:projection-line}, and the letter H recalls Hermite, after whom the matrices with $A^{\mathsf H}=A$ are named.
 
@@ -1327,7 +1327,7 @@ Let $A,U\in\mathbb C^{n\times n}$.
 
 The matrix with the rows $(2,i)$ and $(-i,3)$ is Hermitian, and for $\mathbf x=(1,1)$ the number $\langle\mathbf x,A\mathbf x\rangle=(2+i)+(3-i)=5$ is indeed real. The matrix
 \[
-U=\frac1{\sqrt2}\begin{pmatrix}1&1\\i&-i\end{pmatrix}
+U=\frac1{\sqrt2}\begin{bmatrix}1&1\\i&-i\end{bmatrix}
 \]
 is unitary: its columns have length $1$, and their inner product is $(1\cdot1+\bar i\cdot(-i))/2=(1+i^2)/2=0$. The most important unitary matrix is that of the discrete Fourier transform. For $n\ge1$ and $\omega=e^{2\pi i/n}$, let $F_n$ be the $n\times n$ matrix with the entries $\omega^{jk}$, $j,k=0,\ldots,n-1$. The $(j,k)$ entry of $F_n^{\mathsf H}F_n$ is $\sum_l\bar\omega^{lj}\omega^{lk}=\sum_l\omega^{l(k-j)}$, since $\bar\omega=\omega^{-1}$, and by \cref{prop:roots-of-unity} this is $n$ for $j=k$ and $0$ otherwise. So $F_n/\sqrt n$ is unitary, and the inverse of $F_n$ is $F_n^{\mathsf H}/n$; Volume~XI builds the fast Fourier transform on this fact, with the sign convention of the exponent discussed there.
 

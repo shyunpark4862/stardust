@@ -163,7 +163,7 @@ The vector $\mathbf p$ is the \term{orthogonal projection} of $\mathbf x$ onto t
 \label{def:matrix}
 Let $m,n\ge1$. An $m\times n$ \term{matrix} $A$ is a rectangular array of real numbers $a_{ij}$, $1\le i\le m$, $1\le j\le n$, with $m$ rows and $n$ columns:
 \[
-A=\begin{pmatrix}a_{11}&a_{12}&\cdots&a_{1n}\\a_{21}&a_{22}&\cdots&a_{2n}\\\vdots&\vdots&&\vdots\\a_{m1}&a_{m2}&\cdots&a_{mn}\end{pmatrix}.
+A=\begin{bmatrix}a_{11}&a_{12}&\cdots&a_{1n}\\a_{21}&a_{22}&\cdots&a_{2n}\\\vdots&\vdots&&\vdots\\a_{m1}&a_{m2}&\cdots&a_{mn}\end{bmatrix}.
 \]
 The number $a_{ij}$ is the \term{entry} in row $i$ and column $j$, also written $(A)_{ij}$. The set of $m\times n$ matrices is $\mathbb R^{m\times n}$. A matrix with $m=n$ is \term{square}. The \term{product} of $A\in\mathbb R^{m\times n}$ and a column vector $\mathbf x\in\mathbb R^n$ is the vector $A\mathbf x\in\mathbb R^m$ with the components
 \[
@@ -179,7 +179,7 @@ A\mathbf x=x_1\mathbf a_1+x_2\mathbf a_2+\cdots+x_n\mathbf a_n ,
 \]
 a combination of the columns with the components of $\mathbf x$ as coefficients. For example,
 \[
-\begin{pmatrix}1&2&0\\3&-1&4\end{pmatrix}\begin{pmatrix}2\\1\\-1\end{pmatrix}=\begin{pmatrix}1\cdot2+2\cdot1+0\cdot(-1)\\3\cdot2-1\cdot1+4\cdot(-1)\end{pmatrix}=\begin{pmatrix}4\\1\end{pmatrix}=2\begin{pmatrix}1\\3\end{pmatrix}+1\begin{pmatrix}2\\-1\end{pmatrix}-1\begin{pmatrix}0\\4\end{pmatrix}.
+\begin{bmatrix}1&2&0\\3&-1&4\end{bmatrix}\begin{bmatrix}2\\1\\-1\end{bmatrix}=\begin{bmatrix}1\cdot2+2\cdot1+0\cdot(-1)\\3\cdot2-1\cdot1+4\cdot(-1)\end{bmatrix}=\begin{bmatrix}4\\1\end{bmatrix}=2\begin{bmatrix}1\\3\end{bmatrix}+1\begin{bmatrix}2\\-1\end{bmatrix}-1\begin{bmatrix}0\\4\end{bmatrix}.
 \]
 In particular $A\mathbf e_j=\mathbf a_j$: the $j$th column of a matrix is its product with the $j$th standard basis vector.
 
@@ -201,7 +201,7 @@ Linearity of $\mathbf x\mapsto A\mathbf x$ follows from the distributive law in 
 
 We shall therefore often identify a matrix with the linear map it defines. The \term{identity matrix} $I=I_n\in\mathbb R^{n\times n}$, with ones on the diagonal and zeros elsewhere, defines the identity map. A \term{diagonal matrix} $\operatorname{diag}(d_1,\ldots,d_n)$, with the entries $d_i$ on the diagonal and zeros elsewhere, stretches the $i$th coordinate by the factor $d_i$. The rotation of the plane by the angle $\varphi$ about the origin maps $\mathbf e_1=(1,0)$ to $(\cos\varphi,\sin\varphi)$ and $\mathbf e_2=(0,1)$ to $(-\sin\varphi,\cos\varphi)$, so it is given by the matrix
 \[
-R_\varphi=\begin{pmatrix}\cos\varphi&-\sin\varphi\\\sin\varphi&\cos\varphi\end{pmatrix};
+R_\varphi=\begin{bmatrix}\cos\varphi&-\sin\varphi\\\sin\varphi&\cos\varphi\end{bmatrix};
 \]
 conversely, the matrix rotates every vector, since $R_\varphi(r\cos\alpha,r\sin\alpha)=(r\cos(\alpha+\varphi),r\sin(\alpha+\varphi))$ by the addition formulas of \cref{thm:addition}.
 
@@ -238,7 +238,7 @@ Let $A\in\mathbb R^{m\times n}$, $B\in\mathbb R^{n\times p}$, $C\in\mathbb R^{p\
 
 The product is not commutative. For
 \[
-A=\begin{pmatrix}0&1\\0&0\end{pmatrix},\qquad B=\begin{pmatrix}0&0\\1&0\end{pmatrix}\qquad\text{we find}\qquad AB=\begin{pmatrix}1&0\\0&0\end{pmatrix},\qquad BA=\begin{pmatrix}0&0\\0&1\end{pmatrix};
+A=\begin{bmatrix}0&1\\0&0\end{bmatrix},\qquad B=\begin{bmatrix}0&0\\1&0\end{bmatrix}\qquad\text{we find}\qquad AB=\begin{bmatrix}1&0\\0&0\end{bmatrix},\qquad BA=\begin{bmatrix}0&0\\0&1\end{bmatrix};
 \]
 in terms of maps, applying two operations in a different order generally gives a different result. Two rotations of the plane commute, $R_\alpha R_\beta=R_{\alpha+\beta}=R_\beta R_\alpha$, but a rotation and a stretching of one coordinate do not.
 
@@ -252,25 +252,25 @@ A square matrix $A\in\mathbb R^{n\times n}$ is \term{invertible} if there is a m
 \label{prop:inverse-2x2}
 Let
 \[
-A=\begin{pmatrix}a&b\\c&d\end{pmatrix}
+A=\begin{bmatrix}a&b\\c&d\end{bmatrix}
 \]
 and $\det A\coloneqq ad-bc$, the \term{determinant} of $A$. Then $A$ is invertible if and only if $\det A\ne0$, and in that case
 \[
-A^{-1}=\frac1{ad-bc}\begin{pmatrix}d&-b\\-c&a\end{pmatrix}.
+A^{-1}=\frac1{ad-bc}\begin{bmatrix}d&-b\\-c&a\end{bmatrix}.
 \]
 \end{proposition}
 
 \begin{proof}
 Multiplying out shows
 \[
-\begin{pmatrix}a&b\\c&d\end{pmatrix}\begin{pmatrix}d&-b\\-c&a\end{pmatrix}=\begin{pmatrix}d&-b\\-c&a\end{pmatrix}\begin{pmatrix}a&b\\c&d\end{pmatrix}=(ad-bc)I;
+\begin{bmatrix}a&b\\c&d\end{bmatrix}\begin{bmatrix}d&-b\\-c&a\end{bmatrix}=\begin{bmatrix}d&-b\\-c&a\end{bmatrix}\begin{bmatrix}a&b\\c&d\end{bmatrix}=(ad-bc)I;
 \]
 if $\det A\ne0$, dividing by it gives the inverse. Conversely, suppose $\det A=0$. The vectors $\mathbf v\coloneqq(d,-c)$ and $\mathbf w\coloneqq(-b,a)$ then satisfy $A\mathbf v=(ad-bc,0)=\mathbf 0$ and $A\mathbf w=(0,ad-bc)=\mathbf 0$. If $A=0$, it is not invertible. Otherwise one of $\mathbf v,\mathbf w$ is nonzero, and a nonzero solution of $A\mathbf x=\mathbf 0$ rules out an inverse, since it would give $\mathbf x=A^{-1}A\mathbf x=\mathbf 0$.
 \end{proof}
 
 The determinant has a geometric meaning: $|ad-bc|$ is the area of the parallelogram spanned by the columns $(a,c)$ and $(b,d)$ of $A$, and the sign of $ad-bc$ says whether the map $A$ preserves or reverses orientation. For instance, $\det R_\varphi=\cos^2\varphi+\sin^2\varphi=1$: rotations preserve areas and orientation. A matrix with $\det A=0$ squeezes the plane onto a line or a point, and such a map cannot be undone. For $3\times3$ matrices the determinant is
 \[
-\det\begin{pmatrix}a_{11}&a_{12}&a_{13}\\a_{21}&a_{22}&a_{23}\\a_{31}&a_{32}&a_{33}\end{pmatrix}\coloneqq a_{11}(a_{22}a_{33}-a_{23}a_{32})-a_{12}(a_{21}a_{33}-a_{23}a_{31})+a_{13}(a_{21}a_{32}-a_{22}a_{31}),
+\det\begin{bmatrix}a_{11}&a_{12}&a_{13}\\a_{21}&a_{22}&a_{23}\\a_{31}&a_{32}&a_{33}\end{bmatrix}\coloneqq a_{11}(a_{22}a_{33}-a_{23}a_{32})-a_{12}(a_{21}a_{33}-a_{23}a_{31})+a_{13}(a_{21}a_{32}-a_{22}a_{31}),
 \]
 the expansion along the first row into $2\times2$ determinants, and its absolute value is the volume of the parallelepiped spanned by the columns. For general $n$, Chapter~17 defines the determinant of an $n\times n$ matrix and proves the following facts, which we state now because the chapter needs them.
 
@@ -598,7 +598,7 @@ Let $\mathbf f\colon U\to\mathbb R^m$ be differentiable at $\mathbf a\in U$. The
 \item $\mathbf f$ is continuous at $\mathbf a$;
 \item all partial derivatives $\partial_jf_i(\mathbf a)$ exist, and $D\mathbf f(\mathbf a)$ is the matrix of the partial derivatives,
 \[
-D\mathbf f(\mathbf a)=\begin{pmatrix}\partial_1f_1(\mathbf a)&\cdots&\partial_nf_1(\mathbf a)\\\vdots&&\vdots\\\partial_1f_m(\mathbf a)&\cdots&\partial_nf_m(\mathbf a)\end{pmatrix};
+D\mathbf f(\mathbf a)=\begin{bmatrix}\partial_1f_1(\mathbf a)&\cdots&\partial_nf_1(\mathbf a)\\\vdots&&\vdots\\\partial_1f_m(\mathbf a)&\cdots&\partial_nf_m(\mathbf a)\end{bmatrix};
 \]
 its $j$th column is the partial derivative $\partial_j\mathbf f(\mathbf a)$ and its $i$th row contains the partial derivatives of the $i$th component.
 \end{enumerate}
@@ -658,7 +658,7 @@ none of the converses holds. Example (iii) above shows that continuity and parti
 
 Polar coordinates provide an example. The map $\mathbf P(r,\theta)\coloneqq(r\cos\theta,r\sin\theta)$ from the $(r,\theta)$-plane to the $(x,y)$-plane has the partial derivatives
 \[
-D\mathbf P(r,\theta)=\begin{pmatrix}\cos\theta&-r\sin\theta\\\sin\theta&r\cos\theta\end{pmatrix},\qquad\det D\mathbf P(r,\theta)=r\cos^2\theta+r\sin^2\theta=r ,
+D\mathbf P(r,\theta)=\begin{bmatrix}\cos\theta&-r\sin\theta\\\sin\theta&r\cos\theta\end{bmatrix},\qquad\det D\mathbf P(r,\theta)=r\cos^2\theta+r\sin^2\theta=r ,
 \]
 which are continuous, so $\mathbf P$ is differentiable everywhere, with this Jacobian matrix. The first column is the velocity of the point when $r$ increases, a unit vector pointing away from the origin; the second is the velocity when $\theta$ increases, a vector of length $r$ tangent to the circle of radius $r$. \Cref{sec:inverse-implicit} returns to this map.
 
@@ -1042,7 +1042,7 @@ The second derivative of a function of one variable describes how its graph bend
 \label{def:hessian}
 Let $f\in C^2(U)$ and $\mathbf a\in U$. The \term{Hessian matrix} of $f$ at $\mathbf a$ is the $n\times n$ matrix of the second partial derivatives,
 \[
-\nabla^2f(\mathbf a)\coloneqq\begin{pmatrix}\partial_1\partial_1f(\mathbf a)&\cdots&\partial_1\partial_nf(\mathbf a)\\\vdots&&\vdots\\\partial_n\partial_1f(\mathbf a)&\cdots&\partial_n\partial_nf(\mathbf a)\end{pmatrix},\qquad\bigl(\nabla^2f(\mathbf a)\bigr)_{ij}=\partial_i\partial_jf(\mathbf a).
+\nabla^2f(\mathbf a)\coloneqq\begin{bmatrix}\partial_1\partial_1f(\mathbf a)&\cdots&\partial_1\partial_nf(\mathbf a)\\\vdots&&\vdots\\\partial_n\partial_1f(\mathbf a)&\cdots&\partial_n\partial_nf(\mathbf a)\end{bmatrix},\qquad\bigl(\nabla^2f(\mathbf a)\bigr)_{ij}=\partial_i\partial_jf(\mathbf a).
 \]
 \end{definition}
 
@@ -1214,7 +1214,7 @@ For $2\times2$ matrices definiteness can be decided by completing the square, an
 \label{prop:definite-2x2}
 Let
 \[
-A=\begin{pmatrix}a&b\\b&c\end{pmatrix}
+A=\begin{bmatrix}a&b\\b&c\end{bmatrix}
 \]
 be symmetric, with $\det A=ac-b^2$. Then
 \begin{enumerate}
@@ -1237,7 +1237,7 @@ Applied to the Hessian of a $C^2$ function of two variables at a critical point,
 
 Let $f(x,y)=x^3-3xy+y^3$. The critical points solve $f_x=3x^2-3y=0$ and $f_y=3y^2-3x=0$, so $y=x^2$ and $x=y^2=x^4$, which gives $x=0$ or $x=1$: the critical points are $(0,0)$ and $(1,1)$. The Hessian is
 \[
-\nabla^2f(x,y)=\begin{pmatrix}6x&-3\\-3&6y\end{pmatrix}.
+\nabla^2f(x,y)=\begin{bmatrix}6x&-3\\-3&6y\end{bmatrix}.
 \]
 At $(0,0)$ its determinant is $-9<0$, a saddle point. At $(1,1)$ it is $36-9=27>0$ with $f_{xx}=6>0$, a strict local minimum, with $f(1,1)=-1$. The minimum is not global: $f(x,0)=x^3\to-\infty$ as $x\to-\infty$. In two variables something stranger can happen. A differentiable function of one variable on $\mathbb R$ whose only critical point is a local minimum has a global minimum there: a smaller value elsewhere would force the function to turn around between the two points, and by the extreme value theorem and Fermat's theorem the turning point would be a second critical point. In two variables this fails: $f(x,y)=x^2+y^2(1-x)^3$ has the single critical point $(0,0)$, because $f_y=2y(1-x)^3$ vanishes only for $y=0$ or $x=1$, and $f_x=2x-3y^2(1-x)^2$ then vanishes only at the origin; its Hessian there is $\operatorname{diag}(2,2)$, so the origin is a strict local minimum; and yet $f(4,1)=16-27=-11<0=f(0,0)$.
 
@@ -1258,7 +1258,7 @@ Part (i) rests on the spectral theorem of Chapter~20: there is a matrix $Q$ with
 
 For example, $f(x,y,z)=x^2+y^2+z^2+xy+yz$ has the single critical point $\mathbf0$, where $\nabla f=(2x+y,\,x+2y+z,\,y+2z)$ vanishes only for $(x,y,z)=\mathbf0$, and its Hessian
 \[
-\begin{pmatrix}2&1&0\\1&2&1\\0&1&2\end{pmatrix}
+\begin{bmatrix}2&1&0\\1&2&1\\0&1&2\end{bmatrix}
 \]
 has the leading principal minors $2$, $3$ and $4$, all positive. So $\mathbf0$ is a strict local minimum; by \cref{thm:convex-c2} below it is even the global minimum. For $2\times2$ matrices, (ii) is \cref{prop:definite-2x2}\,(i), since $\Delta_1=a$ and $\Delta_2=\det A$.
 
@@ -1327,7 +1327,7 @@ Na+\Bigl(\sum_ix_i\Bigr)b=\sum_iy_i,\qquad\Bigl(\sum_ix_i\Bigr)a+\Bigl(\sum_ix_i
 \end{equation}
 a linear system of two equations for the two unknowns. Its matrix is half the Hessian of $S$,
 \[
-\nabla^2S=2\begin{pmatrix}N&\sum x_i\\\sum x_i&\sum x_i^2\end{pmatrix},\qquad\det\tfrac12\nabla^2S=N\sum_ix_i^2-\Bigl(\sum_ix_i\Bigr)^2=N\sum_i(x_i-\bar x)^2 ,
+\nabla^2S=2\begin{bmatrix}N&\sum x_i\\\sum x_i&\sum x_i^2\end{bmatrix},\qquad\det\tfrac12\nabla^2S=N\sum_ix_i^2-\Bigl(\sum_ix_i\Bigr)^2=N\sum_i(x_i-\bar x)^2 ,
 \]
 where $\bar x\coloneqq(1/N)\sum x_i$ is the mean; the last identity follows by expanding $(x_i-\bar x)^2$. If the $x_i$ are not all equal, the determinant is positive, and with $N>0$ the Hessian is positive definite by \cref{prop:definite-2x2}, at every point. By \cref{thm:convex-c2}, $S$ is strictly convex, and the unique solution of \eqref{eq:normal-equations} is its global minimum point. Solving the system by \cref{prop:inverse-2x2}, or by subtracting $\bar x$ times the first equation from the second, gives
 \[
@@ -1383,7 +1383,7 @@ Once the inverse is known to be differentiable, the formula for its derivative f
 
 The theorem is local in two senses. The hypothesis is about a single point, and so is the conclusion: even if $D\mathbf f$ is invertible everywhere, $\mathbf f$ need not be injective. The map $\mathbf f(x,y)\coloneqq(e^x\cos y,e^x\sin y)$, which is $z\mapsto e^z$ for $z=x+iy$ in real coordinates (\cref{cor:euler-consequences}), has
 \[
-D\mathbf f(x,y)=\begin{pmatrix}e^x\cos y&-e^x\sin y\\e^x\sin y&e^x\cos y\end{pmatrix},\qquad\det D\mathbf f(x,y)=e^{2x}>0 ,
+D\mathbf f(x,y)=\begin{bmatrix}e^x\cos y&-e^x\sin y\\e^x\sin y&e^x\cos y\end{bmatrix},\qquad\det D\mathbf f(x,y)=e^{2x}>0 ,
 \]
 so it is invertible near every point, but it takes the same value at $(x,y)$ and $(x,y+2\pi)$. Each local inverse is a branch of the complex logarithm of \cref{sec:complex-exp}, and no inverse exists on all of $\mathbb R^2\setminus\{\mathbf0\}$. And the hypothesis cannot be dropped: $f(x)=x^3$ is a bijection of $\mathbb R$, but $f'(0)=0$ and its inverse, the cube root, is not differentiable at $0$.
 
@@ -1395,7 +1395,7 @@ r=\sqrt{x^2+y^2},\qquad\theta=\operatorname{atan2}(y,x)
 \]
 of \cref{def:atan2}, and the theorem predicts the derivative of the inverse without differentiating $\operatorname{atan2}$:
 \[
-D\mathbf P^{-1}(x,y)=\begin{pmatrix}\cos\theta&-r\sin\theta\\\sin\theta&r\cos\theta\end{pmatrix}^{-1}=\begin{pmatrix}\cos\theta&\sin\theta\\-\frac1r\sin\theta&\frac1r\cos\theta\end{pmatrix}=\begin{pmatrix}\frac xr&\frac yr\\-\frac y{r^2}&\frac x{r^2}\end{pmatrix},
+D\mathbf P^{-1}(x,y)=\begin{bmatrix}\cos\theta&-r\sin\theta\\\sin\theta&r\cos\theta\end{bmatrix}^{-1}=\begin{bmatrix}\cos\theta&\sin\theta\\-\frac1r\sin\theta&\frac1r\cos\theta\end{bmatrix}=\begin{bmatrix}\frac xr&\frac yr\\-\frac y{r^2}&\frac x{r^2}\end{bmatrix},
 \]
 by \cref{prop:inverse-2x2}. The second row says $\partial\theta/\partial x=-y/(x^2+y^2)$ and $\partial\theta/\partial y=x/(x^2+y^2)$, which one can check from $\theta=\arctan(y/x)$ for $x>0$. At the origin the theorem fails, and so does the coordinate system: all values of $\theta$ give the same point.
 
@@ -1433,7 +1433,7 @@ For \term{spherical coordinates} in $\mathbb R^3$ we follow the convention that 
 \]
 Expanding the $3\times3$ determinant of the Jacobian matrix along its last row, which Chapter~17 shows to be as valid as the expansion along the first, gives
 \[
-\det D\mathbf S(r,\theta,\varphi)=\det\begin{pmatrix}\sin\theta\cos\varphi&r\cos\theta\cos\varphi&-r\sin\theta\sin\varphi\\\sin\theta\sin\varphi&r\cos\theta\sin\varphi&r\sin\theta\cos\varphi\\\cos\theta&-r\sin\theta&0\end{pmatrix}=r^2\sin\theta ,
+\det D\mathbf S(r,\theta,\varphi)=\det\begin{bmatrix}\sin\theta\cos\varphi&r\cos\theta\cos\varphi&-r\sin\theta\sin\varphi\\\sin\theta\sin\varphi&r\cos\theta\sin\varphi&r\sin\theta\cos\varphi\\\cos\theta&-r\sin\theta&0\end{bmatrix}=r^2\sin\theta ,
 \]
 so $\mathbf S$ is locally invertible except on the $z$-axis, where $r=0$ or $\sin\theta=0$ and the angle $\varphi$ is undetermined. Many mathematics texts exchange the names of $\theta$ and $\varphi$; the formulas are the same up to this renaming.
 
@@ -1516,11 +1516,11 @@ and $\boldsymbol\varphi\in C^k(V)$ if $\mathbf F\in C^k(W)$.
 \begin{proof}
 Apply the inverse function theorem to $\mathbf G(\mathbf x,\mathbf y)\coloneqq(\mathbf x,\mathbf F(\mathbf x,\mathbf y))$, a map from $W$ to $\mathbb R^{n+m}$. Its Jacobian matrix has the block form
 \[
-\begin{pmatrix}I&0\\D_{\mathbf x}\mathbf F&D_{\mathbf y}\mathbf F\end{pmatrix},
+\begin{bmatrix}I&0\\D_{\mathbf x}\mathbf F&D_{\mathbf y}\mathbf F\end{bmatrix},
 \]
 which is invertible at $(\mathbf a,\mathbf b)$ because $D_{\mathbf y}\mathbf F(\mathbf a,\mathbf b)$ is: multiplying out shows that, with $P\coloneqq D_{\mathbf x}\mathbf F(\mathbf a,\mathbf b)$ and $Q\coloneqq D_{\mathbf y}\mathbf F(\mathbf a,\mathbf b)$, its inverse is
 \[
-\begin{pmatrix}I&0\\-Q^{-1}P&Q^{-1}\end{pmatrix}.
+\begin{bmatrix}I&0\\-Q^{-1}P&Q^{-1}\end{bmatrix}.
 \]
 The local inverse of $\mathbf G$ has the form $(\mathbf x,\mathbf z)\mapsto(\mathbf x,\boldsymbol\psi(\mathbf x,\mathbf z))$, and $\boldsymbol\varphi(\mathbf x)\coloneqq\boldsymbol\psi(\mathbf x,\mathbf0)$ is the required function; it is $C^k$ when $\mathbf G$ is. The formula for $D\boldsymbol\varphi$ follows by differentiating $\mathbf F(\mathbf x,\boldsymbol\varphi(\mathbf x))=\mathbf0$ with the chain rule, which gives $D_{\mathbf x}\mathbf F+D_{\mathbf y}\mathbf F\,D\boldsymbol\varphi=0$. Details are in Rudin~\cite[Thm.~9.28]{rudin1976} and, with the history of the theorem, in Krantz and Parks~\cite{krantz2002ift}.
 \end{proof}
@@ -1693,11 +1693,11 @@ that is, $\mathbf x_{k+1}=\mathbf x_k-D\mathbf F(\mathbf x_k)^{-1}\mathbf F(\mat
 
 Consider the intersection of the circle $x^2+y^2=4$ with the hyperbola $xy=1$, the zeros of
 \[
-\mathbf F(x,y)=\begin{pmatrix}x^2+y^2-4\\xy-1\end{pmatrix},\qquad D\mathbf F(x,y)=\begin{pmatrix}2x&2y\\y&x\end{pmatrix},\qquad\det D\mathbf F(x,y)=2(x^2-y^2).
+\mathbf F(x,y)=\begin{bmatrix}x^2+y^2-4\\xy-1\end{bmatrix},\qquad D\mathbf F(x,y)=\begin{bmatrix}2x&2y\\y&x\end{bmatrix},\qquad\det D\mathbf F(x,y)=2(x^2-y^2).
 \]
 The intersection point in the first quadrant with $x>y$ can be found exactly: substituting $y=1/x$ gives $x^4-4x^2+1=0$, so $x^2=2+\sqrt3$ and $\mathbf c=\bigl((\sqrt6+\sqrt2)/2,(\sqrt6-\sqrt2)/2\bigr)=(1.93185\ldots,0.51764\ldots)$. Starting from $\mathbf x_0=(2,0)$, where $\mathbf F=(0,-1)$ and $D\mathbf F=\operatorname{diag}(4,2)$, the first step is $\mathbf d_0=(0,1/2)$, so $\mathbf x_1=(2,1/2)$. There $\mathbf F=(1/4,0)$ and
 \[
-D\mathbf F(\mathbf x_1)=\begin{pmatrix}4&1\\\frac12&2\end{pmatrix},\qquad\mathbf d_1=-D\mathbf F(\mathbf x_1)^{-1}\mathbf F(\mathbf x_1)=-\frac2{15}\begin{pmatrix}2&-1\\-\frac12&4\end{pmatrix}\begin{pmatrix}\frac14\\0\end{pmatrix}=\begin{pmatrix}-\frac1{15}\\\frac1{60}\end{pmatrix},
+D\mathbf F(\mathbf x_1)=\begin{bmatrix}4&1\\\frac12&2\end{bmatrix},\qquad\mathbf d_1=-D\mathbf F(\mathbf x_1)^{-1}\mathbf F(\mathbf x_1)=-\frac2{15}\begin{bmatrix}2&-1\\-\frac12&4\end{bmatrix}\begin{bmatrix}\frac14\\0\end{bmatrix}=\begin{bmatrix}-\frac1{15}\\\frac1{60}\end{bmatrix},
 \]
 by \cref{prop:inverse-2x2}, so $\mathbf x_2=(29/15,31/60)=(1.9333\ldots,0.51666\ldots)$. \Cref{tab:newton-2d} continues the iteration. As in one variable, the number of correct digits roughly doubles in each step, and the ratio $\|\mathbf e_{k+1}\|/\|\mathbf e_k\|^2$ of the errors $\mathbf e_k\coloneqq\mathbf x_k-\mathbf c$ settles down, here to $0.5000$.
 
