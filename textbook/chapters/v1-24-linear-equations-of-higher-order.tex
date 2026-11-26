@@ -1,0 +1,1107 @@
+%% Volume I, Chapter 24: Linear Equations of Higher Order
+\chapter{Linear Equations of Higher Order}
+\label{ch:linear-higher-order}
+
+\abstract{A weight on a spring, a swaying bridge, the charge in an electric circuit, a building shaken by an earthquake: Newton's law speaks of accelerations, so the equations of mechanics are of the second order, and near an equilibrium they are linear. The solutions of a linear equation can be added and scaled, so they form a vector space, and the language of linear algebra applies to them word for word: kernels, dimensions, bases and determinants. When the coefficients are constant, a single polynomial decides everything. Its roots say whether a system oscillates or creeps back to rest, how fast it forgets a disturbance, and at which frequency a small periodic push makes it swing violently.}
+
+\Cref{lem:harmonic-unique} showed that the solutions of $f''=-f$ on $\mathbb R$ are exactly the functions $a\cos x+b\sin x$, and \cref{thm:linear-homogeneous} that the solutions of a homogeneous linear equation $y'+p(t)y=0$ of the first order form a space of dimension $1$. Between these two results lies a general theorem, which this chapter proves: the solutions of a homogeneous linear differential equation of order $k$ form a vector space of dimension $k$. Several earlier chapters prepared it. \Cref{ch:linear-maps} showed that the solutions of a linear equation $T\mathbf v=\mathbf w$ are a particular solution plus the kernel of $T$ (\cref{prop:preimage-flat}), and it used the differential equation $f''+f=1$ as an example. \Cref{ch:vector-spaces,ch:determinants} gave a test for the independence of functions, the Wronskian, and warned that it can fail for functions that are not solutions of such an equation. \Cref{ch:eigenvalues} observed that the exponentials $e^{\lambda t}$ are the eigenfunctions of differentiation, and \cref{ch:canonical-forms} solved the systems $\mathbf x'=A\mathbf x$ with constant coefficients by the matrix exponential and found the functions $t^je^{\lambda t}$ in its entries.
+
+The chapter has three parts. The first develops the general theory. \Cref{sec:linear-operators} writes a linear equation of order $k$ as $Ly=g$ with a linear differential operator $L$ and turns it into a first-order system. \Cref{sec:higher-existence} proves that its initial value problems have exactly one solution on the whole interval on which the coefficients are continuous, and deduces the dimension of the solution space; the proof is complete and uses only the tools of \cref{ch:first-order-equations}. \Cref{sec:wronskian} studies the Wronskian of solutions and proves Abel's formula. The second part solves equations with constant coefficients: \cref{sec:constant-coefficients} finds all solutions of the homogeneous equation from the roots of the characteristic polynomial, and \cref{sec:undetermined,sec:variation-parameters} find particular solutions of the inhomogeneous equation, by undetermined coefficients and by variation of parameters. The third part applies the theory. \Cref{sec:oscillations} studies the damped and forced oscillations of a mass on a spring, with resonance as the central phenomenon, \cref{sec:variable-coefficients} takes a brief look at equations with variable coefficients, where Sturm's theorems describe the oscillation of solutions without formulas, and \cref{sec:higher-numerics} solves equations of the second order numerically and observes how the simplest method treats the energy of an oscillator.
+
+We keep the conventions of Part~IV (\cref{ch:first-order-equations}): the independent variable is $t$, the unknown function is $y$, or $\mathbf x$ for a vector-valued unknown, and derivatives are written with primes. Throughout, $I$ denotes an interval with more than one point.
+
+\section{Linear Differential Operators}
+\label{sec:linear-operators}
+
+\subsection{Complex-Valued Functions}
+
+The solutions of equations with real coefficients are often best found among complex-valued functions: the exponential $e^{it}$ is simpler to handle than $\cos t$ and $\sin t$ separately, as the periodic forcing in \cref{sec:linear-first-order} already showed. We therefore admit functions $y\colon I\to\mathbb C$ of a real variable. Such a function is continuous, differentiable or integrable if its real part $\operatorname{Re}y$ and its imaginary part $\operatorname{Im}y$ are, and then
+\[
+y'\coloneqq(\operatorname{Re}y)'+i\,(\operatorname{Im}y)',\qquad\int_a^by\coloneqq\int_a^b\operatorname{Re}y+i\int_a^b\operatorname{Im}y .
+\]
+We write $C^k(I)$ also for the space of complex-valued functions whose real and imaginary parts belong to $C^k(I)$; the context says which space is meant. This is the convention that \cref{sec:matrix-exponential} used for matrix-valued functions, entry by entry.
+
+\begin{lemma}[Calculus of complex-valued functions]
+\label{lem:complex-calculus}
+Let $u,v\colon I\to\mathbb C$ be differentiable and $\lambda\in\mathbb C$.
+\begin{enumerate}
+\item The sum, product and chain rules hold: $(u+v)'=u'+v'$, $(uv)'=u'v+uv'$, and $(u\circ\varphi)'=(u'\circ\varphi)\,\varphi'$ for a differentiable real function $\varphi$ with values in $I$. If $u'=0$ on $I$, then $u$ is constant.
+\item The function $t\mapsto e^{\lambda t}$ is differentiable on $\mathbb R$ with derivative $\lambda e^{\lambda t}$.
+\item Both parts of the fundamental theorem of calculus hold for continuous complex-valued functions, and $\bigl|\int_a^bu\bigr|\le\int_a^b|u|$ for continuous $u$ and $a\le b$.
+\end{enumerate}
+\end{lemma}
+
+\begin{proof}
+(i) Write $u=u_1+iu_2$ and $v=v_1+iv_2$ with real $u_j,v_j$. Then $uv=(u_1v_1-u_2v_2)+i(u_1v_2+u_2v_1)$, and differentiating the real and imaginary parts by the product rule (\cref{thm:diff-algebra}) and collecting terms gives $u'v+uv'$; the sum and chain rules follow in the same way from \cref{thm:diff-algebra,thm:chain-rule}, and the last statement from \cref{cor:zero-derivative} applied to $u_1$ and $u_2$. (ii) This is \cref{thm:exp-derivative} for the $1\times1$ matrix $A=[\lambda]$. (iii) The fundamental theorem (\cref{thm:ftc1,thm:ftc2}) applies to the real and imaginary parts separately. For the inequality, let $c\coloneqq\int_a^bu$; we may assume $c\ne0$. With $\theta\coloneqq\bar c/|c|$, which has modulus $1$, linearity gives $|c|=\theta c=\int_a^b\theta u$. This number is real, so it equals its real part $\int_a^b\operatorname{Re}(\theta u)$, and since $\operatorname{Re}(\theta u)\le|\theta u|=|u|$, the monotonicity of the integral (\cref{thm:integral-monotone}) gives $|c|\le\int_a^b|u|$; the function $|u|$ is continuous, hence integrable.
+\end{proof}
+
+\subsection{Equations of Order \texorpdfstring{$k$}{k}}
+
+A linear equation of order $k$ has the form $b_k(t)y^{(k)}+\cdots+b_1(t)y'+b_0(t)y=h(t)$. On an interval on which the leading coefficient $b_k$ has no zero, we may divide by it, and as in \cref{sec:linear-first-order} we assume that this has been done.
+
+\begin{definition}[Linear differential operator]
+\label{def:linear-operator}
+Let $k\ge1$, and let $a_0,\ldots,a_{k-1}$ be continuous real or complex functions on $I$, the \term{coefficients}. The \term{linear differential operator} with these coefficients is the map $L\colon C^k(I)\to C(I)$,
+\begin{equation}
+Ly\coloneqq y^{(k)}+a_{k-1}(t)\,y^{(k-1)}+\cdots+a_1(t)\,y'+a_0(t)\,y .
+\label{eq:linear-operator}
+\end{equation}
+For $g\in C(I)$, the equation $Ly=g$ is a \term{linear differential equation} of order $k$ in \term{normal form}; it is \term{homogeneous} if $g\equiv0$, and $g$ is the \term{forcing term} or input. A \term{solution} on $I$ is a function $y\in C^k(I)$ with $Ly=g$ on $I$.
+\end{definition}
+
+With the differentiation operator $D$ of \cref{sec:linear-maps}, $Dy=y'$, the operator is $L=D^k+a_{k-1}D^{k-1}+\cdots+a_0$, where $a_jD^j$ means: differentiate $j$ times and then multiply by the function $a_j$. Points at which the leading coefficient of the original equation vanishes are excluded from $I$; they are \term{singular points} of the equation, and solutions may behave there in ways that the theory of this chapter does not cover. The equation $t^2y''-2y=0$, for instance, has the normal form $y''-2y/t^2=0$ on $(0,\infty)$ and on $(-\infty,0)$, but not on an interval containing $0$.
+
+\begin{proposition}[Linearity]
+\label{prop:linear-structure}
+Let $L$ be as in \cref{def:linear-operator}.
+\begin{enumerate}
+\item $L$ is linear, so its kernel $\ker L$, the set of solutions of the homogeneous equation $Ly=0$, is a subspace of $C^k(I)$.
+\item If $y_{\mathrm p}$ is a solution of $Ly=g$, the set of all solutions is $y_{\mathrm p}+\ker L$.
+\item \emph{Superposition}: if $Ly_j=g_j$ for $j=1,\ldots,m$, then $L\bigl(\sum_jc_jy_j\bigr)=\sum_jc_jg_j$ for all constants $c_j$.
+\item If the coefficients and $g$ are real and $y$ is a complex solution of $Ly=g$, then $\operatorname{Re}y$ is a real solution of $Ly=g$ and $\operatorname{Im}y$ a real solution of $Ly=0$.
+\item If the coefficients and $g$ belong to $C^m(I)$, every solution belongs to $C^{k+m}(I)$. In particular, if the coefficients are constant and $g\equiv0$, every solution is infinitely differentiable.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) Differentiation and multiplication by a fixed function are linear, and so are their sums; the kernel of a linear map is a subspace (\cref{prop:kernel-image}). (ii) is \cref{prop:preimage-flat}, and (iii) is linearity. (iv) If the coefficients are real, then $\operatorname{Re}(Ly)=L(\operatorname{Re}y)$ and $\operatorname{Im}(Ly)=L(\operatorname{Im}y)$, since differentiation acts on real and imaginary parts separately and multiplication by a real function preserves them; with $Ly=g$ real, $L(\operatorname{Re}y)=g$ and $L(\operatorname{Im}y)=0$. (v) By induction on $j\le m$: if $y\in C^{k+j}(I)$ with $j<m$, the right side of $y^{(k)}=g-\sum_{i<k}a_iy^{(i)}$ belongs to $C^{j+1}(I)$, because $a_i$ and $g$ are in $C^m(I)\subseteq C^{j+1}(I)$ and $y^{(i)}\in C^{k+j-i}(I)\subseteq C^{j+1}(I)$ for $i<k$; so $y^{(k)}\in C^{j+1}(I)$ and $y\in C^{k+j+1}(I)$. For constant coefficients and $g\equiv0$ this holds for every $m$.
+\end{proof}
+
+Part (ii) is the principle that \cref{ch:linear-systems,ch:linear-maps} established for linear systems and linear maps, and that \cref{thm:linear-first-order} applied to equations of the first order: the general solution of the inhomogeneous equation is one particular solution plus the general solution of the homogeneous equation. The problem therefore splits in two, finding $\ker L$ and finding one solution of $Ly=g$, and the chapter treats them in this order.
+
+\subsection{Examples}
+
+Four equations will accompany us through the chapter.
+
+The \term{harmonic oscillator} $y''+\omega^2y=0$ with a constant $\omega>0$ describes a mass on a spring without friction, as \cref{sec:trig-functions} remarked. The functions $\cos\omega t$ and $\sin\omega t$ are solutions, and so are, by superposition, all functions $c_1\cos\omega t+c_2\sin\omega t$; by \cref{lem:harmonic-unique}, applied to $x\mapsto y(x/\omega)$, these are all the solutions on $\mathbb R$. The complex exponentials $e^{i\omega t}$ and $e^{-i\omega t}$ are solutions as well, by \cref{lem:complex-calculus}\,(ii), and by Euler's formula (\cref{cor:euler-consequences}) they are combinations of the cosine and the sine, and conversely.
+
+The equation $y''-y=0$ has the solutions $e^t$ and $e^{-t}$, and their combinations, among them $\cosh t$ and $\sinh t$ of \cref{sec:hyperbolic}. Where the harmonic oscillator oscillates, this equation grows or decays: its solutions describe a particle pushed away from its rest position by a force proportional to the displacement.
+
+\term{Airy's equation} $y''=ty$, that is, $y''-ty=0$, has a variable coefficient. None of the methods of this chapter produces formulas for its solutions; Chapter~26 finds them as power series, and \cref{sec:variable-coefficients} shows, without formulas, that they oscillate for negative $t$ and do not oscillate for positive $t$.
+
+The \term{Euler--Cauchy equation} $t^2y''+aty'+by=0$, with real constants $a$ and $b$, has the singular point $t=0$, and on $(0,\infty)$ its normal form is $y''+(a/t)y'+(b/t^2)y=0$. The power $y=t^r$ with a constant $r$ gives $t^2y''+aty'+by=(r(r-1)+ar+b)\,t^r$, so $t^r$ is a solution exactly when $r$ is a root of the quadratic $r(r-1)+ar+b$. For $t^2y''-2y=0$ the quadratic is $r^2-r-2=(r-2)(r+1)$, and the solutions $t^2$ and $1/t$ are those that turned the Riccati equation $y'=y^2-2/t^2$ of \cref{sec:substitutions} into a linear one. \Cref{sec:constant-coefficients} solves the Euler--Cauchy equation completely.
+
+\subsection{Reduction to a First-Order System}
+
+An equation of order $k$ is equivalent to a system of $k$ equations of the first order, as \cref{sec:ode-basics} observed for $k=2$. The unknowns of the system are the function and its first $k-1$ derivatives.
+
+\begin{proposition}[The companion system]
+\label{prop:companion-system}
+Let $L$ be as in \cref{def:linear-operator}, let $g\in C(I)$, and let
+\begin{equation}
+A(t)\coloneqq\begin{bmatrix}0&1&0&\cdots&0\\0&0&1&\cdots&0\\\vdots&&&\ddots&\vdots\\0&0&0&\cdots&1\\-a_0(t)&-a_1(t)&-a_2(t)&\cdots&-a_{k-1}(t)\end{bmatrix}\in\mathbb F^{k\times k} .
+\label{eq:companion-system}
+\end{equation}
+If $y\in C^k(I)$ solves $Ly=g$, then $\mathbf x\coloneqq(y,y',\ldots,y^{(k-1)})$ is continuously differentiable and solves the system
+\begin{equation}
+\mathbf x'=A(t)\,\mathbf x+g(t)\,\mathbf e_k .
+\label{eq:first-order-system}
+\end{equation}
+Conversely, if $\mathbf x=(x_1,\ldots,x_k)$ is a continuously differentiable solution of \eqref{eq:first-order-system} on $I$, then $y\coloneqq x_1$ belongs to $C^k(I)$, $\mathbf x=(y,y',\ldots,y^{(k-1)})$, and $Ly=g$.
+\end{proposition}
+
+\begin{proof}
+The first $k-1$ rows of \eqref{eq:first-order-system} say $x_j'=x_{j+1}$ for $j<k$, and the last says $x_k'=g-\sum_{j<k}a_jx_{j+1}$. For $\mathbf x=(y,\ldots,y^{(k-1)})$ the first rows hold by definition and the last row is $y^{(k)}=g-\sum_ja_jy^{(j)}$, which is $Ly=g$; the components of $\mathbf x$ are continuously differentiable because $y\in C^k(I)$. Conversely, the first rows give, by induction, $x_{j+1}=x_1^{(j)}$ for $j<k$, so $x_1$ has $k-1$ derivatives, the last of which, $x_k$, is continuously differentiable; hence $y=x_1\in C^k(I)$, and the last row is $Ly=g$.
+\end{proof}
+
+For constant coefficients, $A$ is the transposed companion matrix $C_p^{\mathsf T}$ of the polynomial $p(\lambda)=\lambda^k+a_{k-1}\lambda^{k-1}+\cdots+a_0$ in the sense of \cref{prop:companion}, whose characteristic polynomial is $p$ (\cref{prop:companion,thm:det-transpose}). This polynomial will play the main role in \cref{sec:constant-coefficients}. For the harmonic oscillator, with $\mathbf x=(y,y')$,
+\[
+\mathbf x'=\begin{bmatrix}0&1\\-\omega^2&0\end{bmatrix}\mathbf x ,
+\]
+the system that describes the motion in the plane of position and velocity, the phase plane of \cref{sec:exact}.
+
+\section{Existence, Uniqueness, and the Dimension of the Solution Space}
+\label{sec:higher-existence}
+
+\subsection{The Theorem for Linear Systems}
+
+The initial value problem for an equation of order $k$ prescribes the values of the function and of its first $k-1$ derivatives at one point; by \cref{prop:companion-system}, it is the initial value problem for the system \eqref{eq:first-order-system} with a prescribed vector $\mathbf x(t_0)$. For constant coefficients and $g\equiv0$, \cref{thm:linear-system} has already solved it: the unique solution is $\mathbf x(t)=e^{(t-t_0)A}\mathbf x(t_0)$, after a shift of the origin of time. For variable coefficients, \cref{ch:first-order-equations} provides uniqueness through Gr\"onwall's inequality, and the method of successive approximations gives existence; but \cref{thm:picard-lindelof} gives a solution only on a short interval, and its full proof was left to Volume~II. For \emph{linear} systems both limitations disappear: the successive approximations converge on the whole interval on which the coefficients are continuous, and the proof needs nothing beyond the following two facts about vector-valued functions, which we prove.
+
+For $\mathbf x\in\mathbb C^n$ we use the norm $\|\mathbf x\|_\infty=\max_i|x_i|$, and for $A\in\mathbb C^{n\times n}$ the induced norm $\|A\|_\infty=\max_i\sum_j|a_{ij}|$ of \cref{prop:operator-norms}; the inequality $\|A\mathbf x\|_\infty\le\|A\|_\infty\|\mathbf x\|_\infty$ holds for complex entries with the same proof, since $|\sum_ja_{ij}x_j|\le\sum_j|a_{ij}|\,\|\mathbf x\|_\infty$. Vector- and matrix-valued functions are continuous, differentiable or integrable if their entries are, and they are differentiated and integrated entry by entry. If $\mathbf x$ is continuous, so is $t\mapsto\|\mathbf x(t)\|_\infty$, as the largest of finitely many continuous functions, and so is $t\mapsto\|A(t)\|_\infty$ for a continuous matrix-valued $A$.
+
+\begin{lemma}[Two facts about vector-valued functions]
+\label{lem:vector-functions}
+Let $a<b$.
+\begin{enumerate}
+\item If $\mathbf x\colon[a,b]\to\mathbb C^n$ is continuous, then $\bigl\|\int_a^b\mathbf x\bigr\|_\infty\le\int_a^b\|\mathbf x\|_\infty$.
+\item Let $\mathbf f_0,\mathbf f_1,\ldots\colon[a,b]\to\mathbb C^n$ be continuous, and let $M_0,M_1,\ldots$ be numbers with $\|\mathbf f_j(t)\|_\infty\le M_j$ for all $t\in[a,b]$ and $\sum_jM_j<\infty$. Then the series $\mathbf S(t)\coloneqq\sum_j\mathbf f_j(t)$ converges for every $t$, the sum $\mathbf S$ is continuous, the partial sums $\mathbf S_m\coloneqq\sum_{j<m}\mathbf f_j$ satisfy
+\[
+\|\mathbf S(t)-\mathbf S_m(t)\|_\infty\le\sum_{j\ge m}M_j\qquad\text{for all }t\in[a,b],
+\]
+and $\int_a^t\mathbf S=\sum_j\int_a^t\mathbf f_j$ for every $t\in[a,b]$.
+\end{enumerate}
+\end{lemma}
+
+\begin{proof}
+(i) For each component, $|\int_a^bx_i|\le\int_a^b|x_i|\le\int_a^b\|\mathbf x\|_\infty$, by \cref{lem:complex-calculus}\,(iii) and the monotonicity of the integral. (ii) For fixed $t$, each component series $\sum_jf_{j,i}(t)$ converges absolutely, by comparison with $\sum_jM_j$, and therefore converges (\cref{lem:complex-series}); the tail estimate follows from $|\sum_{j\ge m}f_{j,i}(t)|\le\sum_{j\ge m}M_j$. For continuity, let $t\in[a,b]$ and $\varepsilon>0$, and choose $m$ with $\sum_{j\ge m}M_j<\varepsilon/3$. The partial sum $\mathbf S_m$ is continuous, so $\|\mathbf S_m(s)-\mathbf S_m(t)\|_\infty<\varepsilon/3$ for $s$ close to $t$, and for such $s$
+\[
+\|\mathbf S(s)-\mathbf S(t)\|_\infty\le\|\mathbf S(s)-\mathbf S_m(s)\|_\infty+\|\mathbf S_m(s)-\mathbf S_m(t)\|_\infty+\|\mathbf S_m(t)-\mathbf S(t)\|_\infty<\varepsilon .
+\]
+Finally, $\mathbf S$ is continuous and therefore integrable (\cref{thm:continuous-integrable}), and by (i) and the tail estimate
+\[
+\Bigl\|\int_a^t\mathbf S-\sum_{j<m}\int_a^t\mathbf f_j\Bigr\|_\infty=\Bigl\|\int_a^t(\mathbf S-\mathbf S_m)\Bigr\|_\infty\le(b-a)\sum_{j\ge m}M_j ,
+\]
+which tends to $0$ as $m\to\infty$.
+\end{proof}
+
+Part (ii) is the Weierstrass M-test of the note in \cref{sec:power-series}, with the two consequences that the note stated without proof, for the special case of continuous functions on a closed bounded interval; Volume~II develops the theory of uniform convergence in general.
+
+\begin{theorem}[Linear systems: existence and uniqueness]
+\label{thm:linear-existence}
+Let $A\colon I\to\mathbb C^{n\times n}$ and $\mathbf b\colon I\to\mathbb C^n$ be continuous, let $t_0\in I$ and $\mathbf x_0\in\mathbb C^n$. Then the initial value problem
+\[
+\mathbf x'=A(t)\,\mathbf x+\mathbf b(t),\qquad\mathbf x(t_0)=\mathbf x_0 ,
+\]
+has exactly one continuously differentiable solution on $I$. If $A$, $\mathbf b$ and $\mathbf x_0$ are real, the solution is real.
+\end{theorem}
+
+\begin{proof}
+As in \cref{prop:integral-equation}, a continuous function $\mathbf x$ on an interval $J\subseteq I$ containing $t_0$ solves the problem on $J$ if and only if
+\begin{equation}
+\mathbf x(t)=\mathbf x_0+\int_{t_0}^t\bigl(A(s)\mathbf x(s)+\mathbf b(s)\bigr)\,ds\qquad\text{for all }t\in J ;
+\label{eq:linear-integral-equation}
+\end{equation}
+the proof given there applies to each component, by \cref{lem:complex-calculus}\,(iii), and shows that solutions are continuously differentiable.
+
+\emph{Uniqueness.} Let $\mathbf x$ and $\mathbf z$ be solutions on $I$, and let $\mathbf u\coloneqq\mathbf x-\mathbf z$, which satisfies $\mathbf u'=A\mathbf u$ and $\mathbf u(t_0)=\mathbf 0$. Let $T\in I$ with $T>t_0$. The continuous function $\|A(t)\|_\infty$ has a maximum $L$ on $[t_0,T]$ (\cref{thm:evt-rn}), and by \eqref{eq:linear-integral-equation} and \cref{lem:vector-functions}\,(i),
+\[
+\|\mathbf u(t)\|_\infty=\Bigl\|\int_{t_0}^tA(s)\mathbf u(s)\,ds\Bigr\|_\infty\le L\int_{t_0}^t\|\mathbf u(s)\|_\infty\,ds\qquad(t_0\le t\le T).
+\]
+Gr\"onwall's inequality (\cref{lem:gronwall}) with $c=0$ gives $\mathbf u=\mathbf 0$ on $[t_0,T]$. For $t<t_0$, the function $s\mapsto\|\mathbf u(2t_0-s)\|_\infty$ satisfies the same kind of inequality on intervals $[t_0,2t_0-T]$ with $T<t_0$, as in the proof of \cref{thm:uniqueness}. So $\mathbf x=\mathbf z$ on $I$.
+
+\emph{Existence on a closed bounded interval.} Let $J=[\alpha,\beta]\subseteq I$ be a closed bounded interval containing $t_0$, let $\ell\coloneqq\beta-\alpha$, let $L\coloneqq\max_J\|A\|_\infty$ and $M\coloneqq\max_J\|A\mathbf x_0+\mathbf b\|_\infty$. Define the \term{successive approximations}
+\[
+\mathbf x_0(t)\coloneqq\mathbf x_0,\qquad\mathbf x_{m+1}(t)\coloneqq\mathbf x_0+\int_{t_0}^t\bigl(A(s)\mathbf x_m(s)+\mathbf b(s)\bigr)\,ds\qquad(m\in\mathbb N,\ t\in J).
+\]
+By induction, each $\mathbf x_m$ is continuous on $J$, since the integrand is. We show by induction that
+\begin{equation}
+\|\mathbf x_{m+1}(t)-\mathbf x_m(t)\|_\infty\le\frac{ML^m|t-t_0|^{m+1}}{(m+1)!}\qquad(t\in J,\ m\in\mathbb N).
+\label{eq:picard-linear-bound}
+\end{equation}
+For $m=0$, $\mathbf x_1(t)-\mathbf x_0=\int_{t_0}^t(A\mathbf x_0+\mathbf b)$, whose norm is at most $M|t-t_0|$ by \cref{lem:vector-functions}\,(i). If \eqref{eq:picard-linear-bound} holds for $m-1$, then, since $\mathbf x_{m+1}-\mathbf x_m=\int_{t_0}^tA(\mathbf x_m-\mathbf x_{m-1})$,
+\[
+\|\mathbf x_{m+1}(t)-\mathbf x_m(t)\|_\infty\le\Bigl|\int_{t_0}^tL\,\frac{ML^{m-1}|s-t_0|^m}{m!}\,ds\Bigr|=\frac{ML^m|t-t_0|^{m+1}}{(m+1)!} .
+\]
+Here linearity is essential: the Lipschitz constant $L$ of the right side with respect to $\mathbf x$ holds for all vectors $\mathbf x$, so no rectangle has to be chosen in which the approximations must stay. Now apply \cref{lem:vector-functions}\,(ii) to $\mathbf f_m\coloneqq\mathbf x_{m+1}-\mathbf x_m$ with $M_m\coloneqq ML^m\ell^{m+1}/(m+1)!$, whose sum is at most $M\ell\sum_m(L\ell)^m/m!=M\ell e^{L\ell}$ (\cref{thm:exp-series}). The partial sums of $\mathbf x_0+\sum_m\mathbf f_m$ are the approximations $\mathbf x_m$, so they converge on $J$ to a continuous function $\mathbf x$, and $\|\mathbf x(t)-\mathbf x_m(t)\|_\infty\le\varepsilon_m\coloneqq\sum_{j\ge m}M_j$ for all $t\in J$, with $\varepsilon_m\to0$. Consequently, by \cref{lem:vector-functions}\,(i),
+\[
+\Bigl\|\int_{t_0}^tA(s)\bigl(\mathbf x_m(s)-\mathbf x(s)\bigr)\,ds\Bigr\|_\infty\le\ell L\varepsilon_m\to0 ,
+\]
+and letting $m\to\infty$ in the definition of $\mathbf x_{m+1}$ shows that $\mathbf x$ satisfies \eqref{eq:linear-integral-equation} on $J$. So $\mathbf x$ is a solution on $J$.
+
+\emph{Existence on $I$.} For every closed bounded interval $J\subseteq I$ containing $t_0$ there is a solution $\mathbf x_J$ on $J$, and by the uniqueness proof, applied on $J$ (which used only the interval on which both solutions are defined), two such solutions agree where both are defined. For $t\in I$ let $\mathbf x(t)\coloneqq\mathbf x_J(t)$ for any such $J$ containing $t$; this is well defined, and since every point of $I$ has a neighbourhood in $I$ contained in such a $J$, $\mathbf x$ is a solution on $I$.
+
+If $A$, $\mathbf b$ and $\mathbf x_0$ are real, all approximations are real, and so is their limit.
+\end{proof}
+
+The proof shows the difference between linear and nonlinear equations clearly. In \cref{thm:picard-lindelof}, the approximations had to stay in a rectangle on which the right side was bounded and Lipschitz, and this restricted the interval to the length $\min(a,b/M)$; the solutions of $y'=y^2$ show that the restriction is real. For a linear system the bound \eqref{eq:picard-linear-bound} holds on every closed bounded interval on which the coefficients are continuous, however long, and the solution exists wherever the coefficients do. For the scalar equation $y'=ay$ with a constant $a$ and $y(0)=1$, the approximations are the Taylor polynomials $\sum_{j\le m}(at)^j/j!$, as in \cref{sec:existence-uniqueness}; for the harmonic oscillator $y''+y=0$ written as a system, with $\mathbf x_0=(1,0)$, they are pairs of Taylor polynomials of $\cos t$ and $-\sin t$.
+
+The theorem holds for real and complex systems alike, and Chapter~25 uses it for general linear systems. Since it rests only on \cref{lem:gronwall} and \cref{lem:vector-functions}, there is no circularity: Volume~II, which proves the general theorem of Picard and Lindel\"of, is not needed here. Hartman~\cite[Chap.~IV]{hartman2002}, Coddington and Levinson~\cite[Chap.~3]{coddington1955} and Teschl~\cite[Chap.~3]{teschl2012} develop the theory of linear systems from this theorem.
+
+\subsection{Initial Value Problems of Order \texorpdfstring{$k$}{k}}
+
+\begin{corollary}[Existence and uniqueness for equations of order $k$]
+\label{cor:higher-existence}
+Let $L$ be as in \cref{def:linear-operator}, let $g\in C(I)$, $t_0\in I$ and $c_0,\ldots,c_{k-1}\in\mathbb C$. There is exactly one $y\in C^k(I)$ with
+\[
+Ly=g\quad\text{on }I,\qquad y(t_0)=c_0,\ y'(t_0)=c_1,\ \ldots,\ y^{(k-1)}(t_0)=c_{k-1} .
+\]
+If the coefficients, $g$ and the $c_j$ are real, $y$ is real.
+\end{corollary}
+
+\begin{proof}
+By \cref{prop:companion-system}, the solutions of this problem correspond one to one to the solutions $\mathbf x$ of the system \eqref{eq:first-order-system} with $\mathbf x(t_0)=(c_0,\ldots,c_{k-1})$, through $\mathbf x=(y,\ldots,y^{(k-1)})$. The matrix $A(t)$ and the vector $g(t)\mathbf e_k$ are continuous, so \cref{thm:linear-existence} applies.
+\end{proof}
+
+Two consequences deserve to be stated in words. A solution of a homogeneous equation that vanishes at a point together with its first $k-1$ derivatives vanishes everywhere, since the zero function is the solution with these initial values. And a solution of a linear equation exists on the whole interval of continuity of the coefficients and of the forcing term: linear equations do not blow up. The equation $(1-t^2)y''-2ty'+2y=0$, whose normal form has the coefficients $-2t/(1-t^2)$ and $2/(1-t^2)$, has solutions on $(-1,1)$ for every pair of initial values at $0$, and the corollary says nothing about $t=\pm1$.
+
+\subsection{The Dimension of the Solution Space}
+
+\begin{theorem}[The solution space]
+\label{thm:solution-space}
+Let $L$ be as in \cref{def:linear-operator} and $t_0\in I$. The map
+\[
+\Phi_{t_0}\colon\ker L\to\mathbb C^k,\qquad y\mapsto\bigl(y(t_0),y'(t_0),\ldots,y^{(k-1)}(t_0)\bigr),
+\]
+is an isomorphism. Consequently the complex solutions of $Ly=0$ on $I$ form a vector space of dimension $k$. If the coefficients are real, the real solutions form a real vector space of dimension $k$, and every basis of it is also a basis of the space of complex solutions.
+\end{theorem}
+
+\begin{proof}
+$\Phi_{t_0}$ is linear, since evaluation and differentiation are. It is surjective by the existence part of \cref{cor:higher-existence}, and injective by its uniqueness part: a solution with $\Phi_{t_0}y=\mathbf 0$ has the same initial values as the zero solution. So $\Phi_{t_0}$ is an isomorphism, and $\dim\ker L=k$ (\cref{thm:isomorphic-dimension}). If the coefficients are real, the real solutions form a real vector space $V_{\mathbb R}$, and $\Phi_{t_0}$ maps it onto $\mathbb R^k$, by the last statement of \cref{cor:higher-existence}, and injectively; so $\dim V_{\mathbb R}=k$. A basis $y_1,\ldots,y_k$ of $V_{\mathbb R}$ is mapped to a basis of $\mathbb R^k$, a list of $k$ real vectors whose real determinant is not zero, hence to a basis of $\mathbb C^k$ (\cref{thm:det-invertible}); since $\Phi_{t_0}$ is an isomorphism of the complex spaces, $y_1,\ldots,y_k$ is a basis of $\ker L$.
+\end{proof}
+
+\begin{definition}[Fundamental set of solutions]
+\label{def:fundamental-set}
+A basis $y_1,\ldots,y_k$ of $\ker L$ is a \term{fundamental set of solutions} of $Ly=0$. The functions $c_1y_1+\cdots+c_ky_k$ with arbitrary constants $c_j$ form the \term{general solution}.
+\end{definition}
+
+By the theorem, a list of $k$ solutions is a fundamental set if and only if the vectors $\Phi_{t_0}y_j$ of their initial values are independent, for one, and then for every, $t_0\in I$. The solutions with the initial values $\mathbf e_1,\ldots,\mathbf e_k$ at $t_0$ form a particular fundamental set, and in terms of it the solution with the initial values $c_0,\ldots,c_{k-1}$ is $\sum_jc_{j-1}y_j$. For $k=1$ the theorem is \cref{thm:linear-homogeneous}, with the fundamental solution $e^{-P(t)}$. For the harmonic oscillator, the initial values of $\cos\omega t$ and $\sin\omega t$ at $0$ are $(1,0)$ and $(0,\omega)$, which are independent, so these two functions form a fundamental set on every interval; the solution with $y(0)=c_0$ and $y'(0)=c_1$ is $c_0\cos\omega t+(c_1/\omega)\sin\omega t$, the formula of \cref{lem:harmonic-unique}, which is the case $k=2$ of the theorem for this equation. The exponentials $e^{i\omega t}$ and $e^{-i\omega t}$, with the initial values $(1,i\omega)$ and $(1,-i\omega)$, form another fundamental set of complex solutions. For $y''-y=0$, both $e^t,e^{-t}$ and $\cosh t,\sinh t$ are fundamental sets.
+
+The theorem keeps the promise of \cref{ch:vector-spaces,ch:first-order-equations}: the solutions of a homogeneous linear equation of order $k$ form a space of dimension $k$, just as the solutions of a homogeneous system of $m$ equations in $n$ unknowns of rank $r$ form a space of dimension $n-r$. Here the space of all functions $C^k(I)$ is infinite-dimensional, and it is the uniqueness theorem that cuts the kernel down to dimension $k$.
+
+\section{The Wronskian}
+\label{sec:wronskian}
+
+\subsection{The Wronskian of Solutions}
+
+To decide whether $k$ given solutions form a fundamental set, one compares their vectors of initial values, and the determinant of these vectors is the Wronskian of \cref{def:wronskian}. For functions $y_1,\ldots,y_k\in C^{k-1}(I)$ let
+\begin{equation}
+Y(t)\coloneqq\begin{bmatrix}y_1(t)&y_2(t)&\cdots&y_k(t)\\y_1'(t)&y_2'(t)&\cdots&y_k'(t)\\\vdots&\vdots&&\vdots\\y_1^{(k-1)}(t)&y_2^{(k-1)}(t)&\cdots&y_k^{(k-1)}(t)\end{bmatrix},
+\label{eq:wronskian-matrix}
+\end{equation}
+and their Wronskian $W(t)\coloneqq W(y_1,\ldots,y_k)(t)=\det Y(t)$. The $j$th column of $Y(t)$ is the vector $\Phi_ty_j$ of \cref{thm:solution-space}. If the $y_j$ solve $Ly=0$, each column of $Y$ is a solution of the companion system $\mathbf x'=A(t)\mathbf x$ of \cref{prop:companion-system}, so that the matrix satisfies $Y'=A(t)Y$; a matrix of this kind with independent columns is a \term{fundamental matrix} of the system, and Chapter~25 studies such matrices for general linear systems.
+
+\Cref{prop:wronskian-test} says that functions are independent if their Wronskian is nonzero at a single point, and the functions $x^2$ and $x|x|$ showed that the converse fails. For solutions of one linear equation, the situation is as simple as it could be.
+
+\begin{theorem}[Wronskian of solutions]
+\label{thm:wronskian-solutions}
+Let $L$ be as in \cref{def:linear-operator}, and let $y_1,\ldots,y_k$ be $k$ solutions of $Ly=0$ on $I$. The following are equivalent:
+\begin{enumerate}
+\item $y_1,\ldots,y_k$ are linearly independent, that is, they form a fundamental set;
+\item $W(y_1,\ldots,y_k)(t_0)\ne0$ for some $t_0\in I$;
+\item $W(y_1,\ldots,y_k)(t)\ne0$ for every $t\in I$.
+\end{enumerate}
+In particular, the Wronskian of $k$ solutions either vanishes everywhere on $I$ or vanishes nowhere on $I$.
+\end{theorem}
+
+\begin{proof}
+(iii)$\Rightarrow$(ii) is clear, and (ii)$\Rightarrow$(i) is \cref{prop:wronskian-test}, whose proof holds for complex-valued functions without change. (i)$\Rightarrow$(iii): suppose that $W(t_1)=0$ for some $t_1\in I$. Then the columns of $Y(t_1)$ are dependent (\cref{thm:det-invertible}): there are constants $c_1,\ldots,c_k$, not all zero, with $\sum_jc_j\Phi_{t_1}y_j=\mathbf 0$. The solution $y\coloneqq\sum_jc_jy_j$ has $\Phi_{t_1}y=\mathbf 0$, so $y=0$ by \cref{cor:higher-existence}, and $y_1,\ldots,y_k$ are dependent.
+\end{proof}
+
+The hypotheses are exactly those under which \cref{ch:vector-spaces} announced the theorem: there are $k$ solutions of one equation of order $k$, the coefficients are continuous on the interval, and the equation is in normal form, so that its leading coefficient vanishes nowhere. Each hypothesis matters. The pair $x^2$, $x|x|$ satisfies the first two on each half-line, but there the two functions coincide or are opposite, and they are dependent, in accordance with the theorem; on $\mathbb R$ they are independent with $W\equiv0$, and indeed $x|x|$ is not twice differentiable at $0$, so it is not a solution of any equation of the second order on an interval containing $0$. The functions $t^2$ and $t^3$ are both solutions of the Euler--Cauchy equation $t^2y''-4ty'+6y=0$, whose quadratic $r(r-1)-4r+6=(r-2)(r-3)$ has the roots $2$ and $3$, and their Wronskian
+\[
+W(t^2,t^3)=\det\begin{bmatrix}t^2&t^3\\2t&3t^2\end{bmatrix}=t^4
+\]
+vanishes at $t=0$ and nowhere else. This does not contradict the theorem, since $t=0$ is a singular point of the equation: on $(0,\infty)$ and on $(-\infty,0)$ the Wronskian has no zero. In fact the theorem shows that no equation $y''+a_1(t)y'+a_0(t)y=0$ with coefficients continuous on an interval containing $0$ has both $t^2$ and $t^3$ among its solutions.
+
+\subsection{Abel's Formula}
+
+The Wronskian of solutions satisfies a differential equation of its own, of the first order, and can be computed without knowing the solutions.
+
+\begin{theorem}[Abel's formula]
+\label{thm:abel}
+Let $y_1,\ldots,y_k$ be solutions of $Ly=0$ on $I$, with $L$ as in \cref{def:linear-operator}, let $W\coloneqq W(y_1,\ldots,y_k)$ and $t_0\in I$. Then $W'=-a_{k-1}W$ on $I$, and
+\[
+W(t)=W(t_0)\exp\Bigl(-\int_{t_0}^ta_{k-1}(s)\,ds\Bigr)\qquad(t\in I).
+\]
+\end{theorem}
+
+\begin{proof}
+The entries of $Y(t)$ are continuously differentiable, since $y_j\in C^k(I)$. By \cref{prop:det-derivative} for rows, whose proof holds for complex entries without change, $W'$ is the sum of the $k$ determinants obtained from $Y$ by differentiating one row. Differentiating row $i<k$, which consists of the derivatives $y_j^{(i-1)}$, produces the row of the $y_j^{(i)}$, which is row $i+1$; the matrix then has two equal rows, and its determinant is zero (\cref{thm:det-transpose}). Differentiating the last row produces the row of the $y_j^{(k)}=-\sum_{i<k}a_iy_j^{(i)}$, which is $-a_0$ times the first row minus $a_1$ times the second, and so on, minus $a_{k-1}$ times the last row. By linearity in that row, and since a determinant with two equal rows vanishes, only the term with the last row survives, and the determinant is $-a_{k-1}W$. So $W'=-a_{k-1}W$, and \cref{thm:linear-homogeneous}, applied to the real and the imaginary part of $W$ when the coefficient is real and with the same proof otherwise, gives the formula.
+\end{proof}
+
+The formula gives a second proof of the dichotomy in \cref{thm:wronskian-solutions}, since the exponential has no zero: the Wronskian at any point is the Wronskian at $t_0$ times a nonzero factor. The factor does not depend on the solutions, only on the coefficient $a_{k-1}$ of the second-highest derivative. When this coefficient vanishes, as for $y''+\omega^2y=0$ and $y''-y=0$, the Wronskian of any $k$ solutions is constant: $W(\cos\omega t,\sin\omega t)=\omega$ and $W(e^t,e^{-t})=-2$. For the Euler--Cauchy equation $t^2y''-2y=0$ the normal form $y''-2y/t^2=0$ has no first-derivative term, and indeed $W(t^2,1/t)=t^2(-1/t^2)-2t(1/t)=-3$. For the equation $(1-t^2)y''-2ty'+2y=0$ on $(-1,1)$, with $a_1(t)=-2t/(1-t^2)$ and $\int_0^ta_1=\ln(1-t^2)$, Abel's formula gives $W(t)=W(0)/(1-t^2)$: every fundamental set has a Wronskian that tends to infinity at both ends of the interval, so that at least one of its solutions has an unbounded first derivative or is unbounded there. The equation has the bounded solution $y_1=t$, which is the Legendre polynomial $P_1$ of \cref{subsec:legendre}; the example at the end of this section finds a second one.
+
+In matrix form the proof says that $(\det Y)'=\operatorname{tr}A(t)\cdot\det Y$ for the solution $Y$ of $Y'=A(t)Y$, since the trace of the companion matrix \eqref{eq:companion-system} is $-a_{k-1}$. Jacobi's formula (\cref{thm:jacobi-formula}) gives the same result for every invertible solution of a linear system: $(\det Y)'=\det Y\cdot\operatorname{tr}(Y^{-1}Y')=\det Y\cdot\operatorname{tr}(Y^{-1}AY)=\operatorname{tr}A\cdot\det Y$, by the similarity invariance of the trace. This is Liouville's formula for systems, which Chapter~25 uses. For constant coefficients, $Y(t)=e^{(t-t_0)A}Y(t_0)$ by \cref{thm:linear-system}, and $\det e^{(t-t_0)A}=e^{(t-t_0)\operatorname{tr}A}$ (\cref{prop:exp-basic}) is Abel's formula once more.
+
+\subsection{Reduction of Order}
+
+For an equation of the second order, Abel's formula leads from one solution to a second.
+
+\begin{proposition}[Reduction of order]
+\label{prop:reduction-order}
+Let $a_0$ and $a_1$ be continuous on $I$, let $y_1$ be a solution of $y''+a_1(t)y'+a_0(t)y=0$ without zeros on $I$, let $t_0\in I$, and let $P(t)\coloneqq\int_{t_0}^ta_1(s)\,ds$. Then
+\[
+y_2(t)\coloneqq y_1(t)\,v(t),\qquad v(t)\coloneqq\int_{t_0}^t\frac{e^{-P(s)}}{y_1(s)^2}\,ds ,
+\]
+is a second solution, and $W(y_1,y_2)=e^{-P}$, so that $y_1,y_2$ is a fundamental set on $I$.
+\end{proposition}
+
+\begin{proof}
+For any $v\in C^2(I)$, the product rule gives
+\[
+L(y_1v)=(y_1v)''+a_1(y_1v)'+a_0y_1v=v\,Ly_1+y_1v''+(2y_1'+a_1y_1)\,v' .
+\]
+The first term vanishes. For the chosen $v$, $v'=e^{-P}y_1^{-2}$ and $v''=-a_1e^{-P}y_1^{-2}-2y_1'e^{-P}y_1^{-3}$, so
+\[
+y_1v''+(2y_1'+a_1y_1)v'=\bigl(-a_1y_1^{-1}-2y_1'y_1^{-2}+2y_1'y_1^{-2}+a_1y_1^{-1}\bigr)e^{-P}=0 ,
+\]
+and $y_2=y_1v$ is a solution. Finally $W(y_1,y_1v)=y_1(y_1v)'-y_1'y_1v=y_1^2v'=e^{-P}$, which has no zero.
+\end{proof}
+
+The formula is not a guess: if $y_2$ is any solution, then $(y_2/y_1)'=W(y_1,y_2)/y_1^2$, and Abel's formula prescribes $W$ up to a constant factor, so $y_2/y_1$ is determined up to the two constants of integration, which add multiples of $y_1$ and change the scale. The method reduces the equation of the second order for $y_2$ to two integrations, hence its name. For an equation of order $k$, knowing one solution without zeros reduces the order by one in the same way, since the substitution $y=y_1v$ produces an equation in which $v$ itself does not occur, and so an equation of order $k-1$ for $v'$.
+
+For the Euler--Cauchy equation $t^2y''-ty'+y=0$ on $(0,\infty)$ the quadratic $r(r-1)-r+1=(r-1)^2$ has the double root $1$, and the power trial gives only $y_1=t$. The normal form has $a_1=-1/t$, so with $t_0=1$ we get $P(t)=-\ln t$, $e^{-P}=t$, $v'=t/t^2=1/t$, $v=\ln t$, and $y_2=t\ln t$. For an equation $y''-2\lambda y'+\lambda^2y=0$ with constant coefficients and the double characteristic root $\lambda$, explained in the next section, $y_1=e^{\lambda t}$, $a_1=-2\lambda$, $e^{-P}=e^{2\lambda(t-t_0)}$, $v'=e^{-2\lambda t_0}$, and $y_2$ is a multiple of $(t-t_0)e^{\lambda t}$, which is $te^{\lambda t}$ plus a multiple of $y_1$. For Legendre's equation $(1-t^2)y''-2ty'+2y=0$, the solution $y_1=t$ vanishes at $0$, so we apply the proposition on $(0,1)$ with $t_0=1/2$: there $e^{-P}=(1-t_0^2)/(1-t^2)$, and by partial fractions (\cref{thm:partial-fractions})
+\[
+\frac1{t^2(1-t^2)}=\frac1{t^2}+\frac1{2(1+t)}+\frac1{2(1-t)},\qquad\int\frac{dt}{t^2(1-t^2)}=-\frac1t+\frac12\ln\frac{1+t}{1-t}.
+\]
+Up to a constant factor and a multiple of $y_1$, the second solution is therefore
+\[
+Q_1(t)\coloneqq\frac t2\ln\frac{1+t}{1-t}-1 .
+\]
+The formula defines a function on all of $(-1,1)$, and a direct computation, or the same argument on $(-1,0)$ together with the continuity of $Q_1$ and its derivatives at $0$, shows that it solves the equation on the whole interval. It is unbounded at $\pm1$, as Abel's formula demanded of one member of every fundamental set; $Q_1$ is the Legendre function of the second kind of degree $1$, and Chapter~26 meets such functions again.
+
+\section{Constant Coefficients: The Characteristic Polynomial}
+\label{sec:constant-coefficients}
+
+\subsection{Polynomials in \texorpdfstring{$D$}{D}}
+
+When the coefficients are constants $c_0,\ldots,c_{k-1}\in\mathbb C$, the operator $L=D^k+c_{k-1}D^{k-1}+\cdots+c_0$ is obtained by substituting the differentiation operator $D$ into the polynomial
+\[
+p(\lambda)\coloneqq\lambda^k+c_{k-1}\lambda^{k-1}+\cdots+c_1\lambda+c_0 ,
+\]
+and we write $L=p(D)$. The polynomial $p$ is the \term{characteristic polynomial} of the equation $p(D)y=0$, and $p(\lambda)=0$ its \term{characteristic equation}; by \cref{prop:companion-system}, $p$ is also the characteristic polynomial of the matrix of the companion system. For a polynomial $q$ of degree $d$ we let $q(D)$ act on $C^d(I)$, and we allow polynomials that are not monic. Since every solution of $p(D)y=0$ is infinitely differentiable (\cref{prop:linear-structure}\,(v)), we may compose such operators freely on the solutions. A root $\mu$ of $p$ has \term{multiplicity} $m$ if $p(\lambda)=(\lambda-\mu)^mr(\lambda)$ for a polynomial $r$ with $r(\mu)\ne0$. The multiplicity is well defined: if also $p=(\lambda-\mu)^{m'}r'$ with $m'>m$ and $r'(\mu)\ne0$, then cancelling $(\lambda-\mu)^m$, which is allowed because a product of nonzero polynomials is nonzero, would give $r=(\lambda-\mu)^{m'-m}r'$, which vanishes at $\mu$. By \cref{cor:factor}, $p$ factors as
+\begin{equation}
+p(\lambda)=(\lambda-\lambda_1)^{m_1}(\lambda-\lambda_2)^{m_2}\cdots(\lambda-\lambda_s)^{m_s},\qquad m_1+\cdots+m_s=k,
+\label{eq:char-factorisation}
+\end{equation}
+with the pairwise different roots $\lambda_1,\ldots,\lambda_s\in\mathbb C$ and their multiplicities $m_i$.
+
+\begin{lemma}[Polynomials in $D$]
+\label{lem:polynomials-in-d}
+Let $q$ and $r$ be polynomials with complex coefficients, of degrees $d$ and $e$, and let $\lambda\in\mathbb C$.
+\begin{enumerate}
+\item $(qr)(D)y=q(D)\bigl(r(D)y\bigr)=r(D)\bigl(q(D)y\bigr)$ for every $y\in C^{d+e}(I)$. In particular, $p(D)=(D-\lambda_1)^{m_1}\cdots(D-\lambda_s)^{m_s}$ on $C^k(I)$, with the factors in any order.
+\item $q(D)e^{\lambda t}=q(\lambda)e^{\lambda t}$: the exponential $e^{\lambda t}$ is an eigenfunction of every operator $q(D)$, with the eigenvalue $q(\lambda)$.
+\item \emph{Exponential shift}: $q(D)\bigl(e^{\lambda t}u\bigr)=e^{\lambda t}\,q(D+\lambda)u$ for every $u\in C^d(I)$, where $q(D+\lambda)$ is the operator of the polynomial $\mu\mapsto q(\mu+\lambda)$.
+\end{enumerate}
+\end{lemma}
+
+\begin{proof}
+(i) Both sides are linear in $q$ and in $r$, so it suffices to take monomials $q=\lambda^i$ and $r=\lambda^j$, for which both sides are $D^{i+j}y$; constant factors commute with $D$. The second statement follows from the factorisation \eqref{eq:char-factorisation}. (ii) By \cref{lem:complex-calculus}\,(ii) and induction, $D^je^{\lambda t}=\lambda^je^{\lambda t}$, and $q(D)$ is a linear combination of the $D^j$. (iii) By the product rule, $D(e^{\lambda t}u)=e^{\lambda t}(u'+\lambda u)=e^{\lambda t}(D+\lambda)u$, and by induction $D^j(e^{\lambda t}u)=e^{\lambda t}(D+\lambda)^ju$ for $j\le d$; again $q(D)$ is a linear combination of the $D^j$, and $(D+\lambda)^j$ is the operator of the polynomial $(\mu+\lambda)^j$, by (i).
+\end{proof}
+
+Part (ii) is the observation of \cref{sec:eigen-definitions} on eigenfunctions of $D$: $p(D)e^{\lambda t}=p(\lambda)e^{\lambda t}$, which vanishes exactly when $\lambda$ is a root of the characteristic polynomial. So every root gives an exponential solution, and if the $k$ roots are distinct we have $k$ solutions. When roots coincide, there are fewer exponentials than the dimension $k$ of the solution space, and part (iii) supplies the missing solutions.
+
+\begin{proposition}[Kernel of a power of $D-\lambda$]
+\label{prop:kernel-power}
+Let $\lambda\in\mathbb C$ and $m\ge1$. The solutions of $(D-\lambda)^my=0$ on $I$ are exactly the functions $y(t)=q(t)e^{\lambda t}$ with a polynomial $q$ of degree less than $m$.
+\end{proposition}
+
+\begin{proof}
+Every $y\in C^m(I)$ can be written as $y=e^{\lambda t}u$ with $u\coloneqq e^{-\lambda t}y\in C^m(I)$. By \cref{lem:polynomials-in-d}\,(iii) with $q(\mu)=(\mu-\lambda)^m$, $(D-\lambda)^m(e^{\lambda t}u)=e^{\lambda t}D^mu$, and since $e^{\lambda t}\ne0$, $y$ is a solution if and only if $u^{(m)}=0$. By \cref{lem:complex-calculus}\,(i), applied $m$ times, and the formula for antiderivatives of powers, this holds if and only if $u$ is a polynomial of degree less than $m$.
+\end{proof}
+
+\subsection{The General Solution}
+
+\begin{lemma}[Independence of exponential polynomials]
+\label{lem:exp-polynomials}
+Let $\lambda_1,\ldots,\lambda_s\in\mathbb C$ be pairwise different, and let $q_1,\ldots,q_s$ be polynomials with complex coefficients such that
+\[
+q_1(t)e^{\lambda_1t}+\cdots+q_s(t)e^{\lambda_st}=0\qquad\text{for all }t\in I .
+\]
+Then $q_1=\cdots=q_s=0$.
+\end{lemma}
+
+\begin{proof}
+By induction on $s$. For $s=1$, $q_1(t)=0$ for all $t\in I$, since $e^{\lambda_1t}\ne0$, and a polynomial with infinitely many roots is zero (\cref{cor:factor}). Let $s\ge2$, and let $d$ be the degree of $q_s$ ($d=0$ if $q_s=0$). Multiply the relation by $e^{-\lambda_st}$ and apply $D^{d+1}$; the term $q_s$ disappears, and by \cref{lem:polynomials-in-d}\,(iii), with $\mu_i\coloneqq\lambda_i-\lambda_s$,
+\[
+\sum_{i=1}^{s-1}e^{\mu_it}\,(D+\mu_i)^{d+1}q_i=0\qquad\text{on }I .
+\]
+For $\mu\ne0$ and a polynomial $q\ne0$, the polynomial $(D+\mu)^{d+1}q$ is, by the binomial theorem, $\mu^{d+1}q$ plus a combination of the derivatives $q',\ldots,q^{(d+1)}$, so it has the same degree as $q$ and the leading coefficient multiplied by $\mu^{d+1}\ne0$, so it is not zero. The numbers $\mu_1,\ldots,\mu_{s-1}$ are pairwise different and nonzero, so by the induction hypothesis $(D+\mu_i)^{d+1}q_i=0$ for $i<s$, hence $q_i=0$ for $i<s$, and the original relation reduces to $q_se^{\lambda_st}=0$, so $q_s=0$.
+\end{proof}
+
+For polynomials of degree $0$ the lemma says that exponentials with different rates are independent; this is \cref{prop:exponentials-independent}, now for complex rates, with the same proof by differentiation and elimination.
+
+\begin{theorem}[Equations with constant coefficients]
+\label{thm:constant-coefficients}
+Let the characteristic polynomial $p$ of degree $k$ have the pairwise different roots $\lambda_1,\ldots,\lambda_s$ with the multiplicities $m_1,\ldots,m_s$. Then the $k$ functions
+\[
+t^je^{\lambda_it}\qquad(i=1,\ldots,s,\ 0\le j<m_i)
+\]
+form a fundamental set of solutions of $p(D)y=0$ on every interval $I$, and
+\[
+\ker p(D)=\ker(D-\lambda_1)^{m_1}\oplus\cdots\oplus\ker(D-\lambda_s)^{m_s} .
+\]
+Thus the solutions are exactly the functions $y(t)=\sum_iq_i(t)e^{\lambda_it}$ with polynomials $q_i$ of degree less than $m_i$, and the polynomials are determined by $y$.
+\end{theorem}
+
+\begin{proof}
+Let $r_i$ be the product of the factors $(\lambda-\lambda_l)^{m_l}$ with $l\ne i$, so that $p=r_i\cdot(\lambda-\lambda_i)^{m_i}$. By \cref{lem:polynomials-in-d}\,(i) and \cref{prop:kernel-power}, $p(D)(t^je^{\lambda_it})=r_i(D)\bigl((D-\lambda_i)^{m_i}t^je^{\lambda_it}\bigr)=0$ for $j<m_i$, so the $k$ functions are solutions; more precisely, each space $\ker(D-\lambda_i)^{m_i}$ is contained in $\ker p(D)$. The functions are independent by \cref{lem:exp-polynomials}, and their number is $k=\dim\ker p(D)$ (\cref{thm:solution-space}); so they form a basis (\cref{thm:basis-extension}). The functions with a fixed $i$ form a basis of $\ker(D-\lambda_i)^{m_i}$, by \cref{prop:kernel-power}, so the sum of these kernels is all of $\ker p(D)$, and it is direct, again by \cref{lem:exp-polynomials}.
+\end{proof}
+
+For distinct roots the theorem says that the exponentials $e^{\lambda_1t},\ldots,e^{\lambda_kt}$ form a fundamental set: the equation $y''-3y'+2y=0$, with $p(\lambda)=(\lambda-1)(\lambda-2)$, has the general solution $c_1e^t+c_2e^{2t}$. A root of multiplicity $m$ contributes the $m$ functions $e^{\lambda t},te^{\lambda t},\ldots,t^{m-1}e^{\lambda t}$: the equation $y''-2y'+y=0$ has the general solution $(c_1+c_2t)e^t$, and $y'''-3y''+3y'-y=0$, with $p(\lambda)=(\lambda-1)^3$, the general solution $(c_1+c_2t+c_3t^2)e^t$.
+
+The proof is short because the dimension of the solution space is already known; independence of $k$ functions in a space of dimension $k$ is all that remains. There is a second proof, which uses the companion matrix and runs the other way. By \cref{prop:companion-system} and \cref{thm:linear-system}, every solution is the first component of $e^{(t-t_0)C}\mathbf x(t_0)$, where $C\coloneqq C_p^{\mathsf T}$ is the transposed companion matrix of $p$. This matrix is nonderogatory (\cref{prop:nonderogatory}): its Jordan form has exactly one block for each eigenvalue, and the block for $\lambda_i$ has the size $m_i$. By \cref{prop:exp-jordan}, every entry of $e^{tC}$ is a combination $\sum_iq_i(t)e^{\lambda_it}$ with $\deg q_i<m_i$, since the index of $\lambda_i$ is $m_i$. So every solution lies in the span of the $k$ functions $t^je^{\lambda_it}$, and since the solution space has dimension $k$, these functions are a basis, independent without any further argument; this is the reasoning of \cref{cor:linear-recurrence} for recurrences. The second proof explains where the powers of $t$ come from. A repeated root of $p$ is an eigenvalue of the companion matrix with a Jordan block of size greater than one, and the factors $t^j$ are the entries $t^j/j!$ of the exponential of that block (\cref{prop:exp-jordan}): they are the shadow of the Jordan block. A system $\mathbf x'=A\mathbf x$ whose matrix has a repeated eigenvalue but is diagonalisable, such as $A=\lambda I$, has no such factors, and Chapter~25 meets both cases.
+
+\begin{note}{Polynomials in $D$ and the primary decomposition}
+\Cref{lem:polynomials-in-d}\,(i) says that $q\mapsto q(D)$ turns sums and products of polynomials into sums and compositions of operators, so the operators $q(D)$ form a commutative algebra, a copy of the algebra of polynomials, as the polynomials $q(A)$ in a matrix did in \cref{sec:cayley-hamilton}. The decomposition of $\ker p(D)$ in \cref{thm:constant-coefficients} is an instance of a purely algebraic fact: if $p=q_1q_2$ with coprime polynomials $q_1$ and $q_2$, there are polynomials $u_1$, $u_2$ with $u_1q_1+u_2q_2=1$, by the Euclidean algorithm for polynomials, which gives B\'ezout's identity for them as for integers (\cref{thm:bezout}), and then $P_1\coloneqq u_2(D)q_2(D)$ and $P_2\coloneqq u_1(D)q_1(D)$ satisfy $P_1+P_2=\operatorname{id}$ on $\ker p(D)$, map $\ker p(D)$ onto $\ker q_1(D)$ and $\ker q_2(D)$ respectively, and are projections; so $\ker p(D)=\ker q_1(D)\oplus\ker q_2(D)$. The same argument applied to a matrix gives the \emph{primary decomposition} of the space into the kernels $\ker(A-\lambda_iI)^{m_i}$~\cite[Chap.~6]{hoffman1971}, the generalised eigenspaces of \cref{thm:generalised-eigenspaces}, and for a diagonalisable matrix the projections are the spectral projections of \cref{lem:spectral-projections}, which are polynomials in $A$. Applied to the operator $D$ on the finite-dimensional space $\ker p(D)$, which $D$ maps into itself, it gives \cref{thm:constant-coefficients} without the counting argument.
+\end{note}
+
+\subsection{Real Solutions}
+
+For an equation with real coefficients, nonreal roots of $p$ come in conjugate pairs, and the corresponding complex exponentials can be replaced by real functions.
+
+\begin{corollary}[Real fundamental set]
+\label{cor:real-fundamental}
+Let $p$ have real coefficients. Then a nonreal root $\mu$ of $p$ and its conjugate $\bar\mu$ have the same multiplicity. If $\alpha_1,\ldots,\alpha_r$ are the different real roots, with the multiplicities $n_1,\ldots,n_r$, and $\beta_l>0$ and $\gamma_l\pm i\beta_l$, $l=1,\ldots,q$, are the different pairs of nonreal roots, with the multiplicities $k_1,\ldots,k_q$, then the $k$ real functions
+\[
+t^je^{\alpha_it}\ (j<n_i),\qquad t^je^{\gamma_lt}\cos\beta_lt,\quad t^je^{\gamma_lt}\sin\beta_lt\ (j<k_l)
+\]
+form a basis of the real solutions of $p(D)y=0$ on $I$, and also a basis of the complex solutions.
+\end{corollary}
+
+\begin{proof}
+If $p=(\lambda-\mu)^mr$ with $r(\mu)\ne0$, then conjugating the coefficients gives $p=\bar p=(\lambda-\bar\mu)^m\bar r$, where $\bar r$ has the conjugate coefficients and $\bar r(\bar\mu)=\overline{r(\mu)}\ne0$; so $\bar\mu$ has the multiplicity $m$ as well. For a pair $\mu=\gamma+i\beta$, $\bar\mu$ of multiplicity $m$ and $j<m$, Euler's formula (\cref{cor:euler-consequences}) gives
+\[
+t^je^{\mu t}=t^je^{\gamma t}(\cos\beta t+i\sin\beta t),\qquad t^je^{\bar\mu t}=t^je^{\gamma t}(\cos\beta t-i\sin\beta t),
+\]
+so the two complex functions and the two real functions $t^je^{\gamma t}\cos\beta t$ and $t^je^{\gamma t}\sin\beta t$ span the same complex space. Hence the $k$ real functions of the corollary span the space of complex solutions, which by \cref{thm:constant-coefficients} has dimension $k$, and they form a basis of it; in particular they are independent over $\mathbb R$. They are real solutions, by \cref{prop:linear-structure}\,(iv), and the real solutions form a space of dimension $k$ (\cref{thm:solution-space}); so they are a basis of it.
+\end{proof}
+
+A pair of roots $\gamma\pm i\beta$ thus produces oscillations with the angular frequency $\beta$ and an amplitude that grows or decays like $e^{\gamma t}$: the real part of a root gives the rate of growth, the imaginary part the frequency. With the amplitude--phase form of \cref{sec:oscillations}, $c_1\cos\beta t+c_2\sin\beta t=R\cos(\beta t-\varphi)$, the real solutions belonging to the pair are the functions $Re^{\gamma t}\cos(\beta t-\varphi)$.
+
+\subsection{Examples}
+
+The equation $y''+2y'+5y=0$ has $p(\lambda)=\lambda^2+2\lambda+5=(\lambda+1)^2+4$ with the roots $-1\pm2i$, and the real fundamental set $e^{-t}\cos2t$, $e^{-t}\sin2t$. The solution with $y(0)=1$ and $y'(0)=0$ is $y=e^{-t}(c_1\cos2t+c_2\sin2t)$ with $c_1=1$ and $y'(0)=-c_1+2c_2=0$, so $c_2=1/2$: $y(t)=e^{-t}(\cos2t+\sin(2t)/2)$, an oscillation of frequency $2$ whose amplitude decays like $e^{-t}$.
+
+The equation $y'''-y=0$ has $p(\lambda)=\lambda^3-1$, whose roots are the cube roots of unity $1$ and $e^{\pm2\pi i/3}=-1/2\pm i\sqrt3/2$ (\cref{prop:roots-of-unity}). The real fundamental set is
+\[
+e^t,\qquad e^{-t/2}\cos\frac{\sqrt3\,t}2,\qquad e^{-t/2}\sin\frac{\sqrt3\,t}2 .
+\]
+The equation $y''''-y=0$ has $p(\lambda)=(\lambda-1)(\lambda+1)(\lambda^2+1)$ and the fundamental set $e^t$, $e^{-t}$, $\cos t$, $\sin t$, while $y''''+2y''+y=0$ has $p(\lambda)=(\lambda^2+1)^2$, with the double roots $\pm i$, and the fundamental set $\cos t$, $\sin t$, $t\cos t$, $t\sin t$. Its solutions with the factor $t$ oscillate with linearly growing amplitude, a first sight of the resonance of \cref{sec:oscillations}: the equation is the harmonic oscillator $(D^2+1)y=w$ forced by a solution $w$ of the harmonic oscillator itself.
+
+\subsection{Euler--Cauchy Equations}
+
+The Euler--Cauchy equation $t^2y''+aty'+by=0$ of \cref{sec:linear-operators} is reduced to constant coefficients by a logarithmic change of the independent variable. The power $t^r=e^{r\ln t}$ is an exponential in $s=\ln t$, which explains why powers solve it.
+
+\begin{proposition}[Euler--Cauchy equations]
+\label{prop:euler-cauchy}
+Let $a,b\in\mathbb R$. A function $y\in C^2(0,\infty)$ solves $t^2y''+aty'+by=0$ if and only if $z(s)\coloneqq y(e^s)$ solves $z''+(a-1)z'+bz=0$ on $\mathbb R$. Consequently, if $r_1$ and $r_2$ are the roots of the \term{indicial polynomial} $r(r-1)+ar+b$, a fundamental set on $(0,\infty)$ is
+\begin{enumerate}
+\item $t^{r_1}$, $t^{r_2}$ if $r_1\ne r_2$ are real;
+\item $t^{r_1}$, $t^{r_1}\ln t$ if $r_1=r_2$;
+\item $t^\gamma\cos(\beta\ln t)$, $t^\gamma\sin(\beta\ln t)$ if $r_{1,2}=\gamma\pm i\beta$ with $\beta>0$.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+The map $s\mapsto e^s$ is a bijection from $\mathbb R$ onto $(0,\infty)$ with the inverse $\ln$, both continuously differentiable, so $y\in C^2(0,\infty)$ if and only if $z\in C^2(\mathbb R)$. By the chain rule, with $t=e^s$, $z'(s)=e^sy'(e^s)=ty'(t)$ and $z''(s)=e^sy'(e^s)+e^{2s}y''(e^s)=ty'(t)+t^2y''(t)$. Hence
+\[
+t^2y''+aty'+by=(z''-z')+az'+bz=z''+(a-1)z'+bz ,
+\]
+and one side vanishes for all $t>0$ exactly when the other vanishes for all $s$. The characteristic polynomial $r^2+(a-1)r+b$ of the equation for $z$ is the indicial polynomial, and \cref{thm:constant-coefficients,cor:real-fundamental} give the fundamental sets $e^{r_1s},e^{r_2s}$; $e^{r_1s},se^{r_1s}$; and $e^{\gamma s}\cos\beta s,e^{\gamma s}\sin\beta s$. Substituting $s=\ln t$ and using $e^{rs}=t^r$ gives the three cases; the functions remain independent, since $z\mapsto z\circ\ln$ is an isomorphism of the two solution spaces.
+\end{proof}
+
+On $(-\infty,0)$ the same formulas hold with $|t|$ in place of $t$, since $t\mapsto-t$ maps the equation to itself. The equation $t^2y''-ty'+y=0$ of \cref{sec:wronskian} has the double indicial root $1$ and the fundamental set $t$, $t\ln t$, which reduction of order found there. The equation $t^2y''+ty'+y=0$ has the indicial roots $\pm i$ and the fundamental set $\cos(\ln t)$, $\sin(\ln t)$; these solutions oscillate infinitely often as $t$ decreases to $0$, the sine at the points $e^{-n\pi}$ and the cosine at the points $e^{\pi/2-n\pi}$, $n\in\mathbb Z$, and they remain bounded, but have no limit at the singular point. The indicial polynomial will return in Chapter~26, which studies equations that behave near a singular point like an Euler--Cauchy equation.
+
+\section{Undetermined Coefficients}
+\label{sec:undetermined}
+
+\subsection{Exponential Polynomials as Inputs}
+
+By \cref{prop:linear-structure}\,(ii), the inhomogeneous equation $p(D)y=g$ is solved once a single particular solution is known. For the inputs that occur most often, polynomials, exponentials, sines and cosines and their products, a particular solution of the same kind exists, and its coefficients can be found by solving a linear system. All these inputs are real or imaginary parts of functions $q(t)e^{\mu t}$ with a polynomial $q$ and $\mu\in\mathbb C$: a polynomial has $\mu=0$, and $e^{\gamma t}\cos\beta t$ is the real part of $e^{(\gamma+i\beta)t}$.
+
+\begin{theorem}[Undetermined coefficients]
+\label{thm:undetermined}
+Let $p$ be a polynomial of degree $k\ge1$ with leading coefficient $1$, let $\mu\in\mathbb C$, let $s\ge0$ be the multiplicity of $\mu$ as a root of $p$, with $s=0$ if $p(\mu)\ne0$, and let $q$ be a polynomial of degree $d$. Then the equation
+\[
+p(D)y=q(t)\,e^{\mu t}
+\]
+has exactly one solution of the form $y_{\mathrm p}(t)=t^sr(t)\,e^{\mu t}$ with a polynomial $r$ of degree at most $d$, and this $r$ has the degree $d$.
+\end{theorem}
+
+\begin{proof}
+Write $p(\lambda)=(\lambda-\mu)^sp_1(\lambda)$ with $p_1(\mu)\ne0$, which defines $s$. By the exponential shift (\cref{lem:polynomials-in-d}\,(iii)) and part (i) of the same lemma, for every polynomial $u$
+\[
+p(D)\bigl(e^{\mu t}u\bigr)=e^{\mu t}\,p(D+\mu)u=e^{\mu t}\,p_1(D+\mu)\,D^su ,
+\]
+since the polynomial $\lambda\mapsto p(\lambda+\mu)$ is $\lambda^sp_1(\lambda+\mu)$. So $y=e^{\mu t}u$ solves the equation if and only if $T(D^su)=q$, where $T\coloneqq p_1(D+\mu)$. Let $\mathcal P_d$ be the space of polynomials of degree at most $d$, which has dimension $d+1$.
+
+First, $T$ maps $\mathcal P_d$ bijectively onto itself. Expanding $p_1(\lambda+\mu)$ in powers of $\lambda$, its constant term is $p_1(\mu)$, so $Tw=p_1(\mu)w+\sum_{j\ge1}b_jw^{(j)}$ with constants $b_j$. Each $w^{(j)}$ with $j\ge1$ has smaller degree than $w$, so $Tw$ has the same degree as $w$ and the leading coefficient multiplied by $p_1(\mu)\ne0$; in particular $Tw\ne0$ for $w\ne0$. So $T$ is injective on $\mathcal P_d$, hence bijective (\cref{cor:injective-surjective}), and it preserves degrees. Second, $D^s$ maps the space $t^s\mathcal P_d$ of the polynomials $t^sr$ with $r\in\mathcal P_d$ bijectively onto $\mathcal P_d$: it maps the basis $t^{s+j}$, $j=0,\ldots,d$, to the multiples $(s+j)^{\underline s}\,t^j$ of the basis $t^j$ of $\mathcal P_d$, with nonzero factors, and it preserves degrees in the sense that $\deg D^s(t^sr)=\deg r$.
+
+Consequently, $u\mapsto T(D^su)$ is a bijection from $t^s\mathcal P_d$ onto $\mathcal P_d$, and there is exactly one $u=t^sr$ with $r\in\mathcal P_d$ and $T(D^su)=q$; its degree is $s+d$, since both maps preserve degrees. This $u$ gives the solution $y_{\mathrm p}=t^sr(t)e^{\mu t}$, and it is the only solution of this form.
+\end{proof}
+
+The proof is the argument of \cref{sec:rank-nullity-applications}, existence from uniqueness, for the linear map $T$ on the finite-dimensional space $\mathcal P_d$; in coordinates, $T$ has a triangular matrix with the diagonal entries $p_1(\mu)$. In practice one writes down the trial function $t^sr(t)e^{\mu t}$ with $d+1$ unknown coefficients, substitutes it into the equation, and compares coefficients; the theorem guarantees that the resulting triangular linear system has exactly one solution. The factor $t^s$ is needed exactly when the input $e^{\mu t}$ is itself a solution of the homogeneous equation, the case of \term{resonance}, which \cref{sec:oscillations} studies for oscillators: then the trial function $r(t)e^{\mu t}$ would contain solutions of the homogeneous equation, which contribute nothing to $p(D)y$, and multiplication by $t^s$ removes them.
+
+The same conclusion follows from a different idea, which explains the form of the trial function. The input $g=q(t)e^{\mu t}$ is annihilated by the operator $(D-\mu)^{d+1}$ (\cref{prop:kernel-power}), so every solution of $p(D)y=g$ satisfies the homogeneous equation $(D-\mu)^{d+1}p(D)y=0$ of order $k+d+1$, whose characteristic polynomial $(\lambda-\mu)^{d+1}p(\lambda)$ has the root $\mu$ with the multiplicity $s+d+1$. By \cref{thm:constant-coefficients}, $y$ is a combination of the functions $t^je^{\mu t}$ with $j<s+d+1$ and of the fundamental solutions belonging to the other roots of $p$. The latter, and the functions $t^je^{\mu t}$ with $j<s$, solve $p(D)y=0$ and may be dropped, which leaves $\sum_{s\le j\le s+d}c_jt^je^{\mu t}=t^sr(t)e^{\mu t}$. This is the \term{annihilator method}~\cite[Chap.~6]{apostol1969calculus}.
+
+For real equations and real inputs one works with complex exponentials and takes real or imaginary parts at the end. If $p$ has real coefficients and $y_{\mathrm c}$ solves $p(D)y=q(t)e^{\mu t}$ with a complex polynomial $q$, then $\operatorname{Re}y_{\mathrm c}$ solves $p(D)y=\operatorname{Re}(q(t)e^{\mu t})$ and $\operatorname{Im}y_{\mathrm c}$ solves $p(D)y=\operatorname{Im}(q(t)e^{\mu t})$, as in \cref{prop:linear-structure}\,(iv). Collecting real and imaginary parts gives the real forms of \cref{tab:undetermined}.
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}{colspec={lll}, row{1}={font=\small\bfseries}}
+\toprule
+input $g(t)$ & trial function $y_{\mathrm p}(t)$ & $s$ is the multiplicity of \\
+\midrule
+$q(t)$, degree $d$ & $t^s\,r(t)$, degree $d$ & $0$ \\
+$ce^{\gamma t}$ & $t^s\,Ae^{\gamma t}$ & $\gamma$ \\
+$q(t)e^{\gamma t}$ & $t^s\,r(t)e^{\gamma t}$ & $\gamma$ \\
+$c_1\cos\beta t+c_2\sin\beta t$ & $t^s(A\cos\beta t+B\sin\beta t)$ & $i\beta$ \\
+$e^{\gamma t}\bigl(q_1(t)\cos\beta t+q_2(t)\sin\beta t\bigr)$ & $t^se^{\gamma t}\bigl(r_1(t)\cos\beta t+r_2(t)\sin\beta t\bigr)$ & $\gamma+i\beta$ \\
+\bottomrule
+\end{sdtable}}{Trial functions for $p(D)y=g$ with real coefficients (\cref{thm:undetermined}). The polynomials $r$, $r_1$, $r_2$ have the degree $d$ of the input (the larger degree of $q_1$ and $q_2$ in the last row), their coefficients and $A$, $B$ are found by substitution, and $s\ge0$ is the multiplicity, as a root of $p$, of the number in the last column ($s=0$ if it is not a root).\label{tab:undetermined}}
+\end{table}
+
+\subsection{Examples}
+
+For $y''+y=t^2$, the input is a polynomial of degree $2$, and $0$ is not a root of $p(\lambda)=\lambda^2+1$, so we try $y=At^2+Bt+C$. Then $y''+y=At^2+Bt+(2A+C)$, and comparing coefficients with $t^2$ gives $A=1$, $B=0$, $C=-2$. The general solution is $t^2-2+c_1\cos t+c_2\sin t$.
+
+For $y''-3y'+2y=e^t$, the number $1$ is a simple root of $p(\lambda)=(\lambda-1)(\lambda-2)$, so $s=1$ and the trial function is $y=Ate^t$. The exponential shift makes the substitution painless: $p(D)(e^tAt)=e^tp(D+1)(At)=e^tD(D-1)(At)=e^tD(A-At)=-Ae^t$, so $A=-1$, and the general solution is $-te^t+c_1e^t+c_2e^{2t}$. The trial function $Ae^t$ without the factor $t$ would have failed, since $e^t$ solves the homogeneous equation.
+
+For $y''+2y'+5y=10\cos t$, we solve $p(D)y=10e^{it}$ instead. Since $p(i)=-1+2i+5=4+2i\ne0$, the complex solution is $y_{\mathrm c}=10e^{it}/p(i)$, by \cref{lem:polynomials-in-d}\,(ii), and
+\[
+y_{\mathrm c}=\frac{10\,(4-2i)}{20}\,e^{it}=(2-i)(\cos t+i\sin t),\qquad\operatorname{Re}y_{\mathrm c}=2\cos t+\sin t .
+\]
+So $y_{\mathrm p}=2\cos t+\sin t$, as one confirms by substitution. In general, for a real $p$ with $p(i\omega)\ne0$, the equation $p(D)y=\cos\omega t$ has the particular solution $\operatorname{Re}\bigl(e^{i\omega t}/p(i\omega)\bigr)=|p(i\omega)|^{-1}\cos(\omega t-\varphi)$ with $\varphi=\arg p(i\omega)$: the response to a cosine is a cosine of the same frequency, scaled by $1/|p(i\omega)|$ and delayed by the phase $\varphi$, exactly as for the first-order equation of \cref{sec:linear-first-order}.
+
+For $y''+4y=\sin2t$, the input is the imaginary part of $e^{2it}$, and $2i$ is a simple root of $\lambda^2+4=(\lambda-2i)(\lambda+2i)$. The trial function $Ate^{2it}$ gives $p(D)(e^{2it}At)=e^{2it}\bigl((D+2i)^2+4\bigr)(At)=e^{2it}(D^2+4iD)(At)=4iAe^{2it}$, so $A=1/(4i)=-i/4$, and
+\[
+y_{\mathrm c}=-\frac{it}4\,e^{2it}=\frac t4\sin2t-\frac{it}4\cos2t,\qquad y_{\mathrm p}=\operatorname{Im}y_{\mathrm c}=-\frac t4\cos2t .
+\]
+The particular solution oscillates with an amplitude that grows linearly in time: the input pushes the oscillator at its own natural frequency.
+
+By superposition, an input that is a sum of terms of the table is handled term by term. For $y''+y=t^2+10e^{-t}$, the second term gives the trial function $Ae^{-t}$ with $2A=10$, so the particular solution is $t^2-2+5e^{-t}$. The method fails for inputs that are not exponential polynomials, such as $\tan t$, $1/t$ or $\ln t$, which are not annihilated by any operator $q(D)$, and for equations with variable coefficients; the next section treats both.
+
+\section{Variation of Parameters}
+\label{sec:variation-parameters}
+
+\subsection{Equations of the Second Order}
+
+Variation of parameters, or variation of constants, finds a particular solution for every continuous input, once a fundamental set of the homogeneous equation is known; the coefficients may be variable. For the first-order equation, \cref{sec:linear-first-order} replaced the constant $c$ in the homogeneous solution $ce^{-P}$ by a function. For an equation of the second order, we seek a solution of the form
+\[
+y=u_1y_1+u_2y_2
+\]
+with a fundamental set $y_1$, $y_2$ and functions $u_1$, $u_2$ to be found. Two unknown functions for one equation leave room for one further condition, and the choice $u_1'y_1+u_2'y_2=0$ makes $y'=u_1y_1'+u_2y_2'$ free of derivatives of the $u_j$. Then $y''=u_1y_1''+u_2y_2''+u_1'y_1'+u_2'y_2'$, and since $y_1$ and $y_2$ solve the homogeneous equation, $Ly=u_1'y_1'+u_2'y_2'$. The two conditions form the linear system
+\[
+\begin{bmatrix}y_1&y_2\\y_1'&y_2'\end{bmatrix}\begin{bmatrix}u_1'\\u_2'\end{bmatrix}=\begin{bmatrix}0\\g\end{bmatrix},
+\]
+whose matrix is the Wronskian matrix, invertible at every $t$ by \cref{thm:wronskian-solutions}. Cramer's rule (\cref{thm:cramer}) gives $u_1'=-y_2g/W$ and $u_2'=y_1g/W$.
+
+\begin{theorem}[Variation of parameters, second order]
+\label{thm:variation-two}
+Let $a_0$, $a_1$ and $g$ be continuous on $I$, let $y_1$, $y_2$ be a fundamental set of $y''+a_1(t)y'+a_0(t)y=0$ on $I$ with the Wronskian $W$, and let $t_0\in I$. Then
+\begin{equation}
+y_{\mathrm p}(t)=-y_1(t)\int_{t_0}^t\frac{y_2(s)g(s)}{W(s)}\,ds+y_2(t)\int_{t_0}^t\frac{y_1(s)g(s)}{W(s)}\,ds
+\label{eq:variation-two}
+\end{equation}
+is the solution of $y''+a_1y'+a_0y=g$ with $y_{\mathrm p}(t_0)=y_{\mathrm p}'(t_0)=0$. Equivalently, $y_{\mathrm p}(t)=\int_{t_0}^tK(t,s)g(s)\,ds$ with
+\[
+K(t,s)\coloneqq\frac{y_1(s)y_2(t)-y_1(t)y_2(s)}{W(s)} .
+\]
+\end{theorem}
+
+\begin{proof}
+The theorem is the case $k=2$ of \cref{thm:variation-general} below, whose proof covers it.
+\end{proof}
+
+For the harmonic oscillator $y''+\omega^2y=g$ with the fundamental set $\cos\omega t$, $\sin\omega t$ and $W=\omega$, the addition formula gives
+\[
+\begin{gathered}
+K(t,s)=\frac{\cos\omega s\,\sin\omega t-\cos\omega t\,\sin\omega s}{\omega}=\frac{\sin\omega(t-s)}\omega,\\
+y_{\mathrm p}(t)=\frac1\omega\int_{t_0}^t\sin\omega(t-s)\,g(s)\,ds .
+\end{gathered}
+\]
+The input at the time $s$ contributes to the solution at the later time $t$ with the weight $\sin\omega(t-s)/\omega$: an impulse sets the oscillator swinging, and the swing continues undamped. For $y''+y=\sec t$ on $(-\pi/2,\pi/2)$, which undetermined coefficients cannot handle, the formula with $t_0=0$ gives
+\[
+y_{\mathrm p}(t)=-\cos t\int_0^t\frac{\sin s}{\cos s}\,ds+\sin t\int_0^t1\,ds=\cos t\,\ln\cos t+t\sin t ,
+\]
+since $\int_0^t\tan s\,ds=-\ln\cos t$ for $|t|<\pi/2$. For an example with variable coefficients, the equation $y''-2y/t^2=t$ on $(0,\infty)$ has the fundamental set $t^2$, $1/t$ with $W=-3$ (\cref{sec:wronskian}), and with $t_0=1$
+\[
+y_{\mathrm p}(t)=-t^2\int_1^t\frac{s^{-1}\cdot s}{-3}\,ds+\frac1t\int_1^t\frac{s^2\cdot s}{-3}\,ds=\frac{t^2(t-1)}3-\frac{t^4-1}{12\,t}=\frac{t^3}4-\frac{t^2}3+\frac1{12t} ,
+\]
+which is the particular solution $t^3/4$ plus the homogeneous solution $-t^2/3+1/(12t)$, as the initial values $y_{\mathrm p}(1)=y_{\mathrm p}'(1)=0$ require.
+
+\subsection{Equations of Order \texorpdfstring{$k$}{k} and the Cauchy Function}
+
+\begin{theorem}[Variation of parameters]
+\label{thm:variation-general}
+Let $L$ be as in \cref{def:linear-operator}, let $y_1,\ldots,y_k$ be a fundamental set of $Ly=0$ on $I$, with the matrix $Y$ and the Wronskian $W$ of \eqref{eq:wronskian-matrix}, let $g\in C(I)$ and $t_0\in I$. For $j=1,\ldots,k$ let $W_j(s)$ be the determinant of $Y(s)$ with its $j$th column replaced by $\mathbf e_k$, and let
+\[
+u_j(t)\coloneqq\int_{t_0}^t\frac{W_j(s)}{W(s)}\,g(s)\,ds .
+\]
+Then $y_{\mathrm p}\coloneqq u_1y_1+\cdots+u_ky_k$ is the solution of $Ly=g$ with $y_{\mathrm p}^{(i)}(t_0)=0$ for $i<k$. Moreover
+\begin{equation}
+y_{\mathrm p}(t)=\int_{t_0}^tK(t,s)\,g(s)\,ds,
+\label{eq:cauchy-function}
+\end{equation}
+where, for each $s\in I$, the \term{Cauchy function} $t\mapsto K(t,s)$ is the solution of $Ly=0$ with the initial values $y(s)=\cdots=y^{(k-2)}(s)=0$ and $y^{(k-1)}(s)=1$. In particular $K$ does not depend on the choice of the fundamental set.
+\end{theorem}
+
+\begin{proof}
+The functions $W_j/W$ are continuous, since $W$ has no zero (\cref{thm:wronskian-solutions}), so the $u_j$ are continuously differentiable with $u_j'=gW_j/W$. By Cramer's rule, the vector $\mathbf u'=(u_1',\ldots,u_k')$ is the solution of $Y(s)\mathbf u'(s)=g(s)\mathbf e_k$: row $i+1$ of this system says
+\[
+\sum_ju_j'\,y_j^{(i)}=0\quad(i<k-1),\qquad\sum_ju_j'\,y_j^{(k-1)}=g .
+\]
+We show by induction that $y_{\mathrm p}^{(i)}=\sum_ju_jy_j^{(i)}$ for $i\le k-1$. This holds for $i=0$, and if it holds for some $i<k-1$, the product rule gives $y_{\mathrm p}^{(i+1)}=\sum_ju_j'y_j^{(i)}+\sum_ju_jy_j^{(i+1)}$, whose first sum vanishes. The same computation for $i=k-1$ gives $y_{\mathrm p}^{(k)}=g+\sum_ju_jy_j^{(k)}$, which is continuous, so $y_{\mathrm p}\in C^k(I)$, and
+\[
+Ly_{\mathrm p}=g+\sum_ju_j\,Ly_j=g .
+\]
+Since $u_j(t_0)=0$, the formula for the derivatives gives $y_{\mathrm p}^{(i)}(t_0)=0$ for $i<k$.
+
+For the second statement, $y_{\mathrm p}(t)=\sum_jy_j(t)\int_{t_0}^tc_j(s)g(s)\,ds=\int_{t_0}^tK(t,s)g(s)\,ds$ with $c_j\coloneqq W_j/W$ and $K(t,s)\coloneqq\sum_jy_j(t)c_j(s)$, since $y_j(t)$ does not depend on the variable of integration. For fixed $s$, $t\mapsto K(t,s)$ is a combination of the $y_j$, hence a solution of $Ly=0$, and its vector of initial values at $t=s$ is $\sum_jc_j(s)\Phi_sy_j=Y(s)\mathbf c(s)=\mathbf e_k$, because $\mathbf c(s)=(c_1(s),\ldots,c_k(s))$ is, by Cramer's rule again, the solution of $Y(s)\mathbf c=\mathbf e_k$. By \cref{cor:higher-existence}, this solution is unique.
+\end{proof}
+
+The Cauchy function is the response of the system to a unit impulse. Think of $y$ as the position of a particle that obeys $Ly=0$: the initial values $(0,\ldots,0,1)$ at the time $s$ describe a particle that is at rest at the origin and receives a sudden kick of unit strength in its highest derivative. The formula \eqref{eq:cauchy-function} represents a general input $g$ as a continuous succession of such kicks, the kick at the time $s$ having the strength $g(s)\,ds$, and adds up their responses, by superposition. For $k=2$ the definition gives $K(s,s)=0$ and $\partial K/\partial t(s,s)=1$, which the function of \cref{thm:variation-two} satisfies.
+
+For constant coefficients the response to a kick does not depend on when it is given.
+
+\begin{corollary}[Constant coefficients: a convolution]
+\label{cor:convolution}
+Let $p$ have degree $k$, and let $\kappa$ be the solution of $p(D)y=0$ on $\mathbb R$ with $\kappa(0)=\cdots=\kappa^{(k-2)}(0)=0$ and $\kappa^{(k-1)}(0)=1$, the \term{impulse response}. Then $K(t,s)=\kappa(t-s)$, and the solution of $p(D)y=g$ with zero initial values at $t_0$ is
+\[
+y_{\mathrm p}(t)=\int_{t_0}^t\kappa(t-s)\,g(s)\,ds .
+\]
+Moreover $\kappa(t)=\mathbf e_1^{\mathsf T}e^{tC}\mathbf e_k$ with the transposed companion matrix $C=C_p^{\mathsf T}$.
+\end{corollary}
+
+\begin{proof}
+For fixed $s$, the function $t\mapsto\kappa(t-s)$ solves $p(D)y=0$, since the coefficients are constant and $D^j(\kappa(t-s))=\kappa^{(j)}(t-s)$ by the chain rule, and its initial values at $t=s$ are those of $\kappa$ at $0$, namely $\mathbf e_k$. By the uniqueness in \cref{thm:variation-general}, it is $K(\cdot,s)$. For the last statement, $\mathbf x(t)\coloneqq e^{tC}\mathbf e_k$ solves the companion system $\mathbf x'=C\mathbf x$ with $\mathbf x(0)=\mathbf e_k$ (\cref{thm:linear-system}), and by \cref{prop:companion-system} its first component is the solution of $p(D)y=0$ with the initial values $\mathbf e_k$, which is $\kappa$.
+\end{proof}
+
+The integral $\int\kappa(t-s)g(s)\,ds$ is a \term{convolution} of $\kappa$ and $g$: the weight of the input depends only on the elapsed time $t-s$. For $k=1$ and $p(\lambda)=\lambda+a$, the impulse response is $\kappa(t)=e^{-at}$, and the corollary is the formula \eqref{eq:duhamel} of \cref{sec:linear-first-order}; for the harmonic oscillator, $\kappa(t)=\sin(\omega t)/\omega$. In terms of the companion system, the corollary says that the solution of $\mathbf x'=C\mathbf x+g(t)\mathbf e_k$ with $\mathbf x(t_0)=\mathbf 0$ has the first component $\mathbf e_1^{\mathsf T}\int_{t_0}^te^{(t-s)C}\mathbf e_kg(s)\,ds$, which is the first component of the formula $\int_{t_0}^te^{(t-s)C}\mathbf b(s)\,ds$ with $\mathbf b=g\mathbf e_k$; Chapter~25 proves this formula of Duhamel for every inhomogeneous linear system with constant coefficients.
+
+\subsection{Which Method?}
+
+The two methods complement each other. Undetermined coefficients requires constant coefficients and an exponential polynomial as input, but then it needs no integration and no fundamental set beyond the roots of $p$, and it produces the particular solution of the same form as the input, which is usually the one of physical interest, the steady state. Variation of parameters works for every continuous input and for variable coefficients, but it requires a fundamental set and integrals that may be impossible to evaluate in closed form; it produces the solution with zero initial values. For $y''+y=\cos t$, both give $t\sin(t)/2$: the trial function $At\,e^{it}$ gives $p(D)(e^{it}At)=e^{it}(D^2+2iD)(At)=2iAe^{it}$, so $A=-i/2$ and $\operatorname{Re}(-ite^{it}/2)=t\sin(t)/2$, while the Cauchy function gives
+\[
+\int_0^t\sin(t-s)\cos s\,ds=\frac12\int_0^t\bigl(\sin t+\sin(t-2s)\bigr)\,ds=\frac t2\sin t ,
+\]
+since the second integrand has the antiderivative $\cos(t-2s)/2$ in $s$, which takes the same value at $s=0$ and $s=t$. As an integral formula, the Cauchy function is also the better tool for estimates: $|y_{\mathrm p}(t)|\le\int_{t_0}^t|\kappa(t-s)|\,|g(s)|\,ds$ bounds the response by the size of the input.
+
+\begin{note}{The Laplace transform}
+Engineering texts usually solve equations with constant coefficients by the \emph{Laplace transform} $\hat y(z)\coloneqq\int_0^\infty e^{-zt}y(t)\,dt$, defined for the complex $z$ with sufficiently large real part when $y$ grows at most exponentially. Integration by parts gives $\widehat{y'}(z)=z\hat y(z)-y(0)$, so the transform turns $p(D)y=g$ into the algebraic equation $p(z)\hat y(z)=\hat g(z)+(\text{a polynomial in }z\text{ formed from the initial values})$, which is solved by division. The transform of a convolution is the product of the transforms, and the transform of the impulse response $\kappa$ of \cref{cor:convolution} is $1/p(z)$, the \emph{transfer function}; its values $1/p(i\omega)$ on the imaginary axis describe the response to the input $e^{i\omega t}$, as in \cref{sec:undetermined}. Discontinuous inputs and impulses are handled by the same rules. This volume does not use the transform; Boyce, DiPrima and Meade~\cite[Chap.~6]{boyce2017} develop it for differential equations.
+\end{note}
+
+\section{Oscillations}
+\label{sec:oscillations}
+
+\subsection{The Mass, the Spring and the Damper}
+
+A body of mass $m$ hangs on a spring, or slides on a horizontal track attached to a spring, and $y(t)$ is its displacement from the position of rest. Hooke's law~\cite{hooke1678} says that a spring stretched by $y$ pulls back with the force $-ky$, with a \term{spring constant} $k>0$, as long as the displacement is small. A damper, a piston moving in oil, resists the motion with a force $-cy'$ proportional to the velocity, with a \term{damping constant} $c\ge0$, and an external force $F(t)$ may act. Newton's second law, mass times acceleration equals the sum of the forces, gives
+\begin{equation}
+my''+cy'+ky=F(t) .
+\label{eq:oscillator}
+\end{equation}
+The same equation describes an electric circuit in which an inductance $L$, a resistance $R$ and a capacitance $C$ are connected in series to a voltage source $E(t)$: the voltages across the three elements are $LI'$, $RI$ and $q/C$, where $q$ is the charge on the capacitor and $I=q'$ the current, and by Kirchhoff's voltage law their sum is $E(t)$, so that $Lq''+Rq'+q/C=E(t)$~\cite[Chap.~3]{boyce2017}. \Cref{tab:analogy} lists the correspondence: every statement about one of the two systems is a statement about the other.
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}{colspec={llll}, row{1}={font=\small\bfseries}}
+\toprule
+mechanical & symbol & electrical & symbol \\
+\midrule
+displacement & $y$ & charge & $q$ \\
+velocity & $y'$ & current & $I=q'$ \\
+mass & $m$ & inductance & $L$ \\
+damping constant & $c$ & resistance & $R$ \\
+spring constant & $k$ & reciprocal capacitance & $1/C$ \\
+external force & $F(t)$ & voltage of the source & $E(t)$ \\
+kinetic energy & $my'^2/2$ & magnetic energy & $LI^2/2$ \\
+potential energy & $ky^2/2$ & electric energy & $q^2/(2C)$ \\
+power dissipated & $cy'^2$ & power dissipated & $RI^2$ \\
+\bottomrule
+\end{sdtable}}{The mechanical oscillator \eqref{eq:oscillator} and the electric circuit $Lq''+Rq'+q/C=E(t)$ are the same equation.\label{tab:analogy}}
+\end{table}
+
+Dividing by $m$ and introducing the \term{natural frequency} $\omega_0$ and the \term{damping ratio} $\zeta$,
+\[
+\omega_0\coloneqq\sqrt{\frac km},\qquad\zeta\coloneqq\frac c{2\sqrt{mk}},
+\]
+brings the equation into the form
+\begin{equation}
+y''+2\zeta\omega_0y'+\omega_0^2y=\frac{F(t)}m .
+\label{eq:oscillator-normalised}
+\end{equation}
+The characteristic polynomial $\lambda^2+2\zeta\omega_0\lambda+\omega_0^2$ has the roots $\omega_0\bigl(-\zeta\pm\sqrt{\zeta^2-1}\bigr)$, and its discriminant has the sign of $\zeta^2-1$, that is, of $c^2-4mk$. Both numbers have units that make them meaningful: $\omega_0$ is a frequency, measured in radians per unit of time, and $\zeta$ is a pure number, which compares the damping with the stiffness and the inertia.
+
+\subsection{Free Oscillations}
+
+Without external force, $F\equiv0$, the oscillator moves according to the roots of the characteristic polynomial.
+
+\begin{proposition}[Free damped oscillations]
+\label{prop:free-oscillations}
+Let $\omega_0>0$ and $\zeta>0$. The real solutions of $y''+2\zeta\omega_0y'+\omega_0^2y=0$ are the following.
+\begin{enumerate}
+\item \emph{Overdamped}, $\zeta>1$: $y=c_1e^{\lambda_1t}+c_2e^{\lambda_2t}$ with $\lambda_{1,2}=\omega_0(-\zeta\mp\sqrt{\zeta^2-1})$, two negative numbers.
+\item \emph{Critically damped}, $\zeta=1$: $y=(c_1+c_2t)e^{-\omega_0t}$.
+\item \emph{Underdamped}, $0<\zeta<1$: $y=Re^{-\zeta\omega_0t}\cos(\omega_{\mathrm d}t-\varphi)$ with the \term{damped frequency} $\omega_{\mathrm d}\coloneqq\omega_0\sqrt{1-\zeta^2}$ and constants $R\ge0$ and $\varphi$.
+\end{enumerate}
+Every solution tends to $0$ as $t\to\infty$. In cases (i) and (ii) a solution that is not identically zero has at most one zero; in case (iii) a nonzero solution has infinitely many zeros, at the distance $\pi/\omega_{\mathrm d}$ from each other.
+\end{proposition}
+
+\begin{proof}
+The three forms are \cref{thm:constant-coefficients,cor:real-fundamental}, together with the \term{amplitude--phase form}: for real $a$ and $b$ and $R\coloneqq\sqrt{a^2+b^2}$, $\varphi\coloneqq\operatorname{atan2}(b,a)$,
+\[
+a\cos\theta+b\sin\theta=R(\cos\varphi\cos\theta+\sin\varphi\sin\theta)=R\cos(\theta-\varphi),
+\]
+by the definition of the angle $\operatorname{atan2}$ (\cref{prop:atan2}) and the addition formula (\cref{thm:addition}); for $R=0$ any $\varphi$ will do. In case (i), $\zeta>\sqrt{\zeta^2-1}$, so both roots are negative. The decay follows from $e^{\lambda t}\to0$ and $te^{-\omega_0t}\to0$ (\cref{prop:exp-growth}) for $\lambda<0$. In case (i), $c_1e^{\lambda_1t}+c_2e^{\lambda_2t}=0$ means $e^{(\lambda_1-\lambda_2)t}=-c_2/c_1$ if $c_1\ne0$, and the left side is strictly monotone in $t$, so there is at most one solution $t$; if $c_1=0$, then $c_2\ne0$ and there is no zero. In case (ii), $c_1+c_2t$ has at most one zero unless $c_1=c_2=0$. In case (iii), $R>0$ for a nonzero solution, and its zeros are the $t$ with $\omega_{\mathrm d}t-\varphi\in\pi/2+\pi\mathbb Z$ (\cref{thm:trig-signs}).
+\end{proof}
+
+\Cref{fig:damping} shows the three cases for the initial values $y(0)=1$ and $y'(0)=0$, a displaced body released from rest. The underdamped body swings back and forth through the position of rest with a decaying amplitude. The overdamped body creeps back without overshooting, and the critically damped one returns fastest among the solutions that do not oscillate: for $\zeta>1$ the slower root $\omega_0(-\zeta+\sqrt{\zeta^2-1})$ is closer to $0$ than $-\omega_0$, and it governs the decay for large $t$.
+
+\begin{figure}
+\sdfloat{%
+\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.66\textwidth, height=0.38\textwidth, xmin=0, xmax=15, ymin=-1.05, ymax=1.1,
+  xtick={0,5,10,15}, ytick={-1,-0.5,0,0.5,1}, xlabel={$\omega_0t$}, ylabel={$y$}]
+\addplot[black!45, densely dotted, line width=0.6pt, domain=0:15, samples=200] {cos(deg(x))};
+\addplot[black, line width=0.8pt, domain=0:15, samples=250] {exp(-0.2*x)*(cos(deg(0.979796*x))+0.204124*sin(deg(0.979796*x)))};
+\addplot[black, dashed, line width=0.8pt, domain=0:15, samples=120] {(1+x)*exp(-x)};
+\addplot[black, densely dotted, line width=0.9pt, domain=0:15, samples=120] {1.0773503*exp(-0.2679492*x)-0.0773503*exp(-3.7320508*x)};
+\addplot[black, line width=0.3pt, domain=0:15, samples=2] {0};
+\end{axis}
+\end{tikzpicture}}{Free oscillations $y''+2\zeta\omega_0y'+\omega_0^2y=0$ with $y(0)=1$, $y'(0)=0$: underdamped with $\zeta=0.2$ (solid), critically damped with $\zeta=1$ (dashed), overdamped with $\zeta=2$ (dotted, black) and undamped with $\zeta=0$ (dotted, grey). The underdamped solution crosses the axis at intervals of $\pi/\omega_{\mathrm d}$, the others not at all.\label{fig:damping}}
+\end{figure}
+
+The decay of an underdamped oscillation can be measured. The underdamped solution of \cref{prop:free-oscillations}\,(iii) takes the same phase after every period $T_{\mathrm d}\coloneqq2\pi/\omega_{\mathrm d}$, and its values at two times that are one period apart have the ratio
+\[
+\frac{y(t+T_{\mathrm d})}{y(t)}=e^{-\zeta\omega_0T_{\mathrm d}},\qquad\delta\coloneqq\zeta\omega_0T_{\mathrm d}=\frac{2\pi\zeta}{\sqrt{1-\zeta^2}} .
+\]
+The number $\delta$ is the \term{logarithmic decrement}. The maxima of $y$ occur where $\tan(\omega_{\mathrm d}t-\varphi)=-\zeta\omega_0/\omega_{\mathrm d}$, which happens once in every half period, alternately at maxima and minima, so successive maxima are one period apart and their ratio is $e^{-\delta}$. Solving for $\zeta$ gives $\zeta=\delta/\sqrt{4\pi^2+\delta^2}$, so two successive maxima determine the damping ratio. For $\zeta=0.1$, $\delta=0.6315$, and each swing is $e^{-\delta}=0.532$ times as large as the one before.
+
+\subsection{Energy}
+
+The energy of the oscillator is the sum of the kinetic energy $my'^2/2$ of the body and the potential energy $ky^2/2$ stored in the spring, the work done in stretching it (\cref{sec:conservative}).
+
+\begin{proposition}[Energy of the oscillator]
+\label{prop:oscillator-energy}
+Let $y$ solve \eqref{eq:oscillator} with $m,k>0$ and $c\ge0$, and let $E(t)\coloneqq\bigl(my'(t)^2+ky(t)^2\bigr)/2$. Then
+\[
+E'=F(t)\,y'-c\,y'^2 .
+\]
+In particular, without external force the energy is constant if $c=0$, and if $c>0$ it decreases strictly, unless $y\equiv0$.
+\end{proposition}
+
+\begin{proof}
+$E'=my'y''+kyy'=y'(my''+ky)=y'(F-cy')$. For $F\equiv0$ and $c>0$, $E'=-cy'^2\le0$, so $E$ does not increase (\cref{cor:monotone-derivative}). If $E$ were constant on an interval, $y'$ would vanish there, so $y$ would be constant there and $y''=0$, and the equation would give $ky=0$; then $y$ and $y'$ would vanish at a point, and $y\equiv0$ by \cref{cor:higher-existence}.
+\end{proof}
+
+The term $Fy'$ is the power supplied by the external force, force times velocity, and $cy'^2$ the power that the damper converts into heat. For $c=0$ the energy is conserved, as \cref{sec:exact} found for every equation $y''=-V'(y)$, and the path $(y,y')$ in the phase plane runs along an ellipse $my'^2+ky^2=2E$. The function $g^2+g'^2$ with which \cref{lem:harmonic-unique} proved uniqueness was this energy for $m=k=1$.
+
+\subsection{Forced Oscillations and Resonance}
+
+Let the force be periodic, $F(t)=F_0\cos\omega t$ with $F_0>0$ and a frequency $\omega>0$, and let $c>0$. The characteristic polynomial of \eqref{eq:oscillator} is $p(\lambda)=m\lambda^2+c\lambda+k$, and since $p(i\omega)=k-m\omega^2+ic\omega$ has a positive imaginary part, $i\omega$ is not a root. By \cref{sec:undetermined}, the particular solution of the form of the input is
+\begin{equation}
+y_{\mathrm p}(t)=\operatorname{Re}\frac{F_0e^{i\omega t}}{p(i\omega)}=F_0R(\omega)\cos\bigl(\omega t-\varphi(\omega)\bigr),
+\label{eq:steady-state}
+\end{equation}
+with the \term{amplitude response} and the \term{phase lag}
+\[
+R(\omega)\coloneqq\frac1{|p(i\omega)|}=\frac1{\sqrt{(k-m\omega^2)^2+c^2\omega^2}},\qquad\varphi(\omega)\coloneqq\operatorname{atan2}(c\omega,k-m\omega^2)\in(0,\pi) .
+\]
+Every solution is $y_{\mathrm p}$ plus a solution of the homogeneous equation, which decays by \cref{prop:free-oscillations}. So every solution approaches $y_{\mathrm p}$, the \term{steady state}, whatever the initial values; the decaying part is the \term{transient}. This is the second-order version of the periodic forcing in \cref{sec:linear-first-order}, and as there, $y_{\mathrm p}$ is the only periodic solution, since any other differs from it by a nonzero decaying function. Unlike the first-order equation, the oscillator has a natural frequency of its own, and the response depends on how the frequency of the force compares with it.
+
+\begin{theorem}[Frequency response]
+\label{thm:frequency-response}
+Let $m,k,c>0$ and $\omega_0=\sqrt{k/m}$.
+\begin{enumerate}
+\item If $c^2<2mk$, that is, $\zeta<1/\sqrt2$, the amplitude response $R$ increases on $(0,\omega_{\mathrm r}]$ and decreases on $[\omega_{\mathrm r},\infty)$, where the \term{resonance frequency} is
+\[
+\omega_{\mathrm r}\coloneqq\sqrt{\frac km-\frac{c^2}{2m^2}}=\omega_0\sqrt{1-2\zeta^2},\qquad R(\omega_{\mathrm r})=\frac{2m}{c\sqrt{4mk-c^2}}=\frac1{k}\cdot\frac1{2\zeta\sqrt{1-\zeta^2}} .
+\]
+\item If $c^2\ge2mk$, $R$ decreases on $(0,\infty)$ from the value $1/k$ at $\omega\to0$.
+\item The phase lag $\varphi$ increases from $0$ to $\pi$ as $\omega$ increases from $0$ to $\infty$, and $\varphi(\omega_0)=\pi/2$.
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+(i) and (ii): $R(\omega)^{-2}=h(\omega^2)$ with $h(x)\coloneqq(k-mx)^2+c^2x=m^2x^2-(2mk-c^2)x+k^2$, a quadratic in $x\ge0$ with the positive leading coefficient $m^2$ and its vertex at $x^*=(2mk-c^2)/(2m^2)$. If $c^2<2mk$, then $x^*>0$, $h$ decreases on $[0,x^*]$ and increases on $[x^*,\infty)$, and since $\omega\mapsto\omega^2$ is increasing, $R$ increases on $(0,\sqrt{x^*}]$ and decreases afterwards; $\sqrt{x^*}=\omega_{\mathrm r}$. The minimum value is
+\[
+h(x^*)=k^2-\frac{(2mk-c^2)^2}{4m^2}=\frac{c^2(4mk-c^2)}{4m^2},
+\]
+which gives $R(\omega_{\mathrm r})$, and the second expression follows with $c=2\zeta\sqrt{mk}$, so that $4mk-c^2=4mk(1-\zeta^2)$. If $c^2\ge2mk$, then $x^*\le0$, $h$ increases on $[0,\infty)$, and $R$ decreases, with $h(0)=k^2$. (iii) For $\omega<\omega_0$, $k-m\omega^2>0$, so $\varphi\in(0,\pi/2)$ and $\tan\varphi=c\omega/(k-m\omega^2)$, which increases, its numerator increasing and its positive denominator decreasing; at $\omega_0$ the point $(k-m\omega^2,c\omega)$ lies on the positive vertical axis, so $\varphi=\pi/2$; for $\omega>\omega_0$, $\varphi\in(\pi/2,\pi)$ and $\cot\varphi=(k-m\omega^2)/(c\omega)=k/(c\omega)-m\omega/c$ decreases. Since $\tan$ increases on $(0,\pi/2)$ and $\cot$ decreases on $(\pi/2,\pi)$ (\cref{thm:trig-signs}), $\varphi$ increases in both ranges. The limits follow from $\tan\varphi\to0^+$ as $\omega\to0$ and $\cot\varphi\to-\infty$ as $\omega\to\infty$.
+\end{proof}
+
+In the dimensionless variables $r\coloneqq\omega/\omega_0$ and $kR$, the amplitude response is $kR=1/\sqrt{(1-r^2)^2+(2\zeta r)^2}$, and it depends on the damping ratio alone. \Cref{fig:response} shows it with the phase lag. A force of low frequency, $r\to0$, displaces the body by $F_0/k$, as a constant force would, and in phase with it. A force of high frequency is opposed mainly by the inertia of the body; the response is small, about $F_0/(m\omega^2)$, and nearly opposite in phase. In between, for small damping, the response has a sharp peak near the natural frequency: for $\zeta=0.1$, the peak lies at $r=\sqrt{0.98}=0.98995$ and has the height $1/(2\zeta\sqrt{1-\zeta^2})=5.0252$, five times the static displacement. This is \term{resonance}. Near the peak, the force and the velocity are nearly in phase, $\varphi\approx\pi/2$, so the force feeds energy into the motion throughout the cycle, by \cref{prop:oscillator-energy}, and the amplitude grows until the dissipation $cy'^2$ balances the supply.
+
+\begin{figure}
+\sdpanel{A}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.49\textwidth, height=0.42\textwidth, xmin=0, xmax=2.5, ymin=0, ymax=5.6,
+  xtick={0,0.5,1,1.5,2,2.5}, ytick={0,1,2,3,4,5}, xlabel={$r=\omega/\omega_0$}, ylabel={$kR$}]
+\addplot[black, line width=0.8pt, domain=0:2.5, samples=400] {1/sqrt((1-x^2)^2+(0.2*x)^2)};
+\addplot[black, dashed, line width=0.8pt, domain=0:2.5, samples=200] {1/sqrt((1-x^2)^2+(0.4*x)^2)};
+\addplot[black, densely dotted, line width=0.9pt, domain=0:2.5, samples=200] {1/sqrt((1-x^2)^2+(0.6*x)^2)};
+\addplot[black, dashdotted, line width=0.8pt, domain=0:2.5, samples=150] {1/sqrt((1-x^2)^2+(1.0*x)^2)};
+\addplot[black!45, line width=0.8pt, domain=0:2.5, samples=150] {1/sqrt((1-x^2)^2+(2.0*x)^2)};
+\end{axis}
+\end{tikzpicture}}\hfill
+\sdpanel{B}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.49\textwidth, height=0.42\textwidth, xmin=0, xmax=2.5, ymin=0, ymax=185,
+  xtick={0,0.5,1,1.5,2,2.5}, ytick={0,90,180}, yticklabels={$0$,$\pi/2$,$\pi$}, xlabel={$r=\omega/\omega_0$}, ylabel={$\varphi$}]
+\addplot[black, line width=0.8pt, domain=0:2.5, samples=400] {atan2(0.2*x,1-x^2)};
+\addplot[black, dashed, line width=0.8pt, domain=0:2.5, samples=200] {atan2(0.4*x,1-x^2)};
+\addplot[black, densely dotted, line width=0.9pt, domain=0:2.5, samples=200] {atan2(0.6*x,1-x^2)};
+\addplot[black, dashdotted, line width=0.8pt, domain=0:2.5, samples=150] {atan2(1.0*x,1-x^2)};
+\addplot[black!45, line width=0.8pt, domain=0:2.5, samples=150] {atan2(2.0*x,1-x^2)};
+\end{axis}
+\end{tikzpicture}}
+\caption{Frequency response of the damped oscillator to the force $F_0\cos\omega t$ (\cref{thm:frequency-response}), for the damping ratios $\zeta=0.1$ (solid), $0.2$ (dashed), $0.3$ (dotted), $0.5$ (dash-dotted) and $1$ (grey). (A) The amplitude response $kR$, the amplitude of the steady state divided by the static displacement $F_0/k$; its peak, at $r=\sqrt{1-2\zeta^2}$, has the height $1/(2\zeta\sqrt{1-\zeta^2})$, which is $5.03$, $2.55$, $1.75$ and $1.15$ for the first four values, and for $\zeta\ge1/\sqrt2$ there is no peak. (B) The phase lag $\varphi$, which passes $\pi/2$ at $r=1$ for every damping ratio.\label{fig:response}}
+\end{figure}
+
+The sharpness of the resonance is measured by the \term{quality factor} $Q\coloneqq1/(2\zeta)=\sqrt{mk}/c$. By the theorem, the peak height relative to the static displacement is $Q/\sqrt{1-1/(4Q^2)}$, which is close to $Q$ when $Q$ is large: a lightly damped oscillator with $Q=100$ amplifies a force at its natural frequency about a hundredfold, and a force whose frequency differs from it by ten per cent hardly at all, since $kR=1/\sqrt{(1-r^2)^2+(r/Q)^2}$ is about $4.8$ at $r=1.1$.
+
+\subsection{Undamped Resonance and Beats}
+
+Without damping, the steady state of \eqref{eq:oscillator-normalised} with the force $F_0\cos\omega t$ is
+\[
+y_{\mathrm p}(t)=\frac{f_0\cos\omega t}{\omega_0^2-\omega^2},\qquad f_0\coloneqq\frac{F_0}m,\qquad\omega\ne\omega_0,
+\]
+whose amplitude grows without bound as $\omega$ approaches $\omega_0$. At $\omega=\omega_0$, the number $i\omega_0$ is a simple root of $\lambda^2+\omega_0^2$, and \cref{thm:undetermined} with $s=1$ gives the particular solution
+\begin{equation}
+y_{\mathrm p}(t)=\frac{f_0}{2\omega_0}\,t\sin\omega_0t ,
+\label{eq:undamped-resonance}
+\end{equation}
+as the computation for $\omega_0=1$ in \cref{sec:variation-parameters} showed; the general case follows in the same way. The amplitude grows linearly in time (\cref{fig:resonance}A). In a real system the growth stops when the damping, however small, takes over, or when the displacement becomes so large that Hooke's law no longer holds. The factor $t$ is the factor $t^s$ of the multiplicity rule, now seen as a physical phenomenon: a force that pushes the oscillator at its own frequency is always in step with it.
+
+Close to resonance, the solution that starts at rest shows \term{beats}. The solution of $y''+\omega_0^2y=f_0\cos\omega t$ with $y(0)=y'(0)=0$ is the steady state plus the homogeneous solution $-f_0\cos(\omega_0t)/(\omega_0^2-\omega^2)$, and the identity $\cos a-\cos b=2\sin((a+b)/2)\sin((b-a)/2)$ gives
+\[
+y(t)=f_0\,\frac{\cos\omega t-\cos\omega_0t}{\omega_0^2-\omega^2}=\frac{2f_0}{\omega_0^2-\omega^2}\,\sin\frac{(\omega_0-\omega)t}2\,\sin\frac{(\omega_0+\omega)t}2 .
+\]
+For $\omega$ close to $\omega_0$, the last factor oscillates rapidly with nearly the natural frequency, and the factor before it is a slowly varying envelope, which rises and falls with the period $2\pi/|\omega_0-\omega|$ (\cref{fig:resonance}B): the energy moves back and forth between the force and the oscillator, which alternately absorbs it and returns it. As $\omega\to\omega_0$, $\sin((\omega_0-\omega)t/2)/(\omega_0^2-\omega^2)\to t/(4\omega_0)$ for every $t$, and the solution tends to the resonant solution \eqref{eq:undamped-resonance}: the first beat becomes infinitely long.
+
+\begin{figure}
+\sdpanel{A}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.49\textwidth, height=0.40\textwidth, xmin=0, xmax=40, ymin=-21, ymax=21,
+  xtick={0,10,20,30,40}, ytick={-20,-10,0,10,20}, xlabel={$t$}, ylabel={$y$}]
+\addplot[black!45, dashed, line width=0.6pt, domain=0:40, samples=2] {x/2};
+\addplot[black!45, dashed, line width=0.6pt, domain=0:40, samples=2] {-x/2};
+\addplot[black, line width=0.7pt, domain=0:40, samples=500] {x*sin(deg(x))/2};
+\end{axis}
+\end{tikzpicture}}\hfill
+\sdpanel{B}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.49\textwidth, height=0.40\textwidth, xmin=0, xmax=130, ymin=-11.5, ymax=11.5,
+  xtick={0,40,80,120}, ytick={-10,-5,0,5,10}, xlabel={$t$}, ylabel={$y$}]
+\addplot[black!45, dashed, line width=0.6pt, domain=0:130, samples=200] {(2/0.19)*sin(deg(0.05*x))};
+\addplot[black!45, dashed, line width=0.6pt, domain=0:130, samples=200] {-(2/0.19)*sin(deg(0.05*x))};
+\addplot[black, line width=0.6pt, domain=0:130, samples=1200] {(cos(deg(0.9*x))-cos(deg(x)))/0.19};
+\end{axis}
+\end{tikzpicture}}
+\caption{Undamped forced oscillations $y''+y=\cos\omega t$ from rest, $y(0)=y'(0)=0$. (A) At resonance, $\omega=1$, the solution $t\sin(t)/2$ grows between the lines $\pm t/2$ (dashed). (B) Near resonance, $\omega=0.9$, the solution $(\cos0.9t-\cos t)/0.19$ beats: it oscillates with nearly the natural frequency inside the envelope $\pm(2/0.19)\sin(0.05t)$ (dashed), which has the period $2\pi/0.1=62.8$ in modulus.\label{fig:resonance}}
+\end{figure}
+
+\begin{note}{Resonance and the Tacoma Narrows Bridge}
+The collapse of the Tacoma Narrows suspension bridge in November 1940, filmed as its deck twisted in a steady wind, is often presented in textbooks as an example of resonance, the wind supposedly pushing the bridge periodically at a natural frequency. Billah and Scanlan~\cite{billah1991} examined this explanation and rejected it: the wind was steady rather than periodic, and the destructive torsional oscillation was self-excited, a form of aerodynamic \emph{flutter} in which the motion of the deck itself governed the forces that the wind exerted on it. The mechanism is not the forced resonance of a linear oscillator described in this section, and its analysis requires the aerodynamics of the deck. The lesson for the mathematics is that the forcing term of \eqref{eq:oscillator} must be a given function of time; a force that depends on the motion changes the equation itself.
+\end{note}
+
+\section{Equations with Variable Coefficients: A Brief Look}
+\label{sec:variable-coefficients}
+
+\subsection{What Can Be Solved}
+
+For variable coefficients there is no general method that produces the solutions by formulas, and the note in \cref{sec:direction-fields} explained, through the Riccati equation, why none can exist. The classes solved so far are the Euler--Cauchy equations (\cref{prop:euler-cauchy}), which become equations with constant coefficients after a change of variable, and equations of the second order of which one solution is known, which reduction of order (\cref{prop:reduction-order}) and variation of parameters (\cref{thm:variation-two}) complete. Many equations of physics, such as those of Airy, Bessel and Legendre, are solved by power series, the subject of Chapter~26. This section collects what can be said about equations of the second order without formulas: a transformation that removes the first derivative, the connection with Riccati equations, Sturm's theorems on the zeros of solutions, and a first look at boundary value problems.
+
+\begin{proposition}[Normal form]
+\label{prop:normal-form}
+Let $a_1\in C^1(I)$ and $a_0\in C(I)$, let $t_0\in I$ and $A(t)\coloneqq\int_{t_0}^ta_1(s)\,ds$. A function $y$ solves $y''+a_1(t)y'+a_0(t)y=0$ if and only if $w\coloneqq e^{A/2}y$ solves
+\[
+w''+q(t)\,w=0,\qquad q\coloneqq a_0-\frac{a_1^2}4-\frac{a_1'}2 .
+\]
+The solutions $y$ and $w$ have the same zeros.
+\end{proposition}
+
+\begin{proof}
+Write $y=we^{-A/2}$. By the product rule, $y'=(w'-a_1w/2)e^{-A/2}$ and $y''=(w''-a_1w'-a_1'w/2+a_1^2w/4)e^{-A/2}$, so
+\[
+y''+a_1y'+a_0y=e^{-A/2}\Bigl(w''-a_1w'-\frac{a_1'}2w+\frac{a_1^2}4w+a_1w'-\frac{a_1^2}2w+a_0w\Bigr)=e^{-A/2}(w''+qw),
+\]
+and the exponential has no zero.
+\end{proof}
+
+Bessel's equation $t^2y''+ty'+(t^2-\nu^2)y=0$ with a constant $\nu\ge0$ has, on $(0,\infty)$, the coefficients $a_1=1/t$ and $a_0=1-\nu^2/t^2$, so $e^{A/2}=\sqrt t$ with $t_0=1$, and $q=1-\nu^2/t^2-1/(4t^2)+1/(2t^2)=1+(1/4-\nu^2)/t^2$. For $\nu=1/2$ the normal form is $w''+w=0$, and the solutions of Bessel's equation of order $1/2$ are $(c_1\cos t+c_2\sin t)/\sqrt t$; the Bessel function $J_{1/2}$ is $\sqrt{2/(\pi t)}\sin t$~\cite[Sect.~3.4]{watson1944}. For other $\nu$, the coefficient $q(t)$ tends to $1$ as $t\to\infty$, and the theorems below show that the zeros of every solution are spaced roughly $\pi$ apart for large $t$.
+
+The normal form also connects linear equations with the Riccati equations of \cref{sec:substitutions}, as promised there.
+
+\begin{proposition}[Riccati equations and linear equations]
+\label{prop:riccati-linear}
+Let $q$ be continuous on $I$. If $w$ is a solution of $w''+q(t)w=0$ without zeros on $I$, then $y\coloneqq-w'/w$ solves the Riccati equation $y'=q(t)+y^2$ on $I$. Conversely, if $y$ solves $y'=q(t)+y^2$ on $I$, then $w\coloneqq\exp\bigl(-\int_{t_0}^ty(s)\,ds\bigr)$, for any $t_0\in I$, is a solution of $w''+qw=0$ without zeros, and $y=-w'/w$.
+\end{proposition}
+
+\begin{proof}
+For the first statement, $y'=-w''/w+(w'/w)^2=q+y^2$. For the second, $w'=-yw$ and $w''=-y'w-yw'=-(q+y^2)w+y^2w=-qw$, and $w$ has no zero, being an exponential.
+\end{proof}
+
+All solutions of the Riccati equation are therefore $y=-(c_1w_1'+c_2w_2')/(c_1w_1+c_2w_2)$ for a fundamental set $w_1,w_2$ of the linear equation, on intervals where the denominator has no zero; only the ratio $c_1:c_2$ matters, so the family has one free constant, as a first-order equation should. A solution of the Riccati equation blows up exactly at a zero of the corresponding solution of the linear equation. For $y'=1+y^2$, with $q\equiv1$, the solutions $w=\cos(t-c)$ give $y=\tan(t-c)$, which blows up at the zeros of the cosine; this is the solution used in the comparison argument of \cref{sec:existence-uniqueness}. The question when solutions of a Riccati equation blow up is thus the question where solutions of a linear equation vanish, which the following theorems answer.
+
+\subsection{Sturm's Theorems}
+
+For the rest of this section, $q$ is continuous on $I$, and we consider the equation $w''+q(t)w=0$; by \cref{prop:normal-form}, the results apply to every equation of the second order with $a_1\in C^1(I)$, since the transformation keeps the zeros. A solution is \term{nontrivial} if it is not identically zero.
+
+\begin{lemma}[Zeros are simple and isolated]
+\label{lem:simple-zeros}
+If $w$ is a nontrivial solution of $w''+q(t)w=0$ and $w(a)=0$, then $w'(a)\ne0$, and there is a $\delta>0$ such that $w$ has no other zero in $(a-\delta,a+\delta)\cap I$. Consequently, $w$ has only finitely many zeros in every closed bounded subinterval of $I$, and every zero that is not the largest one in $I$ has a next zero, unless there is none.
+\end{lemma}
+
+\begin{proof}
+If $w(a)=w'(a)=0$, then $w\equiv0$ by \cref{cor:higher-existence}. Suppose that zeros $t_n\ne a$ of $w$ converge to $a$. Then $w(a)=0$ by continuity, and $w'(a)=\lim_n(w(t_n)-w(a))/(t_n-a)=0$, a contradiction. If a closed bounded interval contained infinitely many zeros, they would have a convergent subsequence (\cref{thm:bolzano-weierstrass}), whose limit is a zero, by continuity, at which zeros accumulate. So the zeros greater than $a$ in a closed bounded interval are finitely many, and if there is one, there is a smallest.
+\end{proof}
+
+We may therefore speak of \term{consecutive zeros} $a<b$ of a nontrivial solution: zeros with no zero in between.
+
+\begin{theorem}[Sturm's separation theorem]
+\label{thm:sturm-separation}
+Let $w_1$ and $w_2$ be linearly independent real solutions of $w''+q(t)w=0$ on $I$, with real $q$. Between two consecutive zeros of $w_1$ there is exactly one zero of $w_2$. Thus the zeros of the two solutions interlace.
+\end{theorem}
+
+\begin{proof}
+Let $a<b$ be consecutive zeros of $w_1$; replacing $w_1$ by $-w_1$, we may assume $w_1>0$ on $(a,b)$. Then $w_1'(a)\ge0$ and $w_1'(b)\le0$, because the difference quotients at $a$ from the right are nonnegative and those at $b$ from the left are nonpositive, and both are nonzero by \cref{lem:simple-zeros}; so $w_1'(a)>0>w_1'(b)$. The Wronskian $W=w_1w_2'-w_1'w_2$ has no zero on $I$ (\cref{thm:wronskian-solutions}), so it has a constant sign, by the intermediate value theorem (\cref{cor:ivt}). At the zeros of $w_1$, $W(a)=-w_1'(a)w_2(a)$ and $W(b)=-w_1'(b)w_2(b)$, and since $W(a)$ and $W(b)$ have the same sign while $w_1'(a)$ and $w_1'(b)$ have opposite signs, $w_2(a)$ and $w_2(b)$ have opposite signs; neither is zero, since $W$ has no zero. By the intermediate value theorem, $w_2$ has a zero in $(a,b)$. If it had two, the same argument with the roles exchanged would give a zero of $w_1$ between them, contradicting the choice of $a$ and $b$.
+\end{proof}
+
+For $w''+w=0$, the theorem is the familiar interlacing of the zeros of $\sin t$ and $\cos t$, or of any two solutions $\sin(t-\alpha)$ and $\sin(t-\beta)$ with $\alpha-\beta\notin\pi\mathbb Z$. The remarkable point is that it holds for every continuous $q$: whatever the solutions look like, their zeros alternate.
+
+\begin{theorem}[Sturm's comparison theorem]
+\label{thm:sturm-comparison}
+Let $q_1$ and $q_2$ be real and continuous on $I$, let $w_1$ be a nontrivial real solution of $w''+q_1(t)w=0$ with consecutive zeros $a<b$, and let $w_2$ be a real solution of $w''+q_2(t)w=0$. If $q_1\le q_2$ on $(a,b)$ and $q_1(t^*)<q_2(t^*)$ for some $t^*\in(a,b)$, then $w_2$ has a zero in $(a,b)$.
+\end{theorem}
+
+\begin{proof}
+Suppose that $w_2$ has no zero in $(a,b)$; changing signs, we may assume $w_1>0$ and $w_2>0$ on $(a,b)$, so that $w_2(a)\ge0$ and $w_2(b)\ge0$ by continuity, and $w_1'(a)>0>w_1'(b)$ as in the previous proof. Let $V\coloneqq w_1w_2'-w_1'w_2$. Then
+\[
+V'=w_1w_2''-w_1''w_2=(q_1-q_2)\,w_1w_2\le0\qquad\text{on }(a,b),
+\]
+so $V$ does not increase on $[a,b]$ (\cref{cor:monotone-derivative}). But $V(a)=-w_1'(a)w_2(a)\le0$ and $V(b)=-w_1'(b)w_2(b)\ge0$. Hence $V$ is constant, equal to $0$, on $[a,b]$, and $V'=(q_1-q_2)w_1w_2$ vanishes on $(a,b)$, which is false at $t^*$, where $q_1-q_2<0$ and $w_1w_2>0$.
+\end{proof}
+
+A larger coefficient $q$ makes the solutions oscillate faster: if $q_2\ge q_1$, with strict inequality somewhere, every solution of the second equation vanishes between any two zeros of a solution of the first. Comparison with the harmonic oscillator, whose solutions $\sin\omega(t-a)$ have consecutive zeros at the distance $\pi/\omega$, turns this into estimates of the spacing of zeros.
+
+\begin{corollary}[Spacing of zeros]
+\label{cor:zero-spacing}
+Let $w$ be a nontrivial real solution of $w''+q(t)w=0$ with real $q$, and let $\omega>0$.
+\begin{enumerate}
+\item If $q>\omega^2$ on $I$, then $w$ has a zero in every interval $(a,a+\pi/\omega)$ with $[a,a+\pi/\omega]\subseteq I$.
+\item If $q<\omega^2$ on $I$, then consecutive zeros of $w$ are more than $\pi/\omega$ apart.
+\item If $q\le0$ on $I$, then $w$ has at most one zero in $I$.
+\end{enumerate}
+\end{corollary}
+
+\begin{proof}
+(i) The solution $\sin\omega(t-a)$ of $w''+\omega^2w=0$ has the consecutive zeros $a$ and $a+\pi/\omega$, both in $I$, and $\omega^2<q$; so $w$ has a zero between them by \cref{thm:sturm-comparison}. (ii) Let $a<b$ be consecutive zeros of $w$. The solution $\sin\omega(t-a)$ of $w''+\omega^2w=0$ has a zero in $(a,b)$, by \cref{thm:sturm-comparison} with $q_1=q<q_2=\omega^2$, and its first zero after $a$ is $a+\pi/\omega$; so $a+\pi/\omega<b$. (iii) If $w$ had two zeros, it would have two consecutive zeros $a<b$, with, say, $w>0$ on $(a,b)$. There $w''=-qw\ge0$, so $w$ is convex on $[a,b]$ (\cref{cor:convex-second}) and lies below the chord joining $(a,0)$ and $(b,0)$, that is, $w\le0$ on $[a,b]$, a contradiction.
+\end{proof}
+
+Airy's equation $y''=ty$ has $q(t)=-t$. On $(0,\infty)$, $q<0$, and every nontrivial solution has at most one zero there; on $(-\infty,0)$, $q>\omega^2$ on $(-\infty,-\omega^2)$ for every $\omega>0$, so the solutions oscillate, with consecutive zeros near $t$ at a distance of roughly $\pi/\sqrt{|t|}$, which tends to $0$ as $t\to-\infty$. \Cref{fig:airy} shows the two solutions with the initial values $(1,0)$ and $(0,1)$ at $t=0$, computed from their power series (Chapter~26). Their zeros interlace, as \cref{thm:sturm-separation} demands: for the first solution, the zeros nearest to $0$ are at $-1.9864$, $-3.8253$ and $-5.2956$, and for the second, besides $0$, at $-2.6664$, $-4.3425$ and $-5.7410$. The distances between consecutive zeros of the first solution decrease from $1.839$ between the two zeros nearest to $0$ to $1.027$ between the two zeros in $[-10,-8.8]$, where $\pi/\sqrt{|t|}$ is about $1.03$. For $t>0$ both solutions grow rapidly, as the equation $y''=ty$ with a positive coefficient predicts.
+
+\begin{figure}
+\sdfloat{%
+\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.68\textwidth, height=0.38\textwidth, xmin=-10, xmax=2, ymin=-1.2, ymax=3.8,
+  xtick={-10,-8,-6,-4,-2,0,2}, ytick={-1,0,1,2,3}, xlabel={$t$}, ylabel={$y$}]
+\addplot[black, line width=0.3pt, domain=-10:2, samples=2] {0};
+\addplot[black, line width=0.8pt, smooth] coordinates {(-10.00,-0.1992) (-9.95,-0.1220) (-9.90,-0.0418) (-9.85,0.0394) (-9.80,0.1197) (-9.75,0.1971) (-9.70,0.2696) (-9.65,0.3357) (-9.60,0.3936) (-9.55,0.4421) (-9.50,0.4801) (-9.45,0.5067) (-9.40,0.5214) (-9.35,0.5238) (-9.30,0.5141) (-9.25,0.4923) (-9.20,0.4593) (-9.15,0.4157) (-9.10,0.3625) (-9.05,0.3012) (-9.00,0.2330) (-8.95,0.1597) (-8.90,0.0827) (-8.85,0.0039) (-8.80,-0.0750) (-8.75,-0.1522) (-8.70,-0.2261) (-8.65,-0.2951) (-8.60,-0.3577) (-8.55,-0.4127) (-8.50,-0.4589) (-8.45,-0.4953) (-8.40,-0.5213) (-8.35,-0.5363) (-8.30,-0.5402) (-8.25,-0.5329) (-8.20,-0.5146) (-8.15,-0.4858) (-8.10,-0.4471) (-8.05,-0.3993) (-8.00,-0.3436) (-7.95,-0.2809) (-7.90,-0.2127) (-7.85,-0.1404) (-7.80,-0.0652) (-7.75,0.0112) (-7.70,0.0874) (-7.65,0.1619) (-7.60,0.2334) (-7.55,0.3004) (-7.50,0.3617) (-7.45,0.4163) (-7.40,0.4631) (-7.35,0.5014) (-7.30,0.5305) (-7.25,0.5499) (-7.20,0.5594) (-7.15,0.5588) (-7.10,0.5482) (-7.05,0.5280) (-7.00,0.4984) (-6.95,0.4601) (-6.90,0.4138) (-6.85,0.3604) (-6.80,0.3009) (-6.75,0.2362) (-6.70,0.1676) (-6.65,0.0961) (-6.60,0.0231) (-6.55,-0.0504) (-6.50,-0.1230) (-6.45,-0.1936) (-6.40,-0.2611) (-6.35,-0.3244) (-6.30,-0.3826) (-6.25,-0.4348) (-6.20,-0.4802) (-6.15,-0.5181) (-6.10,-0.5481) (-6.05,-0.5698) (-6.00,-0.5828) (-5.95,-0.5871) (-5.90,-0.5827) (-5.85,-0.5697) (-5.80,-0.5484) (-5.75,-0.5192) (-5.70,-0.4824) (-5.65,-0.4389) (-5.60,-0.3891) (-5.55,-0.3339) (-5.50,-0.2740) (-5.45,-0.2104) (-5.40,-0.1439) (-5.35,-0.0755) (-5.30,-0.0061) (-5.25,0.0634) (-5.20,0.1321) (-5.15,0.1991) (-5.10,0.2635) (-5.05,0.3245) (-5.00,0.3815) (-4.95,0.4337) (-4.90,0.4805) (-4.85,0.5215) (-4.80,0.5561) (-4.75,0.5841) (-4.70,0.6052) (-4.65,0.6191) (-4.60,0.6259) (-4.55,0.6254) (-4.50,0.6179) (-4.45,0.6034) (-4.40,0.5822) (-4.35,0.5546) (-4.30,0.5210) (-4.25,0.4818) (-4.20,0.4374) (-4.15,0.3885) (-4.10,0.3356) (-4.05,0.2792) (-4.00,0.2200) (-3.95,0.1586) (-3.90,0.0956) (-3.85,0.0317) (-3.80,-0.0325) (-3.75,-0.0965) (-3.70,-0.1595) (-3.65,-0.2210) (-3.60,-0.2805) (-3.55,-0.3375) (-3.50,-0.3915) (-3.45,-0.4421) (-3.40,-0.4889) (-3.35,-0.5315) (-3.30,-0.5697) (-3.25,-0.6031) (-3.20,-0.6317) (-3.15,-0.6553) (-3.10,-0.6736) (-3.05,-0.6868) (-3.00,-0.6947) (-2.95,-0.6974) (-2.90,-0.6950) (-2.85,-0.6876) (-2.80,-0.6752) (-2.75,-0.6581) (-2.70,-0.6365) (-2.65,-0.6106) (-2.60,-0.5807) (-2.55,-0.5470) (-2.50,-0.5098) (-2.45,-0.4694) (-2.40,-0.4262) (-2.35,-0.3803) (-2.30,-0.3323) (-2.25,-0.2823) (-2.20,-0.2308) (-2.15,-0.1780) (-2.10,-0.1242) (-2.05,-0.0698) (-2.00,-0.0150) (-1.95,0.0399) (-1.90,0.0946) (-1.85,0.1488) (-1.80,0.2023) (-1.75,0.2549) (-1.70,0.3064) (-1.65,0.3567) (-1.60,0.4054) (-1.55,0.4525) (-1.50,0.4979) (-1.45,0.5414) (-1.40,0.5829) (-1.35,0.6224) (-1.30,0.6598) (-1.25,0.6951) (-1.20,0.7282) (-1.15,0.7591) (-1.10,0.7878) (-1.05,0.8144) (-1.00,0.8388) (-0.95,0.8611) (-0.90,0.8814) (-0.85,0.8997) (-0.80,0.9161) (-0.75,0.9307) (-0.70,0.9435) (-0.65,0.9546) (-0.60,0.9643) (-0.55,0.9724) (-0.50,0.9793) (-0.45,0.9849) (-0.40,0.9894) (-0.35,0.9929) (-0.30,0.9955) (-0.25,0.9974) (-0.20,0.9987) (-0.15,0.9994) (-0.10,0.9998) (-0.05,1.0000) (0.00,1.0000) (0.05,1.0000) (0.10,1.0002) (0.15,1.0006) (0.20,1.0013) (0.25,1.0026) (0.30,1.0045) (0.35,1.0072) (0.40,1.0107) (0.45,1.0152) (0.50,1.0209) (0.55,1.0279) (0.60,1.0363) (0.65,1.0462) (0.70,1.0578) (0.75,1.0713) (0.80,1.0868) (0.85,1.1045) (0.90,1.1245) (0.95,1.1470) (1.00,1.1723) (1.05,1.2005) (1.10,1.2319) (1.15,1.2666) (1.20,1.3050) (1.25,1.3473) (1.30,1.3938) (1.35,1.4449) (1.40,1.5008) (1.45,1.5620) (1.50,1.6288) (1.55,1.7018) (1.60,1.7813) (1.65,1.8680) (1.70,1.9624) (1.75,2.0652) (1.80,2.1770) (1.85,2.2985) (1.90,2.4308) (1.95,2.5745) (2.00,2.7309)};
+\addplot[black, dashed, line width=0.8pt, smooth] coordinates {(-10.00,-0.4287) (-9.95,-0.5126) (-9.90,-0.5837) (-9.85,-0.6404) (-9.80,-0.6814) (-9.75,-0.7058) (-9.70,-0.7129) (-9.65,-0.7028) (-9.60,-0.6758) (-9.55,-0.6326) (-9.50,-0.5743) (-9.45,-0.5024) (-9.40,-0.4187) (-9.35,-0.3251) (-9.30,-0.2240) (-9.25,-0.1176) (-9.20,-0.0086) (-9.15,0.1007) (-9.10,0.2077) (-9.05,0.3099) (-9.00,0.4052) (-8.95,0.4913) (-8.90,0.5665) (-8.85,0.6291) (-8.80,0.6779) (-8.75,0.7117) (-8.70,0.7300) (-8.65,0.7324) (-8.60,0.7190) (-8.55,0.6902) (-8.50,0.6467) (-8.45,0.5895) (-8.40,0.5198) (-8.35,0.4392) (-8.30,0.3495) (-8.25,0.2525) (-8.20,0.1503) (-8.15,0.0451) (-8.10,-0.0611) (-8.05,-0.1660) (-8.00,-0.2676) (-7.95,-0.3639) (-7.90,-0.4530) (-7.85,-0.5331) (-7.80,-0.6027) (-7.75,-0.6607) (-7.70,-0.7058) (-7.65,-0.7374) (-7.60,-0.7550) (-7.55,-0.7582) (-7.50,-0.7471) (-7.45,-0.7220) (-7.40,-0.6835) (-7.35,-0.6323) (-7.30,-0.5696) (-7.25,-0.4965) (-7.20,-0.4144) (-7.15,-0.3248) (-7.10,-0.2295) (-7.05,-0.1301) (-7.00,-0.0284) (-6.95,0.0739) (-6.90,0.1748) (-6.85,0.2727) (-6.80,0.3660) (-6.75,0.4530) (-6.70,0.5324) (-6.65,0.6029) (-6.60,0.6635) (-6.55,0.7130) (-6.50,0.7509) (-6.45,0.7767) (-6.40,0.7899) (-6.35,0.7905) (-6.30,0.7786) (-6.25,0.7544) (-6.20,0.7184) (-6.15,0.6714) (-6.10,0.6140) (-6.05,0.5472) (-6.00,0.4722) (-5.95,0.3902) (-5.90,0.3023) (-5.85,0.2099) (-5.80,0.1145) (-5.75,0.0175) (-5.70,-0.0798) (-5.65,-0.1760) (-5.60,-0.2697) (-5.55,-0.3596) (-5.50,-0.4446) (-5.45,-0.5234) (-5.40,-0.5952) (-5.35,-0.6589) (-5.30,-0.7138) (-5.25,-0.7592) (-5.20,-0.7947) (-5.15,-0.8199) (-5.10,-0.8345) (-5.05,-0.8385) (-5.00,-0.8319) (-4.95,-0.8150) (-4.90,-0.7880) (-4.85,-0.7513) (-4.80,-0.7055) (-4.75,-0.6513) (-4.70,-0.5893) (-4.65,-0.5204) (-4.60,-0.4455) (-4.55,-0.3654) (-4.50,-0.2812) (-4.45,-0.1939) (-4.40,-0.1043) (-4.35,-0.0137) (-4.30,0.0771) (-4.25,0.1671) (-4.20,0.2554) (-4.15,0.3409) (-4.10,0.4229) (-4.05,0.5006) (-4.00,0.5732) (-3.95,0.6401) (-3.90,0.7007) (-3.85,0.7545) (-3.80,0.8010) (-3.75,0.8399) (-3.70,0.8709) (-3.65,0.8939) (-3.60,0.9087) (-3.55,0.9154) (-3.50,0.9139) (-3.45,0.9045) (-3.40,0.8872) (-3.35,0.8624) (-3.30,0.8304) (-3.25,0.7916) (-3.20,0.7463) (-3.15,0.6951) (-3.10,0.6384) (-3.05,0.5767) (-3.00,0.5106) (-2.95,0.4408) (-2.90,0.3676) (-2.85,0.2918) (-2.80,0.2140) (-2.75,0.1346) (-2.70,0.0543) (-2.65,-0.0264) (-2.60,-0.1069) (-2.55,-0.1867) (-2.50,-0.2653) (-2.45,-0.3423) (-2.40,-0.4171) (-2.35,-0.4895) (-2.30,-0.5590) (-2.25,-0.6253) (-2.20,-0.6881) (-2.15,-0.7470) (-2.10,-0.8020) (-2.05,-0.8528) (-2.00,-0.8992) (-1.95,-0.9411) (-1.90,-0.9784) (-1.85,-1.0111) (-1.80,-1.0391) (-1.75,-1.0624) (-1.70,-1.0811) (-1.65,-1.0952) (-1.60,-1.1048) (-1.55,-1.1099) (-1.50,-1.1108) (-1.45,-1.1075) (-1.40,-1.1002) (-1.35,-1.0890) (-1.30,-1.0741) (-1.25,-1.0558) (-1.20,-1.0342) (-1.15,-1.0094) (-1.10,-0.9818) (-1.05,-0.9515) (-1.00,-0.9186) (-0.95,-0.8835) (-0.90,-0.8463) (-0.85,-0.8071) (-0.80,-0.7663) (-0.75,-0.7239) (-0.70,-0.6802) (-0.65,-0.6352) (-0.60,-0.5893) (-0.55,-0.5424) (-0.50,-0.4948) (-0.45,-0.4466) (-0.40,-0.3979) (-0.35,-0.3488) (-0.30,-0.2993) (-0.25,-0.2497) (-0.20,-0.1999) (-0.15,-0.1500) (-0.10,-0.1000) (-0.05,-0.0500) (0.00,0.0000) (0.05,0.0500) (0.10,0.1000) (0.15,0.1500) (0.20,0.2001) (0.25,0.2503) (0.30,0.3007) (0.35,0.3513) (0.40,0.4021) (0.45,0.4534) (0.50,0.5052) (0.55,0.5577) (0.60,0.6109) (0.65,0.6650) (0.70,0.7202) (0.75,0.7766) (0.80,0.8346) (0.85,0.8941) (0.90,0.9556) (0.95,1.0193) (1.00,1.0853) (1.05,1.1541) (1.10,1.2259) (1.15,1.3011) (1.20,1.3800) (1.25,1.4631) (1.30,1.5508) (1.35,1.6435) (1.40,1.7417) (1.45,1.8460) (1.50,1.9571) (1.55,2.0755) (1.60,2.2019) (1.65,2.3371) (1.70,2.4820) (1.75,2.6375) (1.80,2.8044) (1.85,2.9841) (1.90,3.1775) (1.95,3.3860) (2.00,3.6111)};
+\end{axis}
+\end{tikzpicture}}{The solutions of Airy's equation $y''=ty$ with $y(0)=1$, $y'(0)=0$ (solid) and with $y(0)=0$, $y'(0)=1$ (dashed). For $t<0$ they oscillate ever faster, with interlacing zeros (\cref{thm:sturm-separation}); for $t>0$, where the coefficient $q=-t$ is negative, each has at most one zero (\cref{cor:zero-spacing}).\label{fig:airy}}
+\end{figure}
+
+\subsection{Boundary Value Problems}
+
+An initial value problem prescribes $y$ and $y'$ at one point, and \cref{cor:higher-existence} guarantees exactly one solution. A \term{boundary value problem} prescribes conditions at two points, and then there may be no solution, one, or infinitely many. The simplest example already shows all three possibilities.
+
+\begin{proposition}[A boundary value problem]
+\label{prop:boundary-value}
+Let $\lambda\in\mathbb R$ and $g\in C[0,\pi]$, and consider
+\[
+y''+\lambda y=g\quad\text{on }[0,\pi],\qquad y(0)=y(\pi)=0 .
+\]
+\begin{enumerate}
+\item For $g\equiv0$, the problem has a nonzero solution if and only if $\lambda=n^2$ for an integer $n\ge1$, and then the solutions are the multiples of $\sin nt$.
+\item If $\lambda$ is not of this form, the problem has exactly one solution for every $g$.
+\item If $\lambda=n^2$, the problem has a solution if and only if $\int_0^\pi g(t)\sin nt\,dt=0$, and then infinitely many.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) For $\lambda<0$, write $\lambda=-\mu^2$ with $\mu>0$; the solutions of the equation are $c_1\cosh\mu t+c_2\sinh\mu t$, and $y(0)=0$ gives $c_1=0$, while $\sinh\mu\pi\ne0$ gives $c_2=0$. For $\lambda=0$, the solutions are $c_1+c_2t$, and both conditions give $c_1=c_2=0$. For $\lambda=\mu^2$ with $\mu>0$, the solutions are $c_1\cos\mu t+c_2\sin\mu t$; $y(0)=0$ gives $c_1=0$, and $y(\pi)=c_2\sin\mu\pi=0$ has a solution $c_2\ne0$ if and only if $\mu\pi\in\pi\mathbb Z$ (\cref{thm:trig-signs}), that is, $\mu=n\in\mathbb N$, $n\ge1$.
+
+(ii) and (iii): let $y_{\mathrm p}$ be the solution of the equation with $y_{\mathrm p}(0)=y_{\mathrm p}'(0)=0$ (\cref{thm:variation-two}), and let $u$ be the solution of the homogeneous equation with $u(0)=0$, $u'(0)=1$, which is $\sinh(\mu t)/\mu$, $t$ or $\sin(\mu t)/\mu$ in the three cases above. Every solution with $y(0)=0$ is $y_{\mathrm p}+cu$, since the solutions with $y(0)=0$ form a flat of dimension $1$ by \cref{thm:solution-space}, and the boundary condition at $\pi$ is $y_{\mathrm p}(\pi)+cu(\pi)=0$. If $\lambda$ is not a square $n^2$, then $u(\pi)\ne0$ by the computation in (i), and there is exactly one $c$. If $\lambda=n^2$, then $u(\pi)=0$, and the problem is solvable, by any $c$, if and only if $y_{\mathrm p}(\pi)=0$. By \cref{thm:variation-two} with the Cauchy function $\sin n(t-s)/n$,
+\[
+y_{\mathrm p}(\pi)=\frac1n\int_0^\pi\sin n(\pi-s)\,g(s)\,ds=\frac{(-1)^{n+1}}n\int_0^\pi\sin(ns)\,g(s)\,ds ,
+\]
+since $\sin(n\pi-ns)=-\cos(n\pi)\sin(ns)$ by the addition formula and $\cos n\pi=(-1)^n$ (\cref{thm:trig-periodic}).
+\end{proof}
+
+Part (i) is an eigenvalue problem for the operator $-D^2$ on the functions that vanish at $0$ and $\pi$: the eigenvalues are $1,4,9,\ldots$, and the eigenfunctions are $\sin nt$, which \cref{sec:eigen-definitions} and \cref{sec:spectral-theorem} met as the eigenvectors of a self-adjoint operator. Their discrete counterparts are the eigenvectors of the second difference matrix $T_n$ of \cref{thm:second-difference-eigen}, whose components are samples of $\sin(j\pi x)$; indeed $T_n\mathbf u/h^2$ approximates $-u''$ on a grid of spacing $h$. Parts (ii) and (iii) are the Fredholm alternative of \cref{cor:fredholm-square} in this setting: either the homogeneous problem has only the zero solution, and then the inhomogeneous problem has exactly one solution, or it has nonzero solutions, and then the inhomogeneous problem is solvable exactly when $g$ is orthogonal to them, in the inner product $\int_0^\pi fg$.
+
+\begin{note}{Sturm--Liouville problems}
+The proposition is the simplest case of a \emph{Sturm--Liouville problem}: find the numbers $\lambda$ for which $-(p(t)y')'+r(t)y=\lambda\rho(t)y$ on $[a,b]$, with $p,\rho>0$ and boundary conditions at $a$ and $b$ of the form $\alpha y(a)+\beta y'(a)=0$, has a nonzero solution. The operator on the left is self-adjoint with respect to the inner product $\int_a^bfg\rho$, by two integrations by parts, as $-D^2$ was in \cref{sec:adjoints}. The theory states that the eigenvalues are real and form an increasing sequence $\lambda_1<\lambda_2<\cdots$ tending to infinity, that each eigenspace has dimension $1$, that the eigenfunction of $\lambda_n$ has exactly $n-1$ zeros in $(a,b)$, a consequence of Sturm's comparison theorem, and that the eigenfunctions are orthogonal and every reasonable function can be expanded in a series of them, as in the Fourier sine series for $\sin nt$. This is the infinite-dimensional spectral theorem of the note in \cref{sec:spectral-theorem}. Teschl~\cite[Chap.~5]{teschl2012} and Coddington and Levinson~\cite[Chaps.~7 and~8]{coddington1955} prove these results, and Volume~II develops the expansion in eigenfunctions.
+\end{note}
+
+\section{Solving Linear Equations Numerically: A First Look}
+\label{sec:higher-numerics}
+
+\subsection{Euler's Method for the Oscillator}
+
+Equations of higher order are solved numerically by writing them as first-order systems (\cref{prop:companion-system}) and applying a method for systems. Euler's method of \cref{sec:euler} reads $\mathbf x_{j+1}=\mathbf x_j+h\,\mathbf f(t_j,\mathbf x_j)$ for a system $\mathbf x'=\mathbf f(t,\mathbf x)$, and the proof of its convergence (\cref{thm:euler-convergence}) carries over to systems when absolute values are replaced by norms~\cite[Chap.~II]{hairer1993}. Convergence as $h\to0$ is not the whole story, however. For the harmonic oscillator $y''+\omega^2y=0$, written as $y'=v$, $v'=-\omega^2y$, the energy $E\coloneqq(v^2+\omega^2y^2)/2$ is constant along every solution (\cref{prop:oscillator-energy}, with $m=1$ and $k=\omega^2$), and it is natural to ask what the numerical methods do with it. Three methods differ in where the slopes are evaluated:
+\begin{align*}
+y_{j+1}&=y_j+hv_j, & v_{j+1}&=v_j-h\omega^2y_j &&\text{(Euler)},\\
+y_{j+1}&=y_j+hv_{j+1}, & v_{j+1}&=v_j-h\omega^2y_{j+1} &&\text{(backward Euler)},\\
+y_{j+1}&=y_j+hv_j, & v_{j+1}&=v_j-h\omega^2y_{j+1} &&\text{(symplectic Euler)}.
+\end{align*}
+The backward Euler method of \cref{sec:euler} is implicit, but for this linear system its two equations are a $2\times2$ linear system for $(y_{j+1},v_{j+1})$. The third method differs from Euler's in a single symbol: the velocity is updated with the new position. It is explicit, since $y_{j+1}$ is computed first. Let $E_j\coloneqq(v_j^2+\omega^2y_j^2)/2$.
+
+\begin{proposition}[Energy of the discrete oscillator]
+\label{prop:discrete-energy}
+Let $h>0$ and $\omega>0$.
+\begin{enumerate}
+\item Euler's method gives $E_{j+1}=(1+h^2\omega^2)E_j$, and the backward Euler method $E_{j+1}=E_j/(1+h^2\omega^2)$.
+\item The symplectic Euler method keeps the quantity $Q_j\coloneqq v_j^2+\omega^2y_j^2+h\omega^2y_jv_j$ exactly constant. If $h\omega<2$, then $Q_0/(2+h\omega)\le E_j\le Q_0/(2-h\omega)$ for all $j$, and the matrix of one step has the eigenvalues $e^{\pm i\theta}$ with $\cos\theta=1-h^2\omega^2/2$.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) For Euler's method, $v_{j+1}^2+\omega^2y_{j+1}^2=(v_j-h\omega^2y_j)^2+\omega^2(y_j+hv_j)^2=(1+h^2\omega^2)(v_j^2+\omega^2y_j^2)$, the mixed terms $\mp2h\omega^2y_jv_j$ cancelling. For the backward method, the same computation with the roles of the old and new values exchanged gives $v_j^2+\omega^2y_j^2=(1+h^2\omega^2)(v_{j+1}^2+\omega^2y_{j+1}^2)$, since $v_j=v_{j+1}+h\omega^2y_{j+1}$ and $y_j=y_{j+1}-hv_{j+1}$.
+
+(ii) From $v_{j+1}=v_j-h\omega^2y_{j+1}$ we get $v_{j+1}^2+h\omega^2y_{j+1}v_{j+1}=v_{j+1}(v_{j+1}+h\omega^2y_{j+1})=v_{j+1}v_j=v_j^2-h\omega^2y_{j+1}v_j$, so
+\[
+Q_{j+1}=v_j^2+\omega^2y_{j+1}(y_{j+1}-hv_j)=v_j^2+\omega^2(y_j+hv_j)\,y_j=Q_j .
+\]
+Since $2\omega|y_jv_j|\le\omega^2y_j^2+v_j^2=2E_j$, the term $h\omega^2y_jv_j$ lies between $-h\omega E_j$ and $h\omega E_j$, so $(2-h\omega)E_j\le Q_j=Q_0\le(2+h\omega)E_j$. One step maps $(y_j,v_j)$ to $(y_j+hv_j,\,-h\omega^2y_j+(1-h^2\omega^2)v_j)$, so its matrix has the trace $2-h^2\omega^2$ and the determinant $1$; its characteristic polynomial $\lambda^2-(2-h^2\omega^2)\lambda+1$ has, for $h\omega<2$, the nonreal roots $e^{\pm i\theta}$, whose product is $1$ and whose sum is $2\cos\theta=2-h^2\omega^2$.
+\end{proof}
+
+Euler's method thus multiplies the energy by $1+h^2\omega^2>1$ in every step, however small the step: its approximations spiral outwards in the phase plane, while those of the backward method spiral inwards (\cref{fig:phase-orbits}). Over a fixed time $T=nh$ the factor $(1+h^2\omega^2)^{T/h}$ tends to $1$ as $h\to0$, in accordance with convergence, but over long times it is disastrous. \Cref{tab:oscillator-energy} shows the computed values for $\omega=1$, $h=0.1$, $y_0=1$ and $v_0=0$, in binary64 arithmetic with plain Python on the machine described in \cref{sec:systems-practice}; the energies of the first two methods agree with $(1.01)^{\pm n}$, as the proposition predicts. The symplectic Euler method keeps the energy within the bounds $1/(1+h\omega/2)=0.9524$ and $1/(1-h\omega/2)=1.0526$ times its initial value, and the computed ratios over $10\,000$ steps stayed within $[0.952381,1.052632]$. Its solution is not exact, however: by the eigenvalues of the proposition it oscillates with the frequency $\theta/h=1.000417$ instead of $1$, for $h=0.1$, so that after $10\,000$ steps its phase is ahead of that of $\cos t$ by about $1000\,(\theta/h-1)=0.42$. Methods that keep a modified energy exactly, or the area in the phase plane, are called \term{symplectic}, and their long-time behaviour for conservative systems is the subject of the book of Hairer, Lubich and Wanner~\cite{hairer2006geometric}.
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}{colspec={rlllll}, row{1}={font=\small\bfseries}}
+\toprule
+$t$ & Euler & backward Euler & \SetCell[c=2]{c} symplectic Euler & & exact \\
+& $E/E_0$ & $E/E_0$ & $E/E_0$ & $y$ & $\cos t$ \\
+\midrule
+$10$ & $2.705$ & $0.3697$ & $1.047$ & $-0.8642$ & $-0.8391$ \\
+$100$ & $2.096\times10^{4}$ & $4.771\times10^{-5}$ & $0.9596$ & $0.8592$ & $0.8623$ \\
+$1000$ & $1.636\times10^{43}$ & $6.113\times10^{-44}$ & $1.023$ & $0.2284$ & $0.5624$ \\
+\bottomrule
+\end{sdtable}}{Three methods for $y''+y=0$, $y(0)=1$, $y'(0)=0$, with the step $h=0.1$: the energy relative to its initial value at the time $t$, after $10t$ steps, and the position $y$ computed by the symplectic method. At $t=1000$ the positions of the other two methods are $-2.813\times10^{21}$ and $-1.720\times10^{-22}$.\label{tab:oscillator-energy}}
+\end{table}
+
+\begin{figure}
+\sdfloat{%
+\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.48\textwidth, height=0.48\textwidth, xmin=-1.75, xmax=1.75, ymin=-1.75, ymax=1.75,
+  xtick={-1.5,-1,-0.5,0,0.5,1,1.5}, xticklabels={,$-1$,,0,,1,}, ytick={-1.5,-1,-0.5,0,0.5,1,1.5}, yticklabels={,$-1$,,0,,1,}, xlabel={$y$}, ylabel={$v=y'$}]
+\addplot[black!45, densely dotted, line width=0.7pt, domain=0:360, samples=120] ({cos(x)},{sin(x)});
+\addplot[black, line width=0.6pt] coordinates {(1.0000,0.0000) (1.0000,-0.1000) (0.9900,-0.2000) (0.9700,-0.2990) (0.9401,-0.3960) (0.9005,-0.4900) (0.8515,-0.5801) (0.7935,-0.6652) (0.7270,-0.7446) (0.6525,-0.8173) (0.5708,-0.8825) (0.4825,-0.9396) (0.3886,-0.9878) (0.2898,-1.0267) (0.1871,-1.0557) (0.0816,-1.0744) (-0.0259,-1.0825) (-0.1341,-1.0800) (-0.2421,-1.0665) (-0.3488,-1.0423) (-0.4530,-1.0075) (-0.5538,-0.9622) (-0.6500,-0.9068) (-0.7407,-0.8418) (-0.8248,-0.7677) (-0.9016,-0.6852) (-0.9701,-0.5951) (-1.0296,-0.4981) (-1.0794,-0.3951) (-1.1190,-0.2871) (-1.1477,-0.1753) (-1.1652,-0.0605) (-1.1712,0.0560) (-1.1656,0.1732) (-1.1483,0.2897) (-1.1193,0.4046) (-1.0789,0.5165) (-1.0272,0.6244) (-0.9648,0.7271) (-0.8921,0.8236) (-0.8097,0.9128) (-0.7185,0.9938) (-0.6191,1.0656) (-0.5125,1.1275) (-0.3998,1.1788) (-0.2819,1.2187) (-0.1600,1.2469) (-0.0353,1.2629) (0.0910,1.2665) (0.2176,1.2574) (0.3434,1.2356) (0.4669,1.2013) (0.5870,1.1546) (0.7025,1.0959) (0.8121,1.0256) (0.9147,0.9444) (1.0091,0.8530) (1.0944,0.7520) (1.1696,0.6426) (1.2339,0.5256) (1.2864,0.4023) (1.3266,0.2736) (1.3540,0.1410) (1.3681,0.0056) (1.3687,-0.1313) (1.3555,-0.2681) (1.3287,-0.4037) (1.2884,-0.5365) (1.2347,-0.6654) (1.1682,-0.7889) (1.0893,-0.9057) (0.9987,-1.0146) (0.8973,-1.1145) (0.7858,-1.2042) (0.6654,-1.2828) (0.5371,-1.3493) (0.4022,-1.4030) (0.2619,-1.4432) (0.1175,-1.4694) (-0.0294,-1.4812) (-0.1775,-1.4782) (-0.3253,-1.4605) (-0.4714,-1.4280) (-0.6142,-1.3808) (-0.7523,-1.3194) (-0.8842,-1.2442) (-1.0086,-1.1558) (-1.1242,-1.0549) (-1.2297,-0.9425) (-1.3239,-0.8195) (-1.4059,-0.6871) (-1.4746,-0.5465) (-1.5292,-0.3991) (-1.5692,-0.2461) (-1.5938,-0.0892) (-1.6027,0.0702) (-1.5957,0.2304) (-1.5726,0.3900) (-1.5336,0.5473) (-1.4789,0.7006) (-1.4088,0.8485)};
+\addplot[black, dashed, line width=0.6pt] coordinates {(1.0000,0.0000) (0.9901,-0.0990) (0.9705,-0.1961) (0.9415,-0.2902) (0.9034,-0.3805) (0.8568,-0.4662) (0.8022,-0.5464) (0.7401,-0.6205) (0.6713,-0.6876) (0.5966,-0.7473) (0.5167,-0.7989) (0.4325,-0.8422) (0.3448,-0.8767) (0.2546,-0.9021) (0.1628,-0.9184) (0.0703,-0.9254) (-0.0221,-0.9232) (-0.1133,-0.9119) (-0.2024,-0.8917) (-0.2887,-0.8628) (-0.3713,-0.8257) (-0.4493,-0.7807) (-0.5222,-0.7285) (-0.5891,-0.6696) (-0.6496,-0.6046) (-0.7030,-0.5343) (-0.7490,-0.4594) (-0.7871,-0.3807) (-0.8170,-0.2990) (-0.8385,-0.2152) (-0.8515,-0.1300) (-0.8559,-0.0444) (-0.8518,0.0408) (-0.8394,0.1247) (-0.8187,0.2066) (-0.7902,0.2856) (-0.7541,0.3610) (-0.7109,0.4321) (-0.6610,0.4982) (-0.6052,0.5587) (-0.5439,0.6131) (-0.4778,0.6609) (-0.4076,0.7016) (-0.3341,0.7350) (-0.2580,0.7608) (-0.1801,0.7788) (-0.1012,0.7890) (-0.0221,0.7912) (0.0564,0.7855) (0.1336,0.7722) (0.2088,0.7513) (0.2811,0.7232) (0.3499,0.6882) (0.4146,0.6467) (0.4745,0.5993) (0.5292,0.5464) (0.5780,0.4886) (0.6207,0.4265) (0.6567,0.3608) (0.6860,0.2922) (0.7081,0.2214) (0.7230,0.1491) (0.7306,0.0761) (0.7309,0.0030) (0.7240,-0.0694) (0.7099,-0.1404) (0.6890,-0.2093) (0.6615,-0.2755) (0.6276,-0.3382) (0.5879,-0.3970) (0.5428,-0.4513) (0.4927,-0.5006) (0.4383,-0.5444) (0.3801,-0.5824) (0.3186,-0.6143) (0.2547,-0.6397) (0.1888,-0.6586) (0.1217,-0.6708) (0.0541,-0.6762) (-0.0134,-0.6749) (-0.0801,-0.6669) (-0.1453,-0.6523) (-0.2085,-0.6315) (-0.2689,-0.6046) (-0.3261,-0.5720) (-0.3795,-0.5340) (-0.4286,-0.4912) (-0.4730,-0.4439) (-0.5123,-0.3926) (-0.5461,-0.3380) (-0.5742,-0.2806) (-0.5962,-0.2210) (-0.6122,-0.1598) (-0.6220,-0.0976) (-0.6255,-0.0350) (-0.6228,0.0273) (-0.6139,0.0886) (-0.5990,0.1486) (-0.5784,0.2064) (-0.5522,0.2616) (-0.5209,0.3137)};
+\addplot[black!45, line width=0.8pt] coordinates {(1.0000,0.0000) (1.0000,-0.1000) (0.9900,-0.1990) (0.9701,-0.2960) (0.9405,-0.3901) (0.9015,-0.4802) (0.8535,-0.5656) (0.7969,-0.6452) (0.7324,-0.7185) (0.6605,-0.7845) (0.5821,-0.8428) (0.4978,-0.8925) (0.4086,-0.9334) (0.3152,-0.9649) (0.2187,-0.9868) (0.1201,-0.9988) (0.0202,-1.0008) (-0.0799,-0.9928) (-0.1792,-0.9749) (-0.2767,-0.9472) (-0.3714,-0.9101) (-0.4624,-0.8638) (-0.5488,-0.8090) (-0.6297,-0.7460) (-0.7043,-0.6756) (-0.7718,-0.5984) (-0.8317,-0.5152) (-0.8832,-0.4269) (-0.9259,-0.3343) (-0.9593,-0.2384) (-0.9832,-0.1401) (-0.9972,-0.0403) (-1.0012,0.0598) (-0.9952,0.1593) (-0.9793,0.2572) (-0.9536,0.3526) (-0.9183,0.4444) (-0.8739,0.5318) (-0.8207,0.6139) (-0.7593,0.6898) (-0.6903,0.7588) (-0.6144,0.8203) (-0.5324,0.8735) (-0.4451,0.9180) (-0.3533,0.9534) (-0.2579,0.9791) (-0.1600,0.9951) (-0.0605,1.0012) (0.0396,0.9972) (0.1394,0.9833) (0.2377,0.9595) (0.3336,0.9262) (0.4263,0.8835) (0.5146,0.8321) (0.5978,0.7723) (0.6750,0.7048) (0.7455,0.6302) (0.8086,0.5494) (0.8635,0.4630) (0.9098,0.3721) (0.9470,0.2774) (0.9747,0.1799) (0.9927,0.0806) (1.0008,-0.0195) (0.9988,-0.1193) (0.9869,-0.2180) (0.9651,-0.3145) (0.9336,-0.4079) (0.8929,-0.4972) (0.8431,-0.5815) (0.7850,-0.6600) (0.7190,-0.7319) (0.6458,-0.7965) (0.5661,-0.8531) (0.4808,-0.9012) (0.3907,-0.9403) (0.2967,-0.9699) (0.1997,-0.9899) (0.1007,-1.0000) (0.0007,-1.0000) (-0.0993,-0.9901) (-0.1983,-0.9703) (-0.2953,-0.9407) (-0.3894,-0.9018) (-0.4796,-0.8538) (-0.5650,-0.7973) (-0.6447,-0.7329) (-0.7180,-0.6611) (-0.7841,-0.5827) (-0.8424,-0.4984) (-0.8922,-0.4092) (-0.9331,-0.3159) (-0.9647,-0.2194) (-0.9867,-0.1208) (-0.9987,-0.0209) (-1.0008,0.0792) (-0.9929,0.1785) (-0.9751,0.2760) (-0.9475,0.3707) (-0.9104,0.4618) (-0.8642,0.5482)};
+\end{axis}
+\end{tikzpicture}}{The first $100$ steps, up to $t=10$, of three methods for the harmonic oscillator $y''+y=0$ with $h=0.1$, starting at $(1,0)$, in the phase plane of position and velocity: Euler's method spirals outwards (solid), the backward Euler method inwards (dashed), and the symplectic Euler method (grey) stays close to the exact orbit, the unit circle (dotted).\label{fig:phase-orbits}}
+\end{figure}
+
+\subsection{Measuring a Resonance Curve}
+
+The frequency response of \cref{thm:frequency-response} can also be measured, as an experimenter would do with a real oscillator: drive it at a given frequency, wait until the transient has died out, and record the amplitude. We integrated $y''+2\zeta y'+y=\cos rt$ with $\zeta=0.1$, from $y(0)=y'(0)=0$ up to $t=300$, with Heun's method of \cref{sec:euler} applied to the first-order system, and took the largest value of $|y_j|$ over the last four periods $2\pi/r$ as the measured amplitude. At $t=300$ the transient has decayed by the factor $e^{-\zeta t}=e^{-30}$, below $10^{-13}$. \Cref{tab:resonance} compares the measured amplitudes with $R(r)$. For the step $h=0.01$ the relative deviations are below $10^{-4}$, and halving the step reduced them by factors between $3.5$ and $4.1$. At the resonance frequency $r=\sqrt{1-2\zeta^2}=0.98995$ of \cref{thm:frequency-response}, the measured amplitude agrees with the predicted peak height $5.0252$ to within $2.4\times10^{-5}$.
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}{colspec={rlll}, row{1}={font=\small\bfseries}}
+\toprule
+$r$ & $R(r)$ & deviation, $h=0.01$ & deviation, $h=0.005$ \\
+\midrule
+$0.5$ & $1.321637$ & $-9.1\times10^{-6}$ & $-2.2\times10^{-6}$ \\
+$0.9$ & $3.820804$ & $-7.5\times10^{-5}$ & $-1.9\times10^{-5}$ \\
+$0.98995$ & $5.025189$ & $-2.4\times10^{-5}$ & $-6.1\times10^{-6}$ \\
+$1.0$ & $5.000000$ & $-7.2\times10^{-6}$ & $-2.0\times10^{-6}$ \\
+$1.1$ & $3.287980$ & $9.2\times10^{-5}$ & $2.3\times10^{-5}$ \\
+$1.5$ & $0.777910$ & $7.3\times10^{-5}$ & $1.8\times10^{-5}$ \\
+$2.0$ & $0.330409$ & $7.6\times10^{-5}$ & $1.9\times10^{-5}$ \\
+\bottomrule
+\end{sdtable}}{The amplitude response $R(r)=1/\sqrt{(1-r^2)^2+(2\zeta r)^2}$ of $y''+2\zeta y'+y=\cos rt$ with $\zeta=0.1$, and the relative deviation of the amplitude measured from a numerical solution by Heun's method with the step $h$.\label{tab:resonance}}
+\end{table}
+
+\subsection{Characteristic Roots in Floating-Point Arithmetic}
+
+For constant coefficients, \cref{thm:constant-coefficients} suggests another numerical method: compute the roots of the characteristic polynomial, and combine the exponentials $e^{\lambda_it}$ so that the initial values are matched. This is sound when the roots are well separated, but not near a multiple root. The roots are the eigenvalues of the companion matrix, which is nonderogatory, so a multiple root is an eigenvalue with a single Jordan block, and \cref{sec:computing-eigenvalues} showed that such eigenvalues are very sensitive: a perturbation of size $\varepsilon$ can move an eigenvalue with a block of size $m$ by about $\varepsilon^{1/m}$ (\cref{tab:jordan-sensitivity}). We computed the roots of $(\lambda+1)^2$ and $(\lambda+1)^3$ as the eigenvalues of their transposed companion matrices with \code{linalg.eigvals}, in binary64. For the double root, the computed roots were $-1\pm6.69\times10^{-9}i$, at a distance of about $u^{1/2}=1.05\times10^{-8}$ from the true root; for the triple root, the three computed roots were at the distance $9.32\times10^{-6}$ from $-1$, of the order of $u^{1/3}=4.8\times10^{-6}$. With the computed roots, which are distinct, we solved the Vandermonde system for the coefficients $c_i$ of the solution $\sum_ic_ie^{\lambda_it}$ of $(D+1)^3y=0$ with $y(0)=y'(0)=0$ and $y''(0)=1$, by Cramer's rule in complex binary64 arithmetic. The coefficients had moduli of about $3.8\times10^9$ and cancel almost completely, and the computed solution differed from the exact solution $t^2e^{-t}/2$ by the relative errors $1.2\times10^{-6}$ at $t=1$ and $t=2$ and $4.2\times10^{-7}$ at $t=5$, about $10^{10}$ times the unit roundoff. For the double root, the same procedure gave the solution $te^{-t}$ with relative errors below $10^{-15}$ at $t=1$, $5$ and $10$. The formula with the factors $t^j$ of \cref{thm:constant-coefficients} avoids the cancellation, but it requires knowing that a root is multiple, which floating-point arithmetic cannot decide; computing $e^{tC}$ for the companion matrix by the methods of \cref{sec:computing-matrix-functions} avoids the roots altogether.
+
+The numerical solution of differential equations, with the methods of Runge and Kutta, multistep methods, adaptive steps and methods for stiff equations, is the subject of the books of Hairer, N{\o}rsett and Wanner~\cite{hairer1993}, of Hairer and Wanner~\cite{hairer1996stiff} and of Iserles~\cite{iserles2008}; Hairer, Lubich and Wanner~\cite{hairer2006geometric} treat the methods that preserve the structure of conservative systems, of which the symplectic Euler method is the simplest.
+
+\bigskip
+A linear differential equation of order $k$ is an equation $Ly=g$ for a linear operator $L$, and its solutions are a particular solution plus the kernel of $L$. The successive approximations converge on the whole interval of continuity of the coefficients, so every initial value problem has exactly one solution there, and the kernel has dimension $k$. The Wronskian of $k$ solutions vanishes everywhere or nowhere, and Abel's formula expresses it by the coefficient of $y^{(k-1)}$; one solution of an equation of the second order gives a second by reduction of order. For constant coefficients the exponentials $e^{\lambda t}$ are eigenfunctions of $D$, the roots of the characteristic polynomial give the solutions $t^je^{\lambda t}$, the powers of $t$ coming from the Jordan blocks of the companion matrix, and conjugate roots give oscillations $t^je^{\gamma t}\cos\beta t$ and $t^je^{\gamma t}\sin\beta t$. Exponential polynomials as inputs have particular solutions of the same form, multiplied by $t^s$ at resonance, and every continuous input is handled by variation of parameters, through the Cauchy function, which for constant coefficients is a convolution with the impulse response. The damped oscillator is overdamped, critically damped or underdamped according to the sign of $c^2-4mk$, it loses energy at the rate $cy'^2$, and it responds to a periodic force with a steady state whose amplitude peaks near the natural frequency; without damping the response at the natural frequency grows linearly, and near it the solution beats. For variable coefficients, Sturm's theorems show that zeros of solutions interlace and that a larger coefficient makes them denser, and boundary value problems have solutions only under conditions of orthogonality at their eigenvalues. Numerically, Euler's method creates energy in an oscillator, a one-symbol change conserves a modified energy, and multiple characteristic roots are best avoided.
+
+The next chapter studies systems $\mathbf x'=A\mathbf x+\mathbf b(t)$ in general, with the existence theorem of this chapter as its foundation: fundamental matrices, Liouville's formula, the solution of systems with constant coefficients by eigenvalues and by the matrix exponential, the phase plane, in which the damped oscillator of \cref{sec:oscillations} appears as a spiral, and stability. Chapter~26 solves the equations of Airy, Legendre and Bessel by power series, and Chapter~27 develops the discrete counterpart of this chapter, linear recurrences with constant coefficients, whose characteristic roots, repeated roots and undetermined coefficients follow the same pattern.
+
+\chapternotes
+
+Euler solved the homogeneous linear equations with constant coefficients through the characteristic equation in the early 1740s, including the case of repeated roots, and Lagrange introduced the variation of parameters for equations of any order; Kline~\cite[Chap.~21]{kline1972} tells this history. The formula of \cref{thm:abel} carries the name of Abel, who found it for equations of the second order in 1827~\cite{abel1827}. Wronskians were introduced by Hoene-Wro\'nski in 1812, and the name was given by Muir in 1882; Bostan and Dumas~\cite{bostan2010} recount the history together with that of Peano's counterexamples, which \cref{ch:determinants} described. Sturm's memoir of 1836~\cite{sturm1836} contains the separation and comparison theorems of \cref{sec:variable-coefficients}, which began the qualitative theory of differential equations. Hooke announced the law of the spring in 1678~\cite{hooke1678}. The account of the Tacoma Narrows Bridge follows Billah and Scanlan~\cite{billah1991}.
+
+Boyce, DiPrima and Meade~\cite{boyce2017} treat the methods of this chapter with many applications to vibrations and circuits, and Apostol~\cite[Chap.~6]{apostol1969calculus} develops the linear algebra of linear differential equations, the dimension of the solution space and the annihilator method. Coddington~\cite{coddington1961} gives an elementary but complete account of linear equations, including the existence theorem by successive approximations, and Birkhoff and Rota~\cite{birkhoff1989} treat Sturm's theorems and boundary value problems. For the theory of linear systems and of Sturm--Liouville problems, Coddington and Levinson~\cite{coddington1955}, Hartman~\cite[Chaps.~IV and~XI]{hartman2002} and Teschl~\cite{teschl2012} are standard. Hairer, Lubich and Wanner~\cite{hairer2006geometric} explain why symplectic methods conserve energy so well over long times.
+
+\chapterreferences
