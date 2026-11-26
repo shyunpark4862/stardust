@@ -49,6 +49,67 @@
 \crefname{assumption}{Assumption}{Assumptions}
 
 % ---------------------------------------------------------------------------
+% 2a. References to earlier volumes (2026-11-27). In the preamble of a later volume, one
+% line per earlier volume (its number, roman or arabic, and the job name of its main file):
+%   \externalvolume{1}{vol1}        % or \externalvolume{I}{vol1}
+% reads the labels of build/vol1.aux (with xr, loaded only here) under the prefix
+% "sd@v1@", so that no label of the earlier volume can clash with one of this volume.
+% In the text:
+%   \vcref{1}{thm:evt}             Theorem 5.47 of Volume I
+%   \vcref{1}{thm:a,lem:b}         Theorem 5.47 and Lemma 6.3 of Volume I (cleveref's lists)
+%   \Vcref{1}{ch:limits}           the same at the start of a sentence (\Cref)
+%   \veqref{1}{eq:taylor}          (8.12) of Volume I, the \eqref form for equations
+% The numbers are cleveref's, without links (another PDF is not linked to). A label that is
+% not found, or a missing aux file, gives ?? and LaTeX's undefined-reference warning. The
+% earlier volume must therefore be built first; latexmk records the aux file as an input
+% and rebuilds the later volume when it changes. Without \externalvolume, nothing here is
+% used and xr is not loaded.
+% ---------------------------------------------------------------------------
+\def\sd@extdir{build/}
+\ExplSyntaxOn
+% \sd@volarabic{<1 or I>}: \sd@vn := the volume number in arabic numerals (-1 if invalid)
+\regex_const:Nn \c__sdbook_arabic_regex { \A \s* [0-9]+ \s* \Z }
+\cs_new_protected:Npn \sd@volarabic #1
+  {
+    \regex_match:NnTF \c__sdbook_arabic_regex {#1}
+      { \tl_gset:Ne \sd@vn { \int_eval:n {#1} } }
+      { \tl_gset:Ne \sd@vn { \tl_trim_spaces_apply:nN {#1} \int_from_roman:n } }
+    \int_compare:nNnT { \sd@vn } < { 1 } { \tl_gset:Nn \sd@vn { -1 } }
+  }
+% \sd@vlabels{<label,label,...>}: \sd@vlist := the labels with the prefix of volume \sd@vn
+\clist_new:N \l__sdbook_vlabels_clist
+\cs_new_protected:Npn \sd@vlabels #1
+  {
+    \clist_clear:N \l__sdbook_vlabels_clist
+    \clist_map_inline:nn {#1}
+      { \exp_args:NNe \clist_put_right:Nn \l__sdbook_vlabels_clist { sd@v \sd@vn @ \exp_not:n {##1} } }
+    \tl_gset:Ne \sd@vlist { \clist_use:Nn \l__sdbook_vlabels_clist { , } }
+  }
+\ExplSyntaxOff
+\newcommand\externalvolume[2]{%
+  \sd@volarabic{#1}%
+  \ifnum\sd@vn<\@ne
+    \ClassError{sdbook-eng}{\string\externalvolume: `#1' is not a volume number}{}%
+  \else
+    \RequirePackage{xr}%
+    \global\@namedef{sd@extvol@\sd@vn}{}%
+    \edef\sd@tempa{\noexpand\externaldocument[sd@v\sd@vn @]{\sd@extdir#2}}\sd@tempa
+  \fi}
+\@onlypreamble\externalvolume
+% the volume number and the labels, with a warning for a volume not declared
+\newcommand\sd@vsetup[2]{%
+  \sd@volarabic{#1}\sd@vlabels{#2}%
+  \@ifundefined{sd@extvol@\sd@vn}{\ClassWarning{sdbook-eng}{Volume `#1' was not
+    declared with \string\externalvolume; its references are undefined}}{}}
+\newcommand\sd@vof{ of Volume~\@Roman\sd@vn}
+\NewDocumentCommand\vcref{mm}{\sd@vsetup{#1}{#2}%
+  \expandafter\cref\expandafter*\expandafter{\sd@vlist}\sd@vof}
+\NewDocumentCommand\Vcref{mm}{\sd@vsetup{#1}{#2}%
+  \expandafter\Cref\expandafter*\expandafter{\sd@vlist}\sd@vof}
+\NewDocumentCommand\veqref{mm}{\sd@vsetup{#1}{#2}%
+  \textup{\tagform@{\expandafter\ref\expandafter*\expandafter{\sd@vlist}}}\sd@vof}
+
+% ---------------------------------------------------------------------------
 % 3. Theorem environments -- SNmono's own look, rebuilt with amsthm
 % ---------------------------------------------------------------------------
 % theorem, lemma, proposition, corollary: bold head, italic body

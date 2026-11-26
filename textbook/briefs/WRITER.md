@@ -1,6 +1,6 @@
 # Brief for the chapter author
 
-You are the author of one chapter of the English textbook series "Foundations of Scientific Computing: Theory, Algorithms, and Implementation" (LaTeX). The manager's message names the chapter, its plan file and its .tex file.
+You are the author of one chapter of the English textbook series "Foundations of Scientific Computing: Theory, Algorithms, and Implementation" (LaTeX). The manager's message names the chapter, its plan file (plans/vN-NN-<name>.md) and its .tex file (chapters/vN-NN-<name>.tex, where N is the volume).
 
 Work only inside /Users/sanghyunpark/Desktop/stardust/textbook/. The rest of the repository is being edited by another developer: read it if you need to, never modify, build or run it. Do not download or install anything.
 
@@ -10,7 +10,7 @@ Work only inside /Users/sanghyunpark/Desktop/stardust/textbook/. The rest of the
 3. OUTLINE.md — where the chapter sits and what neighbouring chapters cover, so that you neither repeat nor presuppose them wrongly.
 4. sdbook-eng.cls comments — every command of the fixed design: theorem environments (theorem, lemma, proposition, corollary, definition, assumption; no remark/example/listing — worked examples go in the running text), \sdfloat{content}{caption\label{}} for every figure and table, sdtable / sdlongtable, the sdplot pgfplots style, \sdpanel, the algorithm design with \Name, the `note` box, lists, symbols lists, \term{}, \code{}, \abstract{}, \chapterreferences.
 5. plans/PROMISES.md — forward promises made by earlier chapters. Keep every promise addressed to your chapter (mark it [완료] there) and add the promises your chapter makes to later ones.
-6. The previous chapter of the volume (chapters/) — for notation, conventions, tone and depth. Use what it has established; refer to its results with \cref.
+6. The previous chapter of the volume (chapters/; for a volume's first chapter, the last chapter of the previous volume) — for notation, conventions, tone and depth. Use what it has established; refer to its results with \cref (results of an earlier volume with \vcref, below).
 
 ## What to write
 - The chapter file, and the edits to the volume's main file (volN.tex): \input the chapter in its place (start a new \part where OUTLINE.md starts one) and add the chapter's new symbols to the Notation chapter.
@@ -31,6 +31,7 @@ Work only inside /Users/sanghyunpark/Desktop/stardust/textbook/. The rest of the
 - No pseudo-environments either: never open a paragraph with a run-in label such as \emph{Example.}, \emph{Examples.}, \emph{Remark.}, \textbf{Note.} or \paragraph{...}; examples and remarks are ordinary sentences that lead in by themselves.
 - No exercises, avoid footnotes, material beyond a standard first course goes in a `note` box, no explanation of any particular language's syntax.
 - The natural numbers include 0. Other volumes are "Volume IV" (roman). Chapters not yet written are named in words ("Chapter 3") rather than with \cref.
+- Refer to results of earlier volumes only with \vcref{<volume>}{<label>} (\Vcref at the start of a sentence, \veqref for an equation; e.g. \vcref{1}{thm:evt} prints "Theorem 5.47 of Volume I"), never with typed numbers. Check that the label exists in the earlier volume's sources (grep that volume's chapters, chapters/vM-*.tex) and that the result says what you use it for. The earlier volume must have been built (its aux file in build/ is read); an unknown label shows ?? and a warning.
 - End the chapter with \chapternotes (the unnumbered section "Notes": reading guide and sources), then \chapterreferences.
 - Every figure and table is referred to in the text. In plots, axes are drawn over fills and curves.
 - Numbers: compute them yourself (plain python3, fractions/decimal). When the library must be run, use only the shared build described in BUILD.md, and never trust numbers quoted in the library's documentation.
