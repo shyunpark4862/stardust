@@ -1,0 +1,93 @@
+---
+kind: function
+title: count_nonzero
+names: [count_nonzero]
+group: Reductions
+order: 8
+signatures:
+  - "sd.count_nonzero(x, /, *, axis=None, keepdims=False)"
+summary: Count the nonzero elements over the given axes.
+params:
+  - name: x
+    type: array
+    kind: positional-only
+    desc: "Array whose elements are counted, of any dtype."
+  - name: axis
+    type: int, tuple of int or None
+    kind: keyword-only
+    default: None
+    desc: "Axis or axes to count over. `None` counts over all axes, and `()` over none. A list is accepted like a tuple. See [`axis` and `keepdims`](/start/conventions/#axis-and-keepdims)."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    default: "False"
+    desc: "If `True`, each reduced axis stays in the result with length 1."
+returns:
+  - type: ndarray or int
+    desc: "Counts, `int64`, with the shape of `x` without the reduced axes (with those axes of length 1 if `keepdims` is `True`). A Python `int` when every axis is reduced and `keepdims` is `False`."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`, if `axis` is not an `int`, a tuple or list of `int`, or `None`, or if `keepdims` is not `True` or `False`."
+  - type: ValueError
+    desc: "If an axis is out of range or appears twice."
+  - type: OverflowError
+    desc: "If an axis is an `int` outside the `int64` range."
+seeAlso: [any-all, sum, nonzero, bincount, isnan-isinf-isfinite]
+---
+
+`count_nonzero` counts the elements of `x` that are not equal to zero, along the axes given by `axis`. The reduced
+axes are removed from the shape, or kept with length 1 when `keepdims=True` (see
+[`axis` and `keepdims`](/start/conventions/#axis-and-keepdims)). With the default `axis=None`, the result is one
+Python `int`.
+
+An element counts when it is nonzero by the rule of [`any` and `all`](/api/array/any-all/): `True`, a nonzero number,
+a complex number with a nonzero part, and NaN count; `False`, `0`, `0.0`, `-0.0` and `0j` do not. The result equals
+`sd.sum(x != 0)` with the same `axis` and `keepdims`. An empty count is 0.
+
+Applied to a comparison or another Boolean array, `count_nonzero` counts the elements for which the condition holds.
+There is no method form.
+
+## Examples
+
+Nonzero elements in total, and per column and row:
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([[0, 1, 7, 0], [3, 0, 2, 0]])
+>>> sd.count_nonzero(x)
+4
+>>> sd.count_nonzero(x, axis=0)
+array([1, 1, 2, 0], dtype=int64)
+>>> sd.count_nonzero(x, axis=1, keepdims=True)
+array([[2],
+       [2]], dtype=int64)
+```
+
+The number of elements that satisfy a condition, and the number of NaN values:
+
+```python
+>>> sd.count_nonzero(x > 1)
+3
+>>> f = sd.asarray([0.0, -0.0, sd.nan, 2.5, sd.nan])
+>>> sd.count_nonzero(f)
+3
+>>> sd.count_nonzero(sd.isnan(f))
+2
+```
+
+An empty axis counts 0:
+
+```python
+>>> sd.count_nonzero(sd.zeros((3, 0)), axis=1)
+array([0, 0, 0], dtype=int64)
+```
+
+<Reference />
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.count_nonzero` and, in R, `sum(x != 0)`.
+
+- The results agree with NumPy's, including NaN counting as nonzero. A count over all axes is a Python `int`.
+- `x` must be an `sd.ndarray`; lists raise `TypeError`.
+- In R, `sum(x != 0)` is `NA` when `x` contains `NaN`, since the comparison gives `NA`. Here NaN counts as nonzero.

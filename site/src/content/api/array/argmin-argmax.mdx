@@ -1,0 +1,130 @@
+---
+kind: function
+title: argmin, argmax
+names: [argmin, argmax, ndarray.argmin, ndarray.argmax]
+group: Reductions
+order: 6
+signatures:
+  - "sd.argmin(x, /, *, axis=None, keepdims=False)"
+  - "sd.argmax(x, /, *, axis=None, keepdims=False)"
+  - "sd.ndarray.argmin(*, axis=None, keepdims=False)"
+  - "sd.ndarray.argmax(*, axis=None, keepdims=False)"
+summary: Return the index of the smallest or the largest element.
+params:
+  - name: x
+    type: array
+    kind: positional-only
+    desc: "Array of dtype `bool`, `int64` or `float64`. In the method form, the array the method is called on."
+  - name: axis
+    type: int or None
+    kind: keyword-only
+    default: None
+    desc: "Axis to search along. `None` searches all elements and returns a position in the flattened array. A tuple or list is rejected."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    default: "False"
+    desc: "If `True`, the searched axis stays in the result with length 1; with `axis=None`, every axis does."
+returns:
+  - type: ndarray or int
+    desc: "Indices, `int64`, with the shape of `x` without `axis` (with it of length 1 if `keepdims` is `True`). With `axis=None`, a Python `int`, the position of the element in row-major order (an array of shape `(1, ..., 1)` if `keepdims` is `True`)."
+raises:
+  - type: TypeError
+    desc: "If `x` is complex, if `x` is not an `sd.ndarray`, if `axis` is not an `int` or `None`, or if `keepdims` is not `True` or `False`."
+  - type: ValueError
+    desc: "If `axis` is out of range, or if some element of the result has no elements to search (an empty `x`, or an `axis` of length 0)."
+  - type: OverflowError
+    desc: "If `axis` is an `int` outside the `int64` range."
+seeAlso: [min-max, nan-reductions, take_along_axis, sort-argsort, nonzero]
+---
+
+`argmin` returns the position of the smallest element of `x`, and `argmax` the position of the largest. With an
+`axis`, they search along that axis and return, for each position in the other axes, an index along `axis`, counted
+from 0; the axis is removed from the shape, or kept with length 1 when `keepdims=True` (see
+[`axis` and `keepdims`](/start/conventions/#axis-and-keepdims)). Unlike the other reductions, `axis` is a single
+`int` or `None`. The methods `x.argmin(...)` and `x.argmax(...)` are the same functions.
+
+With the default `axis=None`, the result is one Python `int`: the position of the element when `x` is read in
+row-major order, with the last axis varying fastest, as in [`ravel`](/api/array/ravel/). This order does not depend
+on how `x` is laid out in memory.
+
+When several elements share the smallest or largest value, the first position is returned. NaN counts as more extreme
+than every number in both functions: if the elements searched contain NaN, the result is the position of the first
+NaN. [`nanargmin` and `nanargmax`](/api/array/nan-reductions/) skip NaN instead. Searching no elements (an empty `x`,
+or an `axis` of length 0) raises `ValueError` unless the result itself is empty, and complex input raises
+`TypeError`.
+
+## Examples
+
+The position of the smallest and the largest element, overall and per column and row:
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([[3, 8, 1], [5, 2, 9]])
+>>> sd.argmin(x), sd.argmax(x)
+(2, 5)
+>>> sd.argmax(x, axis=0)
+array([1, 0, 1], dtype=int64)
+>>> x.argmin(axis=1)
+array([2, 1], dtype=int64)
+```
+
+A position from `axis=None` counts in row-major order. For a 2-D array, `divmod` turns it into a row and a column:
+
+```python
+>>> divmod(sd.argmax(x), x.shape[1])
+(1, 2)
+>>> x[1, 2]
+9
+```
+
+With `keepdims=True`, the indices fit [`take_along_axis`](/api/array/take_along_axis/), which picks the elements
+they point to:
+
+```python
+>>> i = sd.argmax(x, axis=1, keepdims=True)
+>>> i
+array([[1],
+       [2]], dtype=int64)
+>>> sd.take_along_axis(x, i, axis=1)
+array([[8],
+       [9]], dtype=int64)
+```
+
+Ties give the first position. A NaN gives the position of the first NaN in both functions:
+
+```python
+>>> sd.argmax(sd.asarray([4, 7, 7, 1]))
+1
+>>> f = sd.asarray([1.0, sd.nan, 0.0, sd.nan])
+>>> sd.argmin(f), sd.argmax(f)
+(1, 1)
+```
+
+`axis` must be a single axis:
+
+```python
+>>> sd.argmax(x, axis=(0, 1))
+Traceback (most recent call last):
+    ...
+TypeError: argmax(): 'axis' must be an int, not tuple
+```
+
+<Reference />
+
+## Notes
+
+For Booleans, `False` is smaller than `True`, so `argmax` of a Boolean array is the position of its first `True`
+(or 0 when there is none). `-0.0` and `0.0` count as equal here, so the first of them is returned; for
+`[0.0, -0.0]`, `argmin` returns 0 while [`min`](/api/array/min-max/) returns `-0.0`.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.argmin` and `numpy.argmax`, the methods of `numpy.ndarray`, and R's `which.min`
+and `which.max`.
+
+- Complex input raises `TypeError`. NumPy orders complex numbers by real part, then imaginary part.
+- There is no `out=` argument. A result over all axes is a Python `int`, not a NumPy scalar.
+- R's `which.min` and `which.max` count from 1, return the first position among ties, and skip `NA` and `NaN`, as
+  `nanargmin` and `nanargmax` do here. When nothing else remains, R returns an empty vector, where `nanargmin` and
+  `nanargmax` raise `ValueError`. For a matrix they count in column-major order.

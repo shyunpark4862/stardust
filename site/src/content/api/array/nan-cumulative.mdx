@@ -1,0 +1,121 @@
+---
+kind: function
+title: nancumulative_sum, nancumulative_prod
+names: [nancumulative_sum, nancumulative_prod]
+group: Skipping NaN
+order: 2
+signatures:
+  - "sd.nancumulative_sum(x, /, *, axis=None, dtype=None, include_initial=False)"
+  - "sd.nancumulative_prod(x, /, *, axis=None, dtype=None, include_initial=False)"
+summary: Compute running sums or running products along an axis, ignoring NaN elements.
+params:
+  - name: x
+    type: array
+    kind: positional-only
+    desc: "Array of any dtype."
+  - name: axis
+    type: int or None
+    kind: keyword-only
+    default: None
+    desc: "Axis along which to accumulate. Negative values count from the end. May be `None` only when `x` is 1-D; a tuple or list is rejected."
+  - name: dtype
+    type: dtype, str or None
+    kind: keyword-only
+    default: None
+    desc: "Data type of the result: `sd.int64`, `sd.float64` or `sd.complex128`, or its name as a string. The NaN elements are replaced by 0 or 1, then the elements are converted to it, as for [`cumulative_sum`](/api/array/cumulative/). `None` uses the dtype of `x`, with `int64` in place of `bool`."
+  - name: include_initial
+    type: bool
+    kind: keyword-only
+    default: "False"
+    desc: "If `True`, the result starts with the empty sum 0 or the empty product 1, and `axis` is one longer than in `x`."
+returns:
+  - type: ndarray
+    desc: "Running sums (`nancumulative_sum`) or products (`nancumulative_prod`), with the shape of `x`, or with `axis` one longer if `include_initial` is `True`. The dtype is `dtype`, or that of `x` with `int64` in place of `bool`. Always an array, also for a single element."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`, if `axis` is not an `int` or `None`, if `dtype` is not `sd.int64`, `sd.float64`, `sd.complex128` or the name of one of them, if `dtype` is real and `x` is complex, or if `include_initial` is not `True` or `False`."
+  - type: ValueError
+    desc: "If `axis` is out of range, or if `axis` is `None` and `x` has more than one dimension."
+  - type: OverflowError
+    desc: "If `axis` is an `int` outside the `int64` range."
+seeAlso: [cumulative, nan-reductions, sum, prod]
+---
+
+These functions are [`cumulative_sum` and `cumulative_prod`](/api/array/cumulative/) with every NaN element of `x`
+left out. At a NaN position the result repeats the running value reached so far, as if the element were 0 for the sum
+and 1 for the product. Before the first non-NaN element, that value is 0 or 1.
+
+A complex element counts as NaN when its real or its imaginary part is NaN. `bool` and `int64` arrays hold no NaN, so
+for them each function returns exactly what `cumulative_sum` or `cumulative_prod` returns. The last element of a
+running sum along an axis agrees with [`nansum`](/api/array/nan-reductions/) along that axis up to rounding, since
+the two add the elements in different orders.
+
+## Examples
+
+The plain running sum stays NaN after the first NaN. The `nan` form carries the last value over each NaN:
+
+```python
+>>> import stardust as sd
+>>> y = sd.asarray([1.0, sd.nan, 2.0, sd.nan, 3.0])
+>>> sd.cumulative_sum(y)
+array([1.0, nan, nan, nan, nan], dtype=float64)
+>>> sd.nancumulative_sum(y)
+array([1.0, 1.0, 3.0, 3.0, 6.0], dtype=float64)
+>>> sd.nancumulative_prod(y)
+array([1.0, 1.0, 2.0, 2.0, 6.0], dtype=float64)
+```
+
+With `include_initial=True` the result starts with the initial value. Leading NaN elements keep that value:
+
+```python
+>>> sd.nancumulative_sum(y, include_initial=True)
+array([0.0, 1.0, 1.0, 3.0, 3.0, 6.0], dtype=float64)
+>>> sd.nancumulative_prod(sd.asarray([sd.nan, sd.nan, 5.0]))
+array([1.0, 1.0, 5.0], dtype=float64)
+```
+
+A 2-D array needs `axis`:
+
+```python
+>>> m = sd.asarray([[1.0, sd.nan, 3.0],
+...                 [sd.nan, 5.0, 6.0]])
+>>> sd.nancumulative_sum(m, axis=1)
+array([[ 1.0,  1.0,  4.0],
+       [ 0.0,  5.0, 11.0]], dtype=float64)
+>>> sd.nancumulative_sum(m, axis=0)
+array([[1.0, 0.0, 3.0],
+       [1.0, 5.0, 9.0]], dtype=float64)
+>>> sd.nancumulative_sum(m)
+Traceback (most recent call last):
+    ...
+ValueError: nancumulative_sum(): 'axis' is required for arrays with more than one dimension
+```
+
+<Reference />
+
+## Notes
+
+Along the axis, with elements $x_0, x_1, \dots$, the running sum is
+
+$$
+s_k = \sum_{i \le k,\ x_i \ne \mathrm{NaN}} x_i ,
+$$
+
+and the running product is defined in the same way. Only NaN elements of `x` are skipped. A NaN that arises during
+the computation, such as $\infty + (-\infty)$, stays and makes the later running values NaN:
+
+```python
+>>> sd.nancumulative_sum(sd.asarray([sd.inf, sd.nan, -sd.inf, 1.0]))
+array([inf, inf, nan, nan], dtype=float64)
+```
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.nancumsum` and `numpy.nancumprod`. R's `cumsum` and `cumprod` have no `na.rm`
+argument.
+
+- `axis=None` is accepted only for 1-D input. NumPy flattens an array of more dimensions; here it raises `ValueError`.
+- `include_initial` has no counterpart in `numpy.nancumsum` and `numpy.nancumprod`.
+- There is no `out=` argument.
+- Long `float64` accumulations can differ from NumPy's in the last digits.
+- In R, `cumsum(c(1, NA, 3))` gives `1 NA NA`: every value after the first `NA` is `NA`.

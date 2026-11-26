@@ -1,0 +1,241 @@
+---
+kind: function
+title: quantile, nanquantile
+names: [quantile, nanquantile]
+group: Statistics
+order: 1
+signatures:
+  - "sd.quantile(x, q, /, *, axis=None, method='linear', keepdims=False)"
+  - "sd.nanquantile(x, q, /, *, axis=None, method='linear', keepdims=False)"
+summary: Compute quantiles of the elements over the given axes.
+params:
+  - name: x
+    type: array
+    kind: positional-only
+    desc: "Array of dtype `bool`, `int64` or `float64`. The elements are converted to `float64` before they are ranked. `x` need not be sorted and is not changed."
+  - name: q
+    type: float, int or array of shape (k,)
+    kind: positional-only
+    desc: "Probability or probabilities of the quantiles, each in [0, 1]: 0 gives the smallest element, 1 the largest and 0.5 the median. A Python `int` or `float`, or a 1-D `int64` or `float64` array. A list is rejected; pass `sd.asarray([...])`."
+  - name: axis
+    type: int, tuple of int or None
+    kind: keyword-only
+    default: None
+    desc: "Axis or axes to reduce. `None` reduces over all axes, and `()` over none. A list is accepted like a tuple. The elements of several axes are ranked together. See [`axis` and `keepdims`](/start/conventions/#axis-and-keepdims)."
+  - name: method
+    type: str
+    kind: keyword-only
+    default: "'linear'"
+    desc: "How the quantile is taken from the sorted elements. Below, n is the number of elements and k = 0, ..., n - 1 the position of an element in ascending order. Notes give the exact formulas."
+    choices:
+      - [ '"inverted_cdf"', "The smallest element at which the empirical distribution function reaches q. No interpolation." ]
+      - [ '"averaged_inverted_cdf"', "As inverted_cdf, but the mean of the two neighboring elements where the distribution function equals q exactly." ]
+      - [ '"closest_observation"', "The element whose rank is nearest to n q, ties to the even rank. No interpolation." ]
+      - [ '"interpolated_inverted_cdf"', "Linear interpolation between plotting positions (k + 1) / n." ]
+      - [ '"hazen"', "Linear interpolation between plotting positions (k + 1/2) / n." ]
+      - [ '"weibull"', "Linear interpolation between plotting positions (k + 1) / (n + 1)." ]
+      - [ '"linear"', "Linear interpolation between plotting positions k / (n - 1). The default." ]
+      - [ '"median_unbiased"', "Linear interpolation between plotting positions (k + 2/3) / (n + 1/3). Approximately median-unbiased whatever the distribution." ]
+      - [ '"normal_unbiased"', "Linear interpolation between plotting positions (k + 5/8) / (n + 1/4). Approximately unbiased for normally distributed data." ]
+      - [ '"lower"', "The element at position floor((n - 1) q)." ]
+      - [ '"higher"', "The element at position ceil((n - 1) q)." ]
+      - [ '"midpoint"', "The mean of the lower and higher results." ]
+      - [ '"nearest"', "The element at position (n - 1) q rounded to the nearest integer, ties to even." ]
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    default: "False"
+    desc: "If `True`, each reduced axis stays in the result with length 1."
+returns:
+  - type: ndarray or float
+    desc: "Quantiles, always `float64`. When `q` is an array, its axis comes first, followed by the shape of `x` without the reduced axes (with those axes of length 1 if `keepdims` is `True`). A Python `float` when `q` is a scalar, every axis is reduced and `keepdims` is `False`."
+raises:
+  - type: TypeError
+    desc: "If `x` is complex, if `x` is not an `sd.ndarray`, if `q` is not a Python `int` or `float` or an `sd.ndarray` (a `bool` is rejected), if `q` is a `bool` or `complex128` array, if `axis` is not an `int`, a tuple or list of `int`, or `None`, if `method` is not a `str`, or if `keepdims` is not `True` or `False`."
+  - type: ValueError
+    desc: "If a value of `q` is outside [0, 1] or is NaN, if `q` has more than one dimension, if `method` is not one of the names above, or if an axis is out of range or appears twice."
+  - type: OverflowError
+    desc: "If an axis is an `int` outside the `int64` range."
+seeAlso: [median, histogram, nan-reductions, min-max, sort-argsort]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import Plot from '../../../components/fig/Plot.astro';
+
+export const linear = [[0.0, 1.0], [0.0083, 1.025], [0.0167, 1.05], [0.025, 1.075], [0.0333, 1.1], [0.0417, 1.125], [0.05, 1.15], [0.0583, 1.175], [0.0667, 1.2], [0.075, 1.225], [0.0833, 1.25], [0.0917, 1.275], [0.1, 1.3], [0.1083, 1.325], [0.1167, 1.35], [0.125, 1.375], [0.1333, 1.4], [0.1417, 1.425], [0.15, 1.45], [0.1583, 1.475], [0.1667, 1.5], [0.175, 1.525], [0.1833, 1.55], [0.1917, 1.575], [0.2, 1.6], [0.2083, 1.625], [0.2167, 1.65], [0.225, 1.675], [0.2333, 1.7], [0.2417, 1.725], [0.25, 1.75], [0.2583, 1.775], [0.2667, 1.8], [0.275, 1.825], [0.2833, 1.85], [0.2917, 1.875], [0.3, 1.9], [0.3083, 1.925], [0.3167, 1.95], [0.325, 1.975], [0.3333, 2.0], [0.3417, 2.05], [0.35, 2.1], [0.3583, 2.15], [0.3667, 2.2], [0.375, 2.25], [0.3833, 2.3], [0.3917, 2.35], [0.4, 2.4], [0.4083, 2.45], [0.4167, 2.5], [0.425, 2.55], [0.4333, 2.6], [0.4417, 2.65], [0.45, 2.7], [0.4583, 2.75], [0.4667, 2.8], [0.475, 2.85], [0.4833, 2.9], [0.4917, 2.95], [0.5, 3.0], [0.5083, 3.05], [0.5167, 3.1], [0.525, 3.15], [0.5333, 3.2], [0.5417, 3.25], [0.55, 3.3], [0.5583, 3.35], [0.5667, 3.4], [0.575, 3.45], [0.5833, 3.5], [0.5917, 3.55], [0.6, 3.6], [0.6083, 3.65], [0.6167, 3.7], [0.625, 3.75], [0.6333, 3.8], [0.6417, 3.85], [0.65, 3.9], [0.6583, 3.95], [0.6667, 4.0], [0.675, 4.075], [0.6833, 4.15], [0.6917, 4.225], [0.7, 4.3], [0.7083, 4.375], [0.7167, 4.45], [0.725, 4.525], [0.7333, 4.6], [0.7417, 4.675], [0.75, 4.75], [0.7583, 4.825], [0.7667, 4.9], [0.775, 4.975], [0.7833, 5.05], [0.7917, 5.125], [0.8, 5.2], [0.8083, 5.275], [0.8167, 5.35], [0.825, 5.425], [0.8333, 5.5], [0.8417, 5.575], [0.85, 5.65], [0.8583, 5.725], [0.8667, 5.8], [0.875, 5.875], [0.8833, 5.95], [0.8917, 6.025], [0.9, 6.1], [0.9083, 6.175], [0.9167, 6.25], [0.925, 6.325], [0.9333, 6.4], [0.9417, 6.475], [0.95, 6.55], [0.9583, 6.625], [0.9667, 6.7], [0.975, 6.775], [0.9833, 6.85], [0.9917, 6.925], [1.0, 7.0]];
+export const lower = [[0.0, 1.0], [0.0083, 1.0], [0.0167, 1.0], [0.025, 1.0], [0.0333, 1.0], [0.0417, 1.0], [0.05, 1.0], [0.0583, 1.0], [0.0667, 1.0], [0.075, 1.0], [0.0833, 1.0], [0.0917, 1.0], [0.1, 1.0], [0.1083, 1.0], [0.1167, 1.0], [0.125, 1.0], [0.1333, 1.0], [0.1417, 1.0], [0.15, 1.0], [0.1583, 1.0], [0.1667, 1.0], [0.175, 1.0], [0.1833, 1.0], [0.1917, 1.0], [0.2, 1.0], [0.2083, 1.0], [0.2167, 1.0], [0.225, 1.0], [0.2333, 1.0], [0.2417, 1.0], [0.25, 1.0], [0.2583, 1.0], [0.2667, 1.0], [0.275, 1.0], [0.2833, 1.0], [0.2917, 1.0], [0.3, 1.0], [0.3083, 1.0], [0.3167, 1.0], [0.325, 1.0], [0.3333, 2.0], [0.3417, 2.0], [0.35, 2.0], [0.3583, 2.0], [0.3667, 2.0], [0.375, 2.0], [0.3833, 2.0], [0.3917, 2.0], [0.4, 2.0], [0.4083, 2.0], [0.4167, 2.0], [0.425, 2.0], [0.4333, 2.0], [0.4417, 2.0], [0.45, 2.0], [0.4583, 2.0], [0.4667, 2.0], [0.475, 2.0], [0.4833, 2.0], [0.4917, 2.0], [0.5, 2.0], [0.5083, 2.0], [0.5167, 2.0], [0.525, 2.0], [0.5333, 2.0], [0.5417, 2.0], [0.55, 2.0], [0.5583, 2.0], [0.5667, 2.0], [0.575, 2.0], [0.5833, 2.0], [0.5917, 2.0], [0.6, 2.0], [0.6083, 2.0], [0.6167, 2.0], [0.625, 2.0], [0.6333, 2.0], [0.6417, 2.0], [0.65, 2.0], [0.6583, 2.0], [0.6667, 4.0], [0.675, 4.0], [0.6833, 4.0], [0.6917, 4.0], [0.7, 4.0], [0.7083, 4.0], [0.7167, 4.0], [0.725, 4.0], [0.7333, 4.0], [0.7417, 4.0], [0.75, 4.0], [0.7583, 4.0], [0.7667, 4.0], [0.775, 4.0], [0.7833, 4.0], [0.7917, 4.0], [0.8, 4.0], [0.8083, 4.0], [0.8167, 4.0], [0.825, 4.0], [0.8333, 4.0], [0.8417, 4.0], [0.85, 4.0], [0.8583, 4.0], [0.8667, 4.0], [0.875, 4.0], [0.8833, 4.0], [0.8917, 4.0], [0.9, 4.0], [0.9083, 4.0], [0.9167, 4.0], [0.925, 4.0], [0.9333, 4.0], [0.9417, 4.0], [0.95, 4.0], [0.9583, 4.0], [0.9667, 4.0], [0.975, 4.0], [0.9833, 4.0], [0.9917, 4.0], [1.0, 7.0]];
+
+A quantile with probability $q$ is a value that a fraction $q$ of the elements lie below: $q = 0.25$ gives the lower
+quartile, $q = 0.5$ the median and $q = 0.9$ the 90th percentile. `quantile` sorts the elements of each output
+position and reads the quantile off the sorted values. `nanquantile` does the same after leaving out the NaN
+elements.
+
+Most probabilities fall between two sorted elements. The `method` argument decides what is returned there: an
+interpolated value (the default `"linear"` and five other methods) or one of the elements (`"lower"`, `"higher"`,
+`"nearest"`, `"inverted_cdf"`, `"closest_observation"`), or the mean of two (`"midpoint"`,
+`"averaged_inverted_cdf"`). The thirteen methods are the nine sample quantile definitions of Hyndman and Fan [1] and
+four simpler rules. For finite data, all of them return the smallest element for $q = 0$ and the largest for $q = 1$,
+and for large samples they differ little.
+
+With `quantile`, an output position that contains a NaN gives NaN. With `nanquantile`, it gives the quantile of the
+other elements. An output position without elements, or with only NaN for `nanquantile`, gives NaN without an error or
+a warning.
+
+<Fig caption="Quantiles of [1, 2, 4, 7] as q goes from 0 to 1. The linear method joins the sorted values; the lower method steps from one element to the next.">
+  <Plot
+    curves={[
+      { points: linear, label: 'linear' },
+      { points: lower, label: 'lower', dashed: true },
+    ]}
+    domain={[0, 1]}
+    range={[0, 8]}
+    xTicks={[
+      { v: 0, label: '0' },
+      { v: 0.25, label: '0.25' },
+      { v: 0.5, label: '0.5' },
+      { v: 0.75, label: '0.75' },
+      { v: 1, label: '1' },
+    ]}
+    yTicks={[
+      { v: 1, label: '1' },
+      { v: 2, label: '2' },
+      { v: 4, label: '4' },
+      { v: 7, label: '7' },
+    ]}
+  />
+</Fig>
+
+## Examples
+
+The lower quartile of four values, and the three quartiles at once:
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([7, 1, 4, 2])
+>>> sd.quantile(x, 0.25)
+1.75
+>>> sd.quantile(x, sd.asarray([0.25, 0.5, 0.75]))
+array([1.75,  3.0, 4.75], dtype=float64)
+```
+
+The same probabilities with other methods. The discrete methods return elements of `x`:
+
+```python
+>>> q = sd.asarray([0.25, 0.5, 0.75])
+>>> sd.quantile(x, q, method="lower")
+array([1.0, 2.0, 4.0], dtype=float64)
+>>> sd.quantile(x, q, method="nearest")
+array([2.0, 4.0, 4.0], dtype=float64)
+>>> sd.quantile(x, q, method="midpoint")
+array([1.5, 3.0, 5.5], dtype=float64)
+>>> sd.quantile(x, q, method="weibull")
+array([1.25,  3.0, 6.25], dtype=float64)
+```
+
+Along an axis, with a NaN in the second row. With an array `q`, the axis of `q` comes first in the result:
+
+```python
+>>> m = sd.asarray([[1.0, 2.0, 3.0, 4.0],
+...                 [10.0, sd.nan, 30.0, 40.0]])
+>>> sd.quantile(m, 0.5, axis=1)
+array([2.5, nan], dtype=float64)
+>>> sd.nanquantile(m, 0.5, axis=1)
+array([ 2.5, 30.0], dtype=float64)
+>>> sd.nanquantile(m, sd.asarray([0.25, 0.75]), axis=1)
+array([[1.75, 20.0],
+       [3.25, 35.0]], dtype=float64)
+```
+
+No elements give NaN. A list for `q`, or a percentage instead of a probability, raises:
+
+```python
+>>> sd.quantile(sd.zeros(0), 0.5)
+nan
+>>> sd.nanquantile(sd.asarray([sd.nan, sd.nan]), 0.5)
+nan
+>>> sd.quantile(x, [0.25, 0.75])
+Traceback (most recent call last):
+    ...
+TypeError: quantile(): 'q' must be an int, a float or an sd.ndarray, not list
+>>> sd.quantile(x, 90)
+Traceback (most recent call last):
+    ...
+ValueError: quantile(): 'q' must be in the range [0, 1]
+```
+
+<Reference />
+
+## Notes
+
+Let $x_{(0)} \le x_{(1)} \le \dots \le x_{(n-1)}$ be the sorted elements of one output position. The six
+interpolating methods compute a position $v$ from $n$ and $q$ and return
+
+$$
+Q = x_{(j)} + g \, \bigl(x_{(j+1)} - x_{(j)}\bigr), \qquad j = \lfloor v \rfloor, \quad g = v - j,
+$$
+
+with $Q = x_{(0)}$ when $v \lt 0$ and $Q = x_{(n-1)}$ when $v \ge n - 1$:
+
+| `method` | Position $v$ | Hyndman–Fan type |
+|---|---|---|
+| `"interpolated_inverted_cdf"` | $nq - 1$ | 4 |
+| `"hazen"` | $nq - \tfrac{1}{2}$ | 5 |
+| `"weibull"` | $(n + 1) q - 1$ | 6 |
+| `"linear"` | $(n - 1) q$ | 7 |
+| `"median_unbiased"` | $(n + \tfrac{1}{3}) q - \tfrac{2}{3}$ | 8 |
+| `"normal_unbiased"` | $(n + \tfrac{1}{4}) q - \tfrac{5}{8}$ | 9 |
+
+The other methods return an element or the mean of two. With $h = (n - 1) q$:
+
+| `method` | Result | Hyndman–Fan type |
+|---|---|---|
+| `"inverted_cdf"` | $x_{(k)}$, $k = \max(\lceil nq \rceil - 1, 0)$ | 1 |
+| `"averaged_inverted_cdf"` | as `"inverted_cdf"`, except $\tfrac{1}{2}(x_{(j-1)} + x_{(j)})$ when $nq = j$ is an integer with $1 \le j \le n - 1$ | 2 |
+| `"closest_observation"` | $x_{(k)}$, with $k + 1$ the integer nearest to $nq$ (ties to even), clipped to $0 \le k \le n - 1$ | 3 |
+| `"lower"` | $x_{(\lfloor h \rfloor)}$ | |
+| `"higher"` | $x_{(\lceil h \rceil)}$ | |
+| `"midpoint"` | $\tfrac{1}{2}(x_{(\lfloor h \rfloor)} + x_{(\lceil h \rceil)})$ | |
+| `"nearest"` | $x_{(r)}$, $r$ the integer nearest to $h$ (ties to even) | |
+
+For `x = [7, 1, 4, 2]` and $q = 0.25$, the sorted values are $1, 2, 4, 7$ and `"linear"` gives $v = 0.75$, so
+$Q = 1 + 0.75 \cdot (2 - 1) = 1.75$.
+
+**Ranking.** The elements are converted to `float64` first, so `int64` values larger than $2^{53}$ in magnitude may
+be rounded. In the ranking, `-0.0` comes before `0.0`.
+
+**Infinite elements.** The six interpolating methods, `"midpoint"` and `"averaged_inverted_cdf"` evaluate the
+formula above even when $g = 0$ or when both elements are the same one, and $\infty \cdot 0$ and $\infty - \infty$ are
+NaN. An infinite element among the two the formula combines therefore gives NaN for most $q$, also at $q = 0$ or
+$q = 1$ when the smallest or largest element is infinite. The methods that return an element unchanged
+(`"inverted_cdf"`, `"closest_observation"`, `"lower"`, `"higher"`, `"nearest"`) return the infinite element:
+
+```python
+>>> big = sd.asarray([1.0, 2.0, sd.inf])
+>>> sd.quantile(big, 1.0)
+nan
+>>> sd.quantile(big, 1.0, method="higher")
+inf
+```
+
+**Median.** [`median`](/api/array/median/) computes the mean of the middle one or two elements directly. It agrees
+with `quantile(x, 0.5)` up to rounding in the last digit.
+
+## References
+
+1. R. J. Hyndman and Y. Fan, "Sample quantiles in statistical packages," *The American Statistician* 50(4),
+   361–365, 1996.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.quantile` and `numpy.nanquantile`, and R's `quantile(x, probs, type = 7)`.
+
+- The thirteen `method` names are NumPy's. The default `"linear"` is R's default `type = 7`, and the methods of types
+  1 to 9 above follow R's definitions. R's types 2 and 3 treat a value of $nq$ within rounding error of an integer
+  (type 2) or of a half-integer (type 3) as exact, so for such $q$ the results can differ: for the integers 1 to 22
+  and `q = 15/22`, `"averaged_inverted_cdf"` gives 15.0 and R's type 2 gives 15.5.
+- The result is always `float64`. NumPy keeps an integer dtype for `"lower"`, `"higher"`, `"nearest"`,
+  `"inverted_cdf"` and `"closest_observation"`.
+- `q` must be a Python number or an `sd.ndarray`; NumPy also accepts a list.
+- An empty input gives NaN. `numpy.quantile` raises `IndexError` for it.
+- There are no `out=`, `overwrite_input=` or `weights=` arguments, and no `percentile` function: pass `q / 100`.
+- R's `quantile` stops with an error when `x` contains `NA`, unless `na.rm = TRUE`, which corresponds to
+  `nanquantile`.

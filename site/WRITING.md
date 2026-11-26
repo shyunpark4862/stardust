@@ -76,11 +76,12 @@ title: solve                      # the name, or a short English title for a fam
 names: [solve]                    # every public name this page documents (members as Class.method)
 group: Linear systems             # must match a group title in the area overview
 order: 1                          # position inside the group
-signatures:                       # exactly the pinned signature(s), prefixed with the full path
-  - "sd.linalg.solve(a, b, /)"
+signatures:                       # exactly the pinned signature(s), prefixed with the full path; a method as
+  - "sd.linalg.solve(a, b, /)"    # called on an instance, without self and a / right after it:
+                                  # "sd.ndarray.sum(*, axis=None, dtype=None, keepdims=False)", "sd.ndarray.copy()"
 summary: Solve a linear system a @ x = b for x.   # one imperative sentence, ends with a period
-params:
-  - name: a
+params:                           # each signature parameter once: in first-appearance order, or in an order
+  - name: a                       # that keeps every signature's order
     type: array of shape (..., n, n)
     kind: positional-only          # optional: positional-only | keyword-only
     default: None                  # optional; omit when required
@@ -122,7 +123,7 @@ returnedBy: [ttest_ind, ttest_rel]        # functions that return it (slugs)
 attributes:
   - { name: statistic, type: float, desc: ... }
 methods:
-  - { name: summary, signature: "summary()", summary: Return a printable report. }
+  - { name: summary, signature: "summary()", summary: Return a printable report. }   # signature in the same form as above, without the sd.<Class>. prefix
   - { name: confidence_interval, signature: "confidence_interval(level=0.95)", summary: ..., slug: TTestResult-confidence_interval }  # slug only when the method has its own page
 ```
 
@@ -155,7 +156,9 @@ objects; `## For NumPy, SciPy and R users` (a 3-column table stardust | NumPy/Sc
   run in order in one namespace; `import stardust as sd` is implied (write it once in the first block anyway).
 - Deterministic: seed random generators, keep outputs short (slice or round when an array is long).
 - Each example finishes in well under a second. Show printed `summary()` reports in full when the page is about them.
-- Check with `cd site && .sdbuild/stardust/.venv/bin/python tools/check_examples.py <area>/<slug>`.
+- Check with `cd site && .sdbuild/stardust/.venv/bin/python tools/check_examples.py <area>/<slug>`. The comparison is
+  exact, spaces and line breaks included (array reprs pad their columns); `...` matches any text and is used only to
+  cut a long error message short.
 
 ## 6. Math and markup
 

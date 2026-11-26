@@ -1,0 +1,110 @@
+---
+kind: function
+title: any, all
+names: [any, all, ndarray.any, ndarray.all]
+group: Reductions
+order: 7
+signatures:
+  - "sd.any(x, /, *, axis=None, keepdims=False)"
+  - "sd.all(x, /, *, axis=None, keepdims=False)"
+  - "sd.ndarray.any(*, axis=None, keepdims=False)"
+  - "sd.ndarray.all(*, axis=None, keepdims=False)"
+summary: Test whether any element or every element is true over the given axes.
+params:
+  - name: x
+    type: array
+    kind: positional-only
+    desc: "Array to test, of any dtype. In the method form, the array the method is called on."
+  - name: axis
+    type: int, tuple of int or None
+    kind: keyword-only
+    default: None
+    desc: "Axis or axes to reduce. `None` reduces over all axes, and `()` over none. A list is accepted like a tuple. See [`axis` and `keepdims`](/start/conventions/#axis-and-keepdims)."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    default: "False"
+    desc: "If `True`, each reduced axis stays in the result with length 1."
+returns:
+  - type: ndarray or bool
+    desc: "`bool` results, with the shape of `x` without the reduced axes (with those axes of length 1 if `keepdims` is `True`). A Python `bool` when every axis is reduced and `keepdims` is `False`."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`, if `axis` is not an `int`, a tuple or list of `int`, or `None`, or if `keepdims` is not `True` or `False`."
+  - type: ValueError
+    desc: "If an axis is out of range or appears twice."
+  - type: OverflowError
+    desc: "If an axis is an `int` outside the `int64` range."
+seeAlso: [count_nonzero, logical, comparison, where, nonzero]
+---
+
+`any` tests whether at least one element of `x` is true along the axes given by `axis`, and `all` whether every
+element is. The reduced axes are removed from the shape, or kept with length 1 when `keepdims=True` (see
+[`axis` and `keepdims`](/start/conventions/#axis-and-keepdims)). With the default `axis=None`, the result is one
+Python `bool`. The methods `x.any(...)` and `x.all(...)` are the same functions.
+
+`x` may have any dtype. An element counts as true when it is not equal to zero: a nonzero number, a complex number
+with a nonzero real or imaginary part, and NaN are true; `0`, `0.0`, `-0.0` and `0j` are false. The same rule
+converts numbers to `bool` (see [explicit conversion](/api/array/dtypes/#explicit-conversion)).
+
+Over no elements, `any` is `False` and `all` is `True`: no element is true, and no element is false.
+
+An array has no truth value of its own, so `if x == y:` raises `TypeError` (see [`ndarray`](/api/array/ndarray/)).
+`all` and `any` turn such a comparison into one `bool`.
+
+## Examples
+
+Tests over all elements, and per row and column:
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([[1, 0, 3], [4, 5, 6]])
+>>> sd.any(x == 0), sd.all(x > 0)
+(True, False)
+>>> sd.all(x, axis=1)
+array([False,  True], dtype=bool)
+>>> (x > 4).any(axis=0)
+array([False,  True,  True], dtype=bool)
+```
+
+A condition on whole arrays, such as equality:
+
+```python
+>>> a = sd.asarray([1.0, 2.0, 3.0])
+>>> b = sd.asarray([1.0, 2.0, 3.5])
+>>> (a == b).all()
+False
+>>> if (a == b).any():
+...     print("some elements are equal")
+some elements are equal
+```
+
+Numbers count as true when they are nonzero. NaN is nonzero:
+
+```python
+>>> sd.any(sd.asarray([0.0, -0.0, 0j]))
+False
+>>> sd.all(sd.asarray([1.0, sd.nan, -2.0]))
+True
+```
+
+Empty arrays and empty axes:
+
+```python
+>>> e = sd.zeros((2, 0))
+>>> sd.any(e), sd.all(e)
+(False, True)
+>>> sd.all(e, axis=1)
+array([True, True], dtype=bool)
+```
+
+<Reference />
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.any` and `numpy.all`, the methods of `numpy.ndarray`, and R's `any` and `all`.
+
+- The results agree with NumPy's, including NaN counting as true. There are no `out=` or `where=` arguments, and a
+  result over all axes is a Python `bool`, not a NumPy scalar.
+- R's `any` and `all` return a single value for any array and expect logical values. For numbers they warn, and a
+  `NaN` element becomes `NA`, so `any(c(0, NaN))` is `NA`.

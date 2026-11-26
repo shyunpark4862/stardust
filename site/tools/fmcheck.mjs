@@ -7,10 +7,14 @@
 // - YAML parses; required fields are there; no unknown fields.
 // - api pages: `group` is one of the area overview's groups; every `names`
 //   entry is a public name (Class.member for members); every `signatures`
-//   entry is `sd.<area>.<name>(...)` with exactly the pinned signature; the
-//   `params` names follow the signature's parameters, in order; `summary` is
-//   one sentence ending with a period; a class page's attributes and methods
-//   are members of the class; `of` names a class page.
+//   entry is `sd.<area>.<name>(...)` with exactly the pinned signature (a
+//   method as `sd.<area>.<Class>.<method>(...)`, called on an instance: `self`
+//   and a `/` right after it dropped); the `params` names are the signatures'
+//   parameters, each once, in first-appearance order or in an order that keeps
+//   every signature's order; `summary` is one
+//   sentence ending with a period; a class page's attributes and methods are
+//   members of the class, a method's `signature` is `<method>(...)` in the
+//   same form; `of` names a class page.
 // - area overviews: unique group titles; `glance` slugs (warning if missing).
 // - start pages: title, summary, order.
 // Errors exit with status 1; warnings do not.
@@ -87,8 +91,20 @@ const paramNames = (sig) =>
     .filter((a) => a !== '/' && a !== '*')
     .map((a) => a.match(/^(\*{0,2}[A-Za-z_]\w*)/)?.[1] ?? a)
     .filter((n) => n !== 'self');
-/** "(self, x, /)" -> "(x, /)"; annotations as the inventory prints them are kept. */
-const dropSelf = (sig) => sig.replace(/^\(self(, )?/, '(');
+/**
+ * The method as it is called on an instance: "(self, x, /)" -> "(x, /)",
+ * "(self, /, *, axis=None)" -> "(*, axis=None)", "(self, /)" -> "()". A `/`
+ * right after `self` marks only `self` as positional-only, so it goes too.
+ * Annotations as the inventory prints them are kept.
+ */
+const dropSelf = (sig) => {
+  const args = splitArgs(sig.slice(sig.indexOf('(') + 1, sig.lastIndexOf(')')));
+  if (args[0] === 'self') {
+    args.shift();
+    if (args[0] === '/') args.shift();
+  }
+  return `(${args.join(', ')})`;
+};
 
 const KNOWN = {
   api: ['kind', 'title', 'names', 'group', 'order', 'signatures', 'summary', 'params', 'returns', 'raises', 'seeAlso', 'returnedBy', 'attributes', 'methods', 'of'],
@@ -166,10 +182,21 @@ function checkApi(file, d) {
     for (const p of paramNames(rest)) if (!sigParams.includes(p)) sigParams.push(p);
   }
 
-  // params follow the signatures' parameters, in order
+  // params are the signatures' parameters, each once: in the order they first
+  // appear across the signatures, or in an order that keeps the order of every
+  // signature (`correction` before `keepdims` for nanvar beside nansum)
   const params = (d.params ?? []).flatMap((p) => String(p.name ?? '').split(',').map((n) => n.trim()));
   for (const p of d.params ?? []) for (const k of ['name', 'type', 'desc']) if (!p[k]) err(file, `a param lacks "${k}"`);
-  if (sigs.length > 0 && params.join(',') !== sigParams.join(',')) err(file, `params (${params.join(', ')}) do not match the signature's parameters (${sigParams.join(', ')})`);
+  if (sigs.length > 0) {
+    const same = params.length === sigParams.length && new Set(params).size === params.length && sigParams.every((p) => params.includes(p));
+    const ordered = sigs.every((s) => {
+      const own = paramNames(s.slice(s.indexOf('('))).filter((p) => params.includes(p));
+      const pos = own.map((p) => params.indexOf(p));
+      return pos.every((v, i) => i === 0 || pos[i - 1] < v);
+    });
+    if (!same || (params.join(',') !== sigParams.join(',') && !ordered))
+      err(file, `params (${params.join(', ')}) do not match the signatures' parameters (${sigParams.join(', ')}, or an order that keeps each signature's)`);
+  }
   for (const p of d.params ?? []) {
     if (p.kind && !['positional-only', 'keyword-only'].includes(p.kind)) err(file, `param ${p.name}: kind "${p.kind}"`);
     if (p.choices && !p.choices.every((c) => Array.isArray(c) && c.length === 2)) err(file, `param ${p.name}: choices must be [value, meaning] pairs`);
@@ -202,7 +229,12 @@ function checkApi(file, d) {
     if (!cls || cls.kind !== 'class') err(file, `title "${d.title}" is not a public class`);
     else {
       for (const a of d.attributes ?? []) if (!cls.members?.[a.name]) err(file, `attribute ${a.name} is not a member of ${d.title}`);
-      for (const m of d.methods ?? []) if (cls.members?.[m.name]?.kind !== 'method') err(file, `method ${m.name} is not a method of ${d.title}`);
+      for (const m of d.methods ?? []) {
+        const pinned = cls.members?.[m.name];
+        if (pinned?.kind !== 'method') err(file, `method ${m.name} is not a method of ${d.title}`);
+        else if (m.signature != null && pinned.signature && m.signature !== `${m.name}${dropSelf(pinned.signature)}`)
+          err(file, `method ${m.name}: signature "${m.signature}", pinned ${m.name}${dropSelf(pinned.signature)}`);
+      }
     }
   } else if ((d.attributes ?? []).length || (d.methods ?? []).length || (d.returnedBy ?? []).length) err(file, 'attributes, methods and returnedBy are for kind: class');
   if (d.kind === 'method') {

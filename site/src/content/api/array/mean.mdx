@@ -1,0 +1,128 @@
+---
+kind: function
+title: mean
+names: [mean, ndarray.mean]
+group: Reductions
+order: 4
+signatures:
+  - "sd.mean(x, /, *, axis=None, keepdims=False)"
+  - "sd.ndarray.mean(*, axis=None, keepdims=False)"
+summary: Compute the arithmetic mean over the given axes.
+params:
+  - name: x
+    type: array
+    kind: positional-only
+    desc: "Array to average, of any dtype. In the method form, the array the method is called on."
+  - name: axis
+    type: int, tuple of int or None
+    kind: keyword-only
+    default: None
+    desc: "Axis or axes to average over. `None` averages over all axes, and `()` over none. A list is accepted like a tuple. See [`axis` and `keepdims`](/start/conventions/#axis-and-keepdims)."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    default: "False"
+    desc: "If `True`, each reduced axis stays in the result with length 1."
+returns:
+  - type: ndarray or scalar
+    desc: "Means, with the shape of `x` without the reduced axes (with those axes of length 1 if `keepdims` is `True`). `float64`, or `complex128` when `x` is complex. A Python `float` or `complex` when every axis is reduced and `keepdims` is `False`."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`, if `axis` is not an `int`, a tuple or list of `int`, or `None`, or if `keepdims` is not `True` or `False`."
+  - type: ValueError
+    desc: "If an axis is out of range or appears twice."
+  - type: OverflowError
+    desc: "If an axis is an `int` outside the `int64` range."
+seeAlso: [sum, var-std, median, quantile, nan-reductions]
+---
+
+`mean` computes the arithmetic mean of the elements of `x` along the axes given by `axis`: their sum divided by their
+number. The reduced axes are removed from the shape, or kept with length 1 when `keepdims=True` (see
+[`axis` and `keepdims`](/start/conventions/#axis-and-keepdims)). With the default `axis=None`, the result is one
+Python number. The method `x.mean(...)` is the same function.
+
+`bool` and `int64` input gives `float64` (see
+[functions with floating-point results](/api/array/dtypes/#functions-with-floating-point-results)); the mean of a
+Boolean array is the fraction of true elements. `complex128` input gives `complex128`, the means of the real and
+imaginary parts.
+
+A NaN element makes the mean NaN; [`nanmean`](/api/array/nan-reductions/) skips NaN. The mean of no elements is NaN
+(`nan+nanj` for complex input), without an error or a warning.
+
+## Examples
+
+The mean of all elements, and of each column and row:
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([[1, 2, 3], [4, 5, 6]])
+>>> sd.mean(x)
+3.5
+>>> sd.mean(x, axis=0)
+array([2.5, 3.5, 4.5], dtype=float64)
+>>> x.mean(axis=1)
+array([2.0, 5.0], dtype=float64)
+```
+
+Centering each column by subtracting its mean. `keepdims=True` keeps the shape `(1, 3)`, which broadcasts against
+`x`:
+
+```python
+>>> x - sd.mean(x, axis=0, keepdims=True)
+array([[-1.5, -1.5, -1.5],
+       [ 1.5,  1.5,  1.5]], dtype=float64)
+```
+
+The mean of a comparison is the fraction of elements for which it holds. Complex input gives a complex mean:
+
+```python
+>>> sd.mean(x > 2)
+0.6666666666666666
+>>> sd.mean(sd.asarray([1 + 1j, 3 - 1j]))
+(2+0j)
+```
+
+NaN propagates, and an empty mean is NaN:
+
+```python
+>>> sd.mean(sd.asarray([1.0, sd.nan, 3.0]))
+nan
+>>> sd.mean(sd.zeros((0,)))
+nan
+>>> sd.mean(sd.zeros((2, 0)), axis=1)
+array([nan, nan], dtype=float64)
+```
+
+<Reference />
+
+## Notes
+
+For `float64` and `complex128` input, the mean is the [`sum`](/api/array/sum/) in the result dtype divided by the
+number of elements. The sum can overflow: the mean of `1e308` and `1e308` is `inf`.
+
+For `int64` and `bool` input reduced over all axes, the sum is formed exactly as an integer, then rounded once to
+`float64` and divided by the number of elements. It does not wrap around, unlike an `int64` `sum`, and no precision
+is lost before that rounding, even when the sum exceeds $2^{53}$:
+
+```python
+>>> sd.mean(sd.asarray([2**63 - 1, 2**63 - 1]))
+9.223372036854776e+18
+>>> sd.mean(sd.asarray([2**53, 1, 1, 0]))
+2251799813685248.5
+```
+
+Along an axis, the elements can be converted to `float64` before they are added, so integer means whose sums exceed
+$2^{53}$ in magnitude can differ in the last digits from the exact value.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.mean`, the method `numpy.ndarray.mean`, and R's `mean`, `colMeans` and
+`rowMeans`.
+
+- There is no `dtype=` argument: the mean is always computed in `float64` or `complex128`.
+- An empty mean is NaN without a warning. NumPy issues a `RuntimeWarning`.
+- `int64` means over all elements add the integers exactly. NumPy converts them to `float64` first, so for large
+  integers the results can differ: for `[2**53, 1, 1, 0]`, NumPy gives `2251799813685248.0`.
+- Results for `float64` input can differ from NumPy's in the last digit.
+- R's `mean` returns a single number for any array and takes `trim=` and `na.rm=`. Means of the rows or columns of
+  a matrix are `rowMeans` and `colMeans`.

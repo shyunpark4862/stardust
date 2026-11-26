@@ -31,7 +31,7 @@
 ### A3 Reductions and statistics
 - **Reductions**: `sum`(+ndarray.sum), `prod`, `min-max`, `mean`, `var-std`, `argmin-argmax`, `any-all`, `count_nonzero`
 - **Cumulative**: `cumulative`(cumulative_sum, cumulative_prod)
-- **Skipping NaN**: `nan-reductions`(nansum … nanargmax, nancumulative_*) — 한 페이지 또는 둘
+- **Skipping NaN**: `nan-reductions`(nansum … nanargmax), `nan-cumulative`(nancumulative_sum, nancumulative_prod)
 - **Statistics**: `quantile`(+nanquantile), `median`(+nanmedian), `cov-corrcoef`, `bincount`, `histogram`
 
 ### A4 Indexing, sorting and products
@@ -64,7 +64,7 @@
   - 메모리 배치: 규칙은 `ndarray` Notes("Memory layout")에 한 번. 함수 페이지는 필요할 때만 "The result is laid out in row-major order." 또는 "The result has the memory layout of `x`." 중 하나를 그대로 씀.
   - 뷰·복사: 함수 페이지는 "The result is a view of `x` or a copy (see [Views and copies](/api/array/views/))." 정도로만, `base` 설명은 Views에만. `from_dlpack` 결과의 `base`는 어디에도 적지 않음(이상 기록됨).
   - 메서드: `ndarray`의 메서드와 같은 함수 페이지(A3의 `sum`, `prod`, `min-max`, `mean`, `var-std`, `argmin-argmax`, `any-all`)는 `names`에 `ndarray.<method>`를 넣고(예: `names: [sum, ndarray.sum]`), `signatures`에 `sd.ndarray.<method>(...)` 줄을 더하고, `x` 인자 설명에 "In the method form, the array the method is called on."을 붙임(`reshape`·`astype` 페이지와 같은 꼴).
-  - 그 함수 페이지의 `summary`는 `ndarray.mdx`의 `methods[].summary`와 글자까지 같게 한다. 지금 `ndarray.mdx`에 적힌 요약(예: "Sum the elements over the given axes.")을 그대로 쓰거나, 바꾸면 검증 단계에서 `ndarray.mdx` 쪽도 같이 고친다.
+  - 그 함수 페이지의 `summary`는 `ndarray.mdx`의 `methods[].summary`와 글자까지 같게 한다(묶음 페이지는 예외: 아래 A3 항목). 지금 `ndarray.mdx`에 적힌 요약(예: "Sum the elements over the given axes.")을 그대로 쓰거나, 바꾸면 검증 단계에서 `ndarray.mdx` 쪽도 같이 고친다.
   - 아직 없는 페이지를 가리키는 메서드 `slug`는 링크 없이 보이고 `--links`에서 pending으로 나온다(빌드는 실패하지 않음).
 - (A2 일치 점검 뒤 추가, A3–A4 작성·검증이 따름. 원문은 `notes/consistency/array-A2.md`의 W1–W7)
   - 입력 인자: 단항 `x`는 "<역할>. An `sd.ndarray` or a Python `bool`, `int`, `float` or `complex`."(받지 않는 꼴은 빼고, 거부는 raises에). 이항은 `x1`·`x2`를 따로 적고, `x2`는 "<역할>, in the same forms as `x1`. It broadcasts against `x1` (see [Broadcasting](/api/array/broadcasting/))." 받는 것은 "`sd.ndarray` 또는 파이썬 스칼라"이고 리스트는 받지 않음(실제로 돌려 확인). "`sd.ndarray` object(s)"라 쓰지 않음.
@@ -75,3 +75,15 @@
   - 정확도: "For `float64` input, the results are within a few units in the last place of the exact value." "correctly rounded"는 IEEE 정확 연산(`sqrt`, `1 / x`, 정확 지수의 `pow`)에만. ULP 숫자는 쓰지 않음.
   - NumPy 절: 결과가 NumPy와 마지막 자리에서 다르면(직접 재어 확인) "Results for `float64` input can differ from NumPy's in the last digit." 경고는 "<경우> give <값> without a warning. NumPy issues a `RuntimeWarning`"; R은 실제로 경고할 때만(`Rscript`로 확인) 'R warns "NaNs produced"'.
   - A2 slug(링크 가능): arithmetic, floor_divide-remainder, pow, abs, square-sqrt, sign, reciprocal, maximum-minimum, clip, copysign, hypot, nextafter, exp-log, logaddexp, trig, atan2, hyperbolic, deg2rad-rad2deg, rounding, comparison, logical, bitwise, isnan-isinf-isfinite, signbit, where, complex. NaN 판정은 `/api/array/isnan-isinf-isfinite/`, `bool` 결과 규칙은 `/api/array/dtypes/#arithmetic-on-booleans`(시프트는 `bool` 거부).
+- (A3 일치 점검 뒤 추가, A4 작성·검증이 따름. 원문은 `notes/consistency/array-A3.md`)
+  - 묶음 페이지 summary는 이름마다 쓰지 않고 한 문장으로 합친다: "Return the smallest or the largest element over the given axes.", "Compute running sums or running products along an axis." 메서드가 있는 묶음 페이지는 이 합친 문장이 `ndarray.mdx`의 메서드별 요약과 달라도 된다(한 이름 페이지만 글자까지 같게).
+  - 요약 끝: 여러 축을 받는 집계는 "... over the given axes.", 한 축만 받으면 "... along an axis."
+  - `axis`: 여러 축 "Axis or axes to <동사> over. `None` <동사>s over all axes, and `()` over none. A list is accepted like a tuple. See [`axis` and `keepdims`](/start/conventions/#axis-and-keepdims)." 한 축만 받으면 "Axis to/along which ...", 그리고 "a tuple or list is rejected". `keepdims`: "If `True`, each reduced axis stays in the result with length 1."
+  - 불리언 인자: 설명은 "If `True`, ..."(`True`·`False`는 늘 백틱), raises는 "if `<인자>` is not `True` or `False`"(`0`·`1`·`None`도 거부되므로 "not a `bool`"이라 쓰지 않음).
+  - 스칼라 반환: "A Python `int`, `float` or `complex` when every axis is reduced and `keepdims` is `False`."(실제로 나오는 형만 나열). 반환 모양은 "with the shape of `x` without the reduced axes (with those axes of length 1 if `keepdims` is `True`)".
+  - `x`: "Array to <동사>, of any dtype." 또는 "Array of dtype `bool`, `int64` or `float64`."("Input array"로 시작하지 않음). 메서드형은 "In the method form, the array the method is called on."을 붙임.
+  - `dtype` 인자: "Data type of the result: `sd.int64`, `sd.float64` or `sd.complex128`, or its name as a string. ..." TypeError: "If `x` is complex, if `x` is not an `sd.ndarray`, if `axis` is not ..., if `dtype` is not `sd.int64`, `sd.float64`, `sd.complex128` or the name of one of them, ..." 순서(복소 거부가 맨 앞). OverflowError: "If an axis is an `int` outside the `int64` range."(한 축만: "If `axis` is ...").
+  - 메서드 시그니처: 인스턴스에서 부르는 꼴, 곧 고정 시그니처에서 `self`와 그 바로 뒤의 `/`를 뺀다. `sd.ndarray.sum(*, axis=None, dtype=None, keepdims=False)`, `sd.ndarray.reshape(shape, /, *, copy=None)`, `sd.ndarray.copy()`. `ndarray.mdx`의 `methods[].signature`는 같은 꼴에서 `sd.ndarray.`만 뺀다(`sum(*, axis=None, ...)`). fmcheck가 둘 다 확인한다.
+  - `params` 순서: 시그니처들에 처음 나오는 순서, 또는 각 시그니처의 순서를 지키는 순서(`nanvar`처럼 `correction`이 `keepdims` 앞). fmcheck가 둘 다 받는다.
+  - 예제 출력은 공백·줄바꿈까지 고정 빌드가 찍는 그대로(검사기가 공백 차이도 실패로 잡음). `...`는 긴 오류 메시지를 줄일 때만.
+  - A3 slug(링크 가능): sum, prod, min-max, mean, var-std, argmin-argmax, any-all, count_nonzero, cumulative, nan-reductions, nan-cumulative, quantile, median, cov-corrcoef, bincount, histogram.

@@ -20,8 +20,7 @@ For every assigned page check, and fix directly in the page:
 4. Structure (WRITING.md §4): section order, exact heading names, `<Reference />` placement, empty sections omitted.
 5. Consistency with the shared decisions and with sibling pages: terms, type notation, group names, how shared rules
    are linked rather than re-explained, same wording for the same fact across pages.
-6. Examples: correct, minimal, deterministic, output exact (the checker ignores whitespace differences: compare
-   exactly yourself for array reprs).
+6. Examples: correct, minimal, deterministic, output exact (the checker compares exactly, spaces included).
 
 Then run check_examples, fmcheck, mdxcheck on each page and `tools/check_examples.py --coverage <area>` and `--links`.
 Issues in pages that are not assigned to you: do not edit; list them in site/notes/consistency/<milestone>.md

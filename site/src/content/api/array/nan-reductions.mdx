@@ -1,0 +1,192 @@
+---
+kind: function
+title: nansum, nanprod, nanmin, nanmax, nanmean, nanvar, nanstd, nanargmin, nanargmax
+names: [nansum, nanprod, nanmin, nanmax, nanmean, nanvar, nanstd, nanargmin, nanargmax]
+group: Skipping NaN
+order: 1
+signatures:
+  - "sd.nansum(x, /, *, axis=None, dtype=None, keepdims=False)"
+  - "sd.nanprod(x, /, *, axis=None, dtype=None, keepdims=False)"
+  - "sd.nanmin(x, /, *, axis=None, keepdims=False)"
+  - "sd.nanmax(x, /, *, axis=None, keepdims=False)"
+  - "sd.nanmean(x, /, *, axis=None, keepdims=False)"
+  - "sd.nanvar(x, /, *, axis=None, correction=0, keepdims=False)"
+  - "sd.nanstd(x, /, *, axis=None, correction=0, keepdims=False)"
+  - "sd.nanargmin(x, /, *, axis=None, keepdims=False)"
+  - "sd.nanargmax(x, /, *, axis=None, keepdims=False)"
+summary: Reduce an array over the given axes, ignoring NaN elements.
+params:
+  - name: x
+    type: array
+    kind: positional-only
+    desc: "Array to reduce, of any dtype. `nanmin`, `nanmax`, `nanargmin` and `nanargmax` take `bool`, `int64` and `float64` only."
+  - name: axis
+    type: int, tuple of int or None
+    kind: keyword-only
+    default: None
+    desc: "Axis or axes to reduce. `None` reduces over all axes, and `()` over none. A list is accepted like a tuple. See [`axis` and `keepdims`](/start/conventions/#axis-and-keepdims). `nanargmin` and `nanargmax` take an `int` or `None` only; with `None` they return a position in the flattened array, counted in row-major order."
+  - name: dtype
+    type: dtype, str or None
+    kind: keyword-only
+    default: None
+    desc: "Data type of the result of `nansum` and `nanprod`: `sd.int64`, `sd.float64` or `sd.complex128`, or its name as a string. The NaN elements are replaced by 0 or 1, then the elements are converted to it, as for [`sum`](/api/array/sum/). `None` uses the dtype of `x`, with `int64` in place of `bool`."
+  - name: correction
+    type: int or float
+    kind: keyword-only
+    default: "0"
+    desc: "Degrees-of-freedom correction of `nanvar` and `nanstd`. The divisor is the number of non-NaN elements minus `correction`; the rules are those of [`var`](/api/array/var-std/)."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    default: "False"
+    desc: "If `True`, each reduced axis stays in the result with length 1."
+returns:
+  - type: ndarray or scalar
+    desc: "Reductions, with the shape of `x` without the reduced axes (with those axes of length 1 if `keepdims` is `True`), and the dtype of the same function without the `nan` prefix (see the table in Notes). A Python scalar when every axis is reduced and `keepdims` is `False`."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`, if `x` is complex for `nanmin`, `nanmax`, `nanargmin` or `nanargmax`, if `axis` is not an `int`, a tuple or list of `int`, or `None` (for `nanargmin` and `nanargmax`, not an `int` or `None`), if `dtype` is not `sd.int64`, `sd.float64`, `sd.complex128` or the name of one of them, if `dtype` is real and `x` is complex, if `correction` is not an `int` or a `float` (a `bool` is rejected), or if `keepdims` is not `True` or `False`."
+  - type: ValueError
+    desc: "If an axis is out of range or appears twice, if some element of the result of `nanmin`, `nanmax`, `nanargmin` or `nanargmax` has no elements to reduce (an empty `x`, or a reduced axis of length 0), or if some element of the result of `nanargmin` or `nanargmax` has only NaN elements."
+  - type: OverflowError
+    desc: "If an axis is an `int` outside the `int64` range."
+seeAlso: [sum, prod, min-max, mean, var-std, argmin-argmax, nan-cumulative, median, quantile, isnan-isinf-isfinite]
+---
+
+These functions are the reductions [`sum`](/api/array/sum/), [`prod`](/api/array/prod/),
+[`min`, `max`](/api/array/min-max/), [`mean`](/api/array/mean/), [`var`, `std`](/api/array/var-std/) and
+[`argmin`, `argmax`](/api/array/argmin-argmax/) with every NaN element of `x` left out. They take the same arguments,
+follow the same `axis` and `keepdims` rules and return the same dtype. The plain reductions propagate NaN (see
+[missing values](/start/conventions/#missing-values)); these give the result for the remaining elements.
+
+A complex element counts as NaN when its real or its imaginary part is NaN. `bool` and `int64` arrays hold no NaN, so
+for them each function returns exactly what the function without the prefix returns. For a `float64` or `complex128`
+input without NaN the result is also the same, to the last bit.
+
+An output element whose elements are all NaN has no value to report. `nansum` returns 0, `nanprod` returns 1,
+`nanmean`, `nanvar`, `nanstd`, `nanmin` and `nanmax` return NaN, and `nanargmin` and `nanargmax` raise `ValueError`.
+No case issues a warning.
+
+## Examples
+
+NaN makes the plain sum NaN. The `nan` forms use the three other elements:
+
+```python
+>>> import stardust as sd
+>>> y = sd.asarray([1.0, sd.nan, 3.0, 4.0])
+>>> sd.sum(y)
+nan
+>>> sd.nansum(y)
+8.0
+>>> sd.nanmean(y)
+2.6666666666666665
+>>> sd.nanmin(y), sd.nanmax(y)
+(1.0, 4.0)
+>>> sd.nanargmax(y)
+3
+>>> sd.nanvar(y, correction=1)
+2.3333333333333335
+```
+
+Along an axis, each output element skips its own NaN elements. The second row has nothing but NaN:
+
+```python
+>>> m = sd.asarray([[1.0, sd.nan, 3.0],
+...                 [sd.nan, sd.nan, sd.nan]])
+>>> sd.nansum(m, axis=1)
+array([4.0, 0.0], dtype=float64)
+>>> sd.nanmean(m, axis=1)
+array([2.0, nan], dtype=float64)
+>>> sd.nanmax(m, axis=1, keepdims=True)
+array([[3.0],
+       [nan]], dtype=float64)
+>>> sd.nanargmax(m)
+2
+>>> sd.nanargmax(m, axis=1)
+Traceback (most recent call last):
+    ...
+ValueError: nanargmax(): All-NaN slice encountered
+```
+
+Integer input gives the results of the plain functions. A complex element with a NaN part is skipped:
+
+```python
+>>> k = sd.asarray([3, 1, 2])
+>>> sd.nansum(k), sd.nanmean(k)
+(6, 2.0)
+>>> z = sd.asarray([1 + 1j, complex(1, sd.nan), 3 + 3j])
+>>> sd.nanmean(z)
+(2+2j)
+>>> sd.nanvar(z)
+2.0
+```
+
+An empty array is reduced as by the plain functions, and `nanmin` rejects complex input:
+
+```python
+>>> e = sd.zeros(0)
+>>> sd.nansum(e), sd.nanprod(e), sd.nanmean(e)
+(0.0, 1.0, nan)
+>>> sd.nanmin(e)
+Traceback (most recent call last):
+    ...
+ValueError: nanmin(): undefined for an empty array (or along an empty axis)
+>>> sd.nanmin(z)
+Traceback (most recent call last):
+    ...
+TypeError: nanmin(): not supported for complex128
+```
+
+<Reference />
+
+## Notes
+
+For one output element, let $S$ be the set of its elements that are not NaN and $m$ the number of them. With the
+correction $c$,
+
+$$
+\operatorname{nanmean} = \frac{1}{m} \sum_{x \in S} x, \qquad
+\operatorname{nanvar} = \frac{1}{m - c} \sum_{x \in S} \lvert x - \operatorname{nanmean} \rvert^2,
+$$
+
+and `nanstd` is the square root of `nanvar`. When $m - c \le 0$ the variance is NaN. `nansum` and `nanprod` equal
+`sum` and `prod` with each NaN replaced by 0 and 1.
+
+| Function | Result dtype | All elements NaN | No elements |
+|---|---|---|---|
+| `nansum`, `nanprod` | `int64` for `bool` input, else the dtype of `x` (or `dtype`) | 0, 1 | 0, 1 |
+| `nanmin`, `nanmax` | dtype of `x` | NaN | `ValueError` |
+| `nanmean` | `float64`, or `complex128` for complex input | NaN | NaN |
+| `nanvar`, `nanstd` | `float64` | NaN | NaN |
+| `nanargmin`, `nanargmax` | `int64` | `ValueError` | `ValueError` |
+
+Only NaN elements of `x` are skipped. A NaN that arises during the computation, such as $\infty + (-\infty)$, stays in
+the result:
+
+```python
+>>> sd.nansum(sd.asarray([sd.inf, -sd.inf, sd.nan]))
+nan
+```
+
+`nanargmin` reads a NaN as $+\infty$ and `nanargmax` reads it as $-\infty$, and both return the first position of the
+extreme value. When that value is itself infinite and a NaN comes before it, the result is the position of the NaN:
+
+```python
+>>> sd.nanargmin(sd.asarray([sd.nan, sd.inf]))
+0
+```
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.nansum`, `numpy.nanprod`, `numpy.nanmin`, `numpy.nanmax`, `numpy.nanmean`,
+`numpy.nanvar`, `numpy.nanstd`, `numpy.nanargmin` and `numpy.nanargmax`, and R's `sum`, `prod`, `min`, `max`, `mean`,
+`var` and `sd` with `na.rm = TRUE`, and `which.min` and `which.max`.
+
+- An output element with only NaN gives NaN (or 0 and 1 for sums and products) without a warning. NumPy issues a
+  `RuntimeWarning` ("All-NaN slice encountered", "Mean of empty slice").
+- `nanmin`, `nanmax`, `nanargmin` and `nanargmax` reject complex input; NumPy accepts it.
+- There is no `ddof=` argument; `correction` takes its place, with NumPy's default 0.
+- There are no `out=`, `initial=`, `where=` or `mean=` arguments, `dtype=` exists for `nansum` and `nanprod` only, and
+  there are no methods: `x.nansum()` does not exist.
+- R's `min` and `max` with `na.rm = TRUE` return `Inf` and `-Inf` with a warning when nothing remains; here the result
+  is NaN. R's `var` and `sd` divide by $m - 1$, which is `correction=1`.

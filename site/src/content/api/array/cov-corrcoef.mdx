@@ -1,0 +1,130 @@
+---
+kind: function
+title: cov, corrcoef
+names: [cov, corrcoef]
+group: Statistics
+order: 3
+signatures:
+  - "sd.cov(x, /, *, rowvar=True, correction=0)"
+  - "sd.corrcoef(x, /, *, rowvar=True)"
+summary: Compute the covariance matrix or the correlation matrix of several variables.
+params:
+  - name: x
+    type: array of shape (p, n) or (n,)
+    kind: positional-only
+    desc: "Data, one variable per row and one observation per column (with the default `rowvar=True`). A 1-D array is one variable. Any dtype; `bool` and `int64` are converted to `float64`."
+  - name: rowvar
+    type: bool
+    kind: keyword-only
+    default: "True"
+    desc: "If `True`, each row of a 2-D `x` is a variable. If `False`, each column is a variable and each row an observation. Has no effect for a 1-D `x`."
+  - name: correction
+    type: int or float
+    kind: keyword-only
+    default: "0"
+    desc: "Degrees-of-freedom correction of `cov`. The divisor is the number of observations minus `correction`: `0` gives the population covariance, `1` the sample covariance. The rules are those of [`var`](/api/array/var-std/)."
+returns:
+  - type: ndarray of shape (p, p) or scalar
+    desc: "Covariance or correlation matrix: entry `(i, j)` belongs to variables `i` and `j`. `float64`, or `complex128` for complex input. A Python `float` (or `complex`) when there is one variable, and an empty array of shape `(0, 0)` when there is none."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`, if `rowvar` is not `True` or `False`, or if `correction` is not an `int` or a `float` (a `bool` is rejected)."
+  - type: ValueError
+    desc: "If `x` has more than two dimensions."
+seeAlso: [var-std, mean, quantile]
+---
+
+`cov` computes the covariance of every pair of variables: the mean product of their deviations from their means. A
+positive covariance means the two variables tend to lie above or below their means together. The diagonal holds the
+variance of each variable. `corrcoef` scales each covariance by the two standard deviations, which gives the
+Pearson correlation coefficient: a number between $-1$ and $1$ that does not depend on the units of the variables.
+
+By default each row of `x` is a variable. Data laid out as a table, one observation per row and one variable per
+column, takes `rowvar=False`.
+
+The default `correction=0` divides by the number of observations $n$, as [`var`](/api/array/var-std/) does.
+`correction=1` divides by $n - 1$ and gives the sample covariance. The correction cancels in the correlation, so
+`corrcoef` has no such argument. NaN is not skipped: a variable with a NaN gives NaN in its row and its column.
+
+## Examples
+
+Two variables with four observations each. The diagonal holds the two variances:
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([[1.0, 2.0, 3.0, 4.0],
+...                 [2.0, 4.0, 5.0, 9.0]])
+>>> sd.cov(x)
+array([[1.25, 2.75],
+       [2.75,  6.5]], dtype=float64)
+>>> sd.cov(x, correction=1)
+array([[1.6666666666666665, 3.6666666666666665],
+       [3.6666666666666665,  8.666666666666666]], dtype=float64)
+```
+
+The same data with one observation per row:
+
+```python
+>>> table = sd.asarray([[1.0, 2.0], [2.0, 4.0], [3.0, 5.0], [4.0, 9.0]])
+>>> sd.cov(table, rowvar=False)
+array([[1.25, 2.75],
+       [2.75,  6.5]], dtype=float64)
+```
+
+The correlation matrix has ones on the diagonal. Two variables that fall as each other rises have correlation $-1$:
+
+```python
+>>> sd.corrcoef(x)
+array([[               1.0, 0.9647638212377322],
+       [0.9647638212377321,                1.0]], dtype=float64)
+>>> sd.corrcoef(sd.asarray([[1, 2, 3], [3, 2, 1]]))
+array([[ 1.0, -1.0],
+       [-1.0,  1.0]], dtype=float64)
+```
+
+One variable gives a scalar. A constant variable has no correlation, and a 3-D array is rejected:
+
+```python
+>>> sd.cov(sd.asarray([1.0, 2.0, 4.0]))
+1.5555555555555554
+>>> sd.corrcoef(sd.asarray([[1.0, 2.0, 3.0], [5.0, 5.0, 5.0]]))
+array([[1.0, nan],
+       [nan, nan]], dtype=float64)
+>>> sd.cov(sd.zeros((2, 2, 2)))
+Traceback (most recent call last):
+    ...
+ValueError: cov(): 'x' must be 1-D or 2-D
+```
+
+<Reference />
+
+## Notes
+
+For variables $x_i$ with $n$ observations $x_{ik}$ and means $\bar x_i$, and correction $c$,
+
+$$
+C_{ij} = \frac{1}{n - c} \sum_{k=0}^{n-1} (x_{ik} - \bar x_i)\, \overline{(x_{jk} - \bar x_j)},
+\qquad
+R_{ij} = \frac{C_{ij}}{\sqrt{C_{ii}\, C_{jj}}} .
+$$
+
+The bar over the second factor is the complex conjugate; it has no effect for real data. `corrcoef` clips $R_{ij}$
+(for complex data its real and imaginary parts) to $[-1, 1]$, which removes rounding errors slightly outside the interval.
+
+- When $n - c \le 0$, every entry of `cov` is NaN. This includes data without observations.
+- A variable with zero variance gives NaN in its row and its column of `corrcoef`, including its diagonal entry.
+- `cov` is exactly symmetric; for complex data it is Hermitian with a real diagonal. In `corrcoef`, the mirror
+  entries $R_{ij}$ and $R_{ji}$ can differ in the last digit, as in the example above.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.cov` and `numpy.corrcoef`, and R's `cov(x)` and `cor(x)`.
+
+- The default divisor is $n$. `numpy.cov` divides by $n - 1$ by default; `correction=1` gives its result.
+- `correction` may be a non-integer `float`. NumPy's `ddof=` must be an integer.
+- There are no `y=`, `bias=`, `ddof=`, `fweights=`, `aweights=` or `dtype=` arguments: stack the variables into one
+  array with [`stack`](/api/array/stack-unstack/) instead of passing `y=`.
+- A constant variable gives NaN in `corrcoef`, and a divisor $n - c \le 0$ gives NaN in every entry of `cov`, both
+  without a warning. NumPy issues a `RuntimeWarning` in both cases, and its `cov` then gives `inf` for the nonzero
+  entries. R's `cor` warns, returns `NA` for the pairs of a constant variable and keeps 1 on the diagonal.
+- R's `cov` and `cor` take one variable per column, as `rowvar=False` here, and `cov` divides by $n - 1$.

@@ -100,7 +100,8 @@ array([(nan+0j)], dtype=complex128)
 
 A missing number is NaN (`sd.nan`). Arithmetic and the numeric reductions propagate it: a sum, mean or maximum that
 includes a NaN is NaN, and `argmin` and `argmax` return the position of the first NaN. A comparison with NaN is
-`False`, except `!=`, which is `True`. The `nan`-prefixed reductions (`nansum`, `nanmean`, `nanmedian` and others) skip NaN values:
+`False`, except `!=`, which is `True`. The `nan`-prefixed reductions ([`nansum`, `nanmean`](/api/array/nan-reductions/),
+[`nanmedian`](/api/array/median/), [`nanquantile`](/api/array/quantile/) and others) skip NaN values:
 
 ```python
 >>> y = sd.asarray([1.0, sd.nan, 3.0])
@@ -109,6 +110,9 @@ nan
 >>> sd.nanmean(y)
 2.0
 ```
+
+Where only NaN remains, these functions give NaN (0 for `nansum`, 1 for `nanprod`) without a warning, and
+`nanargmin` and `nanargmax` raise `ValueError`.
 
 Most statistical functions that take data (in `sd.stats`, `sd.htest` and `sd.regression`) take `nan_policy`:
 

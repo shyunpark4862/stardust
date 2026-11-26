@@ -1,0 +1,122 @@
+---
+kind: function
+title: min, max
+names: [min, max, ndarray.min, ndarray.max]
+group: Reductions
+order: 3
+signatures:
+  - "sd.min(x, /, *, axis=None, keepdims=False)"
+  - "sd.max(x, /, *, axis=None, keepdims=False)"
+  - "sd.ndarray.min(*, axis=None, keepdims=False)"
+  - "sd.ndarray.max(*, axis=None, keepdims=False)"
+summary: Return the smallest or the largest element over the given axes.
+params:
+  - name: x
+    type: array
+    kind: positional-only
+    desc: "Array of dtype `bool`, `int64` or `float64`. In the method form, the array the method is called on."
+  - name: axis
+    type: int, tuple of int or None
+    kind: keyword-only
+    default: None
+    desc: "Axis or axes to reduce. `None` reduces over all axes, and `()` over none. A list is accepted like a tuple. See [`axis` and `keepdims`](/start/conventions/#axis-and-keepdims)."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    default: "False"
+    desc: "If `True`, each reduced axis stays in the result with length 1."
+returns:
+  - type: ndarray or scalar
+    desc: "Smallest (`min`) or largest (`max`) elements, with the shape of `x` without the reduced axes (with those axes of length 1 if `keepdims` is `True`) and the dtype of `x`. A Python `bool`, `int` or `float` when every axis is reduced and `keepdims` is `False`."
+raises:
+  - type: TypeError
+    desc: "If `x` is complex, if `x` is not an `sd.ndarray`, if `axis` is not an `int`, a tuple or list of `int`, or `None`, or if `keepdims` is not `True` or `False`."
+  - type: ValueError
+    desc: "If an axis is out of range or appears twice, or if some element of the result has no elements to reduce (an empty `x`, or a reduced axis of length 0)."
+  - type: OverflowError
+    desc: "If an axis is an `int` outside the `int64` range."
+seeAlso: [argmin-argmax, maximum-minimum, nan-reductions, sort-argsort, clip]
+---
+
+`min` returns the smallest element of `x` along the axes given by `axis`, and `max` the largest. The reduced axes are
+removed from the shape, or kept with length 1 when `keepdims=True` (see
+[`axis` and `keepdims`](/start/conventions/#axis-and-keepdims)). With the default `axis=None`, the result is one
+Python number. The methods `x.min(...)` and `x.max(...)` are the same functions.
+
+The result has the dtype of `x`. For Booleans, `False` is smaller than `True`, so `max` is true when any element is
+true and `min` when all are. Complex numbers have no order and raise `TypeError`.
+
+NaN propagates: if a reduced group contains NaN, its minimum and maximum are NaN.
+[`nanmin` and `nanmax`](/api/array/nan-reductions/) skip NaN. A minimum or maximum of no elements is not defined and
+raises `ValueError`. To compare two arrays element by element instead, use
+[`minimum` and `maximum`](/api/array/maximum-minimum/).
+
+## Examples
+
+The smallest and largest element, and the largest of each column and row:
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([[3, 8, 1], [5, 2, 9]])
+>>> sd.min(x), sd.max(x)
+(1, 9)
+>>> sd.max(x, axis=0)
+array([5, 8, 9], dtype=int64)
+>>> x.min(axis=1)
+array([1, 2], dtype=int64)
+>>> sd.max(x, axis=1, keepdims=True)
+array([[8],
+       [9]], dtype=int64)
+```
+
+With `keepdims=True` the result broadcasts against `x`, here to scale each row by its maximum:
+
+```python
+>>> x / sd.max(x, axis=1, keepdims=True)
+array([[             0.375,                1.0,              0.125],
+       [0.5555555555555556, 0.2222222222222222,                1.0]], dtype=float64)
+```
+
+NaN propagates, and Boolean arrays keep their dtype:
+
+```python
+>>> f = sd.asarray([[1.0, sd.nan], [2.0, 0.5]])
+>>> sd.max(f, axis=1)
+array([nan, 2.0], dtype=float64)
+>>> sd.max(sd.asarray([False, True, False]))
+True
+```
+
+An empty reduction raises `ValueError`, unless the result itself has no elements. Complex input raises `TypeError`:
+
+```python
+>>> e = sd.zeros((3, 0))
+>>> sd.max(e, axis=0)
+array([], dtype=float64)
+>>> sd.max(e, axis=1)
+Traceback (most recent call last):
+    ...
+ValueError: max(): undefined for an empty array (or along an empty axis)
+>>> sd.min(sd.asarray([1 + 1j, 2 + 0j]))
+Traceback (most recent call last):
+    ...
+TypeError: min(): not supported for complex128
+```
+
+<Reference />
+
+## Notes
+
+The results are exact: each one is an element of `x`. `-inf` and `inf` are ordinary values. `-0.0` counts as smaller
+than `0.0`, so the minimum of `0.0` and `-0.0` is `-0.0` and their maximum is `0.0`, whatever their order in `x`.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.min` and `numpy.max` (also called `numpy.amin` and `numpy.amax`), the methods
+`numpy.ndarray.min` and `numpy.ndarray.max`, and R's `min`, `max` and `range`.
+
+- Complex input raises `TypeError`. NumPy orders complex numbers by real part, then imaginary part.
+- There are no `out=`, `initial=` or `where=` arguments, so an empty reduction always raises `ValueError`.
+- A reduction over all axes is a Python `bool`, `int` or `float`, not a NumPy scalar.
+- R's `min` and `max` return a single number for any array. For an empty argument they return `Inf` and `-Inf` with
+  a warning; here they raise `ValueError`.

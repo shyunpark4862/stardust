@@ -1,0 +1,156 @@
+---
+kind: function
+title: sum
+names: [sum, ndarray.sum]
+group: Reductions
+order: 1
+signatures:
+  - "sd.sum(x, /, *, axis=None, dtype=None, keepdims=False)"
+  - "sd.ndarray.sum(*, axis=None, dtype=None, keepdims=False)"
+summary: Sum the elements over the given axes.
+params:
+  - name: x
+    type: array
+    kind: positional-only
+    desc: "Array to sum, of any dtype. In the method form, the array the method is called on."
+  - name: axis
+    type: int, tuple of int or None
+    kind: keyword-only
+    default: None
+    desc: "Axis or axes to sum over. `None` sums over all axes, and `()` over none. A list is accepted like a tuple. See [`axis` and `keepdims`](/start/conventions/#axis-and-keepdims)."
+  - name: dtype
+    type: dtype, str or None
+    kind: keyword-only
+    default: None
+    desc: "Data type of the result: `sd.int64`, `sd.float64` or `sd.complex128`, or its name as a string. The elements are converted to it before they are added (see [explicit conversion](/api/array/dtypes/#explicit-conversion)). `None` uses the dtype of `x`, with `int64` in place of `bool`."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    default: "False"
+    desc: "If `True`, each reduced axis stays in the result with length 1."
+returns:
+  - type: ndarray or scalar
+    desc: "Sums, with the shape of `x` without the reduced axes (with those axes of length 1 if `keepdims` is `True`). The dtype is `dtype`, or that of `x` with `int64` in place of `bool`. A Python `int`, `float` or `complex` when every axis is reduced and `keepdims` is `False`."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`, if `axis` is not an `int`, a tuple or list of `int`, or `None`, if `dtype` is not `sd.int64`, `sd.float64`, `sd.complex128` or the name of one of them, if `dtype` is real and `x` is complex, or if `keepdims` is not `True` or `False`."
+  - type: ValueError
+    desc: "If an axis is out of range or appears twice."
+  - type: OverflowError
+    desc: "If an axis is an `int` outside the `int64` range."
+seeAlso: [prod, mean, cumulative, count_nonzero, nan-reductions, any-all]
+---
+
+`sum` adds the elements of `x` along the axes given by `axis` and removes those axes from the shape, or keeps them
+with length 1 when `keepdims=True` (see [`axis` and `keepdims`](/start/conventions/#axis-and-keepdims)). With the
+default `axis=None`, the result is the sum of all elements, returned as a Python number. The method `x.sum(...)` is
+the same function.
+
+The sum has the dtype of `x`, except that Booleans count as 0 and 1 and give `int64`, so `sum(x > 0)` counts the
+positive elements (see [arithmetic on Booleans](/api/array/dtypes/#arithmetic-on-booleans)). `dtype=` converts
+every element before the addition: `sum(x, dtype=sd.float64)` adds integers in `float64`, and
+`sum(x, dtype=sd.int64)` truncates each `float64` element toward zero first.
+
+`int64` sums wrap around when they leave the `int64` range, without an error (see
+[integer overflow](/api/array/dtypes/#integer-overflow)). A NaN element makes the sum NaN, and so does the sum of
+`inf` and `-inf`; [`nansum`](/api/array/nan-reductions/) skips NaN instead. The sum of no elements is 0, in the
+result dtype.
+
+## Examples
+
+The sum of all elements, and sums over each axis, also with the method:
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([[1, 2, 3], [4, 5, 6]])
+>>> sd.sum(x)
+21
+>>> sd.sum(x, axis=0)
+array([5, 7, 9], dtype=int64)
+>>> x.sum(axis=1)
+array([ 6, 15], dtype=int64)
+>>> sd.sum(x, axis=1, keepdims=True)
+array([[ 6],
+       [15]], dtype=int64)
+```
+
+Several axes at once. `axis=(0, 2)` leaves the middle axis of a 3-D array:
+
+```python
+>>> t = sd.reshape(sd.arange(24), (2, 3, 4))
+>>> sd.sum(t, axis=(0, 2))
+array([ 60,  92, 124], dtype=int64)
+```
+
+Booleans count as 0 and 1, so the sum of a comparison counts the elements for which it holds:
+
+```python
+>>> sd.sum(x > 2)
+4
+>>> sd.sum(x > 2, axis=1)
+array([1, 3], dtype=int64)
+```
+
+`dtype=` converts each element first. Here `1.5` becomes `1` before the addition:
+
+```python
+>>> sd.sum(x, dtype=sd.float64)
+21.0
+>>> sd.sum(sd.asarray([1.5, 1.5]), dtype=sd.int64)
+2
+```
+
+Integer sums wrap around, and NaN propagates. An empty sum is 0:
+
+```python
+>>> big = sd.asarray([2**62, 2**62])
+>>> sd.sum(big)
+-9223372036854775808
+>>> sd.sum(big, dtype=sd.float64)
+9.223372036854776e+18
+>>> sd.sum(sd.asarray([1.0, sd.nan, 3.0]))
+nan
+>>> sd.sum(sd.zeros((0,)))
+0.0
+>>> sd.sum(sd.zeros((3, 0)), axis=1)
+array([0.0, 0.0, 0.0], dtype=float64)
+```
+
+There is no Boolean sum, and the axis is a keyword argument:
+
+```python
+>>> sd.sum(x > 2, dtype=sd.bool)
+Traceback (most recent call last):
+    ...
+TypeError: sum(): cannot accumulate in bool; use any() or all()
+>>> sd.sum(x, 0)
+Traceback (most recent call last):
+    ...
+TypeError: sum(): incompatible function arguments. ...
+```
+
+<Reference />
+
+## Notes
+
+The sum of all elements of a `float64` or `complex128` array uses pairwise summation: the elements are added in a
+fixed tree of partial sums, and the rounding error grows with the logarithm of the number of elements rather than in
+proportion to it. A sum along the last axis of a row-major array is formed the same way; along the other axes the
+elements are added without this tree, and the rounding error can be larger. The order of the additions is fixed by
+the shape and memory layout, so the same input gives the same bits on every run (see
+[Determinism and threads](/start/conventions/#determinism-and-threads)).
+
+A floating-point sum starts from `0.0`, so the sum of `-0.0` elements is `0.0`.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.sum`, the method `numpy.ndarray.sum`, and R's `sum`, `colSums` and `rowSums`.
+
+- The additions are done in a different order from NumPy's, so results for `float64` and `complex128` input can
+  differ from NumPy's in the last digit.
+- A sum over all axes is a Python `int`, `float` or `complex`, not a NumPy scalar.
+- There are no `out=`, `initial=` or `where=` arguments, and `dtype=sd.bool` raises `TypeError`. NumPy's
+  `dtype=bool` gives the logical or; use [`any`](/api/array/any-all/) for that.
+- `x` must be an `sd.ndarray`; lists raise `TypeError`.
+- R's `sum` returns a single number for any array; per-axis sums of a matrix are `colSums` and `rowSums`. R's
+  integer sums do not wrap around.

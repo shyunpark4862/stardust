@@ -1,0 +1,131 @@
+---
+kind: function
+title: cumulative_sum, cumulative_prod
+names: [cumulative_sum, cumulative_prod]
+group: Cumulative
+order: 1
+signatures:
+  - "sd.cumulative_sum(x, /, *, axis=None, dtype=None, include_initial=False)"
+  - "sd.cumulative_prod(x, /, *, axis=None, dtype=None, include_initial=False)"
+summary: Compute running sums or running products along an axis.
+params:
+  - name: x
+    type: array
+    kind: positional-only
+    desc: "Array of any dtype."
+  - name: axis
+    type: int or None
+    kind: keyword-only
+    default: None
+    desc: "Axis along which to accumulate. Negative values count from the end. May be `None` only when `x` is 1-D; a tuple or list is rejected."
+  - name: dtype
+    type: dtype, str or None
+    kind: keyword-only
+    default: None
+    desc: "Data type of the result: `sd.int64`, `sd.float64` or `sd.complex128`, or its name as a string. The elements are converted to it before they are accumulated (see [explicit conversion](/api/array/dtypes/#explicit-conversion)). `None` uses the dtype of `x`, with `int64` in place of `bool`."
+  - name: include_initial
+    type: bool
+    kind: keyword-only
+    default: "False"
+    desc: "If `True`, the result starts with the empty sum 0 or the empty product 1, and `axis` is one longer than in `x`."
+returns:
+  - type: ndarray
+    desc: "Running sums (`cumulative_sum`) or products (`cumulative_prod`), with the shape of `x`, or with `axis` one longer if `include_initial` is `True`. The dtype is `dtype`, or that of `x` with `int64` in place of `bool`. Always an array, also for a single element."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`, if `axis` is not an `int` or `None`, if `dtype` is not `sd.int64`, `sd.float64`, `sd.complex128` or the name of one of them, if `dtype` is real and `x` is complex, or if `include_initial` is not `True` or `False`."
+  - type: ValueError
+    desc: "If `axis` is out of range, or if `axis` is `None` and `x` has more than one dimension."
+  - type: OverflowError
+    desc: "If `axis` is an `int` outside the `int64` range."
+seeAlso: [sum, prod, nan-cumulative, diff]
+---
+
+`cumulative_sum` returns the running sums of `x` along `axis`: element $k$ along `axis` is the sum of the elements 0
+to $k$ of `x` along that axis. `cumulative_prod` returns the running products in the same way. The result has the
+shape of `x`, and its last element along `axis` is the sum or product of all elements along that axis.
+
+For a 1-D `x`, `axis` may be left out. For an array with two or more dimensions, `axis` is required and must be one
+`int`; there is no accumulation over flattened elements.
+
+With `include_initial=True`, the result starts along `axis` with the value of the empty sum, 0, or of the empty
+product, 1. The axis then grows by one, and element $k$ holds the result of the first $k$ elements. For integer
+input, the differences of this running sum, computed by [`diff`](/api/array/diff/), give back `x`.
+
+The result dtype and `dtype=` follow [`sum`](/api/array/sum/): Booleans count as 0 and 1 and give `int64`, and
+`dtype=` converts every element before the accumulation. `int64` values wrap around when they leave the `int64` range
+(see [integer overflow](/api/array/dtypes/#integer-overflow)). A NaN element makes that position and every later one
+along the axis NaN; [`nancumulative_sum` and `nancumulative_prod`](/api/array/nan-cumulative/) skip NaN.
+
+## Examples
+
+Running sums and products of a 1-D array, with and without the initial value:
+
+```python
+>>> import stardust as sd
+>>> v = sd.asarray([1, 2, 3, 4])
+>>> sd.cumulative_sum(v)
+array([ 1,  3,  6, 10], dtype=int64)
+>>> sd.cumulative_prod(v)
+array([ 1,  2,  6, 24], dtype=int64)
+>>> sd.cumulative_sum(v, include_initial=True)
+array([ 0,  1,  3,  6, 10], dtype=int64)
+```
+
+Along each axis of a 2-D array:
+
+```python
+>>> x = sd.asarray([[1, 2, 3], [4, 5, 6]])
+>>> sd.cumulative_sum(x, axis=0)
+array([[1, 2, 3],
+       [5, 7, 9]], dtype=int64)
+>>> sd.cumulative_sum(x, axis=1, include_initial=True)
+array([[ 0,  1,  3,  6],
+       [ 0,  4,  9, 15]], dtype=int64)
+```
+
+Running counts of a condition, and a running mean, which divides by the number of elements so far:
+
+```python
+>>> sd.cumulative_sum(sd.asarray([True, False, True, True]))
+array([1, 1, 2, 3], dtype=int64)
+>>> sd.cumulative_sum(v, dtype=sd.float64) / sd.arange(1, 5)
+array([1.0, 1.5, 2.0, 2.5], dtype=float64)
+```
+
+NaN carries forward, and an array with two or more dimensions needs `axis`:
+
+```python
+>>> sd.cumulative_sum(sd.asarray([1.0, sd.nan, 2.0]))
+array([1.0, nan, nan], dtype=float64)
+>>> sd.cumulative_sum(x)
+Traceback (most recent call last):
+    ...
+ValueError: cumulative_sum(): 'axis' is required for arrays with more than one dimension
+```
+
+<Reference />
+
+## Notes
+
+For the elements $x_0, \dots, x_{n-1}$ along `axis`, the running sum is $s_k = \sum_{i=0}^{k} x_i$ and the running product is
+$p_k = \prod_{i=0}^{k} x_i$. With `include_initial=True`, the result is $0, s_0, \dots, s_{n-1}$ or
+$1, p_0, \dots, p_{n-1}$, of length $n + 1$. An axis of length 0 gives an empty result, or `[0]` and `[1]` with
+`include_initial=True`.
+
+The first element of the result is `x[0]` itself, so a leading `-0.0` stays `-0.0`. Floating-point values are
+accumulated in a different order from [`sum`](/api/array/sum/), so the last running sum can differ from `sum(x)` in
+the last digits. As for [`prod`](/api/array/prod/), running products that leave the `float64` range become infinite,
+and a later zero then gives NaN.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.cumulative_sum` and `numpy.cumulative_prod` (also `numpy.cumsum` and
+`numpy.cumprod`), and R's `cumsum` and `cumprod`.
+
+- `axis` is required for arrays with two or more dimensions, as in `numpy.cumulative_sum`. `numpy.cumsum` flattens
+  such arrays when `axis` is left out; flatten with [`ravel`](/api/array/ravel/) first for that result.
+- There is no `out=` argument, and `dtype=sd.bool` raises `TypeError`.
+- Long `float64` accumulations can differ from NumPy's in the last digits.
+- R's `cumsum` and `cumprod` work on vectors and flatten a matrix in column-major order. A matrix's running sums by
+  column are `apply(m, 2, cumsum)`.

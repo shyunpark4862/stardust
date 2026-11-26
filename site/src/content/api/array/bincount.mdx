@@ -1,0 +1,110 @@
+---
+kind: function
+title: bincount
+names: [bincount]
+group: Statistics
+order: 4
+signatures:
+  - "sd.bincount(x, /, *, weights=None, minlength=0)"
+summary: Count the occurrences of each nonnegative integer in an array.
+params:
+  - name: x
+    type: array of shape (n,)
+    kind: positional-only
+    desc: "Values to count. A 1-D `bool` or `int64` array with no negative element; `False` and `True` count as 0 and 1."
+  - name: weights
+    type: array of shape (n,) or None
+    kind: keyword-only
+    default: None
+    desc: "Weight of each element of `x`, of dtype `bool`, `int64` or `float64`. With weights, entry `i` of the result is the sum of the weights of the elements equal to `i`, computed in `float64`."
+  - name: minlength
+    type: int
+    kind: keyword-only
+    default: "0"
+    desc: "Minimum length of the result. Must be nonnegative."
+returns:
+  - type: ndarray of shape (m,)
+    desc: "Counts, with `m` the larger of `max(x) + 1` and `minlength` (0 for an empty `x`). Entry `i` is the number of elements of `x` equal to `i` (`int64`), or the sum of their weights (`float64`) when `weights` is given."
+raises:
+  - type: TypeError
+    desc: "If `x` or `weights` is not an `sd.ndarray`, if `x` is not `bool` or `int64`, if `weights` is complex, or if `minlength` is not an `int` (a `bool` is rejected)."
+  - type: ValueError
+    desc: "If `x` is not 1-D or has a negative element, if `weights` is not 1-D or not as long as `x`, if `minlength` is negative, or if the result would be too large to allocate."
+  - type: OverflowError
+    desc: "If `minlength` is an `int` outside the `int64` range."
+seeAlso: [histogram, unique, sum]
+---
+
+`bincount` counts how often each of the integers $0, 1, 2, \dots$ occurs in `x`. Entry `i` of the result is the
+count of `i`, so the result has one entry for every integer from 0 to the largest element of `x`, including those that
+do not occur. `minlength` pads the result with zero counts, which gives results of the same length for different data.
+
+With `weights`, each element contributes its weight instead of 1. The result is then a sum per integer: for example
+the total amount per customer number, or the weighted frequency of each category.
+
+## Examples
+
+Counts of 0 to 7. The integers 4, 5 and 6 do not occur:
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([0, 1, 1, 3, 2, 1, 7])
+>>> sd.bincount(x)
+array([1, 3, 1, 1, 0, 0, 0, 1], dtype=int64)
+>>> sd.bincount(x, minlength=10)
+array([1, 3, 1, 1, 0, 0, 0, 1, 0, 0], dtype=int64)
+```
+
+Weighted counts. Entry 1 adds the weights of the three elements equal to 1:
+
+```python
+>>> w = sd.asarray([0.5, 1.0, 1.0, 2.0, 0.25, 1.0, 3.0])
+>>> sd.bincount(x, weights=w)
+array([ 0.5,  3.0, 0.25,  2.0,  0.0,  0.0,  0.0,  3.0], dtype=float64)
+```
+
+An empty array gives an empty result, or `minlength` zeros. A Boolean array counts its `False` and `True` elements:
+
+```python
+>>> sd.bincount(sd.asarray([], dtype=sd.int64), minlength=3)
+array([0, 0, 0], dtype=int64)
+>>> sd.bincount(sd.asarray([True, False, True]))
+array([1, 2], dtype=int64)
+```
+
+Negative and floating-point values are rejected:
+
+```python
+>>> sd.bincount(sd.asarray([-1, 2]))
+Traceback (most recent call last):
+    ...
+ValueError: bincount(): 'x' must be >= 0
+>>> sd.bincount(sd.asarray([1.0, 2.0]))
+Traceback (most recent call last):
+    ...
+TypeError: bincount(): 'x' must be a bool or int64 array, not float64
+```
+
+<Reference />
+
+## Notes
+
+With weights $w_k$, entry $i$ of the result is
+
+$$
+b_i = \sum_{k \,:\, x_k = i} w_k ,
+$$
+
+and without weights every $w_k$ is 1. The weights are converted to `float64` before they are added. The result does
+not depend on the number of threads.
+
+The length of the result follows the largest element of `x`, so a single large value allocates a long array. For
+values that are not small nonnegative integers, [`unique_counts`](/api/array/unique/) counts the distinct values only.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.bincount` and R's `tabulate(bin, nbins)`.
+
+- `x` and `weights` must be `sd.ndarray`; NumPy also accepts lists.
+- R's `tabulate` counts the integers from 1 to `nbins`, ignores 0 and negative values, and has no weights:
+  `tabulate(c(1, 2, 2, 5))` gives `1 2 0 0 1`. Here 0 is counted in entry 0 and negative values raise `ValueError`.

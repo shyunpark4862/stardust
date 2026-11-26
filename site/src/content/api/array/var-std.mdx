@@ -1,0 +1,140 @@
+---
+kind: function
+title: var, std
+names: [var, std, ndarray.var, ndarray.std]
+group: Reductions
+order: 5
+signatures:
+  - "sd.var(x, /, *, axis=None, correction=0, keepdims=False)"
+  - "sd.std(x, /, *, axis=None, correction=0, keepdims=False)"
+  - "sd.ndarray.var(*, axis=None, correction=0, keepdims=False)"
+  - "sd.ndarray.std(*, axis=None, correction=0, keepdims=False)"
+summary: Compute the variance or the standard deviation over the given axes.
+params:
+  - name: x
+    type: array
+    kind: positional-only
+    desc: "Array of data, of any dtype. In the method form, the array the method is called on."
+  - name: axis
+    type: int, tuple of int or None
+    kind: keyword-only
+    default: None
+    desc: "Axis or axes to reduce. `None` reduces over all axes, and `()` over none. A list is accepted like a tuple. See [`axis` and `keepdims`](/start/conventions/#axis-and-keepdims)."
+  - name: correction
+    type: int or float
+    kind: keyword-only
+    default: "0"
+    desc: "Degrees-of-freedom correction. The divisor is the number of elements minus `correction`: `0` gives the population variance, `1` the sample variance. May be negative or fractional."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    default: "False"
+    desc: "If `True`, each reduced axis stays in the result with length 1."
+returns:
+  - type: ndarray or scalar
+    desc: "Variances (`var`) or standard deviations (`std`), with the shape of `x` without the reduced axes (with those axes of length 1 if `keepdims` is `True`). Always `float64`, also for complex input. A Python `float` when every axis is reduced and `keepdims` is `False`."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`, if `axis` is not an `int`, a tuple or list of `int`, or `None`, if `correction` is not an `int` or a `float` (a `bool` is rejected), or if `keepdims` is not `True` or `False`."
+  - type: ValueError
+    desc: "If an axis is out of range or appears twice."
+  - type: OverflowError
+    desc: "If an axis is an `int` outside the `int64` range."
+seeAlso: [mean, cov-corrcoef, nan-reductions, quantile]
+---
+
+`var` computes the variance of the elements of `x` along the axes given by `axis`: the mean squared distance of the
+elements from their mean. `std` computes the standard deviation, the square root of the variance. The reduced axes
+are removed from the shape, or kept with length 1 when `keepdims=True` (see
+[`axis` and `keepdims`](/start/conventions/#axis-and-keepdims)). The methods `x.var(...)` and `x.std(...)` are the
+same functions.
+
+`correction` sets the divisor. With the default `correction=0`, the sum of squared deviations is divided by the
+number of elements $N$, which gives the variance of `x` as a whole population. `correction=1` divides by $N - 1$
+and gives the sample variance, the usual unbiased estimate of the variance of the distribution the data come from.
+When $N - c$ is zero or negative, the result is NaN, as for an empty `x` with the default `correction`.
+
+The result is always `float64`. For complex input, the deviations are measured by their modulus, so the variance is
+real. A NaN or infinite element makes the result NaN; [`nanvar` and `nanstd`](/api/array/nan-reductions/) skip NaN.
+
+## Examples
+
+Population and sample variance and standard deviation of eight values:
+
+```python
+>>> import stardust as sd
+>>> d = sd.asarray([2.0, 4.0, 4.0, 4.0, 5.0, 5.0, 7.0, 9.0])
+>>> sd.var(d), sd.std(d)
+(4.0, 2.0)
+>>> sd.var(d, correction=1)
+4.571428571428571
+>>> d.std(correction=1)
+2.138089935299395
+```
+
+Along an axis, one value per column of a 2-D array:
+
+```python
+>>> x = sd.asarray([[1, 2, 3], [4, 6, 8]])
+>>> sd.var(x, axis=0)
+array([2.25,  4.0, 6.25], dtype=float64)
+>>> sd.std(x, axis=1, correction=1, keepdims=True)
+array([[1.0],
+       [2.0]], dtype=float64)
+```
+
+Complex input gives a real variance:
+
+```python
+>>> sd.var(sd.asarray([1 + 1j, -1 - 1j, 2j]))
+2.222222222222222
+```
+
+A single value has no sample variance, and an empty array has no variance at all:
+
+```python
+>>> one = sd.asarray([5.0])
+>>> sd.var(one)
+0.0
+>>> sd.var(one, correction=1)
+nan
+>>> sd.std(sd.zeros((0,)))
+nan
+```
+
+<Reference />
+
+## Notes
+
+For $N$ elements $x_i$ with mean $\bar{x}$ and correction $c$,
+
+$$
+\operatorname{var}(x) = \frac{1}{N - c} \sum_{i=1}^{N} \lvert x_i - \bar{x} \rvert^2,
+\qquad
+\operatorname{std}(x) = \sqrt{\operatorname{var}(x)}.
+$$
+
+The result is NaN when $N - c \le 0$. A negative $c$ makes the divisor larger than $N$.
+
+The function first computes the mean, then sums the squared deviations from it. A large common offset in the data
+therefore does not cancel the significant digits, as it does in the formula $\overline{x^2} - \bar{x}^2$, which gives
+0 in `float64` for these three values:
+
+```python
+>>> sd.var(sd.asarray([1e9 + 1, 1e9 + 2, 1e9 + 3]))
+0.6666666666666666
+```
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.var` and `numpy.std` with `ddof=` (or `correction=`), the methods of
+`numpy.ndarray`, and R's `var` and `sd`.
+
+- The default `correction=0` divides by $N$, as NumPy's default `ddof=0`. R's `var` and `sd` divide by $N - 1$; pass
+  `correction=1` for the same result.
+- There is no `ddof=` argument; `correction` takes its place. There are no `dtype=`, `out=`, `where=` or `mean=`
+  arguments.
+- $N - c \le 0$ gives NaN without a warning. NumPy issues a `RuntimeWarning`; R's `var` of one value is `NA`.
+- Results for `float64` input can differ from NumPy's in the last digit.
+- R's `var` of a matrix is the covariance matrix of its columns; here it is the variance of all elements. The
+  covariance matrix is [`cov`](/api/array/cov-corrcoef/).

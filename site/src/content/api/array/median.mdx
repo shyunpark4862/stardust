@@ -1,0 +1,129 @@
+---
+kind: function
+title: median, nanmedian
+names: [median, nanmedian]
+group: Statistics
+order: 2
+signatures:
+  - "sd.median(x, /, *, axis=None, keepdims=False)"
+  - "sd.nanmedian(x, /, *, axis=None, keepdims=False)"
+summary: Compute the median of the elements over the given axes.
+params:
+  - name: x
+    type: array
+    kind: positional-only
+    desc: "Array of dtype `bool`, `int64` or `float64`. The elements are converted to `float64` before they are ranked. `x` need not be sorted and is not changed."
+  - name: axis
+    type: int, tuple of int or None
+    kind: keyword-only
+    default: None
+    desc: "Axis or axes to reduce. `None` reduces over all axes, and `()` over none. A list is accepted like a tuple. The elements of several axes are ranked together. See [`axis` and `keepdims`](/start/conventions/#axis-and-keepdims)."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    default: "False"
+    desc: "If `True`, each reduced axis stays in the result with length 1."
+returns:
+  - type: ndarray or float
+    desc: "Medians, with the shape of `x` without the reduced axes (with those axes of length 1 if `keepdims` is `True`). Always `float64`. A Python `float` when every axis is reduced and `keepdims` is `False`."
+raises:
+  - type: TypeError
+    desc: "If `x` is complex, if `x` is not an `sd.ndarray`, if `axis` is not an `int`, a tuple or list of `int`, or `None`, or if `keepdims` is not `True` or `False`."
+  - type: ValueError
+    desc: "If an axis is out of range or appears twice."
+  - type: OverflowError
+    desc: "If an axis is an `int` outside the `int64` range."
+seeAlso: [quantile, mean, nan-reductions]
+---
+
+The median is the middle value of the sorted elements: the middle element when their number is odd, and the mean of
+the two middle elements when it is even. Unlike the mean, it does not move when the largest or smallest values grow,
+so it describes the center of skewed data and of data with outliers.
+
+`median` gives NaN for an output position that contains a NaN. `nanmedian` leaves the NaN elements out first. An output
+position without elements, or with only NaN for `nanmedian`, gives NaN without an error or a warning. For other
+probabilities than one half, see [`quantile`](/api/array/quantile/).
+
+## Examples
+
+An odd and an even number of elements:
+
+```python
+>>> import stardust as sd
+>>> sd.median(sd.asarray([5, 1, 3]))
+3.0
+>>> sd.median(sd.asarray([7, 1, 4, 2]))
+3.0
+```
+
+One large value pulls the mean far from the other values, but not the median:
+
+```python
+>>> income = sd.asarray([250, 280, 300, 310, 5000])
+>>> sd.mean(income)
+1228.0
+>>> sd.median(income)
+300.0
+```
+
+Along an axis, with a NaN in the second row:
+
+```python
+>>> m = sd.asarray([[3.0, 1.0, 2.0],
+...                 [sd.nan, 6.0, 4.0]])
+>>> sd.median(m, axis=1)
+array([2.0, nan], dtype=float64)
+>>> sd.nanmedian(m, axis=1)
+array([2.0, 5.0], dtype=float64)
+>>> sd.nanmedian(m, axis=0, keepdims=True)
+array([[3.0, 3.5, 3.0]], dtype=float64)
+```
+
+No elements give NaN, and complex input is rejected:
+
+```python
+>>> sd.median(sd.zeros(0))
+nan
+>>> sd.median(sd.asarray([1 + 2j]))
+Traceback (most recent call last):
+    ...
+TypeError: median(): not supported for complex128
+```
+
+<Reference />
+
+## Notes
+
+For the sorted elements $x_{(0)} \le \dots \le x_{(n-1)}$ of one output position,
+
+$$
+\operatorname{median} =
+\begin{cases}
+x_{(h)}, & n = 2h + 1, \\
+\tfrac{1}{2}\bigl(x_{(h-1)} + x_{(h)}\bigr), & n = 2h.
+\end{cases}
+$$
+
+This is the probability $q = 0.5$ of [`quantile`](/api/array/quantile/) with the default method `"linear"`. The two
+functions compute it differently and can differ in the last digit.
+
+The two middle elements are added before the halving, so their sum can overflow: the median of `[1e308, 1e308]` is
+`inf`. A median of an odd number of elements is always an element of `x`, except that `-0.0` becomes `0.0`. An
+infinite middle element gives an infinite median, where `quantile(x, 0.5)` gives NaN:
+
+```python
+>>> sd.median(sd.asarray([1e308, 1e308]))
+inf
+>>> sd.median(sd.asarray([1.0, sd.inf])), sd.quantile(sd.asarray([1.0, sd.inf]), 0.5)
+(inf, nan)
+```
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.median` and `numpy.nanmedian`, and R's `median(x, na.rm = FALSE)`.
+
+- An empty input, or an all-NaN input for `nanmedian`, gives NaN without a warning. NumPy issues a
+  `RuntimeWarning`.
+- Complex input raises `TypeError`; `numpy.median` accepts it.
+- There are no `out=` or `overwrite_input=` arguments.
+- R's `median` returns `NA` when `x` contains `NA`; `na.rm = TRUE` corresponds to `nanmedian`.

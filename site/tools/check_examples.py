@@ -13,7 +13,10 @@ every page is checked: src/content/api, src/content/areas and
 src/content/start. Examples are the ```python blocks that contain `>>> `
 prompts. The blocks of one page run in order in one namespace, so a later
 block can use names an earlier one defined. `sd` (stardust) is always
-available.
+available. The output must match exactly, spaces and line breaks included;
+only `...` in the expected output matches any text (doctest's ELLIPSIS), as
+pages use it to cut a long error message short. A blank line inside printed
+output is written as it prints.
 
 `--coverage AREA` compares the `names:` of the area's pages with the public
 names of the pinned build in notes/api-inventory.json: the module's names and,
@@ -59,7 +62,10 @@ INVENTORY = SITE / "notes" / "api-inventory.json"
 # Blocks may be indented (inside list items or components); the closing
 # fence has the same indent as the opening one.
 FENCE = re.compile(r"^([ \t]*)```python\n(.*?)^\1```", re.M | re.S)
-FLAGS = doctest.ELLIPSIS | doctest.NORMALIZE_WHITESPACE
+# Exact comparison: no NORMALIZE_WHITESPACE, so array reprs are checked
+# column for column, and `1` does not pass for `True`. ELLIPSIS stays for
+# shortened error messages.
+FLAGS = doctest.ELLIPSIS | doctest.DONT_ACCEPT_TRUE_FOR_1
 
 # Site area key -> key in api-inventory.json (the array area is the top-level `sd`).
 INVENTORY_KEY = {"array": "sd"}
