@@ -310,13 +310,14 @@
 \pretocmd{\@makechapterhead}{\vspace*{48\p@}}{}{\ClassError{sdbook-eng}{patch failed}{}}
 \pretocmd{\@makeschapterhead}{\vspace*{48\p@}}{}{\ClassError{sdbook-eng}{patch failed}{}}
 
-% The chapter abstract is set in \small and set off from the text: a blank line's worth of space follows it
-% and the first paragraph of the text is not indented (2026-11-25). Right after the head of a
+% The chapter abstract is set in the size of the text (\small until 2026-11-26) and set off from the
+% text: a blank line's worth of space follows it and the first paragraph of the text is not
+% indented (2026-11-25). Right after the head of a
 % numbered main-matter chapter, the abstract is preceded by the chapter's list of sections and
 % followed by a page break, so that the text starts on the next page (2026-11-26, see 8e).
 \def\@abstract#1{%
   \ifsd@chapopen \sd@chapcontents \fi
-  {\small\noindent\textbf{\abstractname}\enskip #1\par}%
+  {\noindent\textbf{\abstractname}\enskip #1\par}%
   \ifsd@chapopen \global\sd@chapopenfalse \clearpage
   \else \addvspace{\baselineskip}\fi
   \@afterindentfalse\@afterheading}
@@ -474,8 +475,12 @@
       \csname sd@partlist@\the\c@part\endcsname
     \end{minipage}\par}}
 \newcommand\sd@pclink[2]{\ifx\relax#1\relax #2\else\hyperlink{#1}{#2}\fi}
+% Character protrusion (microtype) is off in these lists: it would push a page number ending
+% in 1 or 7 (or a number starting with 1) slightly into the margin, so the columns of
+% numbers would not line up.
 \newcommand\sd@partline[3]{%
   \begingroup
+    \microtypesetup{protrusion=false}%
     \parindent\z@ \@tempdima\sd@pcnum
     \rightskip\sd@pcpage \advance\rightskip\z@ \@plus 2cm
     \parfillskip -\rightskip \pretolerance\@M \hyphenpenalty\@M
@@ -526,4 +531,20 @@
 \tocsecnum=30\p@
 \tocsectotal=\tocchpnum \advance\tocsectotal by\tocsecnum
 \tocsubsectotal=\tocsectotal \advance\tocsubsectotal by\tocsubsecnum
+% Contents: page numbers (2026-11-26). SNmono sets them in a box \@pnumwidth (1.55em) wide,
+% enough for three digits; a four-digit number overflowed it into the margin. The box now
+% grows to the number's width plus the same 0.5pt that a three-digit number leaves, so the
+% dot leaders stop at the usual distance before every number and numbers of up to three
+% digits are set exactly as before. Character protrusion (microtype) is off in these lines,
+% as in the part and chapter lists: it pushed numbers ending in 1 or 7 into the margin.
+\newbox\sd@tocbox
+\newcommand\sd@tocpnum[1]{\microtypesetup{protrusion=false}%
+  \setbox\sd@tocbox\hbox{#1}%
+  \@tempdima\wd\sd@tocbox \advance\@tempdima.5\p@
+  \ifdim\@tempdima<\@pnumwidth \@tempdima\@pnumwidth \fi
+  \hb@xt@\@tempdima{\hfil\box\sd@tocbox}}
+\patchcmd{\l@chapter}{\hbox to\@pnumwidth{\hfil #2}}{\sd@tocpnum{#2}}{}%
+  {\ClassError{sdbook-eng}{patch failed}{}}
+\patchcmd{\@dottedtocline}{\hb@xt@\@pnumwidth{\hfil\normalfont \normalcolor #5}}%
+  {\sd@tocpnum{\normalfont \normalcolor #5}}{}{\ClassError{sdbook-eng}{patch failed}{}}
 \endinput
