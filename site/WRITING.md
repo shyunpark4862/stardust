@@ -27,8 +27,20 @@ Paths are relative to the repository root unless they start with `site/`.
 - Readers know basic Python. They do **not** know NumPy, SciPy, pandas or R. Never explain something by pointing to
   those libraries ("works like numpy.x"). Explain it directly; define a term the first time a page uses it, briefly, or
   link to the area overview's Concepts section or to Conventions (`/start/conventions/`).
-- Plain, direct, present-tense English. "You" is fine. Short sentences, concrete words. No marketing tone, no filler
-  ("powerful", "seamlessly", "simply", "it's worth noting", "Note that ..." openers, "In summary").
+- **Register: the voice of a professional library reference** (NumPy, SciPy, the Python standard library, R help
+  pages). Precise, neutral, impersonal, concise. Not a tutorial, blog or chat voice. Concretely:
+  - Summaries are imperative and start with a verb: "Solve a linear system.", "Return the indices that sort an array.",
+    "Compute the matrix exponential." Classes: a noun phrase: "Result of a two-sample t-test."
+  - Parameter and return descriptions are noun phrases or terse clauses: "Coefficient matrix.", "If True, ...",
+    "Number of samples. Must be positive." Not "This is the matrix you want to ...".
+  - Description and Notes are third person and declarative ("The function returns ...", "`solve` raises
+    `LinAlgError` when ..."). Avoid "you", "we", "let's", questions, exclamations, rhetorical setups, analogies and
+    reassurance ("don't worry", "easy", "just", "simply", "of course").
+  - Explanations a beginner needs are given as definitions and facts, compactly, not as conversation. Being
+    self-contained for readers who do not know NumPy/SciPy/R does not mean being chatty.
+  - Example lead-ins are short statements: "Solve a 2-by-2 system:", "Several right-hand sides at once:".
+- Present tense, short sentences, concrete words. No marketing tone, no filler ("powerful", "seamlessly",
+  "it's worth noting", "Note that ..." openers, "In summary").
 - Describe what the library does now. No history: no dates, commits, milestones, "now", "no longer", "new", "was
   changed", "fixed". No meta talk: no "the design document says", "according to the API doc", decision numbers
   (`SP3`, `R12`, `D-33` ...), section signs.
@@ -66,7 +78,7 @@ group: Linear systems             # must match a group title in the area overvie
 order: 1                          # position inside the group
 signatures:                       # exactly the pinned signature(s), prefixed with the full path
   - "sd.linalg.solve(a, b, /)"
-summary: Solve a linear system a @ x = b for x.   # one sentence, plain words, ends with a period
+summary: Solve a linear system a @ x = b for x.   # one imperative sentence, ends with a period
 params:
   - name: a
     type: array of shape (..., n, n)
