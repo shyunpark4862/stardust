@@ -6,10 +6,13 @@
 - 작업 중인 저장소의 커밋하지 않은 변경(`sd.cluster` 등)은 들어 있지 않다.
 
 ## 위치
-- 복제본: `/Users/sanghyunpark/Desktop/stardust/textbook-eng/.sdbuild/stardust` (git 무시)
-- **인터프리터: `/Users/sanghyunpark/Desktop/stardust/textbook-eng/.sdbuild/stardust/.venv/bin/python`**
+- 복제본: `/Users/sanghyunpark/Desktop/stardust/textbook/.sdbuild/stardust` (git 무시)
+- **인터프리터: `/Users/sanghyunpark/Desktop/stardust/textbook/.sdbuild/stardust/.venv/bin/python`**
 - 확장 모듈: `.sdbuild/stardust/build/cp315-cp315-macosx_26_0_arm64/install/platlib/stardust/_core.cpython-315-darwin.so`
-- 작업 중인 저장소(`/Users/sanghyunpark/Desktop/stardust`) 안에서 그 저장소의 `.venv`나 `src/`로 실행하지 않는다. 스크립트는 복제본 밖(예: scratchpad)이나 `textbook-eng/` 안에서 위 인터프리터로 돌린다. `sd.__file__`이 `.sdbuild/stardust/src/stardust/__init__.py`인지 보면 확인된다.
+- 작업 중인 저장소(`/Users/sanghyunpark/Desktop/stardust`) 안에서 그 저장소의 `.venv`나 `src/`로 실행하지 않는다. 스크립트는 복제본 밖(예: scratchpad)이나 `textbook/` 안에서 위 인터프리터로 돌린다. `sd.__file__`이 `.sdbuild/stardust/src/stardust/__init__.py`인지 보면 확인된다.
+
+## 폴더 이름 변경 (2026-11-27)
+- 책 폴더가 `textbook-eng`에서 `textbook`으로 바뀌었다(옛 한글판 `textbook/`은 삭제). 가상환경의 경로를 새 이름으로 고치고, 복제본의 `build/`를 지운 뒤 같은 커밋(66fe52e)에서 `pip install --no-build-isolation --no-deps --no-index -e .`로 확장 모듈을 다시 빌드했다(내려받은 것 없음). 아래 빌드 명령의 경로도 새 이름으로 읽는다.
 
 ## 기계
 - Apple M4 Pro (14코어: 성능 10 + 효율 4), 메모리 48 GB
@@ -19,8 +22,8 @@
 
 ## 빌드 명령 (README.md의 방법 그대로, 복제본 안에서)
 ```bash
-git clone /Users/sanghyunpark/Desktop/stardust /Users/sanghyunpark/Desktop/stardust/textbook-eng/.sdbuild/stardust
-cd /Users/sanghyunpark/Desktop/stardust/textbook-eng/.sdbuild/stardust
+git clone /Users/sanghyunpark/Desktop/stardust /Users/sanghyunpark/Desktop/stardust/textbook/.sdbuild/stardust
+cd /Users/sanghyunpark/Desktop/stardust/textbook/.sdbuild/stardust
 python3.15 -m venv .venv && .venv/bin/pip install nanobind scikit-build-core
 CMAKE_BUILD_PARALLEL_LEVEL=8 .venv/bin/pip install --no-build-isolation -e ".[test]"
 ```

@@ -46,7 +46,7 @@
 - Part III Computer Architecture — 수의 표현, 명령어와 프로세서, 파이프라인과 분기 예측, 메모리 계층, SIMD와 다중 코어, 운영 체제와 언어 실행 환경의 기본
 
 ## 주제 권 장 목차 (초안, 5–16권)
-완전 증명 방식. API 묶음은 한글판 목차(textbook/OUTLINE.md)의 API 목록을 참고해 다시 나눴다. 집필 전에 공용 빌드에서 공개 API 목록을 뽑아 빠진 것이 없는지 대조한다. 각 권의 Part I은 그 권의 알고리즘이 직접 기대는 이론이다.
+완전 증명 방식. API 묶음은 한글판 목차(2026-11-27 삭제; git 이력 383da9a 이전의 textbook/OUTLINE.md)의 API 목록을 참고해 다시 나눴다. 집필 전에 공용 빌드에서 공개 API 목록을 뽑아 빠진 것이 없는지 대조한다. 각 권의 Part I은 그 권의 알고리즘이 직접 기대는 이론이다.
 
 ### 5권 Computer Arithmetic (8장)
 1. Floating-Point Numbers — 집합과 간격, 비트 배치, 반올림, 특수값, 정수 변환
