@@ -5,6 +5,8 @@
 - 그때의 HEAD가 그대로 빌드되고 `import stardust`가 되었다. 커밋을 거슬러 올라갈 필요가 없었다.
 - 작업 중인 저장소의 커밋하지 않은 변경(`sd.cluster` 등)은 들어 있지 않다.
 
+- **기준 커밋을 올리지 않는다** (2026-11-27 사용자 지시): 사용자가 따로 말하기 전까지 공용 빌드는 66fe52e에 고정한다. 작업 저장소의 라이브러리가 바뀌어도 복제본을 pull·재빌드하지 않고, 책의 실행·측정·API 대조는 계속 이 빌드로 한다.
+
 ## 위치
 - 복제본: `/Users/sanghyunpark/Desktop/stardust/textbook/.sdbuild/stardust` (git 무시)
 - **인터프리터: `/Users/sanghyunpark/Desktop/stardust/textbook/.sdbuild/stardust/.venv/bin/python`**
