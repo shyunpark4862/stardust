@@ -112,6 +112,6 @@ The nearest equivalents are `numpy.atan2` (also `numpy.arctan2`) and R's `atan2(
 
 - The function is named `atan2`; there is no `arctan2` alias.
 - The argument order is the same as in NumPy and R: $y$ first, then $x$.
-- Results can differ from NumPy's in the last digit.
+- Results for `float64` input can differ from NumPy's in the last digit.
 - Complex input raises `TypeError`, as in NumPy. For the angle of a complex number, use
   `atan2(imag(z), real(z))`; there is no `angle` function.

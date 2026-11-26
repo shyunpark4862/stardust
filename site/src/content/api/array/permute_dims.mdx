@@ -12,11 +12,11 @@ params:
   - name: x
     type: array
     kind: positional-only
-    desc: "Input array. `matrix_transpose` requires at least two dimensions."
+    desc: "Array whose axes are permuted, of any dtype. `matrix_transpose` requires at least two dimensions."
   - name: axes
     type: int, tuple of int or list of int
     kind: positional-only
-    desc: "Permutation of the axes of `x` (`permute_dims` only): every axis number from 0 to `x.ndim - 1` exactly once. Negative numbers count from the end. Axis `i` of the result is axis `axes[i]` of `x`. A 1-D `x` also accepts a single `int`."
+    desc: "Permutation of the axes of `x` (`permute_dims` only): every axis number from 0 to `x.ndim - 1` exactly once. Negative values count from the end. Axis `i` of the result is axis `axes[i]` of `x`. A 1-D `x` also accepts a single `int`."
 returns:
   - type: ndarray
     desc: "A view of `x` with the axes reordered. `permute_dims` gives shape `tuple(x.shape[a] for a in axes)`; `matrix_transpose` gives shape `(..., n, m)` for `x` of shape `(..., m, n)`."

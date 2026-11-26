@@ -198,7 +198,10 @@ every run. Reductions and sorts are deterministic as well.
 
 `sd.set_num_threads(n)` sets the number of threads the library uses, an `int` from 1 to 1024, and
 `sd.get_num_threads()` returns it. Results computed with different numbers of threads may differ in the last bits,
-except where an area states otherwise (as `sd.random` does).
+except where a page states otherwise (as the `sd.random` pages do).
+
+Several Python threads may call stardust at the same time. While a large computation runs, other Python threads keep
+running; see [Threads](/api/array/threads/) for the exceptions.
 
 ## Errors and warnings
 

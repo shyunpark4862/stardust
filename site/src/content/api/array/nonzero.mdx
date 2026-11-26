@@ -1,0 +1,86 @@
+---
+kind: function
+title: nonzero
+names: [nonzero]
+group: Indexing and searching
+order: 3
+signatures:
+  - "sd.nonzero(x, /)"
+summary: Return the positions of the nonzero elements of an array.
+params:
+  - name: x
+    type: array
+    kind: positional-only
+    desc: "Array to search, of any dtype."
+returns:
+  - type: tuple of ndarray
+    desc: "One 1-D `int64` array per axis of `x`, all of the same length, the number of nonzero elements. Element `k` of array `d` is the position on axis `d` of the `k`-th nonzero element in row-major order. Always a tuple, also for a 1-D `x`."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`."
+seeAlso: [count_nonzero, where, take, any-all, indexing]
+---
+
+`nonzero` lists the positions of the elements of `x` that are not zero. For a 2-D `x` it returns two arrays, the row
+positions and the column positions; the `k`-th nonzero element is `x[rows[k], cols[k]]`. The elements are listed in
+row-major order (the last axis varies fastest), the order in which they appear in the flattened array.
+
+An element counts as nonzero by the same rule as in [`any`](/api/array/any-all/): `True`, any nonzero number, a
+complex number with a nonzero real or imaginary part, and NaN are nonzero; `False`, `0`, `0.0`, `-0.0` and `0j` are
+zero. For a Boolean `x`, typically the result of a comparison, the result lists the positions where the condition
+holds.
+
+The tuple is an index: `x[sd.nonzero(x)]` gives the nonzero elements as a 1-D array (see
+[Indexing](/api/array/indexing/)). [`count_nonzero`](/api/array/count_nonzero/) gives only their number.
+
+## Examples
+
+Positions of the nonzero elements of a 1-D array. NaN is nonzero; `-0.0` is zero:
+
+```python
+>>> import stardust as sd
+>>> v = sd.asarray([0.0, 1.5, 0.0, -2.0, sd.nan, -0.0])
+>>> sd.nonzero(v)
+(array([1, 3, 4], dtype=int64),)
+>>> sd.nonzero(v)[0]
+array([1, 3, 4], dtype=int64)
+```
+
+A 2-D array gives row and column positions. The tuple selects the elements:
+
+```python
+>>> x = sd.asarray([[0, 3, 0], [4, 0, 5]])
+>>> rows, cols = sd.nonzero(x)
+>>> rows
+array([0, 1, 1], dtype=int64)
+>>> cols
+array([1, 0, 2], dtype=int64)
+>>> x[sd.nonzero(x)]
+array([3, 4, 5], dtype=int64)
+```
+
+The positions where a condition holds, as one (row, column) pair per line:
+
+```python
+>>> sd.stack(sd.nonzero(x > 3), axis=1)
+array([[1, 0],
+       [1, 2]], dtype=int64)
+```
+
+<Reference />
+
+## Notes
+
+The result is the same for any memory layout of `x`: for the transpose `x.T`, the positions are those of the
+elements of `x.T` in its own row-major order. An array without nonzero elements gives empty arrays, one per axis.
+The arrays of the result are new and writable.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.nonzero` (also `numpy.where` with one argument) and R's
+`which(x != 0, arr.ind = TRUE)`.
+
+- [`where`](/api/array/where/) always takes three arguments; the one-argument form `numpy.where(c)` is `nonzero(c)`.
+- `x` must be an `sd.ndarray`; lists and Python scalars raise `TypeError`.
+- R's `which` gives positions starting at 1. For a matrix, `arr.ind = TRUE` gives one row per element, in
+  column-major order; `which` without it gives positions in the flattened, column-major vector.

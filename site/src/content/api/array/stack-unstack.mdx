@@ -17,7 +17,7 @@ params:
     type: int
     kind: keyword-only
     default: "0"
-    desc: "For `stack`, the position of the new axis in the result, from `-(ndim + 1)` to `ndim` for inputs with `ndim` dimensions. For `unstack`, the axis of `x` to split along. Negative numbers count from the end. `None` and tuples are rejected."
+    desc: "For `stack`, the position of the new axis in the result, from `-(ndim + 1)` to `ndim` for inputs with `ndim` dimensions. For `unstack`, the axis of `x` to split along. Negative values count from the end. `None` and tuples are rejected."
   - name: x
     type: array
     kind: positional-only

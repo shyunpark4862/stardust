@@ -1,0 +1,147 @@
+---
+kind: function
+title: sort, argsort
+names: [sort, argsort]
+group: Sorting and sets
+order: 1
+signatures:
+  - "sd.sort(x, /, *, axis=-1, descending=False, stable=True)"
+  - "sd.argsort(x, /, *, axis=-1, descending=False, stable=True)"
+summary: Sort the elements along an axis, or return the indices that sort them.
+params:
+  - name: x
+    type: array
+    kind: positional-only
+    desc: "Array to sort, of dtype `bool`, `int64` or `float64`."
+  - name: axis
+    type: int
+    kind: keyword-only
+    default: "-1"
+    desc: "Axis to sort along. Negative values count from the end. `None`, a tuple or a list is rejected."
+  - name: descending
+    type: bool
+    kind: keyword-only
+    default: "False"
+    desc: "If `True`, sort from the largest to the smallest element. Equal elements are not reversed: with `stable=True` they keep their order in `x`."
+  - name: stable
+    type: bool
+    kind: keyword-only
+    default: "True"
+    desc: "If `True`, equal elements keep their order in `x`. If `False`, the order of equal elements is unspecified, but the same on every run."
+returns:
+  - type: ndarray
+    desc: "`sort`: the sorted elements, with the shape and dtype of `x`. `argsort`: `int64` indices along `axis`, with the shape of `x`; taking them along `axis` (with [`take_along_axis`](/api/array/take_along_axis/)) gives the result of `sort`. Always a new array."
+raises:
+  - type: TypeError
+    desc: "If `x` is complex, if `x` is not an `sd.ndarray`, if `axis` is not an `int`, or if `descending` or `stable` is not `True` or `False`."
+  - type: ValueError
+    desc: "If `axis` is out of range."
+  - type: OverflowError
+    desc: "If `axis` is an `int` outside the `int64` range."
+seeAlso: [unique, searchsorted, take_along_axis, argmin-argmax, quantile, flip]
+---
+
+`sort` returns a sorted copy of `x`: each 1-D slice along `axis` (the last axis by default) is put in increasing
+order, independently of the other slices. `argsort` returns, for each slice, the positions along `axis` that put it in
+order: element `i` of the result is the index in `x` of the element that `sort` places at position `i`. For a 1-D `x`,
+`x[sd.argsort(x)]` equals `sd.sort(x)`; for more dimensions,
+[`take_along_axis`](/api/array/take_along_axis/) applies the indices.
+
+The order is that of the numbers, with `False` before `True`. NaN counts as larger than every number, including
+`inf`, so it goes last in increasing order and first with `descending=True`. All NaN values are equal to each other,
+whatever their sign, and `-0.0` and `0.0` are equal. Complex arrays raise `TypeError`;
+[`unique_values`](/api/array/unique/) accepts them.
+
+The sort is stable by default: elements that compare equal keep the order they have in `x`. This also holds with
+`descending=True`, which sorts by the reversed comparison rather than reversing the increasing result, so equal
+elements are not reversed. With `stable=False`, the order of equal elements is left unspecified; it matters for
+`argsort`, and for `sort` only between `-0.0` and `0.0`. `axis` is a single `int`; to sort all elements together,
+apply [`ravel`](/api/array/ravel/) first.
+
+## Examples
+
+Sort a 1-D array, and get the order as indices:
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([30, 10, 50, 20])
+>>> sd.sort(x)
+array([10, 20, 30, 50], dtype=int64)
+>>> i = sd.argsort(x)
+>>> i
+array([1, 3, 0, 2], dtype=int64)
+>>> x[i]
+array([10, 20, 30, 50], dtype=int64)
+```
+
+Each row, or each column, is sorted on its own. `take_along_axis` applies the indices of `argsort`:
+
+```python
+>>> m = sd.asarray([[3, 1, 2], [9, 7, 8]])
+>>> sd.sort(m)
+array([[1, 2, 3],
+       [7, 8, 9]], dtype=int64)
+>>> sd.sort(m, axis=0, descending=True)
+array([[9, 7, 8],
+       [3, 1, 2]], dtype=int64)
+>>> sd.take_along_axis(m, sd.argsort(m, axis=1), axis=1)
+array([[1, 2, 3],
+       [7, 8, 9]], dtype=int64)
+```
+
+NaN sorts after `inf`, and with `descending=True` before it. `-0.0` and `0.0` stay in their input order:
+
+```python
+>>> f = sd.asarray([3.0, sd.nan, -1.0, sd.inf, -0.0, 0.0, -sd.inf])
+>>> sd.sort(f)
+array([-inf, -1.0, -0.0,  0.0,  3.0,  inf,  nan], dtype=float64)
+>>> sd.sort(f, descending=True)
+array([ nan,  inf,  3.0, -0.0,  0.0, -1.0, -inf], dtype=float64)
+```
+
+With `descending=True`, equal elements keep their order. Reversing the increasing order with
+[`flip`](/api/array/flip/) reverses them as well:
+
+```python
+>>> t = sd.asarray([2, 1, 2, 1])
+>>> sd.argsort(t, descending=True)
+array([0, 2, 1, 3], dtype=int64)
+>>> sd.flip(sd.argsort(t))
+array([2, 0, 3, 1], dtype=int64)
+```
+
+Complex arrays cannot be sorted, and `axis=None` is not accepted:
+
+```python
+>>> sd.sort(sd.asarray([1j, 2.0]))
+Traceback (most recent call last):
+    ...
+TypeError: sort(): not supported for complex128
+>>> sd.sort(m, axis=None)
+Traceback (most recent call last):
+    ...
+TypeError: sort(): 'axis' must be an int, not NoneType
+```
+
+<Reference />
+
+## Notes
+
+The increasing order is $-\infty$, the negative numbers, $-0.0$ and $0.0$ (equal), the positive numbers, $\infty$,
+then NaN. Two NaN values with different signs or bit patterns count as equal, so they keep their order in `x` in both
+directions. With `stable=False`, the result is a correct sort, and the order of equal elements is the same on every
+run and for any number of threads.
+
+The rank of each element (0 for the smallest) is `argsort(argsort(x))`. A sorted 1-D array is searched with
+[`searchsorted`](/api/array/searchsorted/), which uses the same order, NaN included.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.sort` and `numpy.argsort`, and R's `sort` and `order`.
+
+- `axis=None` raises `TypeError`; NumPy sorts the flattened array. `kind=` and `order=` do not exist, and there is no
+  in-place method `x.sort()`.
+- With `descending=True`, NaN comes first. NumPy's `descending=True` puts NaN last.
+- Complex input raises `TypeError`. NumPy orders complex numbers by real part, then imaginary part.
+- R's `sort` removes NaN and `NA` by default (`na.last = NA`), and `order` puts them last, also with
+  `decreasing = TRUE`. R's `order` counts from 1 and keeps ties in their original order, as `argsort` does.

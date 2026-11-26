@@ -12,11 +12,11 @@ params:
   - name: x
     type: array
     kind: positional-only
-    desc: Input array.
+    desc: "Array to remove axes from or insert axes into, of any dtype."
   - name: axis
     type: int, tuple of int or list of int
     kind: keyword-only
-    desc: "Required. For `squeeze`, the axes of `x` to remove; each must have length 1, and at least one axis must remain. For `expand_dims`, the positions of the new axes in the result, which has `x.ndim + k` dimensions for `k` new axes. Negative numbers count from the end. No axis may appear twice."
+    desc: "Required. For `squeeze`, the axes of `x` to remove; each must have length 1, and at least one axis must remain. For `expand_dims`, the positions of the new axes in the result, which has `x.ndim + k` dimensions for `k` new axes. Negative values count from the end. No axis may appear twice."
 returns:
   - type: ndarray
     desc: "A view of `x` with the same elements. `squeeze` gives `x.shape` without the removed axes; `expand_dims` gives a shape with a 1 at each position in `axis`."

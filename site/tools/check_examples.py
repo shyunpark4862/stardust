@@ -32,8 +32,10 @@ existing page. `glance`, `returnedBy` and method `slug` entries without a page
 are listed as pending (the templates show them without a link). If the site has been built
 (`pnpm build`), it also checks every in-site link of the built pages, `#anchor`
 included, every in-site `src` and file link against dist/, and the search
-index. A site built under a sub-path is checked with the same setting it was
-built with (`SITE_BASE=/stardust`).
+index. The base dist/ was built with (`/`, or `/stardust` after
+`SITE_BASE=/stardust pnpm build`) is read from dist/index.html; if SITE_BASE is
+set and differs, the built pages are not checked and the command to run is
+printed.
 """
 
 from __future__ import annotations
@@ -217,9 +219,15 @@ def links() -> int:
 
 URL = re.compile(r'\b(?:href|src)="(/[^"]*)"')
 ID = re.compile(r'\bid="([^"]+)"')
-# The sub-path the site is built under (astro.config.mjs reads the same
-# variable): "" at the root, "/stardust" under GitHub Pages.
-BASE = os.environ.get("SITE_BASE", "/").rstrip("/")
+# Built assets sit at <base>/_astro/...; the favicon at <base>/favicon.svg.
+ASSET = re.compile(r'\b(?:href|src)="(/[^"]*?)/?(?:_astro/|favicon\.svg")')
+
+
+def built_base(index: Path) -> str | None:
+    """The sub-path dist/ was built under ("" at the root, "/stardust" for
+    GitHub Pages), read from the asset links of dist/index.html."""
+    found = {m.rstrip("/") for m in ASSET.findall(index.read_text(encoding="utf-8"))}
+    return found.pop() if len(found) == 1 else None
 
 
 def anchors() -> int:
@@ -229,6 +237,22 @@ def anchors() -> int:
     if not index.exists():
         print("  (built pages not checked: run `pnpm build` first)")
         return 0
+    base = built_base(index)
+    # SITE_BASE is the variable astro.config.mjs reads; when it is set it
+    # must agree with the base dist/ was built with.
+    wanted = os.environ.get("SITE_BASE")
+    if base is None:
+        print("  built pages not checked: cannot tell the base dist/ was built with; rebuild with `pnpm build`")
+        return 1
+    if wanted is not None and wanted.rstrip("/") != base:
+        built_cmd = f"SITE_BASE={base} pnpm build" if base else "pnpm build"
+        want_cmd = f"SITE_BASE={wanted.rstrip('/')} pnpm build" if wanted.rstrip("/") else "pnpm build"
+        print(
+            f"  built pages not checked: SITE_BASE={wanted} but dist/ was built with base {base or '/'}"
+            f" (as by `{built_cmd}`); run `{want_cmd}` first, or drop SITE_BASE to check dist/ as built"
+        )
+        return 1
+    BASE = base
     built = index.stat().st_mtime
     sources = [p for d in ("src", "public") for p in (SITE / d).rglob("*") if p.is_file()]
     if any(p.stat().st_mtime > built for p in sources):
@@ -268,7 +292,7 @@ def anchors() -> int:
         if item["h"] not in pages:
             print(f"  search.json: no page {item['h']}")
             bad += 1
-    print(f"  {len(pages)} built pages, {checked} in-site URLs checked (base {BASE or '/'})")
+    print(f"  {len(pages)} built pages, {checked} in-site URLs checked (base {BASE or '/'}, read from dist/)")
     return bad
 
 

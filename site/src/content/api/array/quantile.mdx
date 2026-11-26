@@ -14,7 +14,7 @@ params:
     kind: positional-only
     desc: "Array of dtype `bool`, `int64` or `float64`. The elements are converted to `float64` before they are ranked. `x` need not be sorted and is not changed."
   - name: q
-    type: float, int or array of shape (k,)
+    type: int, float or array of shape (k,)
     kind: positional-only
     desc: "Probability or probabilities of the quantiles, each in [0, 1]: 0 gives the smallest element, 1 the largest and 0.5 the median. A Python `int` or `float`, or a 1-D `int64` or `float64` array. A list is rejected; pass `sd.asarray([...])`."
   - name: axis

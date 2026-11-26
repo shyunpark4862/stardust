@@ -1,0 +1,119 @@
+---
+kind: function
+title: tensordot
+names: [tensordot]
+group: Matrix products
+order: 2
+signatures:
+  - "sd.tensordot(x1, x2, /, *, axes=2)"
+summary: Multiply two arrays and sum the products over the given pairs of axes.
+params:
+  - name: x1
+    type: array
+    kind: positional-only
+    desc: "First array, of any dtype."
+  - name: x2
+    type: array
+    kind: positional-only
+    desc: "Second array, of any dtype."
+  - name: axes
+    type: int or pair of sequences of int
+    kind: keyword-only
+    default: "2"
+    desc: "Axes to sum over. An `int` `n` pairs the last `n` axes of `x1` with the first `n` axes of `x2`, in order; `0` sums over no axes. A pair `(axes1, axes2)` of tuples or lists of the same length pairs axis `axes1[i]` of `x1` with axis `axes2[i]` of `x2`; negative values count from the end. A pair of plain `int` values, such as `(1, 0)`, is rejected; write `([1], [0])`."
+returns:
+  - type: ndarray, int, float or complex
+    desc: "The axes of `x1` that are not summed over, in order, followed by those of `x2`. The dtype is the promoted dtype of the operands, with `int64` in place of `bool`, as for `matmul`. A Python `int`, `float` or `complex` when every axis is summed over."
+raises:
+  - type: TypeError
+    desc: "If `x1` or `x2` is not an `sd.ndarray`, if `axes` is not an `int` or a pair of sequences of `int`, or if an `int` `axes` is outside the `int64` range."
+  - type: ValueError
+    desc: "If an `int` `axes` is negative or larger than the number of dimensions of `x1` or of `x2`; if the two sequences differ in length or one of them repeats an axis; if an axis is out of range; or if two paired axes differ in length."
+  - type: OverflowError
+    desc: "If an entry of `axes1` or `axes2` is an `int` outside the `int64` range."
+seeAlso: [matmul, vecdot, sum, permute_dims]
+---
+
+`tensordot` multiplies the elements of `x1` and `x2` and sums the products over pairs of axes, one axis of `x1`
+paired with one axis of `x2`. The axes that are not summed over remain: those of `x1` first, then those of `x2`.
+Paired axes must have the same length; they do not broadcast.
+
+With an `int` `axes=n`, the last `n` axes of `x1` are paired with the first `n` axes of `x2`. For two matrices,
+`axes=1` is the matrix product [`matmul`](/api/array/matmul/), the default `axes=2` is the sum of the element-wise
+products, and `axes=0` is the outer product, with every axis of both arrays. A pair of sequences names the axes
+explicitly and in any order.
+
+The result dtype is that of `matmul`: the promoted dtype of the two arrays, and `int64` when both are `bool` (see
+[arithmetic on Booleans](/api/array/dtypes/#arithmetic-on-booleans)). Integer products and sums wrap around
+outside the `int64` range (see [integer overflow](/api/array/dtypes/#integer-overflow)). Complex values are not
+conjugated.
+
+## Examples
+
+For matrices, `axes=1` is the matrix product and `axes=2` sums the element-wise products:
+
+```python
+>>> import stardust as sd
+>>> a = sd.reshape(sd.arange(6), (2, 3))
+>>> b = sd.reshape(sd.arange(6), (3, 2))
+>>> sd.tensordot(a, b, axes=1)
+array([[10, 13],
+       [28, 40]], dtype=int64)
+>>> sd.tensordot(a, a)
+55
+```
+
+`axes=0` sums over nothing, so every axis of both arrays remains:
+
+```python
+>>> sd.tensordot(a, b, axes=0).shape
+(2, 3, 3, 2)
+>>> sd.tensordot(sd.asarray([1, 2]), sd.asarray([10, 20, 30]), axes=0)
+array([[10, 20, 30],
+       [20, 40, 60]], dtype=int64)
+```
+
+Explicit pairs: axis 1 of `x` with axis 1 of `y`, and axis 2 of `x` with axis 0 of `y`:
+
+```python
+>>> x = sd.reshape(sd.arange(24), (2, 3, 4))
+>>> y = sd.reshape(sd.arange(12), (4, 3))
+>>> sd.tensordot(x, y, axes=([1, 2], [1, 0]))
+array([ 440, 1232], dtype=int64)
+>>> sd.tensordot(x, y, axes=([2], [0])).shape
+(2, 3, 3)
+```
+
+Paired axes must have the same length:
+
+```python
+>>> sd.tensordot(x, y, axes=([0], [0]))
+Traceback (most recent call last):
+    ...
+ValueError: tensordot(): shape mismatch: axis 0 of 'x1' has length 2, axis 0 of 'x2' has 4
+```
+
+<Reference />
+
+## Notes
+
+With `axes=n`, `x1` of shape $(a_1, \dots, a_r, k_1, \dots, k_n)$ and `x2` of shape
+$(k_1, \dots, k_n, b_1, \dots, b_s)$ give a result of shape $(a_1, \dots, a_r, b_1, \dots, b_s)$ with
+
+$$
+z_{i_1 \dots i_r j_1 \dots j_s} = \sum_{p_1, \dots, p_n} x_{i_1 \dots i_r p_1 \dots p_n} \, y_{p_1 \dots p_n j_1 \dots j_s} .
+$$
+
+A pair of axis sequences gives the same result as moving the paired axes of `x1` to the end and those of `x2` to the
+front, in the order listed, and then using `axes=n` with their number $n$. An axis of length 0 among the paired axes
+gives zeros.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalent is `numpy.tensordot`. Base R has no general equivalent; for two matrices, `axes=1` is `%*%`.
+
+- `axes` is keyword-only, and a pair of plain `int` values such as `axes=(1, 0)` raises `TypeError`; NumPy reads it
+  as `([1], [0])`.
+- A negative `int` `axes` raises `ValueError`. NumPy accepts it.
+- Two `bool` arrays give `int64`. NumPy returns `bool`.
+- When every axis is summed over, the result is a Python scalar, not a 0-D array.

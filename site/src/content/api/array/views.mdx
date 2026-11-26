@@ -7,7 +7,7 @@ summary: Arrays that share memory with another array, the operations that return
 seeAlso: [indexing, reshape, astype, asarray, broadcast_to, ndarray]
 ---
 
-A view is an array that reads and writes the memory of another array. It has its own shape, strides and data type,
+A view is an array that reads and writes the memory of another array. It has its own shape, strides and dtype,
 but no elements of its own: writing through a view changes the original array, and changes to the original show
 through the view. A copy owns its memory, and changes to it affect nothing else.
 
@@ -32,6 +32,7 @@ array([[100.0,   2.0,   3.0],
 | Operation | Notes |
 |---|---|
 | basic indexing: `x[1]`, `x[:, 1:3]`, `x[::-1]`, `x[..., sd.newaxis]` | see [Indexing](/api/array/indexing/) |
+| [`take`](/api/array/take/) with an `int` position | the same as `x[i]` along that axis |
 | `x.T`, `x.mT`, `permute_dims`, `matrix_transpose`, `moveaxis` | |
 | `squeeze`, `expand_dims` | |
 | `flip` | |
@@ -44,10 +45,11 @@ array([[100.0,   2.0,   3.0],
 
 ## Operations that return copies
 
-Advanced indexing (integer arrays and masks), [`take`](/api/array/take/), arithmetic and the other element-wise
-functions (without `out=`), reductions, `sort`, `concat`, `stack`, `block`, `roll`, `repeat`, `tile`, `tril`, `triu`,
-`meshgrid`, `x.copy()`, `astype` with its default `copy=True`, and `asarray(x, copy=True)` return new arrays that own
-their memory.
+Advanced indexing (integer arrays and masks), [`take`](/api/array/take/) with an array of positions,
+[`take_along_axis`](/api/array/take_along_axis/), arithmetic and the other element-wise functions (without `out=`),
+reductions, cumulative sums and products, `sort`, `argsort`, the `unique_*` functions, `nonzero`, `searchsorted`,
+`interp`, `matmul`, `vecdot`, `concat`, `stack`, `block`, `roll`, `repeat`, `tile`, `tril`, `triu`, `meshgrid`,
+`x.copy()`, `astype` with its default `copy=True`, and `asarray(x, copy=True)` return new arrays that own their memory.
 
 ## Operations that can return the input itself
 
@@ -56,7 +58,7 @@ A few functions return their argument unchanged, as the same object, when there 
 - `asarray(x)` when `x` is already an `sd.ndarray` and no `dtype=` conversion is requested;
 - `astype(x, dtype, copy=False)` and `astype(x, dtype, copy=None)` when `x` already has that dtype;
 - `real(x)` when `x` is not complex;
-- `diff(x, n=0)`.
+- `diff(x, n=0)`, and [`diff`](/api/array/diff/) of an `x` of length 0 along `axis` without `prepend` and `append`.
 
 ```python
 >>> sd.asarray(x) is x

@@ -11,7 +11,7 @@ params:
   - name: x
     type: array
     kind: positional-only
-    desc: Input array of any shape.
+    desc: "Array to flatten, of any dtype and shape."
 returns:
   - type: ndarray of shape (x.size,)
     desc: "The elements of `x` in row-major order, with the dtype of `x`. A view of `x` when possible, otherwise a new array."

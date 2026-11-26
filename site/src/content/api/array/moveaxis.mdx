@@ -11,15 +11,15 @@ params:
   - name: x
     type: array
     kind: positional-only
-    desc: Input array.
+    desc: "Array whose axes are moved, of any dtype."
   - name: source
     type: int, tuple of int or list of int
     kind: positional-only
-    desc: Axes to move. Negative numbers count from the end. No axis may appear twice.
+    desc: Axes to move. Negative values count from the end. No axis may appear twice.
   - name: destination
     type: int, tuple of int or list of int
     kind: positional-only
-    desc: "Positions of the moved axes in the result, one per entry of `source`. Negative numbers count from the end. No position may appear twice."
+    desc: "Positions of the moved axes in the result, one per entry of `source`. Negative values count from the end. No position may appear twice."
 returns:
   - type: ndarray
     desc: "A view of `x`. Axis `source[i]` of `x` is axis `destination[i]` of the result; the other axes keep their relative order."

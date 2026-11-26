@@ -1,0 +1,146 @@
+---
+kind: function
+title: matmul
+names: [matmul]
+group: Matrix products
+order: 1
+signatures:
+  - "sd.matmul(x1, x2, /)"
+summary: Compute the matrix product of two arrays.
+params:
+  - name: x1
+    type: array of shape (..., n, k) or (k,)
+    kind: positional-only
+    desc: "Left operand, of any dtype: a matrix, a stack of matrices, or a 1-D array, which acts as a matrix with one row."
+  - name: x2
+    type: array of shape (..., k, m) or (k,)
+    kind: positional-only
+    desc: "Right operand, of any dtype: a matrix, a stack of matrices, or a 1-D array, which acts as a matrix with one column. Its stack axes broadcast against those of `x1` (see [Broadcasting](/api/array/broadcasting/))."
+returns:
+  - type: ndarray of shape (..., n, m)
+    desc: "Matrix product. The stack axes are the broadcast stack axes of `x1` and `x2`; the axis added for a 1-D operand is removed. The dtype is the promoted dtype of the operands, with `int64` in place of `bool`. A Python `int`, `float` or `complex` when both operands are 1-D. The result is laid out in row-major order."
+raises:
+  - type: TypeError
+    desc: "If `x1` or `x2` is not an `sd.ndarray`, including a Python scalar."
+  - type: ValueError
+    desc: "If the last axis of `x1` and the second-to-last axis of `x2` (the only axis of a 1-D operand) differ in length, or if the stack axes do not broadcast."
+seeAlso: [tensordot, vecdot, arithmetic, broadcasting, linalg/solve]
+---
+
+`matmul` computes the matrix product: for `x1` with $n$ rows and $k$ columns and `x2` with $k$ rows and $m$
+columns, element `(i, j)` of the result is the sum over `p` of `x1[i, p] * x2[p, j]`. The operator `x1 @ x2` calls
+`matmul`, and `x1 @= x2` stores the product in `x1`.
+
+A 1-D operand acts as a vector: on the left as a matrix with one row, on the right as a matrix with one column. The
+axis added for it is removed from the result, so a matrix times a vector is a vector, and a vector times a vector is
+their inner product, returned as a Python scalar.
+
+Arrays with more than two dimensions are stacks of matrices: the last two axes hold each matrix, and the axes before
+them index the stack. The stack axes of the two operands broadcast against each other, so one matrix multiplies every
+matrix of a stack.
+
+The result dtype follows [type promotion](/api/array/dtypes/#type-promotion), except that the product of two `bool`
+arrays is `int64`: the products are summed, not combined with logical or (see
+[arithmetic on Booleans](/api/array/dtypes/#arithmetic-on-booleans)). Integer products and sums wrap around
+outside the `int64` range (see [integer overflow](/api/array/dtypes/#integer-overflow)). Complex operands are not
+conjugated; [`vecdot`](/api/array/vecdot/) conjugates its first argument.
+
+## Examples
+
+The product of two matrices, with the function and with the operator:
+
+```python
+>>> import stardust as sd
+>>> a = sd.asarray([[1, 2], [3, 4]])
+>>> b = sd.asarray([[5, 6], [7, 8]])
+>>> sd.matmul(a, b)
+array([[19, 22],
+       [43, 50]], dtype=int64)
+>>> a @ b
+array([[19, 22],
+       [43, 50]], dtype=int64)
+```
+
+A matrix times a vector, a vector times a matrix, and the inner product of two vectors:
+
+```python
+>>> v = sd.asarray([1.0, -1.0])
+>>> a @ v
+array([-1.0, -1.0], dtype=float64)
+>>> v @ a
+array([-2.0, -2.0], dtype=float64)
+>>> v @ v
+2.0
+```
+
+One matrix multiplies each matrix of a stack. Stack axes of different lengths broadcast:
+
+```python
+>>> s = sd.reshape(sd.arange(8), (2, 2, 2))
+>>> s @ a
+array([[[ 3,  4],
+        [11, 16]],
+
+       [[19, 28],
+        [27, 40]]], dtype=int64)
+>>> (sd.ones((3, 1, 2, 4)) @ sd.ones((5, 4, 6))).shape
+(3, 5, 2, 6)
+```
+
+Booleans give `int64`, and `@=` stores the product in the left operand when the shape and dtype allow it:
+
+```python
+>>> t = sd.asarray([[True, False], [True, True]])
+>>> t @ t
+array([[1, 0],
+       [2, 1]], dtype=int64)
+>>> f = sd.asarray([[1.0, 2.0], [3.0, 4.0]])
+>>> f @= sd.asarray([[0.0, 1.0], [1.0, 0.0]])
+>>> f
+array([[2.0, 1.0],
+       [4.0, 3.0]], dtype=float64)
+```
+
+The inner lengths must agree, and scalars are not operands of `matmul`:
+
+```python
+>>> sd.matmul(a, sd.ones((3, 2)))
+Traceback (most recent call last):
+    ...
+ValueError: matmul(): the last axis of 'x1' (2) must match the second-to-last axis of 'x2' (3)
+>>> a @ 2
+Traceback (most recent call last):
+    ...
+TypeError: unsupported operand type(s) for @: 'ndarray' and 'int'
+```
+
+<Reference />
+
+## Notes
+
+For matrices $A$ of shape $(n, k)$ and $B$ of shape $(k, m)$, the product $C = AB$ has shape $(n, m)$ and
+
+$$
+C_{ij} = \sum_{p=0}^{k-1} A_{ip} B_{pj} .
+$$
+
+With $k = 0$, every element is the empty sum 0. NaN and infinity follow the arithmetic of each product and sum, so
+`nan * 0.0` contributes NaN.
+
+`x1 @= x2` computes the product and stores it into `x1`. The product must have the shape of `x1`, so `x2` is a
+square matrix or a stack of them, and its dtype must convert to that of `x1` (see
+[implicit conversion](/api/array/dtypes/#implicit-conversion)). Otherwise the operator raises `ValueError` (shape)
+or `TypeError` (dtype) and leaves `x1` unchanged.
+
+Linear systems are solved with [`sd.linalg.solve`](/api/linalg/solve/), not by multiplying with an inverse.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.matmul` and the `@` operator of NumPy arrays, and R's `%*%`.
+
+- Both operands must be `sd.ndarray`; NumPy also accepts lists. Python scalars raise `TypeError` here and
+  `ValueError` in NumPy.
+- The product of two `bool` arrays is `int64`. NumPy returns `bool`.
+- There is no `out=` argument, and no `dot` or `inner` function.
+- R's `%*%` returns a matrix, also a 1-by-1 matrix for two vectors, and its result is always double; integer and
+  logical inputs are converted. Here the product of two vectors is a Python scalar, and integer products stay `int64`.

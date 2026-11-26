@@ -1,0 +1,150 @@
+---
+kind: function
+title: unique_values, unique_counts, unique_inverse, unique_all
+names: [unique_values, unique_counts, unique_inverse, unique_all]
+group: Sorting and sets
+order: 2
+signatures:
+  - "sd.unique_values(x, /)"
+  - "sd.unique_counts(x, /)"
+  - "sd.unique_inverse(x, /)"
+  - "sd.unique_all(x, /)"
+summary: Find the distinct values of an array, with their counts, first positions or inverse indices.
+params:
+  - name: x
+    type: array
+    kind: positional-only
+    desc: "Array of any dtype and shape. All elements are considered together, read in row-major order."
+returns:
+  - name: values
+    type: ndarray of shape (k,)
+    desc: "The `k` distinct values of `x` in increasing order, with the dtype of `x`. The whole result of `unique_values`, and the first field of the other results."
+  - name: indices
+    type: ndarray of shape (k,)
+    desc: "`unique_all` only. For each value, the position of its first occurrence in `x` read in row-major order, as in `ravel(x)`. `int64`."
+  - name: inverse_indices
+    type: ndarray
+    desc: "`unique_inverse` and `unique_all`. For each element of `x`, the position of its value in `values`, with the shape of `x`. `int64`."
+  - name: counts
+    type: ndarray of shape (k,)
+    desc: "`unique_counts` and `unique_all`. The number of elements of `x` equal to each value. `int64`."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`."
+seeAlso: [sort-argsort, bincount, histogram, count_nonzero, searchsorted]
+---
+
+These four functions find the distinct values of `x`, sorted in increasing order. `unique_values` returns only the
+values. The others also describe where the values occur and return a named tuple, whose fields are read by name or
+by position:
+
+| Function | Result |
+|---|---|
+| `unique_values` | `values` (an `sd.ndarray`) |
+| `unique_counts` | `UniqueCountsResult(values, counts)` |
+| `unique_inverse` | `UniqueInverseResult(values, inverse_indices)` |
+| `unique_all` | `UniqueAllResult(values, indices, inverse_indices, counts)` |
+
+`x` may have any shape; its elements are taken together in row-major order, the last axis varying fastest, so
+`values`, `indices` and `counts` are always 1-D. `inverse_indices` has the shape of `x`, and `values[inverse_indices]`
+rebuilds `x`. The arrays of the named tuples are read-only (see [read-only arrays](/api/array/views/#read-only-arrays));
+the array returned by `unique_values` is writable.
+
+Values are compared as in [`sort`](/api/array/sort-argsort/). All NaN elements form one value, placed last, and
+`-0.0` and `0.0` form one value. When elements that count as equal differ in their bits (the two zeros, or NaN values
+of different signs), `values` shows the first of them in `x`, the element that `indices` points to. Unlike `sort`,
+these functions accept complex arrays: complex numbers are ordered by real part, then by imaginary part, and every
+complex number with a NaN real or imaginary part belongs to the single NaN value.
+
+## Examples
+
+The distinct values of an array, and how often each occurs:
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([3, 1, 2, 3, 1, 3])
+>>> sd.unique_values(x)
+array([1, 2, 3], dtype=int64)
+>>> values, counts = sd.unique_counts(x)
+>>> counts
+array([2, 1, 3], dtype=int64)
+```
+
+`inverse_indices` replaces each element by the position of its value. It has the shape of `x`, and indexing `values`
+with it gives back `x`:
+
+```python
+>>> m = sd.asarray([[20, 10], [10, 30]])
+>>> r = sd.unique_inverse(m)
+>>> r.values
+array([10, 20, 30], dtype=int64)
+>>> r.inverse_indices
+array([[1, 0],
+       [0, 2]], dtype=int64)
+>>> r.values[r.inverse_indices]
+array([[20, 10],
+       [10, 30]], dtype=int64)
+```
+
+`unique_all` returns every field. `indices` gives the first position of each value in `x`:
+
+```python
+>>> sd.unique_all(x)
+UniqueAllResult(values=array([1, 2, 3], dtype=int64), indices=array([1, 2, 0], dtype=int64), inverse_indices=array([2, 0, 1, 2, 0, 2], dtype=int64), counts=array([2, 1, 3], dtype=int64))
+```
+
+All NaN elements count as one value, placed last. `-0.0` and `0.0` are one value, shown as the one that comes first:
+
+```python
+>>> f = sd.asarray([2.0, sd.nan, -0.0, 1.0, 0.0, sd.nan])
+>>> v, c = sd.unique_counts(f)
+>>> v
+array([-0.0,  1.0,  2.0,  nan], dtype=float64)
+>>> c
+array([2, 1, 1, 2], dtype=int64)
+```
+
+Complex values are ordered by real part, then imaginary part:
+
+```python
+>>> sd.unique_values(sd.asarray([1 + 1j, 1 - 1j, 2j, 1 + 1j]))
+array([    2j, (1-1j), (1+1j)], dtype=complex128)
+```
+
+The arrays of a result are read-only. `asarray` with `copy=True` makes a writable copy:
+
+```python
+>>> counts[0] = 0
+Traceback (most recent call last):
+    ...
+ValueError: assignment destination is read-only
+>>> counts = sd.asarray(counts, copy=True)
+>>> counts[0] = 0
+>>> counts
+array([0, 1, 3], dtype=int64)
+```
+
+<Reference />
+
+## Notes
+
+For an empty `x`, every array of the result is empty; `values` keeps the dtype of `x`. `counts` sums to the number of
+elements of `x`, and `indices[j]` is the smallest position $i$ in the row-major order with $x_i$ equal to
+`values[j]`.
+
+To count small nonnegative integers, including values that do not occur, [`bincount`](/api/array/bincount/) returns
+one count for every integer from 0 to the largest value.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.unique_values`, `numpy.unique_counts`, `numpy.unique_inverse`,
+`numpy.unique_all` and `numpy.unique`, and R's `unique` and `table`.
+
+- All NaN elements form one value. NumPy's `unique_values`, `unique_counts`, `unique_inverse` and `unique_all`
+  return every NaN separately; `numpy.unique` (with its default `equal_nan=True`) groups them, as here.
+- `unique_values` returns the values in increasing order. `numpy.unique_values` guarantees no order and can return
+  integers unsorted.
+- Of `-0.0` and `0.0`, the value shown is the one that occurs first. NumPy returns `-0.0` for both
+  `[0.0, -0.0]` and `[-0.0, 0.0]`.
+- R's `unique` keeps the order of first occurrence and does not sort. For data without NaN, `sort(unique(x))` gives
+  `values`, `table(x)` gives the counts, and `match(x, sort(unique(x)))` gives the inverse indices, counted from 1.

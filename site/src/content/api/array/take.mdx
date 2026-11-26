@@ -1,0 +1,121 @@
+---
+kind: function
+title: take
+names: [take]
+group: Indexing and searching
+order: 1
+signatures:
+  - "sd.take(x, indices, /, *, axis=None)"
+summary: Select elements of an array at the given positions along an axis.
+params:
+  - name: x
+    type: array
+    kind: positional-only
+    desc: "Array to select from, of any dtype."
+  - name: indices
+    type: int or array
+    kind: positional-only
+    desc: "Positions along `axis`: an `int`, or an `int64` array of any shape. Negative values count from the end of the axis. Repeated positions are allowed. Lists, `bool` arrays and floating-point arrays are rejected."
+  - name: axis
+    type: int or None
+    kind: keyword-only
+    default: None
+    desc: "Axis to select along. Negative values count from the end. May be `None` only when `x` is 1-D; a tuple or list is rejected."
+returns:
+  - type: ndarray or scalar
+    desc: "Selected elements, with the dtype of `x`. For an `int64` array, the shape is that of `x` with `axis` replaced by the shape of `indices`, and the result is a new array. For an `int`, `axis` is removed and the result is a view of `x` (see [Views and copies](/api/array/views/)); when `x` is 1-D, it is a Python `bool`, `int`, `float` or `complex`."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`, if `indices` is not an `int` or an `int64` array, or if `axis` is not an `int` or `None`."
+  - type: ValueError
+    desc: "If `axis` is out of range, or if `axis` is `None` and `x` has more than one dimension."
+  - type: IndexError
+    desc: "If a position is outside the axis, including an `int` outside the `int64` range. For an array of positions, the message gives the first such position in row-major order."
+  - type: OverflowError
+    desc: "If `axis` is an `int` outside the `int64` range."
+seeAlso: [take_along_axis, indexing, nonzero, repeat]
+---
+
+`take` selects the elements of `x` at the positions `indices` along one axis. `take(x, i, axis=2)` gives the same
+result as `x[:, :, i]`, and in general `i` is preceded by one `:` for every axis before `axis` (see
+[Indexing](/api/array/indexing/)). The function form suits code in which the axis is a variable.
+
+The positions may come in any order and may repeat. An `int64` array of positions replaces the axis by its own shape,
+so a 2-D array of positions along an axis of a 2-D `x` gives a 3-D result. An array of positions always gives a new
+array; a single `int` removes the axis, and the result is then a view of `x`, as for `x[i]`.
+
+For a 1-D `x`, `axis` may be left out. For an array with two or more dimensions, `axis` is required; there is no
+selection from the flattened elements.
+
+## Examples
+
+Positions in any order, with repeats and negative positions:
+
+```python
+>>> import stardust as sd
+>>> v = sd.asarray([10.0, 20.0, 30.0, 40.0])
+>>> sd.take(v, sd.asarray([3, 0, 0, -1]))
+array([40.0, 10.0, 10.0, 40.0], dtype=float64)
+>>> sd.take(v, 2)
+30.0
+```
+
+Columns or rows of a 2-D array. A 2-D array of positions gives a 3-D result:
+
+```python
+>>> x = sd.arange(12).reshape((3, 4))
+>>> sd.take(x, sd.asarray([0, 3]), axis=1)
+array([[ 0,  3],
+       [ 4,  7],
+       [ 8, 11]], dtype=int64)
+>>> sd.take(x, sd.asarray([[0, 1], [2, 0]]), axis=0).shape
+(2, 2, 4)
+>>> sd.take(x, 1, axis=0)
+array([4, 5, 6, 7], dtype=int64)
+```
+
+An array with two or more dimensions needs `axis`, and a position outside the axis raises `IndexError`:
+
+```python
+>>> sd.take(x, sd.asarray([0]))
+Traceback (most recent call last):
+    ...
+ValueError: take(): 'axis' is required for arrays with more than one dimension
+>>> sd.take(v, sd.asarray([4]))
+Traceback (most recent call last):
+    ...
+IndexError: take(): index 4 is out of bounds for axis 0 with size 4
+```
+
+A Boolean array is not a list of positions and raises `TypeError`. The positions of the true elements come from
+[`nonzero`](/api/array/nonzero/):
+
+```python
+>>> mask = sd.asarray([True, False, True, True])
+>>> sd.take(v, mask)
+Traceback (most recent call last):
+    ...
+TypeError: take(): 'indices' must be an int or an int64 array, not bool
+>>> sd.take(v, sd.nonzero(mask)[0])
+array([10.0, 30.0, 40.0], dtype=float64)
+```
+
+<Reference />
+
+## Notes
+
+For an axis of length $n$, a position $i$ is valid when $-n \le i \lt n$; a negative $i$ selects the element $n + i$.
+With `x` of shape `(d_0, ..., d_{m-1})`, an array of positions of shape `s` and `axis` $k$, the result has shape
+`(d_0, ..., d_{k-1}) + s + (d_{k+1}, ..., d_{m-1})`. An empty array of positions gives an empty result.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.take` and R's indexing `x[i]` (or `x[i, ]` and `x[, j]` for a matrix).
+
+- `axis` is required for arrays with two or more dimensions. `numpy.take` selects from the flattened array when
+  `axis` is left out; [`ravel`](/api/array/ravel/) gives that array.
+- `indices` must be an `int` or an `int64` `sd.ndarray`. `numpy.take` also accepts lists and reads a Boolean array as
+  the positions 0 and 1.
+- There is no `mode=` argument: positions outside the axis always raise `IndexError`; NumPy can wrap or clip them.
+- With an `int`, `numpy.take` returns a copy; here the result is a view of `x`.
+- R's positions start at 1, and a negative position removes that element instead of counting from the end.

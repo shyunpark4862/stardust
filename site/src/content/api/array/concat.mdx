@@ -16,7 +16,7 @@ params:
     type: int or None
     kind: keyword-only
     default: "0"
-    desc: "Axis along which to join. Negative numbers count from the end. `None` flattens every array first (in row-major order) and joins the results into one 1-D array."
+    desc: "Axis along which to join. Negative values count from the end. `None` flattens every array first (in row-major order) and joins the results into one 1-D array."
 returns:
   - type: ndarray
     desc: "New array whose length along `axis` is the sum of the lengths of the inputs; the other lengths are those of the inputs. The dtype is the promoted dtype of all inputs."

@@ -11,12 +11,12 @@ params:
   - name: x
     type: array
     kind: positional-only
-    desc: Input array.
+    desc: "Array to reverse, of any dtype."
   - name: axis
     type: int, tuple of int, list of int or None
     kind: keyword-only
     default: None
-    desc: "Axis or axes to reverse. Negative numbers count from the end. `None` reverses every axis."
+    desc: "Axis or axes to reverse. Negative values count from the end. `None` reverses every axis."
 returns:
   - type: ndarray
     desc: "A view of `x` with the same shape and dtype, its elements in reverse order along `axis`."

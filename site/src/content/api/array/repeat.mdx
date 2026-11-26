@@ -11,16 +11,16 @@ params:
   - name: x
     type: array
     kind: positional-only
-    desc: Input array.
+    desc: "Array whose elements are repeated, of any dtype."
   - name: repeats
-    type: int or int64 array of shape (n,)
+    type: int or array of shape (n,)
     kind: positional-only
     desc: "Number of copies of each element. An `int` applies to every element. A 1-D `int64` array gives one count per element along `axis` (its length `n` equals that axis length), or one count for all when its length is 1. Counts must be 0 or more. Lists, tuples and other dtypes are rejected."
   - name: axis
     type: int or None
     kind: keyword-only
     default: None
-    desc: "Axis along which to repeat. Negative numbers count from the end. `None` repeats the elements of the flattened array (in row-major order) and returns a 1-D array."
+    desc: "Axis along which to repeat. Negative values count from the end. `None` repeats the elements of the flattened array (in row-major order) and returns a 1-D array."
 returns:
   - type: ndarray
     desc: "New array with the dtype of `x`. Along `axis`, its length is the sum of the counts; the other axes keep their lengths."

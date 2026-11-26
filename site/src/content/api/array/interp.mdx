@@ -1,0 +1,177 @@
+---
+kind: function
+title: interp
+names: [interp]
+group: Indexing and searching
+order: 5
+signatures:
+  - "sd.interp(x, xp, fp, /, *, left=None, right=None, period=None)"
+summary: Evaluate the piecewise linear function through given points.
+params:
+  - name: x
+    type: array or scalar
+    kind: positional-only
+    desc: "Points at which to evaluate. An `sd.ndarray` of any shape, of dtype `bool`, `int64` or `float64`, or a Python `bool`, `int` or `float`. Converted to `float64`."
+  - name: xp
+    type: array of shape (n,)
+    kind: positional-only
+    desc: "Nodes: the x-coordinates of the given points, a nonempty 1-D array of dtype `bool`, `int64` or `float64`. Must be finite and nondecreasing, except with `period`, where any order is allowed. Repeated values are allowed. Converted to `float64`."
+  - name: fp
+    type: array of shape (n,)
+    kind: positional-only
+    desc: "Values at the nodes, a 1-D array of the length of `xp`, of any dtype. `bool` and `int64` values are converted to `float64`; `complex128` values are interpolated in their real and imaginary parts."
+  - name: left
+    type: int, float, complex or None
+    kind: keyword-only
+    default: None
+    desc: "Value for the points below `xp[0]`. An `int` or `float`, or also a `complex` when `fp` is complex. `None` means `fp[0]`. Ignored, and not checked, with `period`."
+  - name: right
+    type: int, float, complex or None
+    kind: keyword-only
+    default: None
+    desc: "Value for the points above `xp[-1]`, in the same forms as `left`. `None` means `fp[-1]`. Ignored with `period`."
+  - name: period
+    type: int, float or None
+    kind: keyword-only
+    default: None
+    desc: "Period of the x-coordinate, for periodic data such as angles. `xp` and `x` are then reduced modulo the period, and the function wraps around from the last node to the first. A negative period is used as its absolute value. Must be finite and nonzero."
+returns:
+  - type: ndarray or scalar
+    desc: "Interpolated values, a new array with the shape of `x`. `complex128` when `fp` is complex, otherwise `float64`. A Python `float` or `complex` when `x` is a Python scalar."
+raises:
+  - type: TypeError
+    desc: "If `x` or `xp` is complex, if `x` is not an `sd.ndarray` or a Python scalar, if `xp` or `fp` is not an `sd.ndarray`, if `period` is not an `int` or `float`, or, when `period` is `None`, if `left` or `right` is not an `int` or `float` (also a `complex` for a complex `fp`). A `bool` is rejected for `left`, `right` and `period`."
+  - type: ValueError
+    desc: "If `xp` or `fp` is not 1-D, if `xp` is empty, if `fp` differs in length from `xp`, if `xp` contains NaN or infinity, if `xp` decreases somewhere and `period` is `None`, or if `period` is zero, NaN or infinite."
+seeAlso: [searchsorted, linspace, clip, diff]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import PlaneFig from '../../../components/fig/PlaneFig.astro';
+
+export const nodes = [[0, 0], [1, 10], [2, 15], [4, 5]];
+export const queries = [[0.5, 5], [3, 10]];
+
+`interp` joins the points `(xp[k], fp[k])` by straight lines and returns the height of that broken line at each point
+of `x`. This is linear interpolation: between two neighboring nodes $x_k \le x \le x_{k+1}$ the value moves in
+proportion from $f_k$ to $f_{k+1}$. At a node, the value is that node's value exactly.
+
+Outside the nodes, the function is constant: points below `xp[0]` get `left`, by default `fp[0]`, and points above
+`xp[-1]` get `right`, by default `fp[-1]`. `left` and `right` can mark such points, for example with NaN.
+
+With `period`, the x-coordinate is periodic: `xp` and `x` are reduced into one period, and the last node connects
+to the first one across the end of the period. The nodes may then be given in any order. `left` and `right` are
+ignored, since no point lies outside the nodes.
+
+`interp` covers 1-D linear interpolation of arrays. Splines, other kinds of interpolation and several
+dimensions are in `sd.interpolate`.
+
+<Fig caption="interp(x, xp, fp) with xp = [0, 1, 2, 4] and fp = [0, 10, 15, 5]: straight lines between the nodes, the end values beyond them (dashed), and the values at x = 0.5 and x = 3.">
+  <PlaneFig
+    label="Four nodes joined by straight line segments, flat dashed extensions beyond the first and last node, and two evaluated points on the segments"
+    domain={[-1, 5]}
+    range={[-1, 17]}
+    equal={false}
+    width={480}
+    height={260}
+    xTicks={[0, 1, 2, 3, 4]}
+    yTicks={[0, 5, 10, 15]}
+    layers={[
+      { kind: 'segments', segs: [[-1, 0, 0, 0], [4, 5, 5, 5]], tone: 'base', dashed: true },
+      { kind: 'line', pts: nodes, tone: 'main', width: 1.8 },
+      { kind: 'points', pts: nodes, tone: 'main', size: 3.8 },
+      { kind: 'points', pts: queries, tone: 'ink', shape: 'diamond', size: 4 },
+    ]}
+    legend={[
+      { label: 'nodes (xp, fp)', tone: 'main', shape: 'dot' },
+      { label: 'interp(x, xp, fp)', tone: 'ink', shape: 'diamond' },
+    ]}
+  />
+</Fig>
+
+## Examples
+
+Values between the nodes, at a node, and outside the nodes:
+
+```python
+>>> import stardust as sd
+>>> xp = sd.asarray([0.0, 1.0, 2.0, 4.0])
+>>> fp = sd.asarray([0.0, 10.0, 15.0, 5.0])
+>>> sd.interp(sd.asarray([0.5, 3.0, 1.0, -1.0, 5.0]), xp, fp)
+array([ 5.0, 10.0, 10.0,  0.0,  5.0], dtype=float64)
+>>> sd.interp(1.5, xp, fp)
+12.5
+```
+
+Other values outside the nodes, and points in a 2-D array:
+
+```python
+>>> sd.interp(sd.asarray([-1.0, 5.0]), xp, fp, left=-99, right=sd.nan)
+array([-99.0,   nan], dtype=float64)
+>>> sd.interp(sd.asarray([[0.5, 1.5], [2.5, 3.5]]), xp, fp)
+array([[ 5.0, 12.5],
+       [12.5,  7.5]], dtype=float64)
+```
+
+A periodic function of an angle in degrees. The value at 315 lies between the nodes 270 and 360, which is the node 0
+again; 405 is 45 in the next period:
+
+```python
+>>> angle = sd.asarray([0.0, 90.0, 180.0, 270.0])
+>>> value = sd.asarray([0.0, 1.0, 0.0, -1.0])
+>>> sd.interp(sd.asarray([45.0, 315.0, 405.0, -45.0]), angle, value, period=360)
+array([ 0.5, -0.5,  0.5, -0.5], dtype=float64)
+```
+
+A repeated node makes a step: at the node and to its right, the function takes the later value. NaN in `x` gives NaN.
+Without `period`, nodes out of order raise `ValueError`:
+
+```python
+>>> sd.interp(sd.asarray([0.5, 1.0, 1.5, sd.nan]), sd.asarray([0.0, 1.0, 1.0, 2.0]), sd.asarray([0.0, 1.0, 5.0, 6.0]))
+array([0.5, 5.0, 5.5, nan], dtype=float64)
+>>> sd.interp(1.0, sd.asarray([0.0, 2.0, 1.0, 3.0]), fp)
+Traceback (most recent call last):
+    ...
+ValueError: interp(): 'xp' must be nondecreasing
+```
+
+<Reference />
+
+## Notes
+
+For $x_k \le x \lt x_{k+1}$ with $x_k \lt x_{k+1}$, the result is
+
+$$
+f(x) = f_k + \frac{x - x_k}{x_{k+1} - x_k} \, (f_{k+1} - f_k).
+$$
+
+At a node the result is $f_k$ exactly, the sign of a zero included. Between two nodes the result lies between $f_k$
+and $f_{k+1}$, and for monotonic `fp` the results are monotonic in `x`. When several nodes are equal, the function
+jumps there: below the node it approaches the value of the first of them, and at the node and above it takes
+the value of the last.
+
+**Special values.** A NaN point gives NaN (`nan+0j` for a complex `fp`). Points at $-\infty$ and $+\infty$ get `left`
+and `right`, and NaN with `period`, since they have no remainder. For non-finite values in `fp`, a node gives its own
+value; between two nodes the result is infinite when one end is infinite or both ends are the same infinity, and NaN
+when the ends are infinities of opposite sign or one end is NaN. With a single node, points below it get `left`, the
+node gets `fp[0]` and points above it get `right`.
+
+**Periods.** With a period $p$, every node and point is replaced by its remainder modulo $p$, as computed by
+[`remainder`](/api/array/floor_divide-remainder/). The reduced nodes are sorted, and nodes that reduce to the same
+value keep their order. The last node is then repeated one period below the first, and the first node one period
+above the last, so the function between the last node and $p$ runs toward the value of the first node.
+
+Each value is computed on its own, so the result does not depend on the number of threads (see
+[Determinism and threads](/start/conventions/#determinism-and-threads)).
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.interp` and R's `approx(xp, fp, xout = x, rule = 2)`.
+
+- `xp`, `fp` must be `sd.ndarray`; lists raise `TypeError`.
+- `xp` must be finite and nondecreasing. NumPy does not check the order and returns values without an error:
+  `numpy.interp([0.5, 1.5, 2.5], [0, 2, 1, 3], [0, 10, 20, 30])` gives `[2.5, 7.5, 27.5]`.
+- `left`, `right` and `period` are keyword-only; NumPy also accepts `left` and `right` by position.
+- A `period` of NaN or infinity raises `ValueError`; NumPy returns NaN or the values without the reduction.
+- With a single node, a NaN point gives NaN; NumPy gives `fp[0]`.
+- R's `approx` gives `NA` outside the nodes with its default `rule = 1`, and averages the values at repeated nodes
+  (with a warning) instead of making a step.

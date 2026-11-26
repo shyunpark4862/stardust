@@ -1,0 +1,118 @@
+---
+kind: function
+title: vecdot
+names: [vecdot]
+group: Matrix products
+order: 3
+signatures:
+  - "sd.vecdot(x1, x2, /, *, axis=-1)"
+summary: Compute the dot products of vectors along an axis.
+params:
+  - name: x1
+    type: array
+    kind: positional-only
+    desc: "First array of vectors, of any dtype. Complex elements are conjugated."
+  - name: x2
+    type: array
+    kind: positional-only
+    desc: "Second array of vectors, of any dtype. Its axes other than `axis` broadcast against those of `x1` (see [Broadcasting](/api/array/broadcasting/))."
+  - name: axis
+    type: int
+    kind: keyword-only
+    default: "-1"
+    desc: "Axis along which the vectors lie, counted in the broadcast shape of `x1` and `x2`. Negative values count from the end. Both arrays must have the same length along it. `None`, a tuple or a list is rejected."
+returns:
+  - type: ndarray, int, float or complex
+    desc: "Dot products, with the broadcast shape of the operands without `axis`. The dtype is the promoted dtype of the operands, with `int64` in place of `bool`. A Python `int`, `float` or `complex` when the broadcast shape is 1-D."
+raises:
+  - type: TypeError
+    desc: "If `x1` or `x2` is not an `sd.ndarray`, or if `axis` is not an `int`."
+  - type: ValueError
+    desc: "If `axis` is out of range, if `x1` and `x2` differ in length along `axis`, or if their other axes do not broadcast."
+  - type: OverflowError
+    desc: "If `axis` is an `int` outside the `int64` range."
+seeAlso: [matmul, tensordot, arithmetic, complex, sum]
+---
+
+`vecdot` computes the dot product of the vectors that lie along `axis`, the last axis by default: for each position
+in the other axes, it multiplies the elements of `x1` and `x2` along `axis` and sums the products. The axis is removed
+from the result. For complex input, the elements of `x1` are conjugated first, so `vecdot(z, z)` is the sum of the
+squared magnitudes of `z`, a real number stored as complex.
+
+The other axes broadcast, so one vector can be paired with every row of a matrix. `axis` counts in the broadcast
+shape, in which a missing leading axis has length 1; the axis itself does not broadcast and must have the same length
+in both arrays.
+
+The result dtype is the promoted dtype of the two arrays, and `int64` for two `bool` arrays, as for
+[`matmul`](/api/array/matmul/) (see [arithmetic on Booleans](/api/array/dtypes/#arithmetic-on-booleans)). Integer
+products and sums wrap around outside the `int64` range (see [integer overflow](/api/array/dtypes/#integer-overflow)).
+
+## Examples
+
+The dot product of two vectors, and of one vector with each row of a matrix:
+
+```python
+>>> import stardust as sd
+>>> u = sd.asarray([1.0, 2.0, 3.0])
+>>> sd.vecdot(u, sd.asarray([4.0, 5.0, 6.0]))
+32.0
+>>> a = sd.asarray([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+>>> sd.vecdot(a, sd.asarray([1.0, 0.0, -1.0]))
+array([-2.0, -2.0], dtype=float64)
+```
+
+With `axis=0`, the vectors are the columns:
+
+```python
+>>> sd.vecdot(a, a, axis=0)
+array([17.0, 29.0, 45.0], dtype=float64)
+```
+
+The first argument is conjugated. Integer input gives an `int64` result:
+
+```python
+>>> z = sd.asarray([1 + 2j, 3j])
+>>> sd.vecdot(z, z)
+(14+0j)
+>>> sd.vecdot(z, sd.asarray([1, 1]))
+(1-5j)
+>>> sd.vecdot(sd.asarray([1, 2]), sd.asarray([3, 4]))
+11
+```
+
+The vectors must have the same length:
+
+```python
+>>> sd.vecdot(a, sd.ones(2))
+Traceback (most recent call last):
+    ...
+ValueError: vecdot(): 'x1' and 'x2' must have the same size along the axis, got 3 and 2
+```
+
+<Reference />
+
+## Notes
+
+For vectors $x$ and $y$ of length $n$ along `axis`, the result is
+
+$$
+\sum_{i=0}^{n-1} \overline{x_i} \, y_i ,
+$$
+
+where $\overline{x_i}$ is the complex conjugate (the number itself for real input). With $n = 0$, it is the empty sum
+0. NaN and infinity follow the arithmetic of each product and sum, so `nan * 0.0` contributes NaN.
+
+`sd.linalg.vecdot` is a separate function with the same signature. It computes `bool` and `int64` input in `float64`,
+so for the integers above it returns `11.0`; for `float64` and `complex128` input both functions give the same bits.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.vecdot` and, for 1-D arrays, `numpy.vdot`. R's `crossprod(x, y)` and `sum(x * y)`
+compute the real dot product.
+
+- `axis` counts in the broadcast shape of the two arrays. NumPy's `axis` selects that axis in each array before
+  broadcasting, so `numpy.vecdot(numpy.ones(3), numpy.ones((3, 3)), axis=0)` is valid, while here a 1-D `x1` has
+  length 1 along axis 0 of the broadcast shape and raises `ValueError`.
+- Two `bool` arrays give `int64`. NumPy returns `bool`.
+- The dot product of two 1-D arrays is a Python scalar, not a NumPy scalar.
+- R's `crossprod` returns a 1-by-1 matrix and does not conjugate complex input.

@@ -4,10 +4,10 @@ ns: sd
 lead: N-dimensional arrays and the functions that work on them element by element, reduce them along axes, sort them and multiply them. Matrix decompositions and linear solvers are in `sd.linalg`; labeled tabular data is in `sd.frame`.
 glance: [asarray, filled, arange, reshape, sum, mean, sort-argsort, matmul]
 groups:
-  - { title: Array model, desc: "The array object, its data types and the rules for indexing, broadcasting and views." }
-  - { title: Creating arrays, desc: "Build arrays from Python data, from constants and from ranges." }
+  - { title: Array model, desc: "The array object, its data types and constants, and the rules for indexing, broadcasting and views." }
+  - { title: Creating arrays, desc: "Build arrays from Python data and other libraries, from fill values and ranges, and make identity, diagonal, triangular and grid arrays." }
   - { title: Shape and axes, desc: "Change the shape of an array or the order of its axes without changing its elements." }
-  - { title: Joining and repeating, desc: "Combine arrays, and reverse, shift or repeat their elements." }
+  - { title: Joining and repeating, desc: "Combine arrays or split them along an axis, and reverse, shift or repeat their elements." }
   - { title: Data types, desc: "Convert between data types and query their properties." }
   - { title: Arithmetic, desc: "Element-wise arithmetic and related functions." }
   - { title: Exponents and logarithms, desc: "Element-wise exponential and logarithmic functions." }
@@ -19,10 +19,10 @@ groups:
   - { title: Reductions, desc: "Combine the elements along one or more axes into a single value." }
   - { title: Cumulative, desc: "Running sums and products along an axis." }
   - { title: Skipping NaN, desc: "Reductions, running sums and running products that ignore NaN elements." }
-  - { title: Statistics, desc: "Quantiles, covariance and histograms." }
-  - { title: Indexing and searching, desc: "Select elements by index, locate values and take differences." }
+  - { title: Statistics, desc: "Quantiles and medians, covariance and correlation, counts of integers and histograms." }
+  - { title: Indexing and searching, desc: "Select elements by index, locate values in sorted arrays, interpolate linearly and take differences." }
   - { title: Sorting and sets, desc: "Sort arrays and find their distinct values." }
-  - { title: Matrix products, desc: "Matrix, tensor and vector products." }
+  - { title: Matrix products, desc: "Matrix products, sums of products over pairs of axes, and dot products of vectors." }
   - { title: Threads, desc: "Control the number of threads used for computation." }
 ---
 
@@ -33,8 +33,8 @@ axes. Its shape is the tuple of axis lengths; shapes are written as in
 [Conventions](/start/conventions/#array-shapes). There are no 0-D arrays: an index or a reduction that leaves no axes
 returns a Python `bool`, `int`, `float` or `complex`.
 [`asarray`](/api/array/asarray/) converts Python lists and arrays of other libraries. The other functions of the area
-require their array arguments to be `sd.ndarray` and raise `TypeError` for lists; element-wise functions also accept
-Python scalars.
+require their array arguments to be `sd.ndarray` and raise `TypeError` for lists; element-wise functions, and a few
+arguments such as the values searched for by `searchsorted`, also accept Python scalars.
 
 **Data types.** Arrays have four data types (dtypes), `bool`, `int64`, `float64` and `complex128`. When a function
 combines two dtypes, both are converted to the wider one in that order
@@ -72,8 +72,12 @@ original array, so writing to a view changes the original; other operations retu
 | `sum(x, axis=0)` | `numpy.sum` | `sum(x)`, `colSums(x)` |
 | `mean(x)`, `var(x, correction=1)` | `numpy.mean`, `numpy.var(x, ddof=1)` | `mean(x)`, `var(x)` |
 | `quantile(x, q)` | `numpy.quantile` | `quantile(x, q)` |
-| `sort(x)` | `numpy.sort` | `sort(x)` |
-| `unique_values(x)` | `numpy.unique_values` | `sort(unique(x))` |
+| `cumulative_sum(x)` | `numpy.cumulative_sum`, `numpy.cumsum` | `cumsum(x)` |
+| `nansum(x)` | `numpy.nansum` | `sum(x, na.rm = TRUE)` |
+| `sort(x)`, `argsort(x)` | `numpy.sort`, `numpy.argsort` | `sort(x)`, `order(x)` |
+| `unique_values(x)` | `numpy.unique_values`, `numpy.unique` | `sort(unique(x))` |
+| `diff(x)` | `numpy.diff` | `diff(x)` |
+| `interp(x, xp, fp)` | `numpy.interp` | `approx(xp, fp, xout = x, rule = 2)$y` |
 | `where(c, a, b)` | `numpy.where` | `ifelse(c, a, b)` |
 | `matmul(a, b)`, `a @ b` | `numpy.matmul`, `a @ b` | `a %*% b` |
 
@@ -82,9 +86,12 @@ original array, so writing to a view changes the original; other operations retu
   `concatenate`, `transpose`, `power`, `arccos` and `cumsum` do not exist.
 - Array arguments must be `sd.ndarray`; `sd.sum([1, 2])` raises `TypeError`. NumPy converts lists and scalars
   everywhere.
-- There are four array dtypes. Arithmetic on Booleans returns `int64`, and assignment never converts to a narrower
-  dtype ([implicit conversion](/api/array/dtypes/#implicit-conversion)).
-- Results that are single numbers are Python scalars, not NumPy scalars or 0-D arrays.
+- There are four array dtypes. Arithmetic on Booleans returns `int64`, as does `@` on two `bool` arrays, and
+  assignment never converts to a narrower dtype ([implicit conversion](/api/array/dtypes/#implicit-conversion)).
+  Results that are single numbers are Python scalars, not NumPy scalars or 0-D arrays.
+- `sort` and `argsort` treat NaN as larger than every number, also with `descending=True`, where NaN comes first;
+  NumPy puts NaN last in both directions. The `unique_*` functions count all NaN elements as one value, which NumPy's
+  `unique_*` functions do not. Complex arrays cannot be sorted.
 - No function issues warnings. `sd.log` of 0 returns `-inf` silently, and integer `x // 0` is 0 and `x % 0` is `x`;
   NumPy returns 0 for both and warns.
 - `var` and `std` divide by $n$ by default (`correction=0`), as NumPy does with `ddof=0`. R's `var` and `sd` divide by

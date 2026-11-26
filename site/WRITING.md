@@ -184,3 +184,31 @@ objects; `## For NumPy, SciPy and R users` (a 3-column table stardust | NumPy/Sc
 
 End with a short report in Korean: files created or changed, example-check results, judgment calls you made,
 anomalies recorded (count and file), anything you could not verify.
+
+## 9. Lessons from the array area
+
+Rules that held across the 87 array pages and apply to every area:
+
+- **Inputs.** Name what a parameter accepts after its role: "Array to sort, of any dtype.", "Base. An `sd.ndarray` or
+  a Python `bool`, `int`, `float` or `complex`." Not "Input array", not "array_like", not "`sd.ndarray` object". The
+  inputs of an element-wise function are "operands"; parameters with different roles are "arguments".
+- **Returns.** "<What>, with the shape of `x`." or "with the broadcast shape of the operands.", then the dtype rule.
+  When a Python scalar can come back, say exactly when ("A Python `float` when every axis is reduced and `keepdims` is
+  `False`.").
+- **Raises.** Each entry starts with "If" and joins its cases with commas: "If `x` is complex, if `x` is not an
+  `sd.ndarray`, or if `axis` is not an `int`." Order: rejected dtypes, wrong types, then the other cases. A Boolean
+  argument is rejected "if `<name>` is not `True` or `False`" (`0`, `1` and `None` are rejected too). No example
+  parentheses after the type clause.
+- **Boolean and axis parameters.** "If `True`, ...". A single axis: "Axis to <verb> along. Negative values count from
+  the end." Say what `None`, a tuple and a list do.
+- **Shared rules.** Explain a rule on one page and link to it from the others with one sentence, using anchors that
+  stay fixed (`/start/conventions/#...`, the concept pages of the area). Do not restate it.
+- **Accuracy.** "For `float64` input, the results are within a few units in the last place of the exact value."
+  "Correctly rounded" only for operations that are (square root, `1 / x`). No ULP figures.
+- **Comparison with NumPy.** When results differ from NumPy's only by rounding (measured): "Results for `float64`
+  input can differ from NumPy's in the last digit." Missing warnings: "<case> gives <value> without a warning. NumPy
+  issues a `RuntimeWarning`."
+- **Family pages.** One summary sentence for the whole family ("Return the smallest or the largest element over the
+  given axes."), not one per name. A page for one name that is also a method uses the method's summary verbatim.
+- **Terms.** "dtype" in running text; "data type" only where the term is introduced and in the `dtype` parameter's
+  first words ("Data type of the result."). "1-D", "2-D"; "row-major order", not "C order".

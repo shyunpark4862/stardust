@@ -1,0 +1,133 @@
+---
+kind: function
+title: searchsorted
+names: [searchsorted]
+group: Indexing and searching
+order: 4
+signatures:
+  - "sd.searchsorted(x1, x2, /, *, side='left', sorter=None)"
+summary: Find the positions at which values would be inserted into a sorted array to keep it sorted.
+params:
+  - name: x1
+    type: array of shape (n,)
+    kind: positional-only
+    desc: "Sorted array to search, 1-D, of dtype `bool`, `int64` or `float64`, in nondecreasing order with NaN last (the order of [`sort`](/api/array/sort-argsort/)). The order is not checked. With `sorter`, `x1` may be in any order."
+  - name: x2
+    type: array or scalar
+    kind: positional-only
+    desc: "Values to locate. An `sd.ndarray` of any shape or a Python `bool`, `int` or `float`. `x1` and `x2` are compared in their promoted dtype (see [type promotion](/api/array/dtypes/#type-promotion))."
+  - name: side
+    type: str
+    kind: keyword-only
+    default: "'left'"
+    desc: "Which of several equal elements of `x1` a value is placed next to."
+    choices:
+      - [ "'left'", "before them: the position of the first element not less than the value" ]
+      - [ "'right'", "after them: the position of the first element greater than the value" ]
+  - name: sorter
+    type: array of shape (n,) or None
+    kind: keyword-only
+    default: None
+    desc: "Positions that sort `x1`, a 1-D `int64` array of the length of `x1`, such as the result of [`argsort`](/api/array/sort-argsort/). `x1` is then searched in the order `x1[sorter]`, and the result refers to that order. Each position must be at least 0 and less than `n`: a negative position does not count from the end. An `int` or a list is rejected."
+returns:
+  - type: ndarray or int
+    desc: "Insertion positions, `int64`, with the shape of `x2`, each between 0 and `n`. A Python `int` when `x2` is a Python scalar."
+raises:
+  - type: TypeError
+    desc: "If `x1` is not an `sd.ndarray`, if `x2` is not an `sd.ndarray` or a Python scalar, if the promoted dtype is complex, if `sorter` is not `None` or an `int64` array, or if `side` is not a string."
+  - type: ValueError
+    desc: "If `x1` is not 1-D, if `side` is not `'left'` or `'right'`, or if `sorter` is not 1-D or differs in length from `x1`."
+  - type: IndexError
+    desc: "If a position in `sorter` is negative or not less than `n`. The message gives the first one."
+  - type: OverflowError
+    desc: "If `x2` is a Python `int` outside the `int64` range and the promoted dtype is `bool` or `int64`."
+seeAlso: [sort-argsort, interp, histogram, unique]
+---
+
+`searchsorted` locates each value of `x2` in the sorted array `x1` by binary search. The result `i` for a value `v`
+is the position where `v` would be inserted into `x1` so that `x1` stays sorted: with `side='left'`, every element
+before position `i` is less than `v`, and none from position `i` on is. A value below all elements gives 0, and a
+value above all elements gives `n`, the length of `x1`.
+
+When `v` equals one or more elements of `x1`, `side` decides between the position before them (`'left'`) and the
+position after them (`'right'`). The difference of the two results is the number of elements equal to `v`.
+
+`x1` must be sorted in the order of [`sort`](/api/array/sort-argsort/): nondecreasing, with NaN elements at the end.
+A NaN value in `x2` is therefore placed among or after the NaN elements of `x1`. The order of `x1` is not checked; for
+an unsorted `x1` the positions have no meaning. Instead of sorting `x1`, `sorter` can give the positions that sort it.
+
+## Examples
+
+Positions before and after equal elements:
+
+```python
+>>> import stardust as sd
+>>> x1 = sd.asarray([1.0, 2.0, 2.0, 3.0, 5.0])
+>>> sd.searchsorted(x1, sd.asarray([0.0, 2.0, 4.0, 6.0]))
+array([0, 1, 4, 5], dtype=int64)
+>>> sd.searchsorted(x1, sd.asarray([0.0, 2.0, 4.0, 6.0]), side="right")
+array([0, 3, 4, 5], dtype=int64)
+>>> sd.searchsorted(x1, 2.0)
+1
+```
+
+The result has the shape of `x2`. Two searches give the number of elements between two values, both included:
+
+```python
+>>> sd.searchsorted(x1, sd.asarray([[0.5, 2.5], [3.0, 9.0]]))
+array([[0, 3],
+       [3, 5]], dtype=int64)
+>>> sd.searchsorted(x1, 3.0, side="right") - sd.searchsorted(x1, 2.0)
+3
+```
+
+NaN counts as larger than every number, as in `sort`:
+
+```python
+>>> xn = sd.asarray([1.0, 3.0, sd.nan, sd.nan])
+>>> sd.searchsorted(xn, sd.asarray([2.0, sd.inf, sd.nan]))
+array([1, 2, 2], dtype=int64)
+>>> sd.searchsorted(xn, sd.asarray([2.0, sd.inf, sd.nan]), side="right")
+array([1, 2, 4], dtype=int64)
+```
+
+An unsorted array with `sorter`. The positions refer to the sorted order `u[s]`:
+
+```python
+>>> u = sd.asarray([30, 10, 20])
+>>> s = sd.argsort(u)
+>>> s
+array([1, 2, 0], dtype=int64)
+>>> sd.searchsorted(u, sd.asarray([25, 5]), sorter=s)
+array([2, 0], dtype=int64)
+>>> sd.searchsorted(u, 15, sorter=sd.asarray([1, 2, -1]))
+Traceback (most recent call last):
+    ...
+IndexError: searchsorted(): index -1 is out of bounds for axis 0 with size 3
+```
+
+<Reference />
+
+## Notes
+
+For $x_1$ sorted with length $n$, the result for a value $v$ is
+
+$$
+i_{\text{left}} = \#\{\, j : x_{1,j} \lt v \,\}, \qquad i_{\text{right}} = \#\{\, j : x_{1,j} \le v \,\},
+$$
+
+where NaN is treated as greater than every number and equal to NaN. In particular `-0.0` and `0.0` are equal. The
+comparison is made in the promoted dtype: for an `int64` `x1` and a `float` value, both are compared as `float64`,
+so `searchsorted(sd.asarray([1, 2, 3]), 2.5)` is 2. An empty `x1` gives 0 for every value.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.searchsorted` and R's `findInterval`.
+
+- The arguments are positional-only and named `x1` and `x2`; NumPy names them `a` and `v`.
+- A Python scalar `x2` gives a Python `int`; NumPy returns a `numpy.int64`.
+- `sorter` must be an `int64` `sd.ndarray`, and negative positions in it raise `IndexError`. NumPy also accepts a
+  list and counts negative positions from the end.
+- Complex values raise `TypeError`; NumPy orders complex numbers by real part, then imaginary part.
+- R's `findInterval(v, x1)` counts the elements less than or equal to each value, which is the result with
+  `side="right"`.

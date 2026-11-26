@@ -11,7 +11,7 @@ params:
   - name: x
     type: array
     kind: positional-only
-    desc: Input array.
+    desc: "Array whose elements are shifted, of any dtype."
   - name: shift
     type: int, tuple of int or list of int
     desc: "Number of places to shift. Positive values move elements toward higher indices, negative values toward lower ones. Any size within the `int64` range is allowed; shifts are taken modulo the axis length. A sequence gives one shift per entry of `axis` (see Notes). Must be an `int` when `axis` is `None`. May be passed by keyword."
@@ -19,7 +19,7 @@ params:
     type: int, tuple of int, list of int or None
     kind: keyword-only
     default: None
-    desc: "Axis or axes to shift along. Negative numbers count from the end. No axis may appear twice. `None` shifts the flattened array and restores the shape of `x`."
+    desc: "Axis or axes to shift along. Negative values count from the end. No axis may appear twice. `None` shifts the flattened array and restores the shape of `x`."
 returns:
   - type: ndarray
     desc: "New array with the shape and dtype of `x`."

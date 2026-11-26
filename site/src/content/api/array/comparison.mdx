@@ -31,7 +31,7 @@ returns:
     desc: "`bool` array with the broadcast shape of the operands. A Python `bool` when both operands are Python scalars."
 raises:
   - type: TypeError
-    desc: "If an operand is complex (`less`, `less_equal`, `greater`, `greater_equal`), or if an operand is not an `sd.ndarray` or a Python scalar (a list or `None`, for example)."
+    desc: "If an operand is complex (`less`, `less_equal`, `greater`, `greater_equal`), or if an operand is not an `sd.ndarray` or a Python scalar."
   - type: ValueError
     desc: "If the operands do not broadcast against each other or to the shape of `out`, or if `out` is read-only."
   - type: OverflowError

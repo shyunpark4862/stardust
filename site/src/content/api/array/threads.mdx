@@ -1,0 +1,97 @@
+---
+kind: function
+title: set_num_threads, get_num_threads
+names: [set_num_threads, get_num_threads]
+group: Threads
+order: 1
+signatures:
+  - "sd.set_num_threads(arg: object | None, /) -> None"
+  - "sd.get_num_threads() -> int"
+summary: Set or return the number of threads the library uses for computation.
+params:
+  - name: arg
+    type: int
+    kind: positional-only
+    desc: "Number of threads, an `int` from 1 to 1024. NumPy integers are accepted. Error messages call this argument `n`."
+returns:
+  - type: None or int
+    desc: "`set_num_threads` returns `None`. `get_num_threads` returns the current number of threads, a Python `int`."
+raises:
+  - type: TypeError
+    desc: "If `arg` is not an `int`, including `True`, `False`, `None` and a `float` such as `2.0`."
+  - type: ValueError
+    desc: "If `arg` is below 1 or above 1024, however large it is."
+seeAlso: [sum, sort-argsort, matmul]
+---
+
+stardust splits large computations into parts and computes them on several threads at once. `set_num_threads(n)`
+sets the number of threads, and `get_num_threads()` returns it. The setting is one for the whole library: it applies
+to every area and to every later call, until it is changed again. There is no environment variable for it.
+
+The default is the number of performance cores of the machine, so it differs between computers. With 1, every
+computation that the setting controls runs on the calling thread. Small computations always run on the calling
+thread, whatever the setting.
+
+On the same machine, with the same number of threads and the same input, every function returns the same bits on
+every run. Results computed with different numbers of threads may differ in the last bits, except where a page
+states otherwise (see [Determinism and threads](/start/conventions/#determinism-and-threads)). Exact results do not
+depend on the number of threads, because only one value is correct: integer and Boolean arithmetic, comparisons,
+counts, and positions such as those returned by `argmax` or by a stable `argsort`. The order that `sort` and
+`argsort` give with `stable=False`, and the values that the generators of `sd.random` produce, do not depend on it
+either.
+
+## Examples
+
+Read the current number of threads, change it, and restore it:
+
+```python
+>>> import stardust as sd
+>>> before = sd.get_num_threads()
+>>> sd.set_num_threads(4)
+>>> sd.get_num_threads()
+4
+>>> sd.set_num_threads(before)
+>>> sd.get_num_threads() == before
+True
+```
+
+A computation on one thread, with the previous setting restored even if the computation raises:
+
+```python
+>>> x = sd.sin(sd.arange(100_000) * 0.001)
+>>> sd.set_num_threads(1)
+>>> try:
+...     total = sd.sum(x)
+... finally:
+...     sd.set_num_threads(before)
+>>> round(total, 6)
+137.934299
+```
+
+The number must be an `int` from 1 to 1024:
+
+```python
+>>> sd.set_num_threads(0)
+Traceback (most recent call last):
+    ...
+ValueError: set_num_threads(): 'n' must be between 1 and 1024
+>>> sd.set_num_threads(2.0)
+Traceback (most recent call last):
+    ...
+TypeError: set_num_threads(): 'n' must be an int, not float
+```
+
+<Reference />
+
+## Notes
+
+A number of threads larger than the number of cores is accepted. When several processes run stardust at the same
+time, setting a smaller number in each keeps the total number of threads near the number of cores.
+
+The setting does not limit large `float64` and `complex128` matrix products (`matmul`, `tensordot`, and the
+products inside `cov` and `corrcoef`) or many functions of `sd.linalg`, such as `solve` and `inv`: these can use
+several cores even after `set_num_threads(1)`.
+
+Several Python threads may call stardust at the same time. While a large computation runs, other Python threads keep
+running, whatever the number of threads set here. Conversions between arrays and Python lists (`asarray` of a list,
+`tolist`) are an exception: other Python threads wait until they finish.

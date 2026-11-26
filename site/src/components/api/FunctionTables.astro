@@ -63,6 +63,10 @@ const groups = await groupsOf(area);
   }
   .ftable__table th {
     width: 34%;
+    /* A family page's list of names wraps between names (and inside a long
+       name when the column is narrow). */
+    white-space: normal;
+    overflow-wrap: break-word;
     font-weight: 400;
     text-align: left;
     vertical-align: top;

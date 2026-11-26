@@ -1,0 +1,117 @@
+---
+kind: function
+title: take_along_axis
+names: [take_along_axis]
+group: Indexing and searching
+order: 2
+signatures:
+  - "sd.take_along_axis(x, indices, /, *, axis=-1)"
+summary: Select elements of an array along an axis, with separate positions for each position on the other axes.
+params:
+  - name: x
+    type: array
+    kind: positional-only
+    desc: "Array to select from, of any dtype."
+  - name: indices
+    type: array
+    kind: positional-only
+    desc: "Positions along `axis`, an `int64` array with as many dimensions as `x`. Negative values count from the end of the axis. On the other axes, `indices` and `x` broadcast against each other (see [Broadcasting](/api/array/broadcasting/)). An `int`, a list, a `bool` array and a floating-point array are rejected."
+  - name: axis
+    type: int
+    kind: keyword-only
+    default: "-1"
+    desc: "Axis to select along. Negative values count from the end. `None`, a tuple or a list is rejected."
+returns:
+  - type: ndarray
+    desc: "New array with the dtype of `x`. Along `axis`, its length is that of `indices`; on the other axes, it has the broadcast lengths of `x` and `indices`."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`, if `indices` is not an `int64` array, or if `axis` is not an `int`."
+  - type: ValueError
+    desc: "If `indices` and `x` differ in number of dimensions, or if `axis` is out of range."
+  - type: IndexError
+    desc: "If a position is outside the axis (the message gives the first one in row-major order), or if `x` and `indices` do not broadcast on the other axes."
+  - type: OverflowError
+    desc: "If `axis` is an `int` outside the `int64` range."
+seeAlso: [take, sort-argsort, argmin-argmax, indexing]
+---
+
+`take_along_axis` selects one element of `x` for every element of `indices`. The element `indices[i, j]` with
+`axis=1` names a position along axis 1, and the result holds `x[i, indices[i, j]]` at `[i, j]`. Every row (or, in
+general, every position on the other axes) thus has its own list of positions, whereas [`take`](/api/array/take/)
+applies one list of positions to all of them.
+
+This is the companion of the functions that return positions along an axis: the result of
+[`argsort`](/api/array/sort-argsort/) gives the sorted values, and the result of
+[`argmax`](/api/array/argmin-argmax/) with `keepdims=True` gives the largest values. The same positions can then
+select from another array of the same shape, for example to sort one array by the values of another.
+
+`indices` must have as many dimensions as `x`. On the axes other than `axis`, a length of 1 in either array is
+repeated to match the other.
+
+## Examples
+
+The sorted values of each row, through the positions that sort it:
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([[30, 10, 20], [5, 15, 0]])
+>>> i = sd.argsort(x, axis=1)
+>>> i
+array([[1, 2, 0],
+       [2, 0, 1]], dtype=int64)
+>>> sd.take_along_axis(x, i, axis=1)
+array([[10, 20, 30],
+       [ 0,  5, 15]], dtype=int64)
+```
+
+The largest element of each row, with the positions from `argmax`. With `keepdims=True` they have the required
+number of dimensions:
+
+```python
+>>> j = sd.argmax(x, axis=1, keepdims=True)
+>>> j
+array([[0],
+       [1]], dtype=int64)
+>>> sd.take_along_axis(x, j, axis=1)
+array([[30],
+       [15]], dtype=int64)
+```
+
+A column of positions per row, and one row of positions for all rows. Negative positions count from the end:
+
+```python
+>>> sd.take_along_axis(x, sd.asarray([[0], [2]]), axis=1)
+array([[30],
+       [ 0]], dtype=int64)
+>>> sd.take_along_axis(x, sd.asarray([[0, -1]]), axis=1)
+array([[30, 20],
+       [ 5,  0]], dtype=int64)
+```
+
+Positions without the axis raise `ValueError`; `argmax` without `keepdims=True` gives such positions:
+
+```python
+>>> sd.take_along_axis(x, sd.argmax(x, axis=1), axis=1)
+Traceback (most recent call last):
+    ...
+ValueError: take_along_axis(): 'indices' must have as many dimensions as 'x' (2), not 1
+```
+
+<Reference />
+
+## Notes
+
+For 2-D arrays and `axis=1`, the result is $r_{ij} = x_{i, k_{ij}}$ with $k_{ij}$ the element `indices[i, j]`; for
+`axis=0` it is $r_{ij} = x_{k_{ij}, j}$. In more dimensions the position replaces the index on `axis` in the same way.
+A position $k$ is valid when $-n \le k \lt n$ for an axis of length $n$. When the result is empty, the positions are
+not checked.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalent is `numpy.take_along_axis`. R has no direct equivalent; a matrix of (row, column) pairs used
+as an index, `x[cbind(i, j)]`, selects the same elements.
+
+- `axis=None` is rejected. NumPy then selects from the flattened array; [`ravel`](/api/array/ravel/) gives that
+  array.
+- `indices` must be an `int64` `sd.ndarray`; NumPy accepts any integer array.

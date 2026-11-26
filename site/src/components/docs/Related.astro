@@ -33,7 +33,7 @@ const { items } = Astro.props;
             <a class="related__card" href={url(item.href)}>
               {item.tag && <span class="related__tag">{item.tag}</span>}
               <span class:list={['related__name', item.mono && 'related__name--mono']}>
-                <ApiTitle text={item.title} code={item.mono} />
+                <span class="related__title"><ApiTitle text={item.title} code={item.mono} /></span>
                 <svg class="related__arrow" width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
                   <path d="M2.5 6h7M6.5 3l3 3-3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
                 </svg>
@@ -90,6 +90,11 @@ const { items } = Astro.props;
     font-weight: 650;
     line-height: var(--leading-snug);
     color: var(--fg);
+  }
+  /* One flex item for the whole title, so a list of names wraps. */
+  .related__title {
+    min-width: 0;
+    overflow-wrap: break-word;
   }
   .related__name--mono {
     font-family: var(--font-mono);
