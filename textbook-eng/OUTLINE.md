@@ -389,6 +389,53 @@ Part II Graphics
 넣지 않은 것: k-d 트리 같은 공간 자료구조는 16권, 부동소수점의 오차 해석은 5권.
 
 
+## 별권 Excursions (가제) — 특별 장 모음 (2026-11-26 사용자와 논의해 정함)
+책의 본래 내용과 무관하게, 사용자가 평소 관심 있게 생각하는 주제들을 모은 권. 예비 네 권 뒤(4권 이후)에 둔다. 권 번호를 줄지(5권으로 하고 주제 권을 6–17권으로 미룰지), 번호 없는 별권으로 둘지는 아직 묻는 중.
+
+방식: 리뷰 권과 같되 수학 교양서처럼 쓴다. 결과의 함의와 의미를 충분히 서술하고, 도입·일화·역사·곁이야기를 note 상자가 아니라 본문에서 풀어낸다(이 권에만 허용하는 예외; 서술체 허용). 증명을 대충 한다는 뜻이 아니다: 장마다 중심 정리 하나는 완전히 증명하고 나머지는 진술 + 줄거리 + 참고 문헌. 일화는 출처가 불확실한 것이 많으므로 인용 검증을 본문 권보다 더 엄격히 한다. 장마다 stardust(공용 빌드)로 돌린 작은 모의실험 절을 둔다. 장 단위는 주제 하나에 장 하나를 기본으로 하고, 같은 원리인 것만 합친다. 분량 제한 없음.
+
+묶음 E(유명한 문제들)의 흐름: 그 문제를 독자가 이해할 수 있게 설명하고 → 그간의 성과를 소개하고 → 어떤 의미와 함의를 갖는지 충분히 설명한다. 완전히 증명할 수 있는 조각이 있으면 하나를 중심에 둔다(예: FLT의 n = 4, Euler 곱).
+
+(추가) = 메인이 추천해 사용자가 받아들인 주제.
+
+### Part A — Love and Choice
+1. The Romeo and Juliet Equations — 2×2 선형계와 위상 평면(1권 25장)
+2. When to Stop — 비서 문제와 1/e 규칙, 변형(되돌아가기, 전체 정보), Bruss의 odds 정리, (추가) prophet 부등식
+3. Stable Marriage — Gale–Shapley, 제안하는 쪽 최적성, 전략적 조작, 병원–전공의 매칭, 룸메이트 문제의 반례
+4. Becker's Marriage Market — 배정 문제와 쌍대성, 초모듈성 ⇒ 끼리끼리 짝, 최적 수송과의 연결
+5. Dividing Fairly — Sperner 보조정리로 집세 나누기, (추가) 케이크 자르기(시샘 없는 분할)
+
+### Part B — Luck and Bets
+6. The Martingale System — 도박꾼의 파산, 선택 정지 정리, 이기는 시스템은 없다
+7. The Kelly Criterion — 로그 최적 성장, St. Petersburg 역설, Shannon과의 관계, Samuelson의 반론
+8. Multi-Armed Bandits — 탐색과 활용, Gittins 지수, Lai–Robbins 하한, UCB, Thompson 표집
+9. (추가) Surprises of the Random Walk — 아크사인 법칙, Pólya의 재귀 정리
+10. (추가) Parrondo's Paradox — 지는 게임 둘을 섞으면 이긴다
+
+### Part C — Sampling Paradoxes and Networks
+11. The Bus Waiting Paradox — 검사 역설과 갱신 이론
+12. The Friendship Paradox and the Majority Illusion — 크기에 비례한 표집이 그래프에서 나타난 것
+13. Small Worlds — Milgram, Watts–Strogatz, (추가) 무작위 그래프의 문턱과 선호적 연결
+14. Rumours and Epidemics — Daley–Kendall, Maki–Thompson, (추가) SIR 모형과 문턱 정리
+15. Structural Balance — Cartwright–Harary 정리(균형 ⇔ 두 진영), 균형으로 가는 동역학
+16. (추가) Segregation and Thresholds — Schelling의 분리 모형, Granovetter의 문턱 모형
+
+### Part D — Games and Crowds
+17. (추가) Games and Equilibrium — 최소최대 정리, Nash 균형(이 부의 공통 토대)
+18. Braess's Paradox — Wardrop 균형, 무정부의 대가 4/3
+19. Keynes's Beauty Contest — 반복 소거, level-k, 실험 결과
+20. The Evolution of Cooperation — 죄수의 딜레마, Axelrod 토너먼트, tit-for-tat, (추가) zero-determinant 전략
+21. (추가) Paradoxes of Voting — Condorcet 순환, Arrow의 불가능성 정리
+
+### Part E — Famous Problems
+22. The Collatz Conjecture
+23. The Riemann Hypothesis
+24. Fermat's Last Theorem
+25. The Poincaré Conjecture
+26. P versus NP
+27. (추가) Proofs by Computer — 4색 정리와 Kepler 추측
+28. (추가) The Limits of Proof and Computation — Gödel 불완전성과 정지 문제
+
 ## 아직 정하지 않은 것
 - 1–16권 장 목차의 세부(초안 확인 대기). 주제 권은 공용 빌드의 공개 API 목록과 대조가 남았다.
 - 집필 순서
