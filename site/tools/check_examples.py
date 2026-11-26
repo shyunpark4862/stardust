@@ -1,26 +1,36 @@
-"""Run every interactive example in the API pages and compare the output.
+"""Run the interactive examples of the site's pages and compare their output.
 
-    ../.venv/bin/python tools/check_examples.py [area[/slug] ...]
-    ../.venv/bin/python tools/check_examples.py --coverage array
+    .sdbuild/stardust/.venv/bin/python tools/check_examples.py [target ...]
+    .sdbuild/stardust/.venv/bin/python tools/check_examples.py --coverage AREA [AREA ...]
+    .sdbuild/stardust/.venv/bin/python tools/check_examples.py --links
 
-Examples are the ```python blocks that contain `>>> ` prompts. The blocks of
-one page run in order in one namespace, so a later block can use names an
-earlier one defined. `sd` (stardust) is always available.
+Run from site/ with the pinned build's interpreter; the script stops if
+`stardust` is imported from anywhere else.
 
-`--coverage <area>` lists the public names of that area that no page documents
-(the `names:` lists in the frontmatter) and names documented twice. For the
-classes in MEMBERS, every public member counts as a name too (`Series.head`).
+Targets: `linalg` (every page of an area), `linalg/solve` (one page),
+`areas/linalg` (an overview), `start` or `start/conventions`. With no target
+every page is checked: src/content/api, src/content/areas and
+src/content/start. Examples are the ```python blocks that contain `>>> `
+prompts. The blocks of one page run in order in one namespace, so a later
+block can use names an earlier one defined. `sd` (stardust) is always
+available.
 
-`--links` checks that every `/api/<area>/<slug>/` and `/internals/...` link and
-every `seeAlso:` slug points at an existing page. If the site has been built
+`--coverage AREA` compares the `names:` of the area's pages with the public
+names of the pinned build in notes/api-inventory.json: the module's names and,
+for every public class, its public members as `Class.member` (a member
+inherited from another public class of the area counts on that class only).
+It lists names no page documents, names documented twice and names that are
+not public. AREA is the site's area key (`array` for the top-level `sd`).
+
+`--links` checks that every in-site link written in the pages
+(`/api/<area>/<slug>/`, `/api/<area>/`, `/start/<slug>/`, in the body or in
+frontmatter text) and every `seeAlso`, `of` and method `slug` reaches an
+existing page. `glance` and `returnedBy` entries without a page are listed as
+pending (the templates show them without a link). If the site has been built
 (`pnpm build`), it also checks every in-site link of the built pages, `#anchor`
-included, against the ids those pages really have, every in-site `src` and file
-link against the files in dist/, and the search index's links. A site built
-under a sub-path is checked with the same setting it was built with
-(`SITE_BASE=/stardust`): every in-site URL must then start with the base.
-
-With no arguments every API area and every internals area is checked. A
-target that names no page is an error.
+included, every in-site `src` and file link against dist/, and the search
+index. A site built under a sub-path is checked with the same setting it was
+built with (`SITE_BASE=/stardust`).
 """
 
 from __future__ import annotations
@@ -37,34 +47,22 @@ from urllib.parse import unquote
 import stardust as sd
 
 SITE = Path(__file__).resolve().parent.parent
+if not Path(sd.__file__).resolve().is_relative_to(SITE / ".sdbuild"):
+    sys.exit(f"stardust comes from {sd.__file__}, not the pinned build: run .sdbuild/stardust/.venv/bin/python")
+
 CONTENT = SITE / "src" / "content"
+API = CONTENT / "api"
+AREAS = CONTENT / "areas"
+START = CONTENT / "start"
 DIST = SITE / "dist"
-ROOT = CONTENT / "api"
+INVENTORY = SITE / "notes" / "api-inventory.json"
 # Blocks may be indented (inside list items or components); the closing
 # fence has the same indent as the opening one.
 FENCE = re.compile(r"^([ \t]*)```python\n(.*?)^\1```", re.M | re.S)
 FLAGS = doctest.ELLIPSIS | doctest.NORMALIZE_WHITESPACE
 
-NAMESPACES = {
-    "array": sd,
-    "linalg": sd.linalg,
-    "frame": sd.frame,
-    "special": sd.special,
-    "stats": sd.stats,
-    "random": sd.random,
-    "regression": sd.regression,
-    "optimize": sd.optimize,
-    "sparse": sd.sparse,
-    "htest": sd.htest,
-    "integrate": sd.integrate,
-    "differentiate": sd.differentiate,
-    "spatial": sd.spatial,
-    "fft": sd.fft,
-    "interpolate": sd.interpolate,
-    "smooth": sd.smooth,
-    "graph": sd.graph,
-    "plot": sd.plot,
-}
+# Site area key -> key in api-inventory.json (the array area is the top-level `sd`).
+INVENTORY_KEY = {"array": "sd"}
 
 
 def check_page(path: Path) -> tuple[int, int]:
@@ -96,20 +94,46 @@ def _dedent(block: str) -> str:
     return "\n".join(lines)
 
 
-def names_of(path: Path) -> list[str]:
-    head = path.read_text(encoding="utf-8").split("---")[1]
-    m = re.search(r"^names:\s*\[(.*?)\]", head, re.M | re.S)
-    return [n.strip() for n in m.group(1).split(",") if n.strip()] if m else []
+# ---- frontmatter (a small reader for the fields these checks need)
 
 
-# Classes whose public members are documented by name too, as `Class.member`.
-MEMBERS = {
-    "frame": ("Series", "DataFrame", "Index", "RangeIndex"),
-    "spatial": ("KDTree", "Delaunay", "ConvexHull", "Voronoi"),
-    "interpolate": tuple(n for n in sd.interpolate.__all__ if isinstance(getattr(sd.interpolate, n), type)),
-    "smooth": tuple(n for n in sd.smooth.__all__ if isinstance(getattr(sd.smooth, n), type)),
-    "plot": ("Figure",),
-}
+def frontmatter(path: Path) -> str:
+    text = path.read_text(encoding="utf-8")
+    return text.split("---", 2)[1] if text.startswith("---") else ""
+
+
+def flow_list(head: str, key: str) -> list[str]:
+    """`key: [a, b]` at the top level of the frontmatter."""
+    m = re.search(rf"^{key}:\s*\[(.*?)\]", head, re.M | re.S)
+    return [n.strip().strip("'\"") for n in m.group(1).split(",") if n.strip()] if m else []
+
+
+def scalar(head: str, key: str) -> str | None:
+    m = re.search(rf"^{key}:\s*(.+?)\s*$", head, re.M)
+    return m.group(1).strip("'\"") if m else None
+
+
+def method_slugs(head: str) -> list[str]:
+    return re.findall(r"\bslug:\s*['\"]?([\w./-]+)", head)
+
+
+# ---- coverage
+
+
+def public_names(area: str) -> set[str]:
+    inv = json.loads(INVENTORY.read_text(encoding="utf-8"))["areas"][INVENTORY_KEY.get(area, area)]["names"]
+    public = set(inv)
+    classes = {n: v for n, v in inv.items() if v["kind"] == "class"}
+    for name, info in classes.items():
+        bases = [b for b in info.get("bases", []) if b in classes and b != name]
+        for member in info.get("members", {}):
+            if member.startswith("_"):
+                continue
+            if any(member in classes[b].get("members", {}) for b in bases):
+                continue
+            public.add(f"{name}.{member}")
+    return public
+
 
 # Areas whose class methods repeat module functions of the same name
 # (`sd.plot.line` and `Figure.line`): the page of the function documents both.
@@ -117,19 +141,11 @@ SHARED_METHODS = {"plot"}
 
 
 def coverage(area: str) -> int:
-    ns = NAMESPACES[area]
-    public = set(ns.__all__)
-    classes = [getattr(ns, c) for c in MEMBERS.get(area, ())]
-    for cls in classes:
-        # A member inherited from another public class is documented on that class's page.
-        bases = [b for b in cls.__mro__[1:] if b in classes]
-        public |= {
-            f"{cls.__name__}.{m}" for m in dir(cls) if not m.startswith("_") and not any(hasattr(b, m) for b in bases)
-        }
+    public = public_names(area)
     seen: dict[str, str] = {}
     twice = []
-    for path in sorted((ROOT / area).glob("*.mdx")):
-        for name in names_of(path):
+    for path in sorted((API / area).glob("*.mdx")):
+        for name in flow_list(frontmatter(path), "names"):
             if name in seen:
                 twice.append(f"{name}: {seen[name]} and {path.stem}")
             seen[name] = path.stem
@@ -148,22 +164,47 @@ def coverage(area: str) -> int:
     return 1 if (unknown or twice) else 0
 
 
-LINK = re.compile(r"/(api|internals)/([a-z]+)/([a-z0-9_-]+)/")
+# ---- links
+
+LINK = re.compile(r"\]\((/(?:api|start)/[^)\s#]*)(?:#[^)\s]*)?\)|href=\"(/(?:api|start)/[^\"#]*)")
+
+
+def site_pages() -> set[str]:
+    pages = {"/", "/api/", "/api/all/", "/start/"}
+    pages |= {f"/api/{p.parent.name}/{p.stem}/" for p in API.glob("*/*.mdx")}
+    pages |= {f"/api/{p.stem}/" for p in AREAS.glob("*.mdx")}
+    pages |= {f"/start/{p.stem}/" for p in START.glob("*.mdx")}
+    return pages
 
 
 def links() -> int:
-    pages = {(sec, p.parent.name, p.stem) for sec in ("api", "internals") for p in (CONTENT / sec).glob("*/*.mdx")}
+    pages = site_pages()
     bad = 0
-    for sec in ("api", "internals"):
-        for path in sorted((CONTENT / sec).glob("*/*.mdx")):
-            text = path.read_text(encoding="utf-8")
-            targets = set(LINK.findall(text))
-            m = re.search(r"^seeAlso:\s*\[(.*?)\]", text.split("---")[1], re.M)
-            if m:
-                targets |= {(sec, path.parent.name, s.strip()) for s in m.group(1).split(",") if s.strip()}
-            for t in sorted(targets - pages):
-                print(f"  {sec}/{path.parent.name}/{path.stem}: no page /{t[0]}/{t[1]}/{t[2]}/")
-                bad += 1
+    pending: list[str] = []
+
+    def ref(area: str, r: str) -> str:
+        return f"/api/{r}/" if "/" in r else f"/api/{area}/{r}/"
+
+    sources = [(p, p.parent.name) for p in API.glob("*/*.mdx")] + [(p, p.stem) for p in AREAS.glob("*.mdx")]
+    sources += [(p, None) for p in START.glob("*.mdx")]
+    for path, area in sorted(sources):
+        name = path.relative_to(CONTENT).with_suffix("").as_posix()
+        text = path.read_text(encoding="utf-8")
+        targets = {a or b for a, b in LINK.findall(text)}
+        head = frontmatter(path)
+        if area is not None:
+            targets |= {ref(area, s) for s in flow_list(head, "seeAlso")}
+            targets |= {ref(area, s) for s in method_slugs(head)}
+            if (of := scalar(head, "of")) is not None:
+                targets.add(ref(area, of))
+            for s in flow_list(head, "glance") + flow_list(head, "returnedBy"):
+                if ref(area, s) not in pages:
+                    pending.append(f"{name}: {ref(area, s)}")
+        for t in sorted(targets - pages):
+            print(f"  {name}: no page {t}")
+            bad += 1
+    for line in pending:
+        print(f"  pending (shown without a link): {line}")
     bad += anchors()
     print(f"{bad} broken links")
     return 1 if bad else 0
@@ -178,12 +219,10 @@ BASE = os.environ.get("SITE_BASE", "/").rstrip("/")
 
 def anchors() -> int:
     """Checks the built pages: every in-site link must reach a page, and its
-    #anchor an id on that page. Headings get their ids at build time, so this
-    is the only place a renamed heading shows up as a broken link. Links to
-    files (figures, the favicon, scripts and styles) must reach a file."""
+    #anchor an id on that page. Links to files must reach a file."""
     index = DIST / "index.html"
     if not index.exists():
-        print("  (anchors not checked: run `pnpm build` first)")
+        print("  (built pages not checked: run `pnpm build` first)")
         return 0
     built = index.stat().st_mtime
     sources = [p for d in ("src", "public") for p in (SITE / d).rglob("*") if p.is_file()]
@@ -224,44 +263,56 @@ def anchors() -> int:
         if item["h"] not in pages:
             print(f"  search.json: no page {item['h']}")
             bad += 1
-    print(f"  {len(pages)} pages, {checked} in-site URLs checked (base {BASE or '/'})")
+    print(f"  {len(pages)} built pages, {checked} in-site URLs checked (base {BASE or '/'})")
     return bad
+
+
+# ---- main
+
+
+def resolve(target: str) -> list[Path] | None:
+    t = target.strip("/")
+    for root, prefix in ((START, "start"), (AREAS, "areas")):
+        if t == prefix:
+            return sorted(root.glob("*.mdx"))
+        if t.startswith(prefix + "/"):
+            p = (root / t[len(prefix) + 1 :]).with_suffix(".mdx")
+            return [p] if p.is_file() else None
+    p = API / t
+    if p.is_dir():
+        return sorted(p.glob("*.mdx"))
+    if p.with_suffix(".mdx").is_file():
+        return [p.with_suffix(".mdx")]
+    return None
 
 
 def main(argv: list[str]) -> int:
     if argv and argv[0] == "--links":
         return links()
     if argv and argv[0] == "--coverage":
-        unknown = [a for a in argv[1:] if a not in NAMESPACES]
-        if unknown:
-            print(f"unknown area: {' '.join(unknown)} (one of {', '.join(NAMESPACES)})", file=sys.stderr)
+        areas = json.loads(INVENTORY.read_text(encoding="utf-8"))["areas"]
+        known = {k for k in areas if k != "sd"} | {"array"}
+        unknown = [a for a in argv[1:] if a not in known]
+        if unknown or len(argv) < 2:
+            print(f"name one or more areas: {', '.join(sorted(known))}", file=sys.stderr)
             return 2
-        return max((coverage(a) for a in argv[1:] or ["array"]), default=0)
-    targets = argv or [
-        f"{sec}/{p.name}" if sec == "internals" else p.name
-        for sec in ("api", "internals")
-        for p in sorted((CONTENT / sec).iterdir())
-        if p.is_dir()
-    ]
+        return max(coverage(a) for a in argv[1:])
     paths: list[Path] = []
-    for t in targets:
-        # "internals[/<area>[/<slug>]]" checks the internals articles instead.
-        t = t.strip("/")
-        p = CONTENT / t if t == "internals" or t.startswith("internals/") else ROOT / t
-        if p.is_dir():
-            paths += sorted(p.rglob("*.mdx"))
-        elif p.with_suffix(".mdx").is_file():
-            paths.append(p.with_suffix(".mdx"))
-        else:
+    if not argv:
+        paths = sorted(API.glob("*/*.mdx")) + sorted(AREAS.glob("*.mdx")) + sorted(START.glob("*.mdx"))
+    for t in argv:
+        found = resolve(t)
+        if found is None:
             print(f"no page or area: {t}", file=sys.stderr)
             return 2
+        paths += found
     failed = tried = 0
     for path in paths:
         f, n = check_page(path)
         failed += f
         tried += n
         if n:
-            print(f"{'FAIL' if f else 'ok  '} {path.parent.name}/{path.stem}  ({n} examples)")
+            print(f"{'FAIL' if f else 'ok  '} {path.relative_to(CONTENT).with_suffix('').as_posix()}  ({n} examples)")
     print(f"{tried - failed}/{tried} examples pass")
     return 1 if failed else 0
 

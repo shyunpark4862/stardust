@@ -1,77 +1,105 @@
 ---
+/**
+ * An area overview: src/content/areas/<area>.mdx. Lead and "At a glance"
+ * cards come from the frontmatter; the body places <FunctionTables /> (the
+ * groups, in frontmatter order) and <ResultTable /> where the author wants.
+ */
+import { getCollection, render } from 'astro:content';
 import Docs from '../../../layouts/Docs.astro';
+import FunctionTables from '../../../components/api/FunctionTables.astro';
+import ResultTable from '../../../components/api/ResultTable.astro';
 import { inlineHtml } from '../../../data/inline';
 import { url } from '../../../lib/url';
-import { areaCrumbs, areaNav, areaOf, areaSidebar, documentedAreas, groupId, groupsOf, hrefOf, isSingle } from '../../../data/api';
+import {
+  areaCrumbs,
+  areaNav,
+  areaOf,
+  areaSidebar,
+  groupId,
+  groupsOf,
+  headingsBefore,
+  hrefOf,
+  isSingle,
+  resolveRef,
+} from '../../../data/api';
 
 export async function getStaticPaths() {
-  return (await documentedAreas()).map((area) => ({ params: { area } }));
+  return (await getCollection('areas')).map((entry) => {
+    areaOf(entry.id);
+    return { params: { area: entry.id }, props: { entry } };
+  });
 }
 
+const { entry } = Astro.props;
 const { area } = Astro.params;
-const info = areaOf(area);
+const { data } = entry;
+Astro.locals.apiArea = area;
+const { Content, headings: raw } = await render(entry);
 const groups = await groupsOf(area);
-const headings = groups.map((g) => ({ depth: 2, slug: groupId(g.title), text: g.title }));
+const pages = groups.reduce((n, g) => n + g.entries.length, 0);
+const glance = await Promise.all(data.glance.map(async (slug) => ({ slug, entry: await resolveRef(area, slug) })));
+
+// Table of contents: At a glance, then the body's headings with the group
+// headings of <FunctionTables /> at the place the component sits.
+const body = raw.filter((h) => h.depth <= 3);
+const groupHeads = groups.map((g) => ({ depth: 2, slug: groupId(g.title), text: g.title }));
+const at = headingsBefore(entry.body, 'FunctionTables');
+const headings = [
+  ...(glance.length > 0 ? [{ depth: 2, slug: 'at-a-glance', text: 'At a glance' }] : []),
+  ...(at === undefined ? body : [...body.slice(0, at), ...groupHeads, ...body.slice(at)]),
+];
 ---
 
 <Docs
-  title={info.name}
-  description={`Every page in ${info.ns}.`}
+  title={data.title}
+  description={data.lead}
   section="api"
   crumbs={areaCrumbs(area).slice(0, 1)}
   groups={await areaSidebar(area)}
   area={await areaNav(area)}
   headings={headings}
+  meta={[`${pages} ${pages === 1 ? 'page' : 'pages'}`]}
 >
   {
-    groups.map((g) => (
+    glance.length > 0 && (
       <>
-        <h2 class="group-head" id={groupId(g.title)}>
-          {g.title}
-          <span class="group-head__count">{g.entries.length}</span>
-        </h2>
-        <ul class="cards">
-          {g.entries.map((e) => (
+        <h2 id="at-a-glance">At a glance</h2>
+        <ul class="glance">
+          {glance.map(({ slug, entry: e }) => (
             <li>
-              <a class="card" href={url(hrefOf(e))}>
-                <span class:list={['card__title', isSingle(e) && 'card__title--mono']}>{e.data.title}</span>
-                <span class="card__summary" set:html={inlineHtml(e.data.summary)} />
-                {!isSingle(e) && e.data.names.length > 0 && <span class="card__names">{e.data.names.join('  ')}</span>}
-              </a>
+              {e ? (
+                <a class="glance__card" href={url(hrefOf(e))}>
+                  <span class:list={['glance__title', isSingle(e) && 'glance__title--mono']}>{e.data.title}</span>
+                  <span class="glance__summary" set:html={inlineHtml(e.data.summary)} />
+                </a>
+              ) : (
+                <span class="glance__card glance__card--off">
+                  <span class="glance__title glance__title--mono">{slug.split('/').pop()}</span>
+                  <span class="glance__summary">No page yet.</span>
+                </span>
+              )}
             </li>
           ))}
         </ul>
       </>
-    ))
+    )
   }
+  <Content components={{ FunctionTables, ResultTable }} />
 </Docs>
 
 <style>
-  .group-head {
-    display: flex;
-    align-items: baseline;
-    gap: var(--space-3);
-  }
-  .group-head__count {
-    font-family: var(--font-mono);
-    font-size: var(--text-sm);
-    font-weight: 400;
-    letter-spacing: 0;
-    color: var(--fg-subtle);
-  }
-  .cards {
+  .glance {
     display: grid;
     grid-template-columns: repeat(2, minmax(0, 1fr));
     gap: var(--space-3);
     padding: 0;
     list-style: none;
   }
-  .cards li {
+  .glance li {
     display: grid;
-    grid-template-columns: minmax(0, 1fr);
     margin: 0;
   }
-  .card {
+  .glance__card {
     display: flex;
     flex-direction: column;
     gap: var(--space-1);
@@ -79,48 +107,40 @@ const headings = groups.map((g) => ({ depth: 2, slug: groupId(g.title), text: g.
     border: 1px solid var(--line);
     border-radius: var(--radius-md);
     background: var(--bg);
+    text-decoration: none;
     transition:
       border-color var(--dur-fast) var(--ease),
       background-color var(--dur-fast) var(--ease);
   }
-  .card:hover {
+  a.glance__card:hover {
     border-color: var(--area-line);
     background: var(--area-soft);
   }
-  .card__title {
+  .glance__card--off {
+    border-style: dashed;
+  }
+  .glance__title {
     font-size: var(--text-md);
     font-weight: 650;
     line-height: var(--leading-snug);
     color: var(--fg);
   }
-  .card__title--mono {
+  .glance__title--mono {
     font-family: var(--font-mono);
     font-size: var(--text-base);
     font-weight: 600;
     color: var(--area);
   }
-  /* A list card shows the start of the summary, three lines at most; the
-     whole summary heads the page itself. */
-  .card__summary {
-    display: -webkit-box;
-    overflow: hidden;
-    -webkit-box-orient: vertical;
-    -webkit-line-clamp: 3;
-    line-clamp: 3;
-    font-size: var(--text-sm);
-    line-height: 1.65;
-    color: var(--fg-muted);
-  }
-  .card__names {
-    margin-top: auto;
-    padding-top: var(--space-2);
-    font-family: var(--font-mono);
-    font-size: 0.6875rem;
-    line-height: 1.6;
+  .glance__card--off .glance__title {
     color: var(--fg-subtle);
   }
+  .glance__summary {
+    font-size: var(--text-sm);
+    line-height: 1.6;
+    color: var(--fg-muted);
+  }
   @media (max-width: 640px) {
-    .cards {
+    .glance {
       grid-template-columns: minmax(0, 1fr);
     }
   }

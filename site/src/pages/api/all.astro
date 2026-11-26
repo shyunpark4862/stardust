@@ -1,0 +1,183 @@
+---
+/**
+ * /api/all/: every public name that a page documents (the `names` of every
+ * page), alphabetically, with its area and the page's summary. A bar of
+ * letters jumps to each letter's block.
+ */
+import { getCollection } from 'astro:content';
+import Docs from '../../layouts/Docs.astro';
+import { areaOf, hrefOf, splitId } from '../../data/api';
+import { inlineHtml } from '../../data/inline';
+import { url } from '../../lib/url';
+import type { NavGroup } from '../../data/nav';
+
+interface Row {
+  name: string;
+  area: string;
+  ns: string;
+  href: string;
+  summary: string;
+  kind: string;
+}
+const rows: Row[] = [];
+for (const e of await getCollection('api')) {
+  const [area] = splitId(e);
+  const info = areaOf(area);
+  for (const name of e.data.names) {
+    rows.push({ name, area, ns: info.ns, href: hrefOf(e), summary: e.data.summary, kind: e.data.kind });
+  }
+}
+const key = (s: string) => s.replace(/^_+/, '').toLowerCase();
+rows.sort((a, b) => key(a.name).localeCompare(key(b.name)) || a.name.localeCompare(b.name) || a.ns.localeCompare(b.ns));
+
+const letters = new Map<string, Row[]>();
+for (const r of rows) {
+  const c = key(r.name)[0]?.toUpperCase() ?? '#';
+  const letter = /[A-Z]/.test(c) ? c : '#';
+  letters.set(letter, [...(letters.get(letter) ?? []), r]);
+}
+const alphabet = [...'ABCDEFGHIJKLMNOPQRSTUVWXYZ'];
+const groups: NavGroup[] = [
+  { title: 'API', items: [{ label: 'All areas', href: '/api/' }, { label: 'Index of names', href: '/api/all/' }] },
+];
+---
+
+<Docs
+  title="Index"
+  description={`Every public name with a page, from A to Z: ${rows.length} ${rows.length === 1 ? 'name' : 'names'}.`}
+  section="api"
+  crumbs={[{ label: 'API', href: '/api/' }]}
+  groups={groups}
+>
+  <nav class="letters" aria-label="Letters">
+    {
+      alphabet.map((l) =>
+        letters.has(l) ? (
+          <a href={`#letter-${l}`}>{l}</a>
+        ) : (
+          <span aria-hidden="true">{l}</span>
+        ),
+      )
+    }
+  </nav>
+  {
+    [...letters].map(([letter, list]) => (
+      <section class="block">
+        <h2 id={`letter-${letter}`}>{letter}</h2>
+        <ul class="names">
+          {list.map((r) => (
+            <li data-area={r.area}>
+              <a class="names__name" href={url(r.href)}>
+                {r.name}
+              </a>
+              <span class="names__ns">
+                <i class="names__dot" aria-hidden="true" />
+                {r.ns}
+              </span>
+              <span class="names__sum" set:html={inlineHtml(r.summary)} />
+            </li>
+          ))}
+        </ul>
+      </section>
+    ))
+  }
+  {rows.length === 0 && <p>No pages yet.</p>}
+</Docs>
+
+<style>
+  .letters {
+    position: sticky;
+    top: var(--header-h);
+    z-index: 4;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 2px;
+    margin-bottom: var(--space-6);
+    padding-block: var(--space-3);
+    border-bottom: 1px solid var(--line);
+    background: var(--bg);
+  }
+  .letters a,
+  .letters span {
+    display: grid;
+    place-items: center;
+    min-width: 30px;
+    height: 30px;
+    border-radius: var(--radius-sm);
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    text-decoration: none;
+  }
+  .letters a {
+    color: var(--accent);
+  }
+  .letters a:hover {
+    background: var(--accent-soft);
+  }
+  .letters span {
+    color: var(--slate-300);
+  }
+  .block h2 {
+    margin-top: var(--space-8);
+    padding-top: 0;
+    border-top: 0;
+    font-family: var(--font-mono);
+    scroll-margin-top: calc(var(--header-h) + 64px);
+  }
+  .names {
+    margin: 0;
+    padding: 0;
+    list-style: none;
+    border-top: 1px solid var(--line);
+  }
+  .names li {
+    display: grid;
+    grid-template-columns: minmax(0, 15rem) 9rem minmax(0, 1fr);
+    gap: var(--space-4);
+    align-items: baseline;
+    margin: 0;
+    padding-block: var(--space-2);
+    border-bottom: 1px solid var(--line);
+    line-height: var(--leading-snug);
+  }
+  .names__name {
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--area);
+    text-decoration: none;
+    overflow-wrap: anywhere;
+  }
+  .names__name:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .names__ns {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--fg-subtle);
+  }
+  .names__dot {
+    flex: none;
+    width: 7px;
+    height: 7px;
+    border-radius: var(--radius-full);
+    background: var(--area);
+  }
+  .names__sum {
+    font-size: var(--text-sm);
+    color: var(--fg-muted);
+  }
+  @media (max-width: 720px) {
+    .names li {
+      grid-template-columns: minmax(0, 1fr) auto;
+    }
+    .names__sum {
+      grid-column: 1 / -1;
+    }
+  }
+</style>

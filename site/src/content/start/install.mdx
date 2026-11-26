@@ -1,0 +1,70 @@
+---
+title: Install
+summary: Build and install stardust from its source repository.
+order: 1
+---
+
+stardust is installed from source. There is no prebuilt package; the build compiles the library's C++ core on the
+machine that installs it.
+
+## Requirements
+
+- macOS on Apple silicon. Other platforms are not supported.
+- Python 3.15 or later.
+- A C++20 compiler, such as the Apple clang of the Xcode Command Line Tools (`xcode-select --install`).
+- CMake 3.27 or later on the `PATH`.
+- Git.
+
+## Steps
+
+Clone the repository:
+
+```bash
+git clone https://github.com/shyunpark4862/stardust.git
+cd stardust
+```
+
+Create a virtual environment and install the two build tools:
+
+```bash
+python3.15 -m venv .venv
+.venv/bin/pip install nanobind scikit-build-core
+```
+
+Build and install the library in editable mode. The `--no-build-isolation` flag makes the build use the tools
+installed in the previous step:
+
+```bash
+.venv/bin/pip install --no-build-isolation -e .
+```
+
+The first build compiles the whole core; later builds recompile only what changed.
+
+## Check the installation
+
+Import the package with the environment's interpreter:
+
+```bash
+.venv/bin/python -c "import stardust as sd; print(sd.linalg.solve(sd.eye(2), sd.ones(2)))"
+```
+
+The command prints `[1.0 1.0]`.
+
+## Updating
+
+In an editable install, importing `stardust` rebuilds the core when its sources have changed. After `git pull`, the
+next import performs that rebuild.
+
+## Optional dependencies
+
+The `test` extra installs the packages the test suite uses (pytest, NumPy, SciPy, pandas and others). None of them is
+needed to use the library:
+
+```bash
+.venv/bin/pip install --no-build-isolation -e ".[test]"
+```
+
+## Notes
+
+The build is optimized for the processor of the machine that compiles it. Build the library on each machine where it
+runs, rather than copying a built environment to another computer.

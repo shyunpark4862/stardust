@@ -1,0 +1,32 @@
+---
+/** A Getting started page: src/content/start/<slug>.mdx. */
+import { render } from 'astro:content';
+import Docs from '../../layouts/Docs.astro';
+import Callout from '../../components/Callout.astro';
+import Pager from '../../components/docs/Pager.astro';
+import { startHref, startPages, startSidebar } from '../../data/start';
+
+export async function getStaticPaths() {
+  return (await startPages()).map((entry) => ({ params: { slug: entry.id }, props: { entry } }));
+}
+
+const { entry } = Astro.props;
+const { Content, headings: raw, remarkPluginFrontmatter } = await render(entry);
+const parts = remarkPluginFrontmatter.headingParts ?? {};
+const headings = raw.filter((h) => h.depth <= 3).map((h) => ({ ...h, parts: parts[h.slug] }));
+const pages = await startPages();
+const at = pages.findIndex((p) => p.id === entry.id);
+const link = (p: (typeof pages)[number] | undefined) => p && { href: startHref(p), title: p.data.title };
+---
+
+<Docs
+  title={entry.data.title}
+  description={entry.data.summary}
+  section="start"
+  crumbs={[{ label: 'Get started', href: '/start/' }]}
+  groups={await startSidebar()}
+  headings={headings}
+>
+  <Content components={{ Callout }} />
+  <Pager label="Previous and next page" prev={link(pages[at - 1])} next={link(pages[at + 1])} />
+</Docs>

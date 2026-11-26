@@ -1,0 +1,128 @@
+---
+kind: function
+title: lstsq
+names: [lstsq]
+group: Linear systems
+order: 2
+signatures:
+  - "sd.linalg.lstsq(a, b, /, *, rtol=None)"
+summary: Return the minimum-norm least-squares solution of `a @ x = b`.
+params:
+  - name: a
+    type: array of shape (..., m, n)
+    kind: positional-only
+    desc: Coefficient matrix, or a stack of coefficient matrices. Need not be square or of full rank.
+  - name: b
+    type: array of shape (m,) or (..., m, k)
+    kind: positional-only
+    desc: "Right-hand side. A 1-D array is one right-hand side, shared by every matrix in `a`; an array with two or more dimensions holds `k` right-hand sides as columns. Leading axes broadcast against those of `a`."
+  - name: rtol
+    type: float or None
+    kind: keyword-only
+    default: None
+    desc: "Relative cutoff for small singular values. Singular values at or below `rtol` times the largest singular value are treated as zero. `None` means `max(m, n)` times the machine epsilon of `float64`. Must be finite and nonnegative; a value of 1 or more makes every singular value zero."
+returns:
+  - name: solution
+    type: ndarray of shape (..., n) or (..., n, k)
+    desc: "Least-squares solution with the smallest norm. `float64`, or `complex128` when `a` or `b` is complex."
+  - name: rank
+    type: int or int64 array of shape (...)
+    desc: "Effective rank of `a`: the number of singular values above the cutoff. A Python `int` for a single matrix."
+  - name: singular_values
+    type: float64 array of shape (..., min(m, n))
+    desc: Singular values of `a`, in decreasing order.
+raises:
+  - type: TypeError
+    desc: "If `a` or `b` is not an `sd.ndarray`, or if `rtol` is not `None`, an `int` or a `float`."
+  - type: ValueError
+    desc: "If `a` has fewer than two dimensions, if the number of rows of `a` and `b` differ, if the leading axes do not broadcast, if `a` or `b` contains NaN or infinity, or if `rtol` is negative or not finite."
+  - type: LinAlgError
+    desc: If the singular value decomposition does not converge.
+seeAlso: [solve]
+---
+
+`lstsq` finds the `x` that minimizes the sum of squared residuals of `a @ x - b`. It applies when the system has more
+equations than unknowns and no exact solution exists, typically when fitting a model to data. It also applies when
+`a` is rank deficient or has fewer rows than columns: among all minimizers, the function returns the one with the
+smallest norm.
+
+The result is a named tuple `LstsqResult(solution, rank, singular_values)`. Its fields are read by name or by
+position, and its arrays are read-only. For a square, nonsingular system, [`solve`](/api/linalg/solve/) gives the same
+solution.
+
+## Examples
+
+A straight line fitted to four points. The first column of `A` multiplies the intercept, the second multiplies the
+slope:
+
+```python
+>>> import stardust as sd
+>>> A = sd.asarray([[1.0, 0.0], [1.0, 1.0], [1.0, 2.0], [1.0, 3.0]])
+>>> y = sd.asarray([50.0, 60.0, 64.0, 67.0])
+>>> r = sd.linalg.lstsq(A, y)
+>>> r.solution
+array([52.0,  5.5], dtype=float64)
+>>> r.rank
+2
+>>> A @ r.solution - y
+array([ 2.0, -2.5, -1.0,  1.5], dtype=float64)
+```
+
+The result unpacks like a tuple:
+
+```python
+>>> solution, rank, singular_values = r
+>>> singular_values
+array([  4.10003044816824, 1.0907567666961069], dtype=float64)
+```
+
+A rank-deficient matrix: the second column is twice the first, so only `x[0] + 2 * x[1]` is determined.
+The result is the solution of smallest norm:
+
+```python
+>>> D = sd.asarray([[1.0, 2.0], [2.0, 4.0], [3.0, 6.0]])
+>>> rd = sd.linalg.lstsq(D, sd.asarray([1.0, 2.0, 3.0]))
+>>> rd.rank
+1
+>>> [round(v, 12) for v in rd.solution.tolist()]
+[0.2, 0.4]
+```
+
+The arrays of the result are read-only. Copy a field to modify it:
+
+```python
+>>> r.solution[0] = 0.0
+Traceback (most recent call last):
+    ...
+ValueError: assignment destination is read-only
+>>> s = r.solution.copy()
+>>> s[0] = 0.0
+>>> s
+array([0.0, 5.5], dtype=float64)
+```
+
+<Reference />
+
+## Notes
+
+For an $m \times n$ matrix $A$ the function minimizes $\lVert A x - b \rVert_2$ over $x$. With the singular value
+decomposition $A = U \Sigma V^H$, the solution is
+
+$$
+x = V \Sigma^{+} U^H b,
+$$
+
+where $\Sigma^{+}$ inverts the singular values above the cutoff $\mathrm{rtol} \cdot \sigma_{\max}$ and sets the
+others to zero. The number of singular values kept is `rank`, which always equals `matrix_rank(a, rtol=rtol)`.
+
+The residuals $\lVert A x - b \rVert_2^2$ are not returned; compute them from `a @ solution - b`.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.linalg.lstsq` and R's `qr.solve(a, b)`.
+
+- The result has three fields, `(solution, rank, singular_values)`. `numpy.linalg.lstsq` returns four, with the
+  residuals second.
+- The cutoff is `rtol=` and is keyword-only; NumPy names it `rcond=`.
+- With `rtol` of 1 or more, every singular value counts as zero: `rank` is 0 and `solution` is zero.
+- `a` and `b` must be `sd.ndarray`, and NaN or infinity raises `ValueError`.

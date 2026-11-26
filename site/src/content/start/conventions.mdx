@@ -1,0 +1,191 @@
+---
+title: Conventions
+summary: Rules shared by every area of the library, from array shapes to errors.
+order: 3
+---
+
+The reference pages rely on the rules below and do not repeat them. Every example assumes `import stardust as sd`.
+
+## Array shapes
+
+The shape of an array is a tuple with the length of each axis. The reference writes shapes with letters for lengths:
+
+| Notation | Meaning |
+|---|---|
+| `(n,)` | a 1-D array of length `n` |
+| `(m, n)` | a 2-D array with `m` rows and `n` columns |
+| `(..., m, n)` | an array whose last two axes have lengths `m` and `n`, with zero or more axes before them |
+
+Axes written as `...` are leading axes. Functions that work on vectors or matrices treat them as a stack: the
+function applies to each vector or matrix separately, and the result keeps the leading axes. When several arguments
+have leading axes, those axes broadcast (lengths must be equal, or one of them must be 1).
+
+stardust has no 0-dimensional arrays. An operation that produces a single number returns a Python `int`, `float`,
+`complex` or `bool`:
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+>>> x.shape
+(2, 3)
+>>> x[0, 1]
+2.0
+>>> sd.sum(x)
+21.0
+```
+
+## `axis` and `keepdims`
+
+Functions that reduce an array (`sum`, `mean`, `max`, norms and others) take `axis`, the axis or axes to reduce:
+
+- `axis=None`, the usual default, reduces over all axes.
+- An `int` names one axis. Negative values count from the end: `-1` is the last axis.
+- A `tuple` (or `list`) of `int` names several axes.
+
+`keepdims=True` keeps each reduced axis with length 1, so the result still lines up with the input:
+
+```python
+>>> sd.sum(x, axis=0)
+array([5.0, 7.0, 9.0], dtype=float64)
+>>> sd.sum(x, axis=-1)
+array([ 6.0, 15.0], dtype=float64)
+>>> sd.sum(x, axis=1, keepdims=True)
+array([[ 6.0],
+       [15.0]], dtype=float64)
+```
+
+An axis outside the array raises `ValueError`.
+
+## Missing values
+
+A missing number is NaN (`sd.nan`). Element-wise functions and reductions propagate it: a sum or mean that includes a
+NaN is NaN. The `nan`-prefixed reductions (`nansum`, `nanmean`, `nanmedian` and others) skip NaN values:
+
+```python
+>>> y = sd.asarray([1.0, sd.nan, 3.0])
+>>> sd.mean(y)
+nan
+>>> sd.nanmean(y)
+2.0
+```
+
+Most statistical functions that take data (in `sd.stats`, `sd.htest` and `sd.regression`) take `nan_policy`:
+
+| `nan_policy` | Meaning |
+|---|---|
+| `"propagate"` | NaN in the input gives NaN in the result (the default) |
+| `"omit"` | observations that contain NaN are left out |
+| `"raise"` | NaN in the input raises `ValueError` |
+
+```python
+>>> sd.regression.theilslopes(y)
+TheilslopesResult(slope=nan, intercept=nan, low_slope=nan, high_slope=nan)
+>>> sd.regression.theilslopes(y, nan_policy="omit")
+TheilslopesResult(slope=1, intercept=1, low_slope=1, high_slope=1)
+```
+
+These functions also accept columns of `sd.frame` data frames; a missing value in a column becomes NaN.
+
+## Result objects and `summary()`
+
+A function with several results returns a result object: a named tuple or a small class with named attributes.
+Attributes are read by name; named tuples can also be unpacked. The `repr` is one line with the main values; results of
+`sd.regression` and `sd.htest` show numbers to six significant digits:
+
+```python
+>>> t = sd.htest.ttest_ind(sd.asarray([5.1, 4.9, 5.6, 5.8, 6.0]),
+...                        sd.asarray([4.2, 4.8, 4.4, 5.0, 4.6]))
+>>> t
+TtestIndResult(statistic=3.49493, pvalue=0.0081394, df=8)
+>>> t.pvalue
+0.008139396596691068
+```
+
+The result objects of `sd.regression`, `sd.htest` and `sd.optimize` have a `summary()` method that returns a text
+report as a `str`. All reports share one layout: a title, a header of name–value pairs, and a table.
+
+```python
+>>> print(t.summary())
+                         Two-sample t-test (Student)
+==============================================================================
+Statistic:                       3.495  Alternative:                 two-sided
+P-value:                       0.00814  No. Observations:                 5, 5
+Df:                                  8
+==============================================================================
+                     [0.025     0.975]
+------------------------------------------------------------------------------
+mean difference       0.299      1.461
+==============================================================================
+```
+
+Result objects cannot be modified. Their attributes cannot be reassigned, and the arrays they hold are read-only.
+Writing to such an array raises `ValueError`; `.copy()` returns a writable copy.
+
+## Random numbers and seeds
+
+Random numbers come from a generator, created by `sd.random.default_rng(seed)`. The seed is a nonnegative `int`, a
+sequence of them, or `None` for a seed taken from the operating system. The same seed and the same sequence of calls
+give the same values:
+
+```python
+>>> sd.random.default_rng(42).random(3)
+array([0.4513007976393718, 0.5280337747949365,  0.794826025358168], dtype=float64)
+>>> sd.random.default_rng(42).integers(0, 10, shape=5)
+array([4, 5, 7, 7, 0], dtype=int64)
+```
+
+Functions and methods that draw random numbers take the generator as the keyword argument `rng`. The `sample` method
+of the distributions in `sd.stats` requires it:
+
+```python
+>>> N = sd.stats.Normal(mu=0.0, sigma=1.0)
+>>> N.sample(3, rng=sd.random.default_rng(42))
+array([-0.9831886524290735, 0.34281218788631146, -0.8591331347114931], dtype=float64)
+```
+
+`Generator.spawn(n)` returns `n` independent generators, for example one per Python thread. The values a generator
+produces do not depend on the number of threads stardust uses.
+
+## Determinism and threads
+
+On the same machine, with the same number of threads and the same input, every function returns the same bits on
+every run. Reductions and sorts are deterministic as well.
+
+`sd.set_num_threads(n)` sets the number of threads the library uses, an `int` from 1 to 1024, and
+`sd.get_num_threads()` returns it. Results computed with different numbers of threads may differ in the last bits,
+except where an area states otherwise (as `sd.random` does).
+
+## Errors and warnings
+
+stardust never issues warnings. A problem raises an exception, and a value that cannot be computed is NaN:
+
+```python
+>>> sd.log(sd.asarray([-1.0, 0.0, 1.0]))
+array([ nan, -inf,  0.0], dtype=float64)
+```
+
+The exception types follow Python's usual meaning:
+
+| Exception | Raised when |
+|---|---|
+| `TypeError` | an argument has the wrong type, for example a list where an `sd.ndarray` is required |
+| `ValueError` | an argument has the right type but a wrong value or shape, or contains NaN where it is not allowed |
+| `IndexError` | an index is out of range |
+| `KeyError` | a label is not found in a data frame |
+| `OverflowError` | an integer does not fit in 64 bits |
+
+Areas define their own exceptions as subclasses of these: `sd.linalg.LinAlgError` (singular matrices, failed
+convergence) and `sd.graph.NegativeCycleError` are both subclasses of `ValueError`.
+
+The message of an exception raised by a library function starts with the function's name:
+
+```python
+>>> sd.sum(x, axis=2)
+Traceback (most recent call last):
+    ...
+ValueError: sum(): axis 2 is out of bounds for an array of dimension 2
+>>> sd.linalg.inv(sd.zeros((2, 2)))
+Traceback (most recent call last):
+    ...
+stardust.linalg.LinAlgError: inv(): singular matrix
+```

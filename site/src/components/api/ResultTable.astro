@@ -1,0 +1,90 @@
+---
+/**
+ * <ResultTable /> on an area overview: the area's class pages (result
+ * objects) as a table of name | returned by | summary. The heading above it
+ * is the author's.
+ */
+import { getCollection } from 'astro:content';
+import { hrefOf, resolveRef, splitId } from '../../data/api';
+import { inlineHtml } from '../../data/inline';
+import { url } from '../../lib/url';
+
+const area = Astro.locals.apiArea;
+if (!area) throw new Error('<ResultTable /> is only for area overviews (src/content/areas/)');
+const classes = (await getCollection('api', (e) => e.id.startsWith(`${area}/`) && e.data.kind === 'class')).sort((a, b) =>
+  a.data.title.localeCompare(b.data.title),
+);
+const rows = await Promise.all(
+  classes.map(async (e) => ({
+    entry: e,
+    by: await Promise.all(
+      e.data.returnedBy.map(async (ref) => {
+        const target = await resolveRef(area, ref);
+        return { label: ref.split('/').pop()!, href: target && hrefOf(target), id: target && splitId(target)[1] };
+      }),
+    ),
+  })),
+);
+---
+
+{
+  rows.length > 0 ? (
+    <table class="rtable">
+      <thead>
+        <tr>
+          <th scope="col">Class</th>
+          <th scope="col">Returned by</th>
+          <th scope="col">Summary</th>
+        </tr>
+      </thead>
+      <tbody>
+        {rows.map(({ entry, by }) => (
+          <tr>
+            <th scope="row">
+              <a href={url(hrefOf(entry))}>{entry.data.title}</a>
+            </th>
+            <td>
+              {by.map((b, i) => (
+                <>
+                  {i > 0 && ', '}
+                  {b.href ? (
+                    <a href={url(b.href)}>
+                      <code>{b.label}</code>
+                    </a>
+                  ) : (
+                    <code>{b.label}</code>
+                  )}
+                </>
+              ))}
+            </td>
+            <td set:html={inlineHtml(entry.data.summary)} />
+          </tr>
+        ))}
+      </tbody>
+    </table>
+  ) : (
+    <p class="rtable__empty">No result-object pages in this area yet.</p>
+  )
+}
+
+<style>
+  .rtable th[scope='row'] {
+    text-align: left;
+    vertical-align: top;
+  }
+  .rtable th[scope='row'] a {
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    font-weight: 600;
+    color: var(--area, var(--accent));
+    text-decoration: none;
+  }
+  .rtable a:hover {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .rtable__empty {
+    font-size: var(--text-sm);
+    color: var(--fg-subtle);
+  }
+</style>

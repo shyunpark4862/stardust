@@ -19,12 +19,13 @@ const escapeHtml = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;')
 const tocLabel = async (h: Heading) =>
   (await Promise.all((h.parts ?? []).map((p) => (p.tex === undefined ? escapeHtml(p.text ?? '') : renderTex(p.tex))))).join('');
 interface Props {
-  frontmatter?: { title: string; description?: string; section: string; sample?: boolean };
+  frontmatter?: { title: string; description?: string; section: string };
   headings?: Heading[];
   title?: string;
   description?: string;
   section?: string;
-  sample?: boolean;
+  /** Reference pages: what the page documents (function, class, method, concept). */
+  kind?: string;
   /** Replaces the section's default sidebar. */
   groups?: NavGroup[];
   /** Path above the title. Defaults to the section name. */
@@ -37,9 +38,9 @@ interface Props {
   meta?: string[];
 }
 const fm = Astro.props.frontmatter ?? (Astro.props as Required<Props>['frontmatter']);
-const { title, description, section, sample = false } = fm;
+const { title, description, section } = fm;
 const groups = Astro.props.groups ?? sidebars[section] ?? [];
-const { area, monoTitle = false, meta = [] } = Astro.props;
+const { area, monoTitle = false, meta = [], kind } = Astro.props;
 // Table of contents as a tree: each h2 with the h3s under it.
 const labels = new Map<string, string>();
 for (const h of Astro.props.headings ?? []) if (h.parts) labels.set(h.slug, await tocLabel(h));
@@ -162,7 +163,13 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
             </nav>
           )
         }
-        <h1 class:list={['page-head__title', monoTitle && 'page-head__title--mono']}>{title}</h1>
+        {kind && (
+          <p class="page-head__kind">
+            <span class="page-head__kind-tag">{kind}</span>
+            {area && <code class="page-head__kind-ns">{area.current.ns}</code>}
+          </p>
+        )}
+        <h1 class:list={['page-head__title', monoTitle && 'page-head__title--mono', kind && 'page-head__title--kind']}>{title}</h1>
         {description && <p class="page-head__lead" set:html={inlineHtml(description)} />}
         {
           meta.length > 0 && (
@@ -175,14 +182,6 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
           )
         }
         <slot name="head" />
-        {
-          sample && (
-            <p class="page-head__sample">
-              <Badge tone="warn">Sample</Badge>
-              <span>A placeholder page that shows the layout; its text will be rewritten.</span>
-            </p>
-          )
-        }
       </header>
       <div class="prose"><slot /></div>
     </article>
@@ -801,14 +800,32 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
     font-weight: 600;
     color: var(--area);
   }
-  .page-head__sample {
+  /* What the page documents, above the title: a small tag and the namespace. */
+  .page-head__kind {
     display: flex;
     align-items: center;
     gap: var(--space-2);
-    margin-top: var(--space-5);
-    font-size: var(--text-sm);
-    line-height: var(--leading-snug);
+    margin-top: var(--space-4);
+    font-size: var(--text-xs);
+    line-height: 1;
+  }
+  .page-head__kind-tag {
+    padding: 3px var(--space-2);
+    border: 1px solid var(--area-line, var(--line));
+    border-radius: var(--radius-full);
+    background: var(--area-soft, var(--bg-subtle));
+    font-weight: 650;
+    letter-spacing: 0.02em;
+    color: var(--area, var(--fg-muted));
+  }
+  .page-head__kind-ns {
+    padding: 0;
+    background: none;
+    font-size: var(--text-xs);
     color: var(--fg-subtle);
+  }
+  .page-head__title--kind {
+    margin-top: var(--space-2);
   }
 
   /* Table of contents */

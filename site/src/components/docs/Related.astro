@@ -1,6 +1,6 @@
 ---
 /**
- * "함께 보기" at the end of a reference page or an article: related pages as
+ * "See also" at the end of a reference page or an article: related pages as
  * cards, two to a row. Each card names the page's group, then the page, then
  * the start of its summary (two lines); the whole card is the link.
  */
@@ -13,7 +13,7 @@ interface Item {
   summary: string;
   /** Show the title in the code font (a single function's page). */
   mono?: boolean;
-  /** The group the page sits in on its area page ("정규화 회귀"). */
+  /** The group the page sits in on its area page ("Linear systems"). */
   tag?: string;
 }
 interface Props {
@@ -25,7 +25,7 @@ const { items } = Astro.props;
 {
   items.length > 0 && (
     <>
-      <h2 id="함께-보기">함께 보기</h2>
+      <h2 id="see-also">See also</h2>
       <ul class="related">
         {items.map((item) => (
           <li>

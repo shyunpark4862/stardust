@@ -1,0 +1,112 @@
+---
+kind: function
+title: solve
+names: [solve]
+group: Linear systems
+order: 1
+signatures:
+  - "sd.linalg.solve(a, b, /)"
+summary: Solve the linear system `a @ x = b` for `x`.
+params:
+  - name: a
+    type: array of shape (..., n, n)
+    kind: positional-only
+    desc: Coefficient matrix, or a stack of coefficient matrices. Each matrix must be square and nonsingular.
+  - name: b
+    type: array of shape (n,) or (..., n, k)
+    kind: positional-only
+    desc: "Right-hand side. A 1-D array is one right-hand side, shared by every matrix in `a`; an array with two or more dimensions holds `k` right-hand sides as columns. Leading axes broadcast against those of `a`."
+returns:
+  - type: ndarray of shape (..., n) or (..., n, k)
+    desc: "Solution `x`, with the shape of `b` after broadcasting. `float64`, or `complex128` when `a` or `b` is complex."
+raises:
+  - type: TypeError
+    desc: "If `a` or `b` is not an `sd.ndarray`."
+  - type: ValueError
+    desc: "If `a` has fewer than two dimensions or is not square, if the sizes of `a` and `b` do not match, if the leading axes do not broadcast, or if `a` or `b` contains NaN or infinity."
+  - type: LinAlgError
+    desc: "If a matrix in `a` is singular (its LU factorization has an exact zero pivot). For a stack, the message gives the index of the first such matrix."
+seeAlso: [lstsq]
+---
+
+`solve` computes the exact solution of a square system of linear equations. Row `i` of `a` holds the coefficients of
+equation `i`, and the matching entry of `b` is its right-hand side. The result `x` satisfies `a @ x == b` up to
+rounding.
+
+The function treats every matrix as general and factors it with LU decomposition. For matrices with known structure,
+`solve_triangular`, `cholesky_solve` and `solve_banded` use that structure. Systems with more equations than unknowns,
+or with a singular matrix, have no unique solution; [`lstsq`](/api/linalg/lstsq/) returns the least-squares solution
+instead.
+
+## Examples
+
+Two equations in two unknowns:
+
+```python
+>>> import stardust as sd
+>>> a = sd.asarray([[3.0, 1.0], [1.0, 2.0]])
+>>> b = sd.asarray([9.0, 8.0])
+>>> x = sd.linalg.solve(a, b)
+>>> x
+array([2.0, 3.0], dtype=float64)
+>>> a @ x
+array([9.0, 8.0], dtype=float64)
+```
+
+Several right-hand sides, one per column of `b`. Column `j` of the result solves column `j` of `b`:
+
+```python
+>>> B = sd.asarray([[9.0, 5.0], [8.0, 5.0]])
+>>> sd.linalg.solve(a, B)
+array([[2.0, 1.0],
+       [3.0, 2.0]], dtype=float64)
+```
+
+A stack of two systems. The 1-D right-hand side is shared by both matrices:
+
+```python
+>>> stack = sd.asarray([[[3.0, 1.0], [1.0, 2.0]],
+...                     [[2.0, 0.0], [0.0, 4.0]]])
+>>> sd.linalg.solve(stack, b)
+array([[2.0, 3.0],
+       [4.5, 2.0]], dtype=float64)
+```
+
+A singular matrix raises `LinAlgError`. In a stack, the message names the failing matrix:
+
+```python
+>>> s = sd.asarray([[1.0, 2.0], [2.0, 4.0]])
+>>> sd.linalg.solve(s, b)
+Traceback (most recent call last):
+    ...
+stardust.linalg.LinAlgError: solve(): singular matrix
+>>> sd.linalg.solve(sd.stack([a, s]), b)
+Traceback (most recent call last):
+    ...
+stardust.linalg.LinAlgError: solve(): singular matrix (at batch index (1,))
+```
+
+<Reference />
+
+## Notes
+
+The function computes the LU factorization with partial pivoting, $P A = L U$, where $P$ is a permutation matrix, $L$
+is unit lower triangular and $U$ is upper triangular, and then solves the two triangular systems $L y = P b$ and
+$U x = y$.
+
+A matrix counts as singular only when a pivot is exactly zero. A matrix that is singular in exact arithmetic often
+produces small nonzero pivots after rounding; `solve` then returns a solution with large errors and raises no error.
+The error of the computed solution grows with the condition number of `a`, which `cond` computes.
+
+Integer and boolean inputs are converted to `float64` before the factorization. The result is a new, writable array.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.linalg.solve`, `scipy.linalg.solve` and R's `solve(a, b)`.
+
+- `a` and `b` must be `sd.ndarray`; lists raise `TypeError`.
+- NaN or infinity in `a` or `b` raises `ValueError`. `numpy.linalg.solve` returns NaN; `scipy.linalg.solve` raises
+  `ValueError` by default, as here.
+- There is no `assume_a=` option: the factorization is always the general LU.
+- R's `solve` also stops when the reciprocal condition number is below `tol`. `solve` raises only for an exact zero
+  pivot.

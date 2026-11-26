@@ -1,29 +1,33 @@
 ---
+/**
+ * /api/: every area as a card. An area with an overview page links to it;
+ * the others show "Soon" and are not links.
+ */
 import { getCollection } from 'astro:content';
 import Docs from '../../layouts/Docs.astro';
 import LinkCard from '../../components/LinkCard.astro';
 import { areas, type NavGroup } from '../../data/nav';
-import { documentedAreas } from '../../data/api';
+import { documentedAreas, overviewOf } from '../../data/api';
 
 const documented = await documentedAreas();
 const pages = await getCollection('api');
 const count = (key: string) => pages.filter((p) => p.id.startsWith(`${key}/`)).length;
-const sample = (key: string) => pages.filter((p) => p.id.startsWith(`${key}/`)).every((p) => p.data.sample);
+const titles = Object.fromEntries(
+  await Promise.all(documented.map(async (k) => [k, (await overviewOf(k))!.data.title] as const)),
+);
 
 const groups: NavGroup[] = [
-  { title: 'API', items: [{ label: 'All areas', href: '/api/' }] },
+  { title: 'API', items: [{ label: 'All areas', href: '/api/' }, { label: 'Index of names', href: '/api/all/' }] },
   {
     title: 'Areas',
-    items: areas
-      .filter((a) => documented.includes(a.key))
-      .map((a) => ({ label: a.name, href: `/api/${a.key}/`, badge: sample(a.key) ? 'Sample' : undefined })),
+    items: areas.filter((a) => documented.includes(a.key)).map((a) => ({ label: titles[a.key], href: `/api/${a.key}/` })),
   },
 ];
 ---
 
 <Docs
-  title="API"
-  description="The API reference, by area. Pick an area to see its concepts and functions."
+  title="API reference"
+  description="The reference, by area. Each area page lists its functions and classes by topic."
   section="api"
   crumbs={[]}
   groups={groups}
@@ -32,14 +36,15 @@ const groups: NavGroup[] = [
     {
       areas.map((a) => {
         const has = documented.includes(a.key);
+        const n = count(a.key);
         return (
           <LinkCard
             href={has ? `/api/${a.key}/` : undefined}
-            title={a.name}
+            title={has ? titles[a.key] : a.name}
             meta={a.ns}
             area={a.key}
-            badge={!has ? 'Soon' : sample(a.key) ? 'Sample' : `${count(a.key)} pages`}
-            badgeTone={has && !sample(a.key) ? 'accent' : 'neutral'}
+            badge={has ? `${n} ${n === 1 ? 'page' : 'pages'}` : 'Soon'}
+            badgeTone={has ? 'accent' : 'neutral'}
           >
             {a.desc}
           </LinkCard>

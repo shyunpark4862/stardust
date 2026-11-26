@@ -1,0 +1,38 @@
+---
+import Docs from '../../layouts/Docs.astro';
+import LinkCard from '../../components/LinkCard.astro';
+import { startHref, startPages, startSidebar } from '../../data/start';
+
+const pages = await startPages();
+---
+
+<Docs
+  title="Get started"
+  description="Installation, a short tour, and the rules every area of the library shares."
+  section="start"
+  crumbs={[]}
+  groups={await startSidebar()}
+>
+  <div class="grid">
+    {
+      pages.map((p, i) => (
+        <LinkCard href={startHref(p)} title={p.data.title} meta={`${i + 1}`}>
+          {p.data.summary}
+        </LinkCard>
+      ))
+    }
+  </div>
+</Docs>
+
+<style>
+  .grid {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: var(--space-4);
+  }
+  @media (max-width: 640px) {
+    .grid {
+      grid-template-columns: minmax(0, 1fr);
+    }
+  }
+</style>

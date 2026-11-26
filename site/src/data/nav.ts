@@ -6,6 +6,10 @@ export interface NavItem {
   mono?: boolean;
   /** Public names on a family page: shown under the label and matched by the filter. */
   names?: string[];
+  /** A link to another site. */
+  external?: boolean;
+  /** A shorter label for narrow screens (the top navigation). */
+  short?: string;
 }
 export interface NavGroup {
   title: string;
@@ -24,20 +28,28 @@ export interface AreaNav {
   all: { key: string; name: string; ns: string; href?: string }[];
 }
 
-/** Top navigation. One entry per site section. */
+export const GITHUB = 'https://github.com/shyunpark4862/stardust';
+
+/** Top navigation. One entry per site section, then the repository. */
 export const topNav: NavItem[] = [
+  { label: 'Get started', href: '/start/', short: 'Start' },
   { label: 'API', href: '/api/' },
+  { label: 'Index', href: '/api/all/' },
+  { label: 'GitHub', href: GITHUB, external: true },
 ];
 
-/** Sidebar trees, keyed by site section. */
-export const sidebars: Record<string, NavGroup[]> = {
-  api: [
-    {
-      title: 'API',
-      items: [{ label: 'Overview', href: '/api/' }],
-    },
-  ],
-};
+/**
+ * The top-navigation entry a page belongs to: the longest in-site href the
+ * path starts with (so /api/all/ is "Index", not "API").
+ */
+export function currentTop(path: string): string | undefined {
+  return topNav
+    .filter((n) => !n.external && path.startsWith(n.href))
+    .sort((a, b) => b.href.length - a.href.length)[0]?.href;
+}
+
+/** Sidebar trees, keyed by site section (pages may pass their own). */
+export const sidebars: Record<string, NavGroup[]> = {};
 
 export const areas = [
   { key: 'array', name: 'Arrays', ns: 'sd', desc: 'N-dimensional arrays, element-wise math, reductions, indexing, sorting', status: 'done' },

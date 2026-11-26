@@ -11,7 +11,7 @@ import { url } from '../lib/url';
       <p class="footer__note">A Python library for numerical computing, from arrays and linear algebra to statistics and plotting, built from scratch.</p>
     </div>
     <nav class="footer__nav" aria-label="Footer">
-      {topNav.map((item) => <a href={url(item.href)}>{item.label}</a>)}
+      {topNav.map((item) => <a href={item.external ? item.href : url(item.href)}>{item.label}</a>)}
     </nav>
   </div>
 </footer>

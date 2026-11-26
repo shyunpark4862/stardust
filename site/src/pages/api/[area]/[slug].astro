@@ -1,0 +1,339 @@
+---
+/**
+ * One reference page: src/content/api/<area>/<slug>.mdx (a function, a
+ * family, a class or result object, a method of a large class, or a
+ * concept). The head is drawn from the frontmatter: breadcrumb, kind,
+ * summary, signature, "Returned by" / "Method of"; the body places
+ * <Reference />; See also and the pager close the page.
+ */
+import { getCollection, render } from 'astro:content';
+import Docs from '../../../layouts/Docs.astro';
+import Reference from '../../../components/api/Reference.astro';
+import Related from '../../../components/docs/Related.astro';
+import Pager from '../../../components/docs/Pager.astro';
+import { url } from '../../../lib/url';
+import { referenceSections } from '../../../lib/reference';
+import { paramIds, printableReturn, signatureHtml } from '../../../lib/signature';
+import {
+  areaCrumbs,
+  areaNav,
+  areaOf,
+  areaSidebar,
+  headingsBefore,
+  hrefOf,
+  isSingle,
+  orderedEntries,
+  resolveRef,
+  splitId,
+  type ApiEntry,
+} from '../../../data/api';
+
+export async function getStaticPaths() {
+  const entries = await getCollection('api');
+  return entries.map((entry) => {
+    const [area, slug] = splitId(entry);
+    return { params: { area, slug }, props: { entry } };
+  });
+}
+
+const { entry } = Astro.props;
+const { area } = Astro.params;
+const { data } = entry;
+const { Content, headings: rawHeadings, remarkPluginFrontmatter } = await render(entry);
+
+// A reference to a page that does not exist is left out of the page (the
+// link check reports it), so a page can be written before its neighbours.
+async function resolveAll(refs: string[], what: string): Promise<{ ref: string; entry?: ApiEntry }[]> {
+  return Promise.all(
+    refs.map(async (ref) => {
+      const target = await resolveRef(area, ref);
+      if (!target) console.warn(`[api] ${entry.id}: ${what} "${ref}" has no page`);
+      return { ref, entry: target };
+    }),
+  );
+}
+
+// Neighbours inside the area, in sidebar order.
+const ordered = await orderedEntries(area);
+const at = ordered.findIndex((e) => e.id === entry.id);
+const prev = ordered[at - 1];
+const next = ordered[at + 1];
+const link = (e: ApiEntry) => ({ href: hrefOf(e), title: e.data.title, mono: isSingle(e) });
+
+const related = (await resolveAll(data.seeAlso, 'seeAlso')).flatMap((r) => (r.entry ? [r.entry] : []));
+const returnedBy = data.kind === 'class' ? await resolveAll(data.returnedBy, 'returnedBy') : [];
+const owner = data.of ? await resolveRef(area, data.of) : undefined;
+if (data.of && !owner) throw new Error(`api/${entry.id}.mdx: of: "${data.of}" has no page`);
+
+// Methods with their own page link there; the others to their ### heading.
+const methodHref: Record<string, string> = {};
+for (const m of data.methods) {
+  if (!m.slug) continue;
+  const target = await resolveRef(area, m.slug);
+  if (!target) throw new Error(`api/${entry.id}.mdx: method ${m.name} has slug "${m.slug}" but no such page`);
+  methodHref[m.name] = hrefOf(target);
+}
+Astro.locals.apiPage = { data, methodHref };
+
+// Table of contents: the body's headings, with Reference and its parts at
+// the place <Reference /> sits, and See also at the end.
+const headingParts = remarkPluginFrontmatter.headingParts ?? {};
+const body = rawHeadings.filter((h) => h.depth <= 3).map((h) => ({ ...h, parts: headingParts[h.slug] }));
+const sections = referenceSections(data);
+const refHeads =
+  sections.length > 0
+    ? [{ depth: 2, slug: 'reference', text: 'Reference' }, ...sections.map((s) => ({ depth: 3, ...s }))]
+    : [];
+const refAt = headingsBefore(entry.body, 'Reference');
+if (sections.length > 0 && refAt === undefined) throw new Error(`api/${entry.id}.mdx: the body has no <Reference />`);
+const headings = [
+  ...(refAt === undefined ? body : [...body.slice(0, refAt), ...refHeads, ...body.slice(refAt)]),
+  ...(related.length > 0 ? [{ depth: 2, slug: 'see-also', text: 'See also' }] : []),
+];
+
+// Signatures wrap over several lines when long; argument names link to their
+// rows in the reference block. A one-name return type follows an arrow.
+const ids = paramIds(data.params);
+const ret = data.returns.length === 1 ? printableReturn(data.returns[0].type) : undefined;
+const sigHtml = data.signatures.map((s) => signatureHtml(s, ids, ret)).join('\n');
+// Phones get a narrower wrap so the signature fits without scrolling.
+const sigHtmlNarrow = data.signatures.map((s) => signatureHtml(s, ids, ret, 34)).join('\n');
+const errorNames = [...new Set(data.raises.map((r) => r.type))];
+// The facts row names the type without its shape ("ndarray"), or the fields of a tuple.
+const returnTypes = data.returns.length === 1 ? [data.returns[0].type.replace(/ of shape .*$/, '')] : data.returns.map((r) => r.name!);
+const hasFacts = returnTypes.length > 0 || errorNames.length > 0 || related.length > 0;
+const tag = (e: ApiEntry) => {
+  const [a] = splitId(e);
+  return a === area ? e.data.group : `${areaOf(a).name} · ${e.data.group}`;
+};
+---
+
+<Docs
+  title={data.title}
+  description={data.summary}
+  section="api"
+  crumbs={areaCrumbs(area, data.group)}
+  monoTitle={isSingle(entry)}
+  kind={data.kind}
+  groups={await areaSidebar(area)}
+  area={await areaNav(area)}
+  headings={headings}
+>
+  {
+    (owner || returnedBy.length > 0) && (
+      <p class="origin" slot="head">
+        {owner && (
+          <>
+            <span class="origin__k">Method of</span>
+            <a href={url(hrefOf(owner))}>
+              <code>{owner.data.title}</code>
+            </a>
+          </>
+        )}
+        {returnedBy.length > 0 && (
+          <>
+            <span class="origin__k">Returned by</span>
+            {returnedBy.map((r, i) => (
+              <>
+                {i > 0 && <span class="origin__sep">,</span>}
+                {r.entry ? (
+                  <a href={url(hrefOf(r.entry))}>
+                    <code>{r.entry.data.title}</code>
+                  </a>
+                ) : (
+                  <code>{r.ref.split('/').pop()}</code>
+                )}
+              </>
+            ))}
+          </>
+        )}
+      </p>
+    )
+  }
+  {
+    data.signatures.length > 0 && (
+      <div class="sig" slot="head">
+        <div class="sig__top">
+          <pre class="sig__code"><code class="sig__wide" set:html={sigHtml} /><code class="sig__narrow" set:html={sigHtmlNarrow} /></pre>
+        </div>
+        {hasFacts && (
+          <ul class="sig__facts" aria-label="Summary">
+            {returnTypes.length > 0 && (
+              <li>
+                <a href="#returns">
+                  <span class="sig__fact-k">Returns</span>
+                  {returnTypes.map((t) => <code>{t}</code>)}
+                </a>
+              </li>
+            )}
+            {errorNames.length > 0 && (
+              <li>
+                <a href="#raises">
+                  <span class="sig__fact-k">Raises</span>
+                  {errorNames.map((n) => <code>{n}</code>)}
+                </a>
+              </li>
+            )}
+            {related.length > 0 && (
+              <li>
+                <a href="#see-also">
+                  <span class="sig__fact-k">See also</span>
+                  {related.slice(0, 3).map((e) => <code>{e.data.title}</code>)}
+                  {related.length > 3 && <span class="sig__fact-more">+{related.length - 3}</span>}
+                </a>
+              </li>
+            )}
+          </ul>
+        )}
+      </div>
+    )
+  }
+
+  <Content components={{ Reference }} />
+
+  <Related items={related.map((e) => ({ ...link(e), summary: e.data.summary, tag: tag(e) }))} />
+  <Pager label="Previous and next page" prev={prev && link(prev)} next={next && link(next)} />
+</Docs>
+
+<style>
+  /* Where the page sits in the API: the class a method belongs to, or the
+     functions that return this class. */
+  .origin {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-1) var(--space-2);
+    margin-top: var(--space-4);
+    font-size: var(--text-sm);
+  }
+  .origin__k {
+    font-weight: 600;
+    color: var(--fg-subtle);
+  }
+  .origin__sep {
+    margin-left: calc(var(--space-2) * -1);
+    color: var(--fg-subtle);
+  }
+  .origin a {
+    text-decoration: none;
+  }
+  .origin code {
+    font-size: 0.95em;
+    color: var(--blue-800);
+  }
+  .origin a:hover code {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+
+  /* ---- Signature ---- */
+  /* The signature belongs to the page head: it sits under the lead, above
+     the rule that separates the head from the body. */
+  .sig {
+    margin-top: var(--space-6);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--bg-subtle);
+  }
+  .sig__top {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-4);
+    padding: var(--space-4) var(--space-5);
+  }
+  .sig__code {
+    flex: 1;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none !important;
+    font-size: var(--text-base);
+    line-height: 1.75;
+    color: var(--slate-700);
+    overflow-x: auto;
+  }
+  .sig__narrow {
+    display: none;
+  }
+  .sig__code :global(.sig__name) {
+    font-weight: 650;
+    color: var(--fg);
+  }
+  .sig__code :global(.sig__arg) {
+    color: var(--blue-700);
+    text-decoration: none;
+  }
+  .sig__code :global(a.sig__arg:hover) {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .sig__code :global(.sig__mark) {
+    color: var(--slate-400);
+  }
+  .sig__code :global(.sig__ret) {
+    color: var(--blue-800);
+    font-weight: 600;
+  }
+
+  /* One row of facts under the signature: what comes back, what can go
+     wrong, where to look next. Each jumps to its part of the page. */
+  .sig__facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-5);
+    margin: 0;
+    padding: var(--space-3) var(--space-5);
+    border-top: 1px solid var(--line);
+    list-style: none;
+    font-size: var(--text-sm);
+  }
+  .sig__facts li {
+    margin: 0;
+  }
+  .sig__facts a {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-1) var(--space-2);
+    color: inherit;
+    text-decoration: none;
+  }
+  .sig__fact-k {
+    font-weight: 600;
+    color: var(--fg-subtle);
+  }
+  .sig__facts code {
+    font-size: 0.95em;
+    color: var(--blue-800);
+  }
+  .sig__facts a:hover code {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .sig__fact-more {
+    color: var(--fg-subtle);
+  }
+
+  @media (max-width: 640px) {
+    .sig__top {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: var(--space-3);
+      padding: var(--space-4);
+    }
+    .sig__code {
+      width: 100%;
+      font-size: var(--text-sm);
+    }
+    .sig__wide {
+      display: none;
+    }
+    .sig__narrow {
+      display: inline;
+    }
+    .sig__facts {
+      padding-inline: var(--space-4);
+    }
+  }
+</style>
