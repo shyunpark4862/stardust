@@ -815,7 +815,7 @@ D_k=a_kD_{k-1}-b_{k-1}c_{k-1}D_{k-2}\qquad(k=2,\ldots,n).
 The last row of the leading submatrix $T_{(k)}$ of order $k$ is $(0,\ldots,0,c_{k-1},a_k)$. The expansion along it gives $a_kD_{k-1}-c_{k-1}M$, where $M$ is the minor of the entry $c_{k-1}$ in position $(k,k-1)$ and $(-1)^{2k-1}=-1$. Deleting the last row and the column $k-1$ of $T_{(k)}$ leaves a matrix whose last column has the single nonzero entry $b_{k-1}$, in its last row; deleting this row and this column leaves $T_{(k-2)}$, so the expansion along the last column gives $M=b_{k-1}D_{k-2}$.
 \end{proof}
 
-For the second difference matrix, $a_k=2$ and $b_k=c_k=-1$, so $D_k=2D_{k-1}-D_{k-2}$ with $D_0=1$ and $D_1=2$; by induction $D_k=k+1$, since $2k-(k-1)=k+1$. This is $\det T_n=n+1$ once more, now without elimination. With $a_k=1$, $b_k=1$ and $c_k=-1$, the recurrence becomes $D_k=D_{k-1}+D_{k-2}$ with $D_0=D_1=1$, so $D_k=F_{k+1}$ is a Fibonacci number (\cref{sec:recurrences}). Three-term recurrences of this kind, and their relation to tridiagonal matrices, are a subject of Chapter~27.
+For the second difference matrix, $a_k=2$ and $b_k=c_k=-1$, so $D_k=2D_{k-1}-D_{k-2}$ with $D_0=1$ and $D_1=2$; by induction $D_k=k+1$, since $2k-(k-1)=k+1$. This is $\det T_n=n+1$ once more, now without elimination. With $a_k=1$, $b_k=1$ and $c_k=-1$, the recurrence becomes $D_k=D_{k-1}+D_{k-2}$ with $D_0=D_1=1$, so $D_k=F_{k+1}$ is a Fibonacci number (\cref{sec:recurrences}). Three-term recurrences of this kind, and their relation to tridiagonal matrices, are a subject of \cref{ch:difference-equations}.
 
 \subsection{The Triple Product}
 

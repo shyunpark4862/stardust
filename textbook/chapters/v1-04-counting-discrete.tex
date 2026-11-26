@@ -749,7 +749,7 @@ The theorem was published by Paul Erd\H{o}s and George Szekeres in 1935~\cite{er
 \section{Recurrences}
 \label{sec:recurrences}
 
-Many counting problems depend on a parameter $n$, and the count for $n$ is often most easily expressed through the counts for smaller values. Pascal's rule and the recurrences for the derangement numbers are examples, and so is the definition of the Fibonacci numbers in \cref{sec:gcd}. An equation of this kind, together with enough initial values, is a \term{recurrence}. By the recursion theorem (\cref{thm:recursion}), a recurrence that expresses $a_n$ through $a_{n-1}$ defines exactly one sequence for each initial value $a_0$; a recurrence that expresses $a_n$ through $a_{n-1}$ and $a_{n-2}$ is reduced to this case by applying the theorem to the pairs $(a_n,a_{n+1})$. To \term{solve} a recurrence means to find a closed formula for $a_n$. This section solves the simplest kinds of recurrences, previews those that arise from divide-and-conquer algorithms, introduces the Catalan numbers and collects some techniques for evaluating sums. Chapter~27 returns to recurrences as difference equations, the discrete counterpart of differential equations.
+Many counting problems depend on a parameter $n$, and the count for $n$ is often most easily expressed through the counts for smaller values. Pascal's rule and the recurrences for the derangement numbers are examples, and so is the definition of the Fibonacci numbers in \cref{sec:gcd}. An equation of this kind, together with enough initial values, is a \term{recurrence}. By the recursion theorem (\cref{thm:recursion}), a recurrence that expresses $a_n$ through $a_{n-1}$ defines exactly one sequence for each initial value $a_0$; a recurrence that expresses $a_n$ through $a_{n-1}$ and $a_{n-2}$ is reduced to this case by applying the theorem to the pairs $(a_n,a_{n+1})$. To \term{solve} a recurrence means to find a closed formula for $a_n$. This section solves the simplest kinds of recurrences, previews those that arise from divide-and-conquer algorithms, introduces the Catalan numbers and collects some techniques for evaluating sums. \Cref{ch:difference-equations} returns to recurrences as difference equations, the discrete counterpart of differential equations.
 
 \subsection{First-Order Recurrences}
 
@@ -823,7 +823,7 @@ a_n=\frac{e^{in\pi/3}-e^{-in\pi/3}}{i\sqrt3}=\frac{2}{\sqrt3}\sin\frac{n\pi}{3},
 \]
 by de Moivre's theorem (\cref{thm:de-moivre}). Roots on the unit circle produce oscillations that neither grow nor decay; roots of modulus greater than $1$ produce growth, and roots of modulus less than $1$ produce decay. This trichotomy governs the stability of numerical recurrences in Volume~X. A double root occurs, for instance, in $a_n=4a_{n-1}-4a_{n-2}$, whose characteristic polynomial is $(x-2)^2$; with $a_0=1$ and $a_1=4$ the theorem gives $A=1$, $B=4/2-1=1$ and $a_n=(n+1)2^n$.
 
-The theorem generalises to recurrences of any order, and Chapter~27 returns to the general case.
+The theorem generalises to recurrences of any order, and \cref{ch:difference-equations} returns to the general case.
 
 \begin{proposition}
 \label{prop:linear-recurrence-k}

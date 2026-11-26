@@ -507,7 +507,7 @@ Powers of a matrix describe repeated application of a linear map, and they appea
 \[
 \begin{bmatrix}F_{k+1}\\F_k\end{bmatrix}=\begin{bmatrix}1&1\\1&0\end{bmatrix}\begin{bmatrix}F_k\\F_{k-1}\end{bmatrix},\qquad\text{so}\qquad\begin{bmatrix}1&1\\1&0\end{bmatrix}^k=\begin{bmatrix}F_{k+1}&F_k\\F_k&F_{k-1}\end{bmatrix}\quad(k\ge1),
 \]
-the second identity by induction on $k$, since multiplying the right side by the matrix gives the rows $(F_{k+1}+F_k,F_{k+1})=(F_{k+2},F_{k+1})$ and $(F_k+F_{k-1},F_k)=(F_{k+1},F_k)$. For $k=10$ the power is the matrix with the rows $(89,55)$ and $(55,34)$. Comparing the entries of $F^{j+k}=F^jF^k$, where $F$ is the matrix on the left, gives identities such as $F_{j+k}=F_{j+1}F_k+F_jF_{k-1}$, and the power $F^k$ can be computed with about $2\log_2k$ matrix products by repeated squaring, $F^{2k}=(F^k)^2$. Chapter~27 solves linear recurrences in general, and \cref{ch:eigenvalues} explains the growth of $F^k$, like $\phi^k$, through the eigenvalues of $F$.
+the second identity by induction on $k$, since multiplying the right side by the matrix gives the rows $(F_{k+1}+F_k,F_{k+1})=(F_{k+2},F_{k+1})$ and $(F_k+F_{k-1},F_k)=(F_{k+1},F_k)$. For $k=10$ the power is the matrix with the rows $(89,55)$ and $(55,34)$. Comparing the entries of $F^{j+k}=F^jF^k$, where $F$ is the matrix on the left, gives identities such as $F_{j+k}=F_{j+1}F_k+F_jF_{k-1}$, and the power $F^k$ can be computed with about $2\log_2k$ matrix products by repeated squaring, $F^{2k}=(F^k)^2$. \Cref{ch:difference-equations} solves linear recurrences in general, and \cref{ch:eigenvalues} explains the growth of $F^k$, like $\phi^k$, through the eigenvalues of $F$.
 
 \subsection{The Cost of a Product and the Order of the Loops}
 
