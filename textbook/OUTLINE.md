@@ -289,7 +289,7 @@ Part II Graphics
 ### Part IV Differential Equations
 23. First-Order Equations — 변수 분리, 선형, 완전 방정식, 방향장, 존재와 유일성(진술), Euler 방법 맛보기
 24. Linear Equations of Higher Order — 상수 계수와 특성방정식, 미정계수법, 매개변수 변환, Wronskian, 진동 (해 공간의 차원)
-25. Linear Systems — 고유값 방법, 행렬 지수, 위상 평면, 안정성
+25. Linear Systems of Differential Equations (2026-11-27 이름 바꿈: 14장 Linear Systems와 겹쳐서) — 고유값 방법, 행렬 지수, 위상 평면, 안정성
 26. Series Solutions — 정상점과 정칙 특이점, Frobenius 방법의 개요, Bessel·Legendre·Airy 방정식
 27. Difference Equations and Recurrences — 선형 점화식과 특성근, 생성함수와의 관계, 안정성, 3항 점화식
 
