@@ -311,9 +311,15 @@
 \pretocmd{\@makeschapterhead}{\vspace*{48\p@}}{}{\ClassError{sdbook-eng}{patch failed}{}}
 
 % The chapter abstract is set in \small and set off from the text: a blank line's worth of space follows it
-% and the first paragraph of the text is not indented (2026-11-25).
-\def\@abstract#1{{\small\noindent\textbf{\abstractname}\enskip #1\par}%
-  \addvspace{\baselineskip}\@afterindentfalse\@afterheading}
+% and the first paragraph of the text is not indented (2026-11-25). Right after the head of a
+% numbered main-matter chapter, the abstract is preceded by the chapter's list of sections and
+% followed by a page break, so that the text starts on the next page (2026-11-26, see 8e).
+\def\@abstract#1{%
+  \ifsd@chapopen \sd@chapcontents \fi
+  {\small\noindent\textbf{\abstractname}\enskip #1\par}%
+  \ifsd@chapopen \global\sd@chapopenfalse \clearpage
+  \else \addvspace{\baselineskip}\fi
+  \@afterindentfalse\@afterheading}
 
 % ---------------------------------------------------------------------------
 % 8b. Lists (2026-11-25): itemize keeps SNmono's labels (bullet, then en dash); enumerate
@@ -428,14 +434,25 @@
   \@ifundefined{sd@partlist@#1}{\global\@namedef{sd@partlist@#1}{}}{}%
   \expandafter\g@addto@macro\csname sd@partlist@#1\endcsname{\sd@partline{#2}{#3}{#4}}}
 \def\sd@tocext{toc}\def\sd@tocchapter{chapter}\def\sd@tocpart{part}
+% \sd@partrecord also starts each numbered main-matter chapter's own list of sections (8e):
+% it notes the chapter's anchor in \sd@curchap and records each section line under it.
 \newcommand\sd@partrecord[3]{%
   \def\sd@tempa{#1}\def\sd@tempb{#2}%
   \ifx\sd@tempa\sd@tocext
     \ifx\sd@tempb\sd@tocpart \global\sd@partpendingtrue \fi
     \ifx\sd@tempb\sd@tocchapter
-      \ifnum\c@part>\z@ \if@mainmatter \if@chapnum
-        \protected@write\@auxout{}{\string\sd@partitem{\the\c@part}{#3}{\thepage}{\@currentHref}}%
-      \fi\fi\fi
+      \if@mainmatter \if@chapnum
+        \xdef\sd@curchap{\@currentHref}\global\sd@chapopentrue
+        \ifnum\c@part>\z@
+          \protected@write\@auxout{}{\string\sd@partitem{\the\c@part}{#3}{\thepage}{\@currentHref}}%
+        \fi
+      \fi\fi
+    \fi
+    \ifx\sd@tempb\sd@tocsection
+      \global\sd@chapopenfalse
+      \ifx\sd@curchap\@empty\else \if@mainmatter
+        \protected@write\@auxout{}{\string\sd@chapitem{\sd@curchap}{#3}{\thepage}{\@currentHref}}%
+      \fi\fi
     \fi
   \fi}
 \AtBeginDocument{%
@@ -466,6 +483,37 @@
     \leavevmode \leftskip\@tempdima \hskip -\leftskip
     \sd@pclink{#3}{#1}\nobreak\hfill\nobreak\hb@xt@\sd@pcpage{\hfil\sd@pclink{#3}{#2}}\par
   \endgroup}
+
+% ---------------------------------------------------------------------------
+% 8e. Chapter opening pages (user's request 2026-11-26): the chapter head, then a short
+% contents of the chapter (its numbered sections, as in the main Contents: number, title,
+% page), then the abstract, and the text starts on the next page. The sections are
+% recorded through the .aux like the chapters of a part (8d), keyed by the chapter's
+% anchor; the list and the page break come from \abstract, and only right after the head
+% of a numbered main-matter chapter. Sizes, columns and links are those of the part list.
+% ---------------------------------------------------------------------------
+\newif\ifsd@chapopen
+\def\sd@curchap{}
+\def\sd@tocsection{section}
+\newcommand\sd@chapitem[4]{%
+  \@ifundefined{sd@chaplist@#1}{\global\@namedef{sd@chaplist@#1}{}}{}%
+  \expandafter\g@addto@macro\csname sd@chaplist@#1\endcsname{\sd@partline{#2}{#3}{#4}}}
+\pretocmd{\chapter}{\global\sd@chapopenfalse\gdef\sd@curchap{}}{}%
+  {\ClassError{sdbook-eng}{patch failed}{}}
+% the gap from the chapter title to the list (23pt here gives the same 106pt from the title's
+% baseline to the first entry as on the part page) and from the list to the abstract; the
+% section numbers need a wider column than chapter numbers
+\newskip\sd@chaplistskip \sd@chaplistskip=23\p@
+\newskip\sd@chapabstractskip \sd@chapabstractskip=36\p@
+\newdimen\sd@pcsecnum \sd@pcsecnum=2.6em
+\newcommand\sd@chapcontents{%
+  \@ifundefined{sd@chaplist@\sd@curchap}{}{%
+    \par\vskip\sd@chaplistskip
+    \noindent\begin{minipage}[t]{\sd@pcwidth}%
+      \normalfont\small \parskip 2\p@ \sd@pcnum\sd@pcsecnum
+      \csname sd@chaplist@\sd@curchap\endcsname
+    \end{minipage}\par
+    \vskip\sd@chapabstractskip}}
 
 % ---------------------------------------------------------------------------
 % 9. Small things
