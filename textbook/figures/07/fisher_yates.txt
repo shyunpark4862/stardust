@@ -1,3 +1,0 @@
-permutation(5): cells 120, draws 600000, chi2 94.0 (df 119), p 0.956
-choice(10, shape=(3,), replace=False): cells 720, draws 720000, chi2 724.0 (df 719), p 0.440
-choice(64, shape=(2,), replace=False) [해시 경로]: cells 4032, draws 2016000, chi2 4080.4 (df 4031), p 0.289

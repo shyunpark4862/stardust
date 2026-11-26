@@ -1,4 +1,0 @@
-30 10 1e+01 iters 5 |P| 5 free 3.9e-17 bound 0.0e+00 exact KKT True x relerr 1.0e-16
-60 30 1e+03 iters 21 |P| 15 free 9.8e-16 bound 0.0e+00 exact KKT True x relerr 3.0e-15
-100 50 1e+06 iters 60 |P| 24 free 3.3e-15 bound 0.0e+00 exact KKT True x relerr 1.3e-13
-200 80 1e+08 iters 110 |P| 34 free 3.1e-14 bound 0.0e+00 exact KKT True x relerr 5.7e-13

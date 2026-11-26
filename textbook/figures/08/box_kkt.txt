@@ -1,5 +1,0 @@
-l-bfgs-b gtol 1e-05: CONVERGENCE: NORM OF PROJECTED GRADIENT <= PGTOL status 0 n_iter 28 active 10 |P(x-g)-x|_inf 8.05e-06
-l-bfgs-b gtol 1e-08: CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH status 0 n_iter 33 active 10 |P(x-g)-x|_inf 8.55e-07
-l-bfgs-b gtol 1e-11: CONVERGENCE: RELATIVE REDUCTION OF F <= FACTR*EPSMCH status 0 n_iter 33 active 10 |P(x-g)-x|_inf 8.55e-07
-lsq_linear trf: The relative change of the cost function is less than `tol`. status 2 n_iter 12 optimality 4.54e-08 |P(x-g)-x|_inf 3.28e-05 active 29
-lsq_linear bvls: The first-order optimality measure is less than `tol`. status 1 n_iter 9 optimality 1.42e-13 |P(x-g)-x|_inf 1.42e-13 active 29

@@ -1,4 +1,0 @@
-Poisson(0.5): icdf(cdf(k))==k 0/0, iccdf(ccdf(k))==k 28/28 (small side, distinct doubles), backward-error violations 0/300
-Poisson(3.0): icdf(cdf(k))==k 3/3, iccdf(ccdf(k))==k 40/40 (small side, distinct doubles), backward-error violations 0/300
-Poisson(30.0): icdf(cdf(k))==k 30/30, iccdf(ccdf(k))==k 85/85 (small side, distinct doubles), backward-error violations 0/300
-Poisson(300.0): icdf(cdf(k))==k 300/300, iccdf(ccdf(k))==k 227/227 (small side, distinct doubles), backward-error violations 0/300
