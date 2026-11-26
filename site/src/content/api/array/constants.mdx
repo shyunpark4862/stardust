@@ -1,0 +1,90 @@
+---
+kind: concept
+title: Constants
+names: [e, pi, inf, nan, newaxis]
+group: Array model
+order: 3
+summary: Mathematical constants, the special floating-point values and the `newaxis` index.
+seeAlso: [isnan-isinf-isfinite, indexing, dtypes]
+---
+
+`sd.e`, `sd.pi`, `sd.inf` and `sd.nan` are Python `float` values. `sd.newaxis` is `None`; the name marks its use
+inside an index.
+
+| Name | Value | Type |
+|---|---|---|
+| `e` | Euler's number, $e = 2.718281828459045$ to `float64` precision | `float` |
+| `pi` | $\pi = 3.141592653589793$ to `float64` precision | `float` |
+| `inf` | positive infinity | `float` |
+| `nan` | NaN, "not a number" | `float` |
+| `newaxis` | `None` | `NoneType` |
+
+## Examples
+
+The constants are plain numbers and work wherever a Python `float` does:
+
+```python
+>>> import stardust as sd
+>>> sd.pi
+3.141592653589793
+>>> sd.cos(sd.pi)
+-1.0
+>>> sd.exp(sd.asarray([1.0]))[0] == sd.e
+True
+```
+
+Infinity and NaN in arrays, and the test for NaN:
+
+```python
+>>> x = sd.asarray([1.0, sd.inf, -sd.inf, sd.nan])
+>>> x
+array([ 1.0,  inf, -inf,  nan], dtype=float64)
+>>> sd.isnan(x)
+array([False, False, False,  True], dtype=bool)
+>>> sd.isinf(x)
+array([False,  True,  True, False], dtype=bool)
+```
+
+`sd.newaxis` in an index inserts an axis of length 1. A 1-D array becomes a column:
+
+```python
+>>> v = sd.asarray([1.0, 2.0, 3.0])
+>>> v[:, sd.newaxis]
+array([[1.0],
+       [2.0],
+       [3.0]], dtype=float64)
+>>> v[sd.newaxis, :].shape
+(1, 3)
+```
+
+NaN is not equal to anything, itself included, so `==` cannot find it. Use
+[`isnan`](/api/array/isnan-isinf-isfinite/):
+
+```python
+>>> sd.nan == sd.nan
+False
+>>> x == sd.nan
+array([False, False, False, False], dtype=bool)
+```
+
+## Notes
+
+`inf` and `nan` follow the IEEE 754 rules for floating-point arithmetic. Infinity compares greater than every finite
+number; $\infty - \infty$, $0 \cdot \infty$ and $0 / 0$ give NaN, and NaN propagates through arithmetic. Element-wise
+functions return these values instead of raising an error, for example an infinity for a division of a nonzero number by
+zero and NaN for the square root of a negative `float64`. A NaN element also marks a missing value; the rules are in
+[Conventions](/start/conventions/#missing-values).
+
+Both values exist only in floating-point types. Assigning them to an element of an `int64` or `bool` array raises
+`TypeError`, and [`astype`](/api/array/astype/) converts them by the rules of
+[explicit conversion](/api/array/dtypes/#explicit-conversion).
+
+`newaxis` is `None`, so `x[:, None]` is the same as `x[:, sd.newaxis]`. [Indexing](/api/array/indexing/) describes
+where it may appear; [`expand_dims`](/api/array/squeeze-expand_dims/) inserts axes by position.
+
+## For NumPy, SciPy and R users
+
+The values are equal to `numpy.e`, `numpy.pi`, `numpy.inf` and `numpy.nan`, and `numpy.newaxis` is also `None`.
+
+- In R, `pi`, `exp(1)`, `Inf` and `NaN` are the same numbers. R also has `NA`, a missing value distinct from `NaN`;
+  stardust arrays use NaN for missing values.

@@ -1,0 +1,120 @@
+---
+kind: function
+title: arange
+names: [arange]
+group: Creating arrays
+order: 4
+signatures:
+  - "sd.arange(start, stop=None, step=1, /, *, dtype=None)"
+summary: Return evenly spaced values from `start` up to, but not including, `stop`.
+params:
+  - name: start
+    type: bool, int or float
+    kind: positional-only
+    desc: "First value. When `arange` is called with one argument, that argument is `stop` and `start` is 0."
+  - name: stop
+    type: bool, int, float or None
+    kind: positional-only
+    default: None
+    desc: "End of the range. The range stops before reaching it."
+  - name: step
+    type: bool, int or float
+    kind: positional-only
+    default: "1"
+    desc: "Spacing between consecutive values. Negative for a decreasing range. Must not be zero."
+  - name: dtype
+    type: dtype, str or None
+    kind: keyword-only
+    default: None
+    desc: "Data type of the result, as a dtype object or its name. `None` means `int64` when every argument is an `int` or `bool`, and `float64` otherwise. Any other dtype converts the values as [`astype`](/api/array/astype/) does."
+returns:
+  - type: ndarray of shape (n,)
+    desc: "The values `start + i * step` for `i = 0, 1, ..., n - 1`, where `n` is the number of steps that stay before `stop` (0 if `stop` lies in the other direction)."
+raises:
+  - type: TypeError
+    desc: "If an argument is not a `bool`, `int` or `float` (complex numbers included), if an argument is passed by keyword, or if `dtype` is not one of the four array dtypes."
+  - type: ValueError
+    desc: "If `step` is zero, or if an argument is NaN or infinite."
+  - type: OverflowError
+    desc: "If an `int` argument is outside the `int64` range and the result dtype is `int64` or `bool`."
+seeAlso: [linspace, filled, meshgrid]
+---
+
+`arange` returns the 1-D array `start, start + step, start + 2 * step, ...`, stopping before `stop`. With one argument
+it counts from 0, like Python's `range`; with two it counts by 1. It is the usual way to create index arrays and
+integer sequences.
+
+The arguments are positional-only. Integer arguments give an `int64` array and any `float` argument gives a `float64`
+array. For a fixed number of floating-point values between two endpoints, [`linspace`](/api/array/linspace/) is more
+reliable, because the length of a floating-point `arange` depends on rounding (see the last example).
+
+## Examples
+
+One, two and three arguments:
+
+```python
+>>> import stardust as sd
+>>> sd.arange(5)
+array([0, 1, 2, 3, 4], dtype=int64)
+>>> sd.arange(2, 8)
+array([2, 3, 4, 5, 6, 7], dtype=int64)
+>>> sd.arange(10, 0, -3)
+array([10,  7,  4,  1], dtype=int64)
+```
+
+A floating-point step gives a `float64` array. A range that runs the wrong way is empty:
+
+```python
+>>> sd.arange(0, 1, 0.25)
+array([ 0.0, 0.25,  0.5, 0.75], dtype=float64)
+>>> sd.arange(5, 2)
+array([], dtype=int64)
+```
+
+`dtype` converts the values after they are computed. Conversion to `int64` truncates toward zero:
+
+```python
+>>> sd.arange(0, 3, 0.5, dtype=sd.int64)
+array([0, 0, 1, 1, 2, 2], dtype=int64)
+>>> sd.arange(3, dtype=sd.float64)
+array([0.0, 1.0, 2.0], dtype=float64)
+```
+
+With a floating-point step, rounding can add a value close to `stop`. Here `(1.3 - 1) / 0.1` is slightly above 3 in
+floating point, so the result has four values instead of three:
+
+```python
+>>> sd.arange(1, 1.3, 0.1)
+array([1.0, 1.1, 1.2, 1.3], dtype=float64)
+>>> sd.linspace(1, 1.2, 3)
+array([1.0, 1.1, 1.2], dtype=float64)
+```
+
+<Reference />
+
+## Notes
+
+The length is
+
+$$
+n = \max\left(0, \left\lceil \frac{\mathrm{stop} - \mathrm{start}}{\mathrm{step}} \right\rceil\right),
+$$
+
+computed in floating point when any argument is a `float`. Element $i$ is $\mathrm{start} + i \cdot \mathrm{step}$.
+
+When every argument is an `int` within the `int64` range, the values are computed exactly as integers and then
+converted to the result dtype. With `dtype=sd.float64` or `sd.complex128`, integer arguments outside the `int64` range
+are accepted: all arguments are then rounded to `float64` and the values are computed in floating point.
+
+NaN or infinite arguments raise `ValueError`, because the length is undefined. `bool` arguments count as the
+integers 0 and 1.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.arange`, Python's `range`, and R's `seq(from, to, by)` and `from:to`.
+
+- The arguments are positional-only: `numpy.arange(start=1, stop=3)` has no counterpart here.
+- Complex arguments raise `TypeError`, and NaN or infinite arguments raise `ValueError`.
+- The values of a floating-point range are computed as `start + i * step`. They can differ slightly from those of
+  `numpy.arange`, most visibly for values close to zero.
+- R's `seq` and `:` include `to` when the sequence reaches it; `arange` always stops before `stop`.

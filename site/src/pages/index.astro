@@ -196,7 +196,7 @@ beta = sd.linalg.lstsq(X, y).solution
   .strength__body {
     margin-top: var(--space-3);
     font-size: var(--text-base);
-    line-height: 1.75;
+    line-height: var(--leading-body);
     color: var(--fg-muted);
   }
 
@@ -405,10 +405,14 @@ beta = sd.linalg.lstsq(X, y).solution
     margin-top: var(--space-10);
   }
 
-  @media (max-width: 1000px) {
+  /* Four columns need about 250px each for English text; below that the
+     strengths go two by two. */
+  @media (max-width: 1180px) {
     .strengths {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }
+  }
+  @media (max-width: 1000px) {
     .areas {
       grid-template-columns: repeat(2, minmax(0, 1fr));
     }

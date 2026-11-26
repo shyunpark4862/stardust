@@ -1,0 +1,96 @@
+---
+kind: function
+title: concat
+names: [concat]
+group: Joining and repeating
+order: 1
+signatures:
+  - "sd.concat(arrays, /, *, axis=0)"
+summary: Join arrays along an existing axis.
+params:
+  - name: arrays
+    type: list or tuple of array
+    kind: positional-only
+    desc: "Arrays to join, at least one. All must have the same number of dimensions and the same lengths on every axis except `axis`. When `axis` is `None`, the shapes may differ."
+  - name: axis
+    type: int or None
+    kind: keyword-only
+    default: "0"
+    desc: "Axis along which to join. Negative numbers count from the end. `None` flattens every array first (in row-major order) and joins the results into one 1-D array."
+returns:
+  - type: ndarray
+    desc: "New array whose length along `axis` is the sum of the lengths of the inputs; the other lengths are those of the inputs. The dtype is the promoted dtype of all inputs."
+raises:
+  - type: TypeError
+    desc: "If `arrays` is not a list or tuple, if an element is not an `sd.ndarray`, or if `axis` is not an `int` or `None` (a tuple is rejected)."
+  - type: ValueError
+    desc: "If `arrays` is empty, if the arrays differ in number of dimensions or in length on an axis other than `axis`, or if `axis` is out of range."
+seeAlso: [stack-unstack, block, tile, ravel]
+---
+
+`concat` places arrays one after another along an axis that they already have. For 2-D arrays, `axis=0` puts them
+one below the other (adding rows) and `axis=1` side by side (adding columns). To join arrays along a new axis, for
+example 1-D arrays as the rows of a matrix, use [`stack`](/api/array/stack-unstack/); to arrange blocks in two
+directions at once, use [`block`](/api/array/block/).
+
+The result is always a new array, even for a single input. Its dtype follows the [promotion rules](/api/array/dtypes/):
+joining `int64` and `float64` arrays gives `float64`.
+
+## Examples
+
+Add a row to a matrix, then a column:
+
+```python
+>>> import stardust as sd
+>>> a = sd.asarray([[1, 2], [3, 4]])
+>>> sd.concat([a, sd.asarray([[5, 6]])])
+array([[1, 2],
+       [3, 4],
+       [5, 6]], dtype=int64)
+>>> sd.concat([a, sd.asarray([[7], [8]])], axis=1)
+array([[1, 2, 7],
+       [3, 4, 8]], dtype=int64)
+```
+
+Join 1-D arrays, and flatten arrays of any shape with `axis=None`:
+
+```python
+>>> sd.concat([sd.asarray([1, 2]), sd.asarray([3, 4, 5])])
+array([1, 2, 3, 4, 5], dtype=int64)
+>>> sd.concat([a, sd.asarray([[5, 6]])], axis=None)
+array([1, 2, 3, 4, 5, 6], dtype=int64)
+```
+
+Mixed dtypes are promoted:
+
+```python
+>>> sd.concat([a, sd.asarray([[0.5, 1.5]])])
+array([[1.0, 2.0],
+       [3.0, 4.0],
+       [0.5, 1.5]], dtype=float64)
+```
+
+The lengths must match on every other axis, and the number of dimensions must match. A 1-D row has to be made 2-D
+first, for example with `expand_dims`:
+
+```python
+>>> sd.concat([a, sd.asarray([5, 6])])
+Traceback (most recent call last):
+    ...
+ValueError: concat(): all arrays must have the same shape except along axis 0; got (2, 2) and (2,)
+>>> sd.concat([a, sd.expand_dims(sd.asarray([5, 6]), axis=0)])
+array([[1, 2],
+       [3, 4],
+       [5, 6]], dtype=int64)
+```
+
+<Reference />
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.concat` (also `numpy.concatenate`), and R's `c()` for vectors and `rbind` and
+`cbind` for matrices.
+
+- Every element of `arrays` must be an `sd.ndarray`; NumPy also accepts lists there.
+- There are no `out`, `dtype` or `casting` arguments: the result dtype is always the promoted dtype.
+- `axis=None` flattens and joins, as in NumPy.

@@ -1,0 +1,104 @@
+---
+kind: function
+title: zeros_like, ones_like, empty_like, full_like
+names: [zeros_like, ones_like, empty_like, full_like]
+group: Creating arrays
+order: 3
+signatures:
+  - "sd.zeros_like(x, /, *, dtype=None)"
+  - "sd.ones_like(x, /, *, dtype=None)"
+  - "sd.empty_like(x, /, *, dtype=None)"
+  - "sd.full_like(x, fill_value, /, *, dtype=None)"
+summary: Return a new array with the shape and data type of `x`, filled with zeros, ones or one value, or uninitialized.
+params:
+  - name: x
+    type: array
+    kind: positional-only
+    desc: Array whose shape, dtype and memory layout the result takes. Its values are not read.
+  - name: dtype
+    type: dtype, str or None
+    kind: keyword-only
+    default: None
+    desc: "Data type of the result, as a dtype object or its name. `None` means the dtype of `x`."
+  - name: fill_value
+    type: bool, int, float or complex
+    kind: positional-only
+    desc: "Value of every element (`full_like` only). Without `dtype`, it must convert implicitly to the dtype of `x`; with `dtype`, it is converted as [`astype`](/api/array/astype/) converts."
+returns:
+  - type: ndarray
+    desc: "New, writable array with the shape of `x`. The elements of an `empty_like` array have unspecified values."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`, if `fill_value` is not a `bool`, `int`, `float` or `complex`, if `dtype` is not one of the four array dtypes, or if `fill_value` does not convert to the result dtype (for example `1.5` into an `int64` array without `dtype`)."
+  - type: OverflowError
+    desc: "If an integer `fill_value` does not fit the result dtype."
+seeAlso: [filled, astype, can_cast-result_type, asarray]
+---
+
+These four functions create an array that matches an existing array `x`: same shape, same dtype unless `dtype` is
+given, and the same memory layout. `zeros_like`, `ones_like` and `full_like` fill it with 0, 1 and `fill_value`;
+`empty_like` leaves the values unspecified. The result never shares memory with `x`.
+
+`full_like` keeps the dtype of `x` and therefore converts `fill_value` to it by an
+[implicit conversion](/api/array/dtypes/#implicit-conversion), as in index assignment: `7` can fill a `float64` array,
+but `1.5` cannot fill an `int64` array. Passing `dtype` makes the conversion explicit and allows it, with truncation.
+
+## Examples
+
+The result takes the shape and dtype of `x`:
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([[1, 2, 3], [4, 5, 6]])
+>>> sd.zeros_like(x)
+array([[0, 0, 0],
+       [0, 0, 0]], dtype=int64)
+>>> sd.ones_like(x, dtype=sd.float64)
+array([[1.0, 1.0, 1.0],
+       [1.0, 1.0, 1.0]], dtype=float64)
+```
+
+`full_like` converts the fill value to the dtype of `x`:
+
+```python
+>>> sd.full_like(x, 7)
+array([[7, 7, 7],
+       [7, 7, 7]], dtype=int64)
+>>> sd.full_like(sd.zeros(2), 3)
+array([3.0, 3.0], dtype=float64)
+```
+
+A fill value of a higher kind than `x` is refused unless `dtype` is given:
+
+```python
+>>> sd.full_like(x, 1.5)
+Traceback (most recent call last):
+    ...
+TypeError: full_like(): cannot implicitly convert float64 to int64 (that would lose information); convert explicitly with astype
+>>> sd.full_like(x, 1.5, dtype=sd.int64)
+array([[1, 1, 1],
+       [1, 1, 1]], dtype=int64)
+>>> sd.full_like(x, 1.5, dtype=sd.float64)
+array([[1.5, 1.5, 1.5],
+       [1.5, 1.5, 1.5]], dtype=float64)
+```
+
+<Reference />
+
+## Notes
+
+The result has the memory layout of `x`: when `x` is stored column by column (as a transpose is), so is the result.
+The values do not depend on the layout; only the `strides` differ.
+
+`full_like(x, 2.0)` with an `int64` array `x` raises `TypeError` even though 2.0 is a whole number, since implicit
+conversion looks at the type of `fill_value`, not its value. [`can_cast`](/api/array/can_cast-result_type/) answers
+the same question for two dtypes.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.zeros_like`, `numpy.ones_like`, `numpy.empty_like` and `numpy.full_like`.
+
+- `full_like` without `dtype` refuses a fill value that the dtype of `x` cannot hold without loss.
+  `numpy.full_like(int_array, 1.5)` silently fills with 1.
+- `x` must be an `sd.ndarray`; lists and NumPy arrays raise `TypeError`.
+- There are no `order=`, `subok=`, `shape=` or `device=` arguments. The result always has the shape and layout of `x`.

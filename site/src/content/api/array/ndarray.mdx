@@ -1,0 +1,297 @@
+---
+kind: class
+title: ndarray
+names: [ndarray, ndarray.T, ndarray.mT, ndarray.base, ndarray.dtype, ndarray.itemsize, ndarray.nbytes, ndarray.ndim, ndarray.shape, ndarray.size, ndarray.strides, ndarray.copy, ndarray.tolist]
+group: Array model
+order: 1
+summary: N-dimensional array of Booleans, integers, real or complex numbers, all of one data type.
+attributes:
+  - { name: dtype, type: dtype, desc: "Data type of the elements: `sd.bool`, `sd.int64`, `sd.float64` or `sd.complex128`. See [Data types](/api/array/dtypes/)." }
+  - { name: shape, type: tuple of int, desc: "Length of each axis." }
+  - { name: ndim, type: int, desc: "Number of axes, `len(shape)`. At least 1." }
+  - { name: size, type: int, desc: "Number of elements, the product of the lengths in `shape`." }
+  - { name: itemsize, type: int, desc: "Bytes per element: 1 for `bool`, 8 for `int64` and `float64`, 16 for `complex128`." }
+  - { name: nbytes, type: int, desc: "Bytes taken by the elements, `size * itemsize`." }
+  - { name: strides, type: tuple of int, desc: "Bytes to step in memory to move by one position along each axis. Zero on a broadcast axis, negative on a reversed one." }
+  - { name: base, type: object or None, desc: "For a view, the object that owns its memory; `None` when the array owns its memory. See [Views and copies](/api/array/views/)." }
+  - { name: T, type: ndarray, desc: "Transpose of a 2-D array, as a view. Raises `ValueError` unless the array is 2-D." }
+  - { name: mT, type: ndarray, desc: "View with the last two axes swapped, the transpose of every matrix in a stack. Raises `ValueError` for a 1-D array." }
+methods:
+  - { name: reshape, signature: "reshape(shape, /, *, copy=None)", summary: Give an array a new shape without changing its elements., slug: reshape }
+  - { name: astype, signature: "astype(dtype, /, *, copy=True)", summary: Convert an array to another data type., slug: astype }
+  - { name: copy, signature: "copy()", summary: Return a new array with a copy of the elements. }
+  - { name: tolist, signature: "tolist()", summary: Return the elements as nested Python lists. }
+  - { name: sum, signature: "sum(*, axis=None, dtype=None, keepdims=False)", summary: Sum the elements over the given axes., slug: sum }
+  - { name: prod, signature: "prod(*, axis=None, dtype=None, keepdims=False)", summary: Multiply the elements over the given axes., slug: prod }
+  - { name: min, signature: "min(*, axis=None, keepdims=False)", summary: Return the smallest element over the given axes., slug: min-max }
+  - { name: max, signature: "max(*, axis=None, keepdims=False)", summary: Return the largest element over the given axes., slug: min-max }
+  - { name: mean, signature: "mean(*, axis=None, keepdims=False)", summary: Compute the arithmetic mean over the given axes., slug: mean }
+  - { name: var, signature: "var(*, axis=None, correction=0, keepdims=False)", summary: Compute the variance over the given axes., slug: var-std }
+  - { name: std, signature: "std(*, axis=None, correction=0, keepdims=False)", summary: Compute the standard deviation over the given axes., slug: var-std }
+  - { name: argmin, signature: "argmin(*, axis=None, keepdims=False)", summary: Return the index of the smallest element., slug: argmin-argmax }
+  - { name: argmax, signature: "argmax(*, axis=None, keepdims=False)", summary: Return the index of the largest element., slug: argmin-argmax }
+  - { name: any, signature: "any(*, axis=None, keepdims=False)", summary: Test whether any element is true over the given axes., slug: any-all }
+  - { name: all, signature: "all(*, axis=None, keepdims=False)", summary: Test whether every element is true over the given axes., slug: any-all }
+seeAlso: [asarray, dtypes, indexing, broadcasting, views, reshape, permute_dims]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+
+export const cells = [['1.0', '2.0', '3.0'], ['4.0', '5.0', '6.0']];
+
+`ndarray` is the array type of stardust. An array holds elements of one [data type](/api/array/dtypes/), arranged
+along one or more axes; its `shape` gives the length of each axis. The functions in `sd` take and return `ndarray`
+objects, and so do the other areas of the library.
+
+The class has no constructor: calling `sd.ndarray(...)` raises `TypeError`. Arrays are created from Python data by
+[`asarray`](/api/array/asarray/) and by creation functions such as [`zeros`](/api/array/filled/),
+[`arange`](/api/array/arange/) and [`linspace`](/api/array/linspace/). The class itself serves for type checks
+with `isinstance`.
+
+An array has at least one axis: stardust has no 0-D arrays. An index or a reduction that leaves no axes returns a
+Python `bool`, `int`, `float` or `complex` instead.
+
+Operations on arrays are module functions, such as `sd.sort(x)`. The methods listed below repeat a few common
+functions; each takes the same arguments as the function of the same name, with the array in place of the first
+argument. The operators `+`, `*`, `@`, `==` and the others call element-wise functions and `matmul` (see
+[Operators](#operators)).
+
+## Examples
+
+An array and its attributes:
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+>>> x
+array([[1.0, 2.0, 3.0],
+       [4.0, 5.0, 6.0]], dtype=float64)
+>>> isinstance(x, sd.ndarray)
+True
+>>> x.shape, x.ndim, x.size
+((2, 3), 2, 6)
+>>> x.dtype
+float64
+```
+
+<Fig caption="x has two axes: axis 0 runs down the rows, axis 1 across the columns.">
+  <ArrayFig name="x" data={cells} axes note="shape (2, 3), ndim 2, size 6" />
+</Fig>
+
+Methods, operators and indexing:
+
+```python
+>>> x.sum(axis=0)
+array([5.0, 7.0, 9.0], dtype=float64)
+>>> 2 * x + 1
+array([[ 3.0,  5.0,  7.0],
+       [ 9.0, 11.0, 13.0]], dtype=float64)
+>>> x[1, 2]
+6.0
+>>> x.T
+array([[1.0, 4.0],
+       [2.0, 5.0],
+       [3.0, 6.0]], dtype=float64)
+```
+
+`T` is defined for 2-D arrays only. `mT` swaps the last two axes of an array with two or more:
+
+```python
+>>> sd.arange(3).T
+Traceback (most recent call last):
+    ...
+ValueError: .T: the array must have 2 dimensions, got 1; use permute_dims or matrix_transpose (.mT)
+>>> sd.zeros((5, 2, 3)).mT.shape
+(5, 3, 2)
+```
+
+An array has no single truth value, so it cannot be the condition of `if` or `while`, even when it has one element.
+Reduce it with `any()` or `all()` first:
+
+```python
+>>> p = sd.asarray([1, 2, 3])
+>>> q = sd.asarray([1, 2, 4])
+>>> if p == q:
+...     print("equal")
+Traceback (most recent call last):
+    ...
+TypeError: the truth value of an array is ambiguous; use any() or all()
+>>> (p == q).all()
+False
+>>> (p == q).any()
+True
+```
+
+<Reference />
+
+## Methods
+
+`reshape`, `astype` and the reductions are documented on the pages of the functions they repeat. `x.sum(axis=0)` is
+the same as `sd.sum(x, axis=0)`. `x.reshape` takes the new shape as one argument, a tuple, like `sd.reshape`.
+
+```python
+>>> x.reshape((3, 2))
+array([[1.0, 2.0],
+       [3.0, 4.0],
+       [5.0, 6.0]], dtype=float64)
+>>> x.std(correction=1)
+1.8708286933869707
+```
+
+### copy
+
+`copy()` returns a new array with the same shape, dtype and elements. The copy owns its memory (its `base` is
+`None`) and is writable, even when `x` is a read-only view. It is the same as `sd.asarray(x, copy=True)`.
+
+```python
+>>> y = x.copy()
+>>> y[0, 0] = 100.0
+>>> x[0, 0]
+1.0
+>>> y.base is None
+True
+```
+
+### tolist
+
+`tolist()` returns the elements as nested Python lists, one level of nesting per axis. The elements are Python `bool`,
+`int`, `float` or `complex` values. The result holds no reference to the array.
+
+```python
+>>> x.tolist()
+[[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]]
+>>> sd.asarray([True, False]).tolist()
+[True, False]
+>>> type(sd.asarray([1, 2]).tolist()[0])
+<class 'int'>
+```
+
+## Operators
+
+Each operator calls an element-wise function, or `matmul` for `@`. The operands broadcast (see
+[Broadcasting](/api/array/broadcasting/)) and the result's dtype follows the function.
+
+| Operator | Function |
+|---|---|
+| `x + y`, `x - y`, `x * y`, `x / y`, `-x`, `+x` | [`add`, `subtract`, `multiply`, `divide`, `negative`, `positive`](/api/array/arithmetic/) |
+| `x // y`, `x % y` | [`floor_divide`, `remainder`](/api/array/floor_divide-remainder/) |
+| `x ** y` | [`pow`](/api/array/pow/) |
+| `abs(x)` | [`abs`](/api/array/abs/) |
+| `x @ y` | [`matmul`](/api/array/matmul/) |
+| `x == y`, `x != y`, `x < y`, `x <= y`, `x > y`, `x >= y` | [`equal`, `not_equal`, `less`, `less_equal`, `greater`, `greater_equal`](/api/array/comparison/) |
+| `x & y`, `x \| y`, `x ^ y`, `~x`, `x << y`, `x >> y` | [`bitwise_and`, `bitwise_or`, `bitwise_xor`, `bitwise_invert`, `bitwise_left_shift`, `bitwise_right_shift`](/api/array/bitwise/) |
+
+The other operand may be an `sd.ndarray` or a Python `bool`, `int`, `float` or `complex`, on either side. For `@`,
+both operands must be arrays. Lists and NumPy arrays raise `TypeError` on either side, for `==` and `!=` as well;
+convert them with `asarray` first. On Boolean arrays, `&`, `|`, `^` and `~` are the logical and, or, exclusive or and
+not. `divmod(x, y)` and `value in x` are not supported.
+
+```python
+>>> p + 10
+array([11, 12, 13], dtype=int64)
+>>> 1 / p
+array([               1.0,                0.5, 0.3333333333333333], dtype=float64)
+>>> (p > 1) & (p < 3)
+array([False,  True, False], dtype=bool)
+>>> p + [1, 2, 3]
+Traceback (most recent call last):
+    ...
+TypeError: unsupported operand type(s) for +: 'ndarray' and 'list'
+```
+
+### In-place operators
+
+`x += y`, and likewise `-=`, `*=`, `/=`, `//=`, `%=`, `**=`, `@=`, `&=`, `|=`, `^=`, `<<=` and `>>=`, write the
+result into `x` instead of creating a new array. `x` keeps its shape and dtype, which gives two conditions:
+
+- `y` must broadcast to `x.shape`. For `@=`, `x @ y` must have the shape of `x`.
+- The result's dtype must be `x.dtype` or a narrower dtype (see
+  [Implicit conversion](/api/array/dtypes/#implicit-conversion)). `/=` on an `int64` array and `+=` on a `bool` array
+  raise `TypeError`; `x = x / 2` creates a new `float64` array instead.
+
+If `x` is a view, the original array changes (see [Views and copies](/api/array/views/)). Read-only arrays raise
+`ValueError`.
+
+```python
+>>> k = sd.asarray([1, 2, 3])
+>>> k += 10
+>>> k
+array([11, 12, 13], dtype=int64)
+>>> k /= 2
+Traceback (most recent call last):
+    ...
+TypeError: cannot implicitly convert float64 to int64 (that would lose information); convert explicitly with astype
+```
+
+## Notes
+
+**Memory layout.** The elements of an array lie in one block of memory. `strides` gives, for each axis, the number of
+bytes between neighboring positions along it. Views reuse the memory of another array with other strides: a transpose
+swaps them, a reversed axis has a negative stride and a broadcast axis has stride 0.
+
+A new array from a creation function, `concat`, `stack`, `matmul` or a `reshape` that copies is laid out in
+row-major order: the elements of the last axis lie next to each other. Element-wise functions, reductions along an
+axis, `sort`, `astype`, `copy`, the `*_like` functions and advanced indexing keep the layout of their input instead,
+so the result of an operation on a transpose is laid out column by column. The layout changes only `strides`, never
+the values.
+
+```python
+>>> x.strides
+(24, 8)
+>>> x.T.strides
+(8, 24)
+>>> sd.flip(sd.arange(3)).strides
+(-8,)
+```
+
+**Length and iteration.** `len(x)` is `x.shape[0]`. Iterating over an array runs along axis 0: a 1-D array yields
+Python scalars, an array with more axes yields views of its subarrays.
+
+```python
+>>> len(x)
+2
+>>> for row in x:
+...     print(row)
+[1.0 2.0 3.0]
+[4.0 5.0 6.0]
+>>> list(sd.asarray([1, 2, 3]))
+[1, 2, 3]
+```
+
+**Conversion to a scalar.** `bool(x)`, `int(x)`, `float(x)`, `complex(x)` and `operator.index(x)` raise `TypeError`
+for every array, whatever its size. A single element is taken out by indexing: `x[0, 0]` is a Python `float`.
+
+**Hashing, copying and pickling.** Arrays are mutable and cannot be hashed, so they cannot be dictionary keys or set
+members. `copy.copy`, `copy.deepcopy` and `pickle` raise `TypeError`; use `x.copy()` to copy an array and `tolist()`
+to turn it into plain Python data.
+
+**Printing.** `repr(x)` shows `array([...], dtype=...)`; `str(x)`, which `print` uses, shows only the bracketed
+values. The elements are right-aligned to a common width. Floating-point elements are written as Python writes a
+`float` (`2.0`, `1e+300`, `nan`), so a whole number shows `.0` and is told apart from an integer. An empty array with two or more axes shows its shape. Arrays with more than 1000
+elements show the first and last three positions of each axis, with `...` between them.
+
+```python
+>>> print(x)
+[[1.0 2.0 3.0]
+ [4.0 5.0 6.0]]
+>>> sd.zeros((2, 0))
+array([], shape=(2, 0), dtype=float64)
+>>> sd.arange(2000)
+array([   0,    1,    2, ..., 1997, 1998, 1999], dtype=int64)
+```
+
+## For NumPy, SciPy and R users
+
+The nearest equivalent is `numpy.ndarray`.
+
+- There are no 0-D arrays. `x[1, 2]` and `x.sum()` return a Python scalar, where NumPy returns a NumPy scalar such as
+  `numpy.float64`.
+- The class has only the methods listed above. `x.sort()`, `x.flatten()`, `x.dot()` and the other NumPy methods do not
+  exist; use the module functions (`sd.sort`, `sd.ravel`, `sd.matmul`).
+- `x.T` raises `ValueError` unless `x` is 2-D. NumPy returns a 1-D array unchanged and reverses all axes of a 3-D one.
+- `x.reshape(3, 2)` raises `TypeError`; the shape is one argument, `x.reshape((3, 2))`.
+- Operators do not accept lists or NumPy arrays, and `x == [1, 2, 3]` raises `TypeError` instead of comparing element
+  by element.
+- `numpy.asarray(x)` returns a NumPy array that shares the memory of `x`, without copying; `sd.asarray(a)` does the
+  same in the other direction. NumPy element-wise functions (ufuncs such as `numpy.sin`) and NumPy operators raise
+  `TypeError` on an `sd.ndarray`, and other NumPy functions may fail on it; convert it with `numpy.asarray(x)` first.

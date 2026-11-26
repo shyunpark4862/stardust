@@ -1,0 +1,197 @@
+---
+kind: concept
+title: Broadcasting
+group: Array model
+order: 5
+summary: The rule by which arrays of different shapes combine element by element.
+seeAlso: [broadcast_to, arithmetic, where, indexing, dtypes]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+export const x = [[1, 2, 3], [4, 5, 6]];
+export const row = [[10, 20, 30], [10, 20, 30]];
+export const rowTones = [['a', 'a', 'a'], ['g', 'g', 'g']];
+export const sum = [[11, 22, 33], [14, 25, 36]];
+export const col = [[100, 100, 100], [200, 200, 200]];
+export const colTones = [['a', 'g', 'g'], ['a', 'g', 'g']];
+export const outer = [[110, 120, 130], [210, 220, 230]];
+
+An element-wise function such as `add` pairs each element of one array with the element at the same position in the
+other. Broadcasting extends this to arrays of different shapes: an axis of length 1 is used as if its single element
+were repeated along that axis, and an array with fewer axes is treated as if it had extra leading axes of length 1. No
+repeated copies are made in memory.
+
+Broadcasting applies to every element-wise function and operator, to `where`, and wherever a function combines the
+leading (stack) axes of several arrays, as `matmul` and the functions of `sd.linalg` do.
+
+## The rule
+
+Two shapes are compared axis by axis, starting from the last axis:
+
+1. If one shape has fewer axes, it is padded on the left with axes of length 1.
+2. Two lengths are compatible when they are equal or when one of them is 1.
+3. The result has, on each axis, the larger of the two lengths.
+
+If any pair of lengths is incompatible, the function raises `ValueError`. More than two arrays broadcast in the same
+way, all together.
+
+| Shape of `a` | Shape of `b` | Shape of the result |
+|---|---|---|
+| `(2, 3)` | `(3,)` | `(2, 3)` |
+| `(2, 3)` | `(2, 1)` | `(2, 3)` |
+| `(3, 1)` | `(2,)` | `(3, 2)` |
+| `(4, 2, 1)` | `(2, 3)` | `(4, 2, 3)` |
+| `(8, 1, 6, 1)` | `(7, 1, 5)` | `(8, 7, 6, 5)` |
+| `(2, 3)` | `(2,)` | error: 3 and 2 |
+| `(2, 3)` | `(3, 2)` | error: 3 and 2, then 2 and 3 |
+
+A Python scalar acts as an array with a single element and broadcasts against any shape. A length of 0 is compatible
+with 0 and with 1, and gives an empty result.
+
+## Examples
+
+A scalar is combined with every element:
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([[1, 2, 3], [4, 5, 6]])
+>>> x * 10
+array([[10, 20, 30],
+       [40, 50, 60]], dtype=int64)
+```
+
+A 1-D array of length 3 is combined with each row of a `(2, 3)` array:
+
+```python
+>>> row = sd.asarray([10, 20, 30])
+>>> x + row
+array([[11, 22, 33],
+       [14, 25, 36]], dtype=int64)
+```
+
+<Fig caption="x + row: row, of shape (3,), is used as if it were repeated down axis 0. Dashed cells are not stored.">
+  <ArrayFig name="x" data={x} note="shape (2, 3)" />
+  <Op>+</Op>
+  <ArrayFig name="row" data={row} tones={rowTones} note="shape (3,)" />
+  <Op>=</Op>
+  <ArrayFig data={sum} note="shape (2, 3)" />
+</Fig>
+
+A column of shape `(2, 1)` is combined with each column, and a column and a row together give every pairwise
+combination:
+
+```python
+>>> col = sd.asarray([[100], [200]])
+>>> x + col
+array([[101, 102, 103],
+       [204, 205, 206]], dtype=int64)
+>>> col + row
+array([[110, 120, 130],
+       [210, 220, 230]], dtype=int64)
+```
+
+<Fig caption="col + row: col is repeated across axis 1 and row down axis 0, giving shape (2, 3).">
+  <ArrayFig name="col" data={col} tones={colTones} note="shape (2, 1)" />
+  <Op>+</Op>
+  <ArrayFig name="row" data={row} tones={rowTones} note="shape (3,)" />
+  <Op>=</Op>
+  <ArrayFig data={outer} note="shape (2, 3)" />
+</Fig>
+
+Shapes that do not broadcast raise `ValueError`, which names both shapes:
+
+```python
+>>> x + sd.asarray([1, 2])
+Traceback (most recent call last):
+    ...
+ValueError: shapes could not be broadcast together: (2, 3) (2,)
+>>> sd.add(x, sd.asarray([1, 2]))
+Traceback (most recent call last):
+    ...
+ValueError: add(): shapes could not be broadcast together: (2, 3) (2,)
+```
+
+## Lining up reduced axes with keepdims
+
+A reduction removes the axis it reduces, so its result lines up with the trailing axes of the input, not with the
+reduced axis. Subtracting the mean of each column works directly, but the mean of each row needs `keepdims=True` (see
+[Conventions](/start/conventions/#axis-and-keepdims)), which keeps the reduced axis with length 1:
+
+```python
+>>> m = sd.asarray([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+>>> m - sd.mean(m, axis=0)
+array([[-1.5, -1.5, -1.5],
+       [ 1.5,  1.5,  1.5]], dtype=float64)
+>>> m - sd.mean(m, axis=1)
+Traceback (most recent call last):
+    ...
+ValueError: shapes could not be broadcast together: (2, 3) (2,)
+>>> m - sd.mean(m, axis=1, keepdims=True)
+array([[-1.0,  0.0,  1.0],
+       [-1.0,  0.0,  1.0]], dtype=float64)
+```
+
+For a square array, the reduced result has the right length for either axis. The shapes then broadcast without
+`keepdims=True`, but the values line up along the wrong axis and no error is raised:
+
+```python
+>>> s = sd.asarray([[1.0, 2.0], [3.0, 4.0]])
+>>> s / sd.sum(s, axis=1)
+array([[0.3333333333333333, 0.2857142857142857],
+       [               1.0, 0.5714285714285714]], dtype=float64)
+>>> s / sd.sum(s, axis=1, keepdims=True)
+array([[ 0.3333333333333333,  0.6666666666666666],
+       [0.42857142857142855,  0.5714285714285714]], dtype=float64)
+```
+
+## Broadcasting to a fixed shape
+
+Some operations write into an array whose shape is fixed. Only the other operand broadcasts, and it must broadcast to
+that shape exactly:
+
+- assignment to elements, `x[i] = value`: `value` broadcasts to the shape of the selection (see
+  [Indexing](/api/array/indexing/));
+- in-place operators such as `x += y`: `y` broadcasts to `x.shape`;
+- the `out=` argument of element-wise functions: the inputs broadcast to `out.shape` (see
+  [Conventions](/start/conventions/#the-out-argument));
+- the `min` and `max` bounds of `clip`: they broadcast to the shape of `x`.
+
+```python
+>>> grid = sd.zeros((2, 3))
+>>> grid += sd.asarray([1.0, 2.0, 3.0])
+>>> grid
+array([[1.0, 2.0, 3.0],
+       [1.0, 2.0, 3.0]], dtype=float64)
+>>> r = sd.zeros(3)
+>>> r += grid
+Traceback (most recent call last):
+    ...
+ValueError: operand of shape (2, 3) cannot be broadcast to (3,)
+```
+
+## Broadcasting explicitly
+
+[`broadcast_to`](/api/array/broadcast_to/) returns an array broadcast to a given shape, and `broadcast_arrays`
+broadcasts several arrays against each other. Both return read-only views of their input: the repeated elements are
+not copied, and the stride of a broadcast axis is 0.
+
+```python
+>>> b = sd.broadcast_to(row, (2, 3))
+>>> b
+array([[10, 20, 30],
+       [10, 20, 30]], dtype=int64)
+>>> b.strides
+(0, 8)
+```
+
+## For NumPy, SciPy and R users
+
+The rule is the same as NumPy's broadcasting rule.
+
+- In assignment, NumPy also drops leading axes of length 1 from the value, so a value of shape `(1, 3)` can be assigned
+  to a selection of shape `(3,)`. Here the value must broadcast to the selection's shape and that assignment raises
+  `ValueError`.
+- R recycles the shorter vector to the length of the longer one, and only warns when the longer length is not a
+  multiple of the shorter. Here two lengths must be equal, or one of them must be 1.

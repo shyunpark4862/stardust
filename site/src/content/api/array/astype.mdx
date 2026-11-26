@@ -1,0 +1,118 @@
+---
+kind: function
+title: astype
+names: [astype, ndarray.astype]
+group: Data types
+order: 1
+signatures:
+  - "sd.astype(x, dtype, /, *, copy=True)"
+  - "sd.ndarray.astype(dtype, /, *, copy=True)"
+summary: Convert an array to another data type.
+params:
+  - name: x
+    type: array
+    kind: positional-only
+    desc: "Array to convert. In the method form, the array the method is called on."
+  - name: dtype
+    type: dtype or str
+    kind: positional-only
+    desc: "Target data type: `sd.bool`, `sd.int64`, `sd.float64` or `sd.complex128`, or its name as a string."
+  - name: copy
+    type: bool or None
+    kind: keyword-only
+    default: "True"
+    desc: "`True` always returns a new array. `False` returns `x` itself when `dtype` is already its dtype, and raises `ValueError` otherwise. `None` returns `x` itself when `dtype` is already its dtype, and a converted copy otherwise."
+returns:
+  - type: ndarray
+    desc: "Array with the shape of `x` and the values converted to `dtype`. A new, writable array unless `copy` allowed returning `x`."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`, if `dtype` is not one of the four array dtypes or their names, if `dtype` or `copy` is passed by keyword or `copy` is not `True`, `False` or `None`, or if a `complex128` array would be converted to `float64` or `int64`."
+  - type: ValueError
+    desc: "If `copy=False` and the dtypes differ."
+seeAlso: [can_cast-result_type, dtypes, asarray, finfo-iinfo, complex]
+---
+
+`astype` converts every element of `x` to `dtype`. It performs an
+[explicit conversion](/api/array/dtypes/#explicit-conversion): unlike the
+[implicit conversions](/api/array/dtypes/#implicit-conversion) of index assignment and `out=`, it is allowed in every
+direction, including those that lose information, such as `float64` to `int64`. The only conversions it refuses are
+from `complex128` to `float64` and `int64`, which would silently drop the imaginary part.
+
+The function and the method are the same operation: `sd.astype(x, sd.int64)` and `x.astype(sd.int64)` give equal
+results. [Explicit conversion](/api/array/dtypes/#explicit-conversion) lists how each conversion treats the values. The
+same rules apply wherever a `dtype=` argument converts values, as in [`asarray`](/api/array/asarray/),
+[`full`](/api/array/filled/) and [`arange`](/api/array/arange/).
+
+## Examples
+
+Floating-point values to integers: truncation toward zero; NaN becomes 0 and values out of range saturate:
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([1.7, -2.5, sd.nan, 1e300])
+>>> sd.astype(x, sd.int64)
+array([                  1,                  -2,                   0,
+       9223372036854775807], dtype=int64)
+>>> x.astype("bool")
+array([True, True, True, True], dtype=bool)
+```
+
+Integers to floating point and complex:
+
+```python
+>>> i = sd.asarray([0, 1, 2])
+>>> i.astype(sd.float64)
+array([0.0, 1.0, 2.0], dtype=float64)
+>>> i.astype(sd.complex128)
+array([    0j, (1+0j), (2+0j)], dtype=complex128)
+```
+
+`copy` decides whether an array that already has the requested dtype is copied:
+
+```python
+>>> sd.astype(i, sd.int64) is i
+False
+>>> sd.astype(i, sd.int64, copy=False) is i
+True
+>>> sd.astype(i, sd.float64, copy=False)
+Traceback (most recent call last):
+    ...
+ValueError: astype(): copy=False, but a dtype conversion requires a copy
+```
+
+Complex values do not convert to real types. `real` takes the real part explicitly:
+
+```python
+>>> z = sd.asarray([1 + 2j, 3 - 1j])
+>>> z.astype(sd.float64)
+Traceback (most recent call last):
+    ...
+TypeError: astype(): cannot convert complex128 to float64: the imaginary part would be lost (take the real part explicitly)
+>>> sd.real(z)
+array([1.0, 3.0], dtype=float64)
+```
+
+<Reference />
+
+## Notes
+
+The value rules of each conversion (truncation toward zero, saturation at the ends of the `int64` range, NaN to 0,
+rounding of large integers to `float64`, `x != 0` for `bool`) are listed under
+[Explicit conversion](/api/array/dtypes/#explicit-conversion). A complex value converts to `True` when either of its
+parts is nonzero.
+
+The conversion depends only on the dtypes, never on the values, and never raises or warns because of a value.
+
+The result has the memory layout of `x`. With the default `copy=True` it never shares memory with `x`.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.astype` and the method `numpy.ndarray.astype`, and R's `as.integer`, `as.numeric`
+and `as.logical`.
+
+- Complex to real raises `TypeError`. NumPy discards the imaginary part with a `ComplexWarning`.
+- NaN and out-of-range values convert as listed in [Explicit conversion](/api/array/dtypes/#explicit-conversion),
+  without a warning; NumPy emits a `RuntimeWarning` for them.
+- `dtype` is positional-only, and there are no `casting=`, `order=` or `subok=` arguments.
+- R's `as.integer(NaN)` and `as.logical(NaN)` give `NA`. Here NaN becomes 0 as an `int64` and `True` as a `bool`.

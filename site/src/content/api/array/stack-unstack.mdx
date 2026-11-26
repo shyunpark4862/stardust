@@ -1,0 +1,107 @@
+---
+kind: function
+title: stack, unstack
+names: [stack, unstack]
+group: Joining and repeating
+order: 2
+signatures:
+  - "sd.stack(arrays, /, *, axis=0)"
+  - "sd.unstack(x, /, *, axis=0)"
+summary: Join arrays along a new axis, or split an array along an axis.
+params:
+  - name: arrays
+    type: list or tuple of array
+    kind: positional-only
+    desc: "Arrays to join (`stack` only), at least one, all of the same shape."
+  - name: axis
+    type: int
+    kind: keyword-only
+    default: "0"
+    desc: "For `stack`, the position of the new axis in the result, from `-(ndim + 1)` to `ndim` for inputs with `ndim` dimensions. For `unstack`, the axis of `x` to split along. Negative numbers count from the end. `None` and tuples are rejected."
+  - name: x
+    type: array
+    kind: positional-only
+    desc: "Array to split (`unstack` only)."
+returns:
+  - name: stack
+    type: ndarray
+    desc: "New array with one more dimension than the inputs. Its length along `axis` is the number of arrays. The dtype is the promoted dtype of all inputs."
+  - name: unstack
+    type: tuple
+    desc: "`x.shape[axis]` views of `x`, each with `axis` removed, in order. For a 1-D `x`, the elements themselves as Python scalars."
+raises:
+  - type: TypeError
+    desc: "If `arrays` is not a list or tuple, if an element of it or `x` is not an `sd.ndarray`, or if `axis` is not an `int`."
+  - type: ValueError
+    desc: "If `arrays` is empty, if its arrays differ in shape, or if `axis` is out of range."
+seeAlso: [concat, block, squeeze-expand_dims]
+---
+
+`stack` joins arrays of the same shape along a new axis. Stacking `k` arrays of shape `(m, n)` with `axis=0` gives
+shape `(k, m, n)`, and the `i`-th input is the slice `[i]` of the result. With `axis=-1` the new axis comes last, so
+1-D arrays become the columns of a matrix instead of its rows. The result is a new array, and its dtype follows the
+[promotion rules](/api/array/dtypes/). To join along an axis the arrays already have, use
+[`concat`](/api/array/concat/).
+
+`unstack` is the reverse: it splits `x` along `axis` into a tuple of `x.shape[axis]` arrays, each with that axis
+removed. For `x` with two or more dimensions, `stack(unstack(x, axis=k), axis=k)` reproduces `x`. The parts are [views](/api/array/views/) of `x`:
+writing to one changes `x`. Splitting a 1-D array gives its elements as Python scalars, since stardust has no 0-D
+arrays.
+
+## Examples
+
+Two 1-D arrays as the rows of a matrix, then as its columns:
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([1, 2, 3])
+>>> y = sd.asarray([4, 5, 6])
+>>> sd.stack([x, y])
+array([[1, 2, 3],
+       [4, 5, 6]], dtype=int64)
+>>> sd.stack([x, y], axis=-1)
+array([[1, 4],
+       [2, 5],
+       [3, 6]], dtype=int64)
+```
+
+Split a matrix into its rows or its columns. The parts unpack like any tuple:
+
+```python
+>>> m = sd.asarray([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+>>> top, bottom = sd.unstack(m)
+>>> bottom
+array([4.0, 5.0, 6.0], dtype=float64)
+>>> cols = sd.unstack(m, axis=1)
+>>> len(cols)
+3
+>>> cols[0]
+array([1.0, 4.0], dtype=float64)
+```
+
+A 1-D array splits into Python scalars:
+
+```python
+>>> sd.unstack(x)
+(1, 2, 3)
+```
+
+`stack` needs arrays of one shape:
+
+```python
+>>> sd.stack([x, sd.asarray([7, 8])])
+Traceback (most recent call last):
+    ...
+ValueError: stack(): all arrays must have the same shape; got (3,) and (2,)
+```
+
+<Reference />
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.stack` and `numpy.unstack`. For two 1-D vectors, R's `rbind(x, y)` matches
+`stack([x, y])` and `cbind(x, y)` matches `stack([x, y], axis=-1)`.
+
+- Every element of `arrays` must be an `sd.ndarray`; NumPy also accepts lists there.
+- There are no `out`, `dtype` or `casting` arguments.
+- `unstack` of a 1-D array gives Python scalars (`int`, `float`, ...); NumPy gives NumPy scalars.

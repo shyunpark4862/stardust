@@ -1,0 +1,146 @@
+---
+kind: function
+title: reshape
+names: [reshape, ndarray.reshape]
+group: Shape and axes
+order: 1
+signatures:
+  - "sd.reshape(x, shape, /, *, copy=None)"
+  - "sd.ndarray.reshape(shape, /, *, copy=None)"
+summary: Give an array a new shape without changing its elements.
+params:
+  - name: x
+    type: array
+    kind: positional-only
+    desc: Input array. In the method form, the array the method is called on.
+  - name: shape
+    type: int or tuple of int
+    kind: positional-only
+    desc: "New shape. The lengths must multiply to `x.size`. One entry may be `-1`: that length is computed from `x.size` and the other lengths. An `int` means a 1-D shape. The empty tuple is rejected, since stardust has no 0-D arrays."
+  - name: copy
+    type: bool or None
+    kind: keyword-only
+    default: None
+    desc: Whether to copy the elements.
+    choices:
+      - [ 'None', "A view of `x` when the new shape can be produced without moving elements, a copy otherwise." ]
+      - [ 'True', Always a copy. ]
+      - [ 'False', "Always a view; `ValueError` when a view is not possible." ]
+returns:
+  - type: ndarray
+    desc: "Array of shape `shape` with the dtype and the elements of `x`, in row-major order. A view of `x` or a new array, as `copy` decides."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`, if `shape` is not an `int` or a tuple of `int` (a list is rejected), or if `copy` is not `True`, `False` or `None`. The method also raises it when the lengths are passed as separate arguments, as in `x.reshape(2, 3)`."
+  - type: ValueError
+    desc: "If the lengths do not multiply to `x.size`, if `shape` holds more than one `-1` or another negative length, if `shape` is the empty tuple or has more than 32 entries, or if `copy=False` and the result cannot be a view."
+seeAlso: [ravel, squeeze-expand_dims, permute_dims, views, ndarray]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+export const flat = [0, 1, 2, 3, 4, 5];
+export const grid = [[0, 1, 2], [3, 4, 5]];
+
+`reshape` arranges the elements of `x` in a new shape. The elements keep their values, their dtype and their order:
+both `x` and the result are read in row-major order, in which the last axis varies fastest (the rows of a matrix one
+after another). This order does not depend on how `x` is laid out in memory.
+
+With the default `copy=None`, the result is a [view](/api/array/views/) of `x` whenever the new shape can be described
+by new strides over the existing memory. This is always the case for an array whose elements are stored one after
+another in row-major order, such as a newly created array. A transposed or sliced array may need a copy. `copy=True`
+always copies, and `copy=False` raises `ValueError` instead of copying.
+
+The function and the method are the same operation: `sd.reshape(x, shape)` and `x.reshape(shape)` give equal results.
+
+<Fig caption="The six elements fill the new shape row by row.">
+  <ArrayFig name="x" data={flat} tones={['a', 'a', 'a', 'b', 'b', 'b']} note="shape (6,)" />
+  <Op note="(2, 3)">→</Op>
+  <ArrayFig name="sd.reshape(x, (2, 3))" data={grid} tones={[['a', 'a', 'a'], ['b', 'b', 'b']]} axes note="shape (2, 3)" />
+</Fig>
+
+## Examples
+
+Six elements as two rows of three, and as three rows of two with the method:
+
+```python
+>>> import stardust as sd
+>>> x = sd.arange(6)
+>>> sd.reshape(x, (2, 3))
+array([[0, 1, 2],
+       [3, 4, 5]], dtype=int64)
+>>> x.reshape((3, 2))
+array([[0, 1],
+       [2, 3],
+       [4, 5]], dtype=int64)
+```
+
+A length of `-1` is computed from the others:
+
+```python
+>>> sd.reshape(x, (3, -1)).shape
+(3, 2)
+>>> sd.reshape(x, (-1, 2, 1)).shape
+(3, 2, 1)
+```
+
+Reshaping a newly created array gives a view, whose `base` is `x`. The transpose of that view cannot be flattened
+without moving elements, so the result is a copy, and `copy=False` raises:
+
+```python
+>>> m = sd.reshape(x, (2, 3))
+>>> m.base is x
+True
+>>> t = sd.reshape(m.T, (6,))
+>>> t
+array([0, 3, 1, 4, 2, 5], dtype=int64)
+>>> t.base is None
+True
+>>> sd.reshape(m.T, (6,), copy=False)
+Traceback (most recent call last):
+    ...
+ValueError: reshape(): copy=False, but this reshape cannot be done without copying
+```
+
+The lengths must account for every element, and the method takes the shape as one argument:
+
+```python
+>>> sd.reshape(x, (4, -1))
+Traceback (most recent call last):
+    ...
+ValueError: reshape(): cannot reshape array of size 6 into shape (4, -1)
+>>> x.reshape(2, 3)
+Traceback (most recent call last):
+    ...
+TypeError: reshape(): incompatible function arguments. ...
+```
+
+<Reference />
+
+## Notes
+
+For a result of shape $(n_0, \dots, n_{k-1})$, the element at index $(i_0, \dots, i_{k-1})$ is element number
+
+$$
+\sum_{j=0}^{k-1} i_j \prod_{l=j+1}^{k-1} n_l
+$$
+
+of `x` counted in row-major order, starting from 0. In shape `(2, 3)`, index `(1, 2)` is element $1 \cdot 3 + 2 = 5$.
+The result is a view of `x` or a copy (see [Views and copies](/api/array/views/)).
+
+An array with zero elements can take any shape whose lengths multiply to zero. A `-1` is then ambiguous next to a
+length of 0, and `reshape` raises `ValueError`.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.reshape`, the method `numpy.ndarray.reshape`, and R's `dim(x) <- c(...)` or
+`array(x, dim)`.
+
+- There is no `order` argument. The order is always row-major, the NumPy default `order="C"`.
+- R fills arrays in column-major order: `dim(x) <- c(2, 3)` applied to `0:5` puts `0` and `1` in the first column.
+  `sd.reshape(sd.arange(6), (2, 3))` puts `0, 1, 2` in the first row.
+- `shape` must be an `int` or a tuple. NumPy also accepts a list, and its method also accepts separate lengths, as in
+  `x.reshape(2, 3)`.
+- `shape=()` raises `ValueError`; NumPy returns a 0-D array.
+- `x` must be an `sd.ndarray`; lists raise `TypeError`.

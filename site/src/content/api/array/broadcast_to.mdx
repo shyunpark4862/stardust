@@ -1,0 +1,110 @@
+---
+kind: function
+title: broadcast_to, broadcast_arrays
+names: [broadcast_to, broadcast_arrays]
+group: Shape and axes
+order: 6
+signatures:
+  - "sd.broadcast_to(x, shape, /)"
+  - "sd.broadcast_arrays(*arrays)"
+summary: Broadcast arrays to a common shape without copying them.
+params:
+  - name: x
+    type: array
+    kind: positional-only
+    desc: "Array to broadcast (`broadcast_to` only)."
+  - name: shape
+    type: int or tuple of int
+    kind: positional-only
+    desc: "Target shape (`broadcast_to` only). `x` must broadcast to it, and it must have at least as many dimensions as `x`. A list and the empty tuple are rejected."
+  - name: "*arrays"
+    type: array
+    desc: "Arrays to broadcast (`broadcast_arrays` only), any number of them, which must broadcast against each other."
+returns:
+  - name: broadcast_to
+    type: ndarray
+    desc: "A read-only view of `x` of shape `shape`, with the dtype of `x`."
+  - name: broadcast_arrays
+    type: tuple of ndarray
+    desc: "One read-only view per argument, in order, all of the broadcast shape. Each keeps its own dtype. No arguments give `()`."
+raises:
+  - type: TypeError
+    desc: "If `x` or an element of `arrays` is not an `sd.ndarray`, or if `shape` is not an `int` or a tuple of `int`."
+  - type: ValueError
+    desc: "If the shapes do not broadcast, or if `shape` is the empty tuple or holds a negative length."
+seeAlso: [broadcasting, tile, squeeze-expand_dims, views]
+---
+
+Arithmetic between arrays of different shapes broadcasts them to a common shape first, following the rules on
+[broadcasting](/api/array/broadcasting/). `broadcast_to` and `broadcast_arrays` perform that step on their own and
+return the broadcast arrays, for code that needs them explicitly.
+
+`broadcast_to` stretches one array to a given shape. `broadcast_arrays` stretches all its arguments to the shape they
+broadcast to together, and keeps the dtype of each.
+
+The results are read-only [views](/api/array/views/). An axis that is stretched is not copied: it has stride 0, so every
+position along it reads the same memory. Writing to such an array raises `ValueError`. `x.copy()` gives a writable
+array with every element stored. To repeat an array in memory directly, use [`tile`](/api/array/tile/).
+
+## Examples
+
+A row of three values stretched to two rows. The stride 0 of the first axis means that both rows are the same memory:
+
+```python
+>>> import stardust as sd
+>>> v = sd.asarray([1.0, 2.0, 3.0])
+>>> w = sd.broadcast_to(v, (2, 3))
+>>> w
+array([[1.0, 2.0, 3.0],
+       [1.0, 2.0, 3.0]], dtype=float64)
+>>> w.strides
+(0, 8)
+>>> w.base is v
+True
+```
+
+A row and a column broadcast against each other. Each result keeps its own dtype:
+
+```python
+>>> col = sd.asarray([[10], [20]])
+>>> p, q = sd.broadcast_arrays(v, col)
+>>> p
+array([[1.0, 2.0, 3.0],
+       [1.0, 2.0, 3.0]], dtype=float64)
+>>> q
+array([[10, 10, 10],
+       [20, 20, 20]], dtype=int64)
+```
+
+The results cannot be written to. A copy can:
+
+```python
+>>> w[0, 0] = 9.0
+Traceback (most recent call last):
+    ...
+ValueError: assignment destination is read-only
+>>> c = w.copy()
+>>> c[0, 0] = 9.0
+>>> c
+array([[9.0, 2.0, 3.0],
+       [1.0, 2.0, 3.0]], dtype=float64)
+```
+
+Shapes that do not broadcast raise `ValueError`:
+
+```python
+>>> sd.broadcast_to(v, (2, 4))
+Traceback (most recent call last):
+    ...
+ValueError: broadcast_to(): cannot broadcast an array of shape (3,) to shape (2, 4)
+```
+
+<Reference />
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.broadcast_to` and `numpy.broadcast_arrays`.
+
+- The arguments must be `sd.ndarray`; NumPy also accepts scalars and lists. `shape` must be an `int` or a tuple.
+- The results of `broadcast_arrays` are read-only. NumPy returns arrays that can be written to (with a warning).
+- `shape=()` raises `ValueError`; NumPy returns a 0-D array.

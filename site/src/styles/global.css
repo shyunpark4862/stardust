@@ -25,7 +25,6 @@ body {
   -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale;
   text-rendering: optimizeLegibility;
-  word-break: keep-all;
   overflow-wrap: break-word;
 }
 
@@ -159,9 +158,9 @@ samp {
 .page-head__lead code,
 .card__summary code,
 .related__summary code {
-  padding: 0.1em 0.35em;
+  padding: 0.1em 0.3em;
   border-radius: 5px;
   background: var(--slate-100);
-  font-size: 0.86em;
+  font-size: var(--text-code-inline);
   color: var(--blue-800);
 }

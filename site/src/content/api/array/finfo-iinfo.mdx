@@ -1,0 +1,107 @@
+---
+kind: function
+title: finfo, iinfo
+names: [finfo, iinfo]
+group: Data types
+order: 4
+signatures:
+  - "sd.finfo(type, /)"
+  - "sd.iinfo(type, /)"
+summary: Return the limits and precision of the floating-point or integer data type.
+params:
+  - name: type
+    type: dtype, str or array
+    kind: positional-only
+    desc: "For `finfo`: `sd.float64` or `sd.complex128`, their names, or an array of either dtype. For `iinfo`: `sd.int64`, its name, or an `int64` array."
+returns:
+  - name: finfo
+    type: FinfoResult
+    desc: "Named tuple `(bits, eps, max, min, smallest_normal, dtype)` describing `float64`. For `complex128` it describes the `float64` real and imaginary parts."
+  - name: iinfo
+    type: IinfoResult
+    desc: "Named tuple `(bits, max, min, dtype)` describing `int64`."
+raises:
+  - type: TypeError
+    desc: "If `type` is not one of the accepted dtypes, names or arrays: for example `finfo(sd.int64)`, `iinfo(sd.float64)`, `iinfo(sd.bool)`, or a Python type such as `float`."
+seeAlso: [dtypes, isdtype, astype, nextafter]
+---
+
+`finfo` and `iinfo` describe the numbers a dtype can hold. `finfo` covers the floating-point dtypes, `float64` and
+`complex128` (whose real and imaginary parts are `float64`); `iinfo` covers `int64`. They are the source for
+tolerances in numerical comparisons and for checks against overflow.
+
+Both return a named tuple: the fields are read by name (`sd.finfo(sd.float64).eps`) or by position. The values are
+Python `int` and `float` objects, and `dtype` is a dtype object.
+
+| Field | `finfo` | `iinfo` |
+|---|---|---|
+| `bits` | 64, the number of bits of a `float64` | 64 |
+| `eps` | `2.0**-52`, the distance from 1.0 to the next larger `float64` | (none) |
+| `max` | largest finite `float64` | `2**63 - 1` |
+| `min` | `-max` | `-2**63` |
+| `smallest_normal` | `2.0**-1022`, the smallest positive normal `float64` | (none) |
+| `dtype` | `sd.float64`, also for `complex128` | `sd.int64` |
+
+## Examples
+
+The floating-point limits:
+
+```python
+>>> import stardust as sd
+>>> f = sd.finfo(sd.float64)
+>>> f
+FinfoResult(bits=64, eps=2.220446049250313e-16, max=1.7976931348623157e+308, min=-1.7976931348623157e+308, smallest_normal=2.2250738585072014e-308, dtype=float64)
+>>> f.eps
+2.220446049250313e-16
+>>> 1.0 + f.eps > 1.0, 1.0 + f.eps / 2 == 1.0
+(True, True)
+```
+
+The integer limits. Integer arithmetic past them wraps around without an error:
+
+```python
+>>> sd.iinfo(sd.int64)
+IinfoResult(bits=64, max=9223372036854775807, min=-9223372036854775808, dtype=int64)
+>>> big = sd.asarray([sd.iinfo(sd.int64).max])
+>>> big + 1
+array([-9223372036854775808], dtype=int64)
+```
+
+Complex dtypes and arrays are accepted; a complex dtype is described by its real part:
+
+```python
+>>> sd.finfo(sd.complex128).dtype
+float64
+>>> sd.iinfo(sd.asarray([1, 2])).max
+9223372036854775807
+```
+
+Each function covers its own kind of dtype:
+
+```python
+>>> sd.finfo(sd.int64)
+Traceback (most recent call last):
+    ...
+TypeError: finfo(): 'type' must be sd.float64 or sd.complex128 (or their names) or an sd.ndarray of those dtypes, not sd.int64
+```
+
+<Reference />
+
+## Notes
+
+`eps` is the machine epsilon $\varepsilon = 2^{-52}$. Every real number $x$ in the normal range of `float64` is
+represented with a relative error of at most $\varepsilon / 2$, so `eps` is the usual scale for relative tolerances:
+two results that agree to within a few multiples of $\varepsilon \lvert x \rvert$ agree to the precision of the dtype.
+
+Positive values below `smallest_normal` are subnormal: they are representable down to about $4.9 \times 10^{-324}$,
+but with fewer significant bits. Values beyond `max` in magnitude overflow to infinity.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.finfo` and `numpy.iinfo`, and R's `.Machine$double.eps`, `.Machine$double.xmax`,
+`.Machine$double.xmin` and `.Machine$integer.max`.
+
+- The result has only the fields above. NumPy's `tiny`, `resolution`, `precision`, `smallest_subnormal` and the
+  exponent fields are absent; `tiny` equals `smallest_normal`.
+- Python types (`float`, `int`) and NumPy dtypes are not accepted.
+- R's integers have 32 bits: `.Machine$integer.max` is `2**31 - 1`, while `int64` reaches `2**63 - 1`.

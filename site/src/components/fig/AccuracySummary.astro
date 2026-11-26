@@ -48,7 +48,7 @@ const D = data as unknown as { fields: string[]; areas: Record<string, AreaData>
 const col = Object.fromEntries(D.fields.map((f, i) => [f, i]));
 
 const AREA_NAMES: Record<string, string> = {
-  array: 'sd 배열',
+  array: 'sd (arrays)',
   linalg: 'sd.linalg',
   sparse: 'sd.sparse',
   special: 'sd.special',
@@ -65,14 +65,14 @@ const AREA_NAMES: Record<string, string> = {
   graph: 'sd.graph',
 };
 const GROUP_NAMES: Record<string, string> = {
-  'stats/mv': '다변량·행렬 분포 묶음',
+  'stats/mv': 'multivariate and matrix distributions',
 };
 const REGION_NAMES: Record<string, string> = {
-  guaranteed: '보장',
-  loose: '느슨',
-  mixed: '혼합',
-  tiny: '아주 작은 값',
-  'exact d<=3': '정확 계산(d ≤ 3)',
+  guaranteed: 'guaranteed',
+  loose: 'loose',
+  mixed: 'mixed',
+  tiny: 'tiny values',
+  'exact d<=3': 'exact (d ≤ 3)',
 };
 
 /** Three significant digits; outside [1e-3, 1e5) as m × 10^e. */
@@ -111,28 +111,28 @@ const get = (r: Row, f: string) => (r.cells.length > col[f] ? r.cells[col[f]] : 
 const has = (f: string) => rows.some((r) => get(r, f) !== null);
 const regression = area === 'regression';
 const columns: { key: string; head: string; show: boolean; pair?: string }[] = [
-  { key: 'ulp_max', head: '최대 ULP', show: has('ulp_max') },
+  { key: 'ulp_max', head: 'Max ULP', show: has('ulp_max') },
   { key: 'ulp_p999', head: '99.9% ULP', show: has('ulp_p999') },
-  { key: 'ulp_scale_max', head: 'ULP / 배율', show: has('ulp_scale_max') },
-  { key: 'mixed_max', head: 'mixed (최대 / 99.9%)', show: has('mixed_max'), pair: 'mixed_p999' },
-  { key: 'rel_max', head: '최대 상대오차', show: has('rel_max') },
-  { key: 'norm_rel', head: '노름 상대오차', show: has('norm_rel') },
-  { key: 'norm_inf_rel_max', head: '노름 상대오차(∞)', show: has('norm_inf_rel_max') },
-  { key: 'numpy_dist_max', head: 'numpy와의 ULP', show: has('numpy_dist_max') },
-  { key: 'nonfinite', head: 'NaN·inf 점', show: rows.some((r) => Number(get(r, 'nonfinite') ?? 0) > 0) },
-  { key: 'abs_max', head: '최대 절대오차', show: has('abs_max') },
-  { key: 'rel_cond_max', head: '상대오차 / (u·조건수)', show: has('rel_cond_max') },
-  { key: 'backward_max', head: '잔차 / (n·ε·척도)', show: has('backward_max') },
-  { key: 'orth_max', head: '직교성 / (n·ε)', show: has('orth_max') },
-  { key: 'grad_max', head: '최대 ‖∇f‖', show: has('grad_max') },
-  { key: 'excess_max', head: '최대 (f − f*) / max(1, f*)', show: has('excess_max') },
-  { key: 'tol_ratio_max', head: '거리 / 허용오차', show: has('tol_ratio_max') },
-  { key: 'fnorm_max', head: '최대 ‖F‖∞', show: has('fnorm_max') },
-  { key: 'kkt_max', head: 'KKT 잔차 / ε', show: has('kkt_max') },
-  { key: 'unconverged', head: '수렴 못 함', show: has('unconverged') },
-  { key: 'off_target', head: '판정 밖', show: has('off_target') },
-  { key: 'est_ratio_max', head: '오차 / 추정', show: has('est_ratio_max') },
-  { key: 'contract', head: '계약 대비', show: has('contract') },
+  { key: 'ulp_scale_max', head: 'ULP / scale', show: has('ulp_scale_max') },
+  { key: 'mixed_max', head: 'Mixed (max / 99.9%)', show: has('mixed_max'), pair: 'mixed_p999' },
+  { key: 'rel_max', head: 'Max rel. error', show: has('rel_max') },
+  { key: 'norm_rel', head: 'Norm rel. error', show: has('norm_rel') },
+  { key: 'norm_inf_rel_max', head: 'Norm rel. error (∞)', show: has('norm_inf_rel_max') },
+  { key: 'numpy_dist_max', head: 'ULP from NumPy', show: has('numpy_dist_max') },
+  { key: 'nonfinite', head: 'NaN/inf points', show: rows.some((r) => Number(get(r, 'nonfinite') ?? 0) > 0) },
+  { key: 'abs_max', head: 'Max abs. error', show: has('abs_max') },
+  { key: 'rel_cond_max', head: 'Rel. error / (u·cond)', show: has('rel_cond_max') },
+  { key: 'backward_max', head: 'Residual / (n·ε·scale)', show: has('backward_max') },
+  { key: 'orth_max', head: 'Orthogonality / (n·ε)', show: has('orth_max') },
+  { key: 'grad_max', head: 'Max ‖∇f‖', show: has('grad_max') },
+  { key: 'excess_max', head: 'Max (f − f*) / max(1, f*)', show: has('excess_max') },
+  { key: 'tol_ratio_max', head: 'Distance / tolerance', show: has('tol_ratio_max') },
+  { key: 'fnorm_max', head: 'Max ‖F‖∞', show: has('fnorm_max') },
+  { key: 'kkt_max', head: 'KKT residual / ε', show: has('kkt_max') },
+  { key: 'unconverged', head: 'Not converged', show: has('unconverged') },
+  { key: 'off_target', head: 'Off target', show: has('off_target') },
+  { key: 'est_ratio_max', head: 'Error / estimate', show: has('est_ratio_max') },
+  { key: 'contract', head: 'Ratio to contract', show: has('contract') },
 ].filter((c) => c.show);
 
 /** The summary rows: each area, then its groups indented under it. */
@@ -152,12 +152,12 @@ const summaryRows: { label: string; group: boolean; s: Summary }[] = Object.entr
       <table>
         <thead>
           <tr>
-            <th>영역</th>
-            <th class="acc__num">스윕</th>
-            <th class="acc__num">점</th>
-            <th class="acc__num">(함수, 영역) 줄</th>
-            <th class="acc__num">계약 안</th>
-            <th>가장 큰 계약 대비</th>
+            <th>Area</th>
+            <th class="acc__num">Sweeps</th>
+            <th class="acc__num">Points</th>
+            <th class="acc__num">(Function, region) rows</th>
+            <th class="acc__num">Within contract</th>
+            <th>Largest ratio to contract</th>
           </tr>
         </thead>
         <tbody>
@@ -169,7 +169,7 @@ const summaryRows: { label: string; group: boolean; s: Summary }[] = Object.entr
                 <td class="acc__num">{int(s.sweeps)}</td>
                 <td class="acc__num">{int(s.points)}</td>
                 <td class="acc__num">{int(s.regions)}</td>
-                <td class="acc__num">{s.judged ? `${int(s.within)} / ${int(s.judged)}` : '계약 없음'}</td>
+                <td class="acc__num">{s.judged ? `${int(s.within)} / ${int(s.judged)}` : 'no contract'}</td>
                 <td>
                   {s.worst && w ? (
                     <>
@@ -178,7 +178,7 @@ const summaryRows: { label: string; group: boolean; s: Summary }[] = Object.entr
                       {REGION_NAMES[s.worst.region] ?? <code>{s.worst.region}</code>}
                     </>
                   ) : (
-                    '기준선과 비교만'
+                    'baseline comparison only'
                   )}
                 </td>
               </tr>
@@ -196,9 +196,9 @@ const summaryRows: { label: string; group: boolean; s: Summary }[] = Object.entr
       <table>
         <thead>
           <tr>
-            <th>{regression ? '문제' : '함수'}</th>
-            <th>{regression ? '필드' : '영역'}</th>
-            <th class="acc__num">점</th>
+            <th>{regression ? 'Problem' : 'Function'}</th>
+            <th>{regression ? 'Field' : 'Region'}</th>
+            <th class="acc__num">Points</th>
             {columns.map((c) => (
               <th class="acc__num">{c.head}</th>
             ))}

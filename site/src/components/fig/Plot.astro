@@ -117,7 +117,7 @@ const zeroY = range[0] <= 0 && range[1] >= 0;
 ---
 
 <div class="plot" data-plot={readout}>
-  <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={curves.map((c) => c.label).join(', ') + ' 그래프'}>
+  <svg viewBox={`0 0 ${W} ${H}`} role="img" aria-label={`Plot of ${curves.map((c) => c.label).join(', ')}`}>
     {xTicks.map((t) => <line class="plot__grid" x1={sx(t.v)} x2={sx(t.v)} y1={pad.t} y2={H - pad.b} />)}
     {yTicks.map((t) => <line class="plot__grid" x1={pad.l} x2={W - pad.r} y1={sy(t.v)} y2={sy(t.v)} />)}
     {zeroY && <line class="plot__axis" x1={pad.l} x2={W - pad.r} y1={sy(0)} y2={sy(0)} />}

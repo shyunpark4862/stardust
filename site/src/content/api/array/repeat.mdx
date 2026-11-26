@@ -1,0 +1,109 @@
+---
+kind: function
+title: repeat
+names: [repeat]
+group: Joining and repeating
+order: 6
+signatures:
+  - "sd.repeat(x, repeats, /, *, axis=None)"
+summary: Repeat each element of an array a given number of times.
+params:
+  - name: x
+    type: array
+    kind: positional-only
+    desc: Input array.
+  - name: repeats
+    type: int or int64 array of shape (n,)
+    kind: positional-only
+    desc: "Number of copies of each element. An `int` applies to every element. A 1-D `int64` array gives one count per element along `axis` (its length `n` equals that axis length), or one count for all when its length is 1. Counts must be 0 or more. Lists, tuples and other dtypes are rejected."
+  - name: axis
+    type: int or None
+    kind: keyword-only
+    default: None
+    desc: "Axis along which to repeat. Negative numbers count from the end. `None` repeats the elements of the flattened array (in row-major order) and returns a 1-D array."
+returns:
+  - type: ndarray
+    desc: "New array with the dtype of `x`. Along `axis`, its length is the sum of the counts; the other axes keep their lengths."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`, if `repeats` is not an `int` or an `int64` array, or if `axis` is not an `int` or `None` (a tuple is rejected)."
+  - type: ValueError
+    desc: "If a count is negative, if a `repeats` array is not 1-D or its length matches neither the axis length nor 1, if `axis` is out of range, or if the result would have too many elements."
+seeAlso: [tile, broadcast_to, concat]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import FigRow from '../../../components/fig/FigRow.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+export const v = [1, 2, 3];
+export const repeated = [1, 1, 2, 2, 3, 3];
+export const tiled = [1, 2, 3, 1, 2, 3];
+
+`repeat` makes consecutive copies of each element: the copies of an element stand next to it, before the next element
+begins. Along an axis of a 2-D array, it repeats whole rows (`axis=0`) or whole columns (`axis=1`). With an array of
+counts, each element can be repeated a different number of times, including 0 to drop it.
+
+[`tile`](/api/array/tile/) repeats the array as a whole instead, so its copies follow one another. The result of
+`repeat` is always a new array.
+
+<Fig caption="repeat copies each element in place; tile copies the whole array." column>
+  <FigRow>
+    <ArrayFig name="v" data={v} />
+    <Op note="repeat(v, 2)">→</Op>
+    <ArrayFig data={repeated} tones={['a', 'a', 'b', 'b', '', '']} />
+  </FigRow>
+  <FigRow>
+    <ArrayFig name="v" data={v} />
+    <Op note="tile(v, 2)">→</Op>
+    <ArrayFig data={tiled} tones={['a', 'b', '', 'a', 'b', '']} />
+  </FigRow>
+</Fig>
+
+## Examples
+
+Every element twice, and each element its own number of times:
+
+```python
+>>> import stardust as sd
+>>> v = sd.asarray([1, 2, 3])
+>>> sd.repeat(v, 2)
+array([1, 1, 2, 2, 3, 3], dtype=int64)
+>>> sd.repeat(v, sd.asarray([1, 0, 3]))
+array([1, 3, 3, 3], dtype=int64)
+```
+
+Rows and columns of a 2-D array. Without `axis`, the array is flattened first:
+
+```python
+>>> m = sd.asarray([[1, 2], [3, 4]])
+>>> sd.repeat(m, 2, axis=0)
+array([[1, 2],
+       [1, 2],
+       [3, 4],
+       [3, 4]], dtype=int64)
+>>> sd.repeat(m, sd.asarray([1, 2]), axis=1)
+array([[1, 2, 2],
+       [3, 4, 4]], dtype=int64)
+>>> sd.repeat(m, 2)
+array([1, 1, 2, 2, 3, 3, 4, 4], dtype=int64)
+```
+
+Counts must be an `int` or an `int64` array; a list is rejected:
+
+```python
+>>> sd.repeat(v, [1, 0, 3])
+Traceback (most recent call last):
+    ...
+TypeError: repeat(): 'repeats' must be an int or an int64 array, not list
+```
+
+<Reference />
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.repeat` and R's `rep(x, each = n)` (one count for all) or `rep(x, times = counts)`
+(one count per element).
+
+- `repeats` must be an `int` or an `int64` `sd.ndarray`. NumPy also accepts lists and tuples of counts.
+- `x` must be an `sd.ndarray`; lists raise `TypeError`.

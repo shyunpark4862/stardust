@@ -21,9 +21,9 @@ import '@mathjax/src/mjs/input/tex/cancel/CancelConfiguration.js';
 import '@mathjax/src/mjs/input/tex/color/ColorConfiguration.js';
 import { MathJaxStix2Font } from '@mathjax/mathjax-stix2-font/mjs/svg.js';
 
-// The adaptor cannot measure text, so text the font has no glyph for
-// (Korean in \text{...}) is sized by estimate. Hangul is drawn in the body
-// font (Pretendard), whose syllables are a little under 1em wide.
+// The adaptor cannot measure text, so text the font has no glyph for (in
+// \text{...}) is sized by estimate and drawn in the body font. The CJK width
+// only matters for wide characters, which the English text does not use.
 const adaptor = liteAdaptor({ cjkCharWidth: 0.95, unknownCharWidth: 0.5 });
 RegisterHTMLHandler(adaptor);
 

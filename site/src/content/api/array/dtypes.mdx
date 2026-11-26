@@ -1,0 +1,263 @@
+---
+kind: concept
+title: Data types
+names: [bool, int64, float64, complex128, string]
+group: Array model
+order: 2
+summary: The data types of array elements and the rules that decide the data type of a result.
+seeAlso: [astype, can_cast-result_type, isdtype, finfo-iinfo, ndarray]
+---
+
+Every element of an array has the same data type, or dtype, given by the array's `dtype` attribute. Arrays have four
+dtypes: `bool`, `int64`, `float64` and `complex128`. A fifth, `string`, holds text in the columns of `sd.frame`
+data frames; arrays do not use it.
+
+The four array types are ordered from the narrowest kind of number to the widest:
+`bool < int64 < float64 < complex128`. This order decides the dtype of every result that combines two dtypes
+(type promotion, below) and which conversions happen without being asked for (implicit conversion).
+
+## The data types
+
+| dtype | Values | Bytes per element | Python scalar |
+|---|---|---|---|
+| `sd.bool` | `True` and `False` | 1 | `bool` |
+| `sd.int64` | integers from $-2^{63}$ to $2^{63} - 1$ | 8 | `int` |
+| `sd.float64` | double-precision floating-point numbers, including infinity and NaN | 8 | `float` |
+| `sd.complex128` | complex numbers whose real and imaginary parts are `float64` | 16 | `complex` |
+| `sd.string` | text, in data frame columns only | | `str` |
+
+The last column is the type of a single element taken out of an array, for example by `x[0]` or by a reduction over
+all axes.
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([1.5, 2.5])
+>>> x.dtype
+float64
+>>> x.itemsize
+8
+>>> type(x[0])
+<class 'float'>
+>>> sd.asarray([1 + 2j]).dtype
+complex128
+```
+
+## Data type objects
+
+The names `sd.bool`, `sd.int64`, `sd.float64`, `sd.complex128` and `sd.string` are dtype objects, and `x.dtype`
+returns one of them. They compare with `is` or `==`, can be dictionary keys, and print as their name. A dtype object
+is not equal to its name as a string; compare `str(x.dtype)` with the name instead. `sd.bool` is a different object
+from Python's `bool`.
+
+```python
+>>> x.dtype is sd.float64
+True
+>>> x.dtype == "float64"
+False
+>>> str(x.dtype) == "float64"
+True
+```
+
+Every `dtype=` argument, and `astype`, accepts a dtype object or its name. Other names, Python types such as
+`float`, and NumPy dtypes raise `TypeError`, as does `sd.string` in an array function:
+
+```python
+>>> sd.zeros(2, dtype="int64")
+array([0, 0], dtype=int64)
+>>> sd.zeros(2, dtype="float32")
+Traceback (most recent call last):
+    ...
+TypeError: zeros(): 'dtype' must be sd.bool, sd.int64, sd.float64 or sd.complex128 (or their names), not 'float32'
+```
+
+The objects have no attributes. [`finfo` and `iinfo`](/api/array/finfo-iinfo/) give the limits and precision of the
+numeric types, and [`isdtype`](/api/array/isdtype/) tests a dtype for a kind such as `"integral"`.
+
+## Data type of a new array
+
+[`asarray`](/api/array/asarray/) gives a list of Python numbers the narrowest dtype that holds all its elements. A
+list with no elements gives `float64`. Strings and `None` are not numbers and raise `TypeError`:
+
+```python
+>>> sd.asarray([True, 1]).dtype
+int64
+>>> sd.asarray([1, 2.5]).dtype
+float64
+>>> sd.asarray([]).dtype
+float64
+>>> sd.asarray(["a"])
+Traceback (most recent call last):
+    ...
+TypeError: asarray(): cannot store an object of type 'str' in an array (only bool, int, float and complex)
+```
+
+## Type promotion
+
+A function that combines arrays of different dtypes, such as `add` or `concat`, first converts them to the wider
+of the types in the order `bool < int64 < float64 < complex128`. This common type is the promoted type, and
+[`result_type`](/api/array/can_cast-result_type/) computes it. For two arrays:
+
+| | `bool` | `int64` | `float64` | `complex128` |
+|---|---|---|---|---|
+| **`bool`** | `bool` | `int64` | `float64` | `complex128` |
+| **`int64`** | `int64` | `int64` | `float64` | `complex128` |
+| **`float64`** | `float64` | `float64` | `float64` | `complex128` |
+| **`complex128`** | `complex128` | `complex128` | `complex128` | `complex128` |
+
+The promoted type is the type of the computation. The type of the result is that type unless the function says
+otherwise: comparisons return `bool`, and the rules below change it for Booleans and for functions with
+floating-point results. Each function's page gives its result type.
+
+### Python scalars
+
+A Python scalar takes part in promotion as an array of its own type: `bool` as `bool`, `int` as `int64`, `float` as
+`float64` and `complex` as `complex128`. The value does not matter, only the type. NumPy scalars count as the Python
+scalar of the same kind, so `numpy.float32(0.5)` acts as a `float`.
+
+```python
+>>> i = sd.asarray([1, 2, 3])
+>>> i + 1
+array([2, 3, 4], dtype=int64)
+>>> i + 1.5
+array([2.5, 3.5, 4.5], dtype=float64)
+>>> i + 1j
+array([(1+1j), (2+1j), (3+1j)], dtype=complex128)
+>>> sd.result_type(i, 2.0)
+float64
+```
+
+A Python `int` that does not fit in `int64` raises `OverflowError` when the promoted type is `bool` or `int64`. When
+the other operand is floating point, the integer is converted to `float64` instead:
+
+```python
+>>> i + 2**70
+Traceback (most recent call last):
+    ...
+OverflowError: Python int too large to convert to int64
+>>> sd.asarray([1.0]) + 2**70
+array([1.1805916207174113e+21], dtype=float64)
+```
+
+### Arithmetic on Booleans
+
+Arithmetic treats `True` as 1 and `False` as 0 and returns `int64`. This applies to `add`, `subtract`, `multiply`,
+`floor_divide`, `remainder`, `pow`, `negative`, `positive`, `abs`, `square`, `sign`, `matmul`, `sum`, `prod`,
+`cumulative_sum` and `cumulative_prod`. Logical and bitwise functions, comparisons, `maximum`, `minimum` and the
+rounding functions keep `bool`.
+
+```python
+>>> b = sd.asarray([True, False, True])
+>>> b + b
+array([2, 0, 2], dtype=int64)
+>>> sd.sum(b)
+2
+>>> b | b
+array([ True, False,  True], dtype=bool)
+```
+
+### Functions with floating-point results
+
+Functions whose results are not integers in general, such as `divide`, `sqrt`, `exp`, `log`, the trigonometric
+functions and `mean`, compute `bool` and `int64` input in `float64`:
+
+```python
+>>> i / 2
+array([0.5, 1.0, 1.5], dtype=float64)
+>>> sd.sqrt(i)
+array([               1.0, 1.4142135623730951, 1.7320508075688772], dtype=float64)
+>>> sd.mean(i)
+2.0
+```
+
+## Implicit conversion
+
+Some operations store a result in an existing array, whose dtype does not change:
+
+- assignment to elements, `x[i] = value` (see [Indexing](/api/array/indexing/));
+- in-place operators such as `x += y`;
+- the `out=` argument of element-wise functions (see [Conventions](/start/conventions/#the-out-argument));
+- the `min` and `max` bounds of `clip`, and `fill_value` of `full_like` without `dtype=`.
+
+The value is converted to the array's type only if that type comes later in the order, or is the same: `bool` goes
+into any array, `int64` into `int64`, `float64` and `complex128` arrays, and so on. The check uses the dtypes
+alone, never the values, so even `2.0` cannot go into an `int64` array. Any other combination raises `TypeError`;
+[`can_cast`](/api/array/can_cast-result_type/) tells in advance.
+
+```python
+>>> k = sd.asarray([1, 2, 3])
+>>> k[0] = True
+>>> k[1] = 2.0
+Traceback (most recent call last):
+    ...
+TypeError: cannot implicitly convert float64 to int64 (that would lose information); convert explicitly with astype
+>>> k /= 2
+Traceback (most recent call last):
+    ...
+TypeError: cannot implicitly convert float64 to int64 (that would lose information); convert explicitly with astype
+>>> k //= 2
+>>> k
+array([0, 1, 1], dtype=int64)
+```
+
+## Explicit conversion
+
+[`astype`](/api/array/astype/), the `dtype=` argument of the creation functions, and the `dtype=` argument of `sum`,
+`prod`, `cumulative_sum` and `cumulative_prod` convert to the requested type even when values change (the reductions
+raise `TypeError` for `dtype=sd.bool`):
+
+| From | To | Result |
+|---|---|---|
+| `float64` | `int64` | the value truncated toward zero; values beyond the `int64` range become its minimum or maximum; NaN becomes 0 |
+| `int64` | `float64` | the nearest `float64`; integers above $2^{53}$ in magnitude may round |
+| any type | `bool` | `x != 0`, so NaN becomes `True` |
+| `bool` | a number type | 1 for `True`, 0 for `False` |
+| `complex128` | `int64` or `float64` | not allowed: raises `TypeError`, since the imaginary part would be lost |
+
+```python
+>>> f = sd.asarray([2.9, -2.9, sd.inf, sd.nan])
+>>> f.astype(sd.int64)
+array([                  2,                  -2, 9223372036854775807,
+                         0], dtype=int64)
+>>> sd.asarray([0.0, sd.nan, -2.0]).astype(sd.bool)
+array([False,  True,  True], dtype=bool)
+>>> sd.asarray([1 + 0j]).astype(sd.float64)
+Traceback (most recent call last):
+    ...
+TypeError: astype(): cannot convert complex128 to float64: the imaginary part would be lost (take the real part explicitly)
+```
+
+To keep the real part of a complex array, use [`real`](/api/array/complex/).
+
+## Integer overflow
+
+`int64` arithmetic wraps around silently when a result leaves the range from $-2^{63}$ to $2^{63} - 1$, and raises no
+error or warning. A single element taken out of an array is a Python `int` and follows Python's arithmetic, which
+has no overflow:
+
+```python
+>>> big = sd.asarray([2**63 - 1])
+>>> big + 1
+array([-9223372036854775808], dtype=int64)
+>>> big[0] + 1
+9223372036854775808
+```
+
+Integer division by zero is described on the [`floor_divide` and `remainder`](/api/array/floor_divide-remainder/)
+page.
+
+## For NumPy, SciPy and R users
+
+The dtype objects correspond to `numpy.bool`, `numpy.int64`, `numpy.float64` and `numpy.complex128`. R's
+logical, integer, double, complex and character types are the nearest matches in R.
+
+- NumPy has many more dtypes (`int8` to `uint64`, `float16`, `float32`, dates, strings). `asarray` widens NumPy
+  arrays of smaller integer and floating-point types to `int64` and `float64`, and raises `TypeError` for `uint64`
+  and for types it cannot represent.
+- Arithmetic on Booleans returns `int64`. In NumPy, adding two Boolean arrays gives a Boolean array, and subtracting
+  them raises `TypeError`.
+- Assignment, in-place operators and `out=` never convert to an earlier type. NumPy stores `2.5` into an integer
+  array as 2; here it raises `TypeError`.
+- `astype` from `complex128` to a real type raises `TypeError`. NumPy drops the imaginary part with a warning.
+- A dtype object is not equal to its name: `x.dtype == "float64"` is `False`, while NumPy compares it as `True`.
+- R's integer type has 32 bits, and an integer overflow gives `NA` with a warning. `int64` has 64 bits and wraps
+  around.

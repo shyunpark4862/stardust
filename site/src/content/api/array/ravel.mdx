@@ -1,0 +1,75 @@
+---
+kind: function
+title: ravel
+names: [ravel]
+group: Shape and axes
+order: 2
+signatures:
+  - "sd.ravel(x, /)"
+summary: Return the elements of an array as a 1-D array.
+params:
+  - name: x
+    type: array
+    kind: positional-only
+    desc: Input array of any shape.
+returns:
+  - type: ndarray of shape (x.size,)
+    desc: "The elements of `x` in row-major order, with the dtype of `x`. A view of `x` when possible, otherwise a new array."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`."
+seeAlso: [reshape, concat]
+---
+
+`ravel` flattens an array: it returns its elements in one row, in row-major order (the last axis varies fastest). It is
+the same as `reshape(x, -1)`.
+
+The result is a [view](/api/array/views/) of `x` when the elements already lie in memory in that order, as they do in a
+newly created array, and a new array otherwise, for example for a transposed matrix or for the first two columns `m[:, :2]` of a
+matrix `m`. Writing to a view changes `x`. To always get an independent array, use `reshape(x, -1, copy=True)`.
+
+## Examples
+
+A 2-D and a 3-D array:
+
+```python
+>>> import stardust as sd
+>>> m = sd.asarray([[1, 2, 3], [4, 5, 6]])
+>>> sd.ravel(m)
+array([1, 2, 3, 4, 5, 6], dtype=int64)
+>>> sd.ravel(sd.reshape(sd.arange(8), (2, 2, 2)))
+array([0, 1, 2, 3, 4, 5, 6, 7], dtype=int64)
+```
+
+The order follows the shape, not the memory. Flattening the transpose reads it row by row, and needs a copy:
+
+```python
+>>> t = sd.ravel(m.T)
+>>> t
+array([1, 4, 2, 5, 3, 6], dtype=int64)
+>>> t.base is None
+True
+```
+
+The result for `m` is a view, so writing to it changes `m`:
+
+```python
+>>> r = sd.ravel(m)
+>>> r.base is m
+True
+>>> r[0] = 10
+>>> m
+array([[10,  2,  3],
+       [ 4,  5,  6]], dtype=int64)
+```
+
+<Reference />
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.ravel` and R's `as.vector(x)` or `c(x)`.
+
+- There is no `order` argument: the order is always row-major. R reads arrays in column-major order, so `c(x)` of a
+  matrix lists its columns one after another.
+- There is no `flatten` method. `reshape(x, -1, copy=True)` always returns a copy.
+- `x` must be an `sd.ndarray`; lists raise `TypeError`.

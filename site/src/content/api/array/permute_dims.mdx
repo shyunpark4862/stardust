@@ -1,0 +1,105 @@
+---
+kind: function
+title: permute_dims, matrix_transpose
+names: [permute_dims, matrix_transpose]
+group: Shape and axes
+order: 3
+signatures:
+  - "sd.permute_dims(x, axes, /)"
+  - "sd.matrix_transpose(x, /)"
+summary: Reorder the axes of an array, or transpose its last two axes.
+params:
+  - name: x
+    type: array
+    kind: positional-only
+    desc: "Input array. `matrix_transpose` requires at least two dimensions."
+  - name: axes
+    type: int, tuple of int or list of int
+    kind: positional-only
+    desc: "Permutation of the axes of `x` (`permute_dims` only): every axis number from 0 to `x.ndim - 1` exactly once. Negative numbers count from the end. Axis `i` of the result is axis `axes[i]` of `x`. A 1-D `x` also accepts a single `int`."
+returns:
+  - type: ndarray
+    desc: "A view of `x` with the axes reordered. `permute_dims` gives shape `tuple(x.shape[a] for a in axes)`; `matrix_transpose` gives shape `(..., n, m)` for `x` of shape `(..., m, n)`."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`, or if `axes` is not an `int`, a tuple or a list of `int`."
+  - type: ValueError
+    desc: "`permute_dims`: if `axes` does not name every axis of `x` exactly once, or names an axis out of range. `matrix_transpose`: if `x` has fewer than two dimensions."
+seeAlso: [moveaxis, reshape, ndarray, views]
+---
+
+`permute_dims` reorders the axes of an array. With `y = permute_dims(x, axes)`, axis `i` of `y` is axis `axes[i]` of
+`x`, and the elements follow: for a 3-D `x` and `axes = (2, 0, 1)`, `y[k, i, j]` is `x[i, j, k]`. For a 2-D array,
+`axes = (1, 0)` gives the transpose.
+
+`matrix_transpose` swaps the last two axes, which transposes every matrix in a stack of matrices and leaves the leading
+axes alone. The attribute `x.mT` gives the same result, and `x.T` gives the transpose of a 2-D array (see
+[`ndarray`](/api/array/ndarray/)).
+
+Both functions return a [view](/api/array/views/): no element is moved. Only the order in which the axes are read
+changes, so writing to the result changes `x`.
+
+## Examples
+
+Move the last axis of a 3-D array to the front. Element `[3, 1, 2]` of the result is element `[1, 2, 3]` of `a`:
+
+```python
+>>> import stardust as sd
+>>> a = sd.reshape(sd.arange(24), (2, 3, 4))
+>>> y = sd.permute_dims(a, (2, 0, 1))
+>>> y.shape
+(4, 2, 3)
+>>> y[3, 1, 2], a[1, 2, 3]
+(23, 23)
+```
+
+The transpose of a matrix, with `permute_dims` and with `matrix_transpose`:
+
+```python
+>>> m = sd.asarray([[1, 2, 3], [4, 5, 6]])
+>>> sd.permute_dims(m, (1, 0))
+array([[1, 4],
+       [2, 5],
+       [3, 6]], dtype=int64)
+>>> sd.matrix_transpose(m)
+array([[1, 4],
+       [2, 5],
+       [3, 6]], dtype=int64)
+```
+
+A stack of two 2-by-3 matrices becomes a stack of two 3-by-2 matrices:
+
+```python
+>>> s = sd.stack([m, 10 * m])
+>>> sd.matrix_transpose(s).shape
+(2, 3, 2)
+>>> sd.matrix_transpose(s)[1]
+array([[10, 40],
+       [20, 50],
+       [30, 60]], dtype=int64)
+```
+
+`axes` must list every axis, and `matrix_transpose` needs at least two dimensions:
+
+```python
+>>> sd.permute_dims(a, (0, 1))
+Traceback (most recent call last):
+    ...
+ValueError: permute_dims(): 'axes' must list each of the 3 axes exactly once
+>>> sd.matrix_transpose(sd.asarray([1, 2, 3]))
+Traceback (most recent call last):
+    ...
+ValueError: matrix_transpose(): the array must have at least 2 dimensions, got 1
+```
+
+<Reference />
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.permute_dims` (also `numpy.transpose`), `numpy.matrix_transpose`, and R's
+`aperm(a, perm)` and `t(m)`.
+
+- `axes` is required. In NumPy it defaults to reversing all axes.
+- `x.T` is defined for 2-D arrays only and raises `ValueError` otherwise; in NumPy it reverses all axes for any number
+  of dimensions. Use `matrix_transpose` (or `x.mT`) for stacks of matrices.
+- R's `aperm` numbers axes from 1; `axes` here numbers them from 0.

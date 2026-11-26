@@ -1,0 +1,86 @@
+---
+kind: function
+title: moveaxis
+names: [moveaxis]
+group: Shape and axes
+order: 4
+signatures:
+  - "sd.moveaxis(x, source, destination, /)"
+summary: Move axes of an array to new positions.
+params:
+  - name: x
+    type: array
+    kind: positional-only
+    desc: Input array.
+  - name: source
+    type: int, tuple of int or list of int
+    kind: positional-only
+    desc: Axes to move. Negative numbers count from the end. No axis may appear twice.
+  - name: destination
+    type: int, tuple of int or list of int
+    kind: positional-only
+    desc: "Positions of the moved axes in the result, one per entry of `source`. Negative numbers count from the end. No position may appear twice."
+returns:
+  - type: ndarray
+    desc: "A view of `x`. Axis `source[i]` of `x` is axis `destination[i]` of the result; the other axes keep their relative order."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`, or if `source` or `destination` is not an `int`, a tuple or a list of `int`."
+  - type: ValueError
+    desc: "If `source` and `destination` name different numbers of axes, if an axis is out of range, or if an axis or a position is repeated."
+seeAlso: [permute_dims, squeeze-expand_dims]
+---
+
+`moveaxis` places chosen axes at chosen positions and keeps the other axes in their original order. It is a shorthand
+for the [`permute_dims`](/api/array/permute_dims/) call that would do the same: `moveaxis(x, 0, -1)` on a 3-D array is
+`permute_dims(x, (1, 2, 0))`. A typical use is to bring the axis a function works on to the front or to the end.
+
+The result is a [view](/api/array/views/) of `x`: no element is moved, and writing to the result changes `x`.
+
+## Examples
+
+Move the first axis of a 3-D array to the end, and the last axis to the front:
+
+```python
+>>> import stardust as sd
+>>> a = sd.reshape(sd.arange(24), (2, 3, 4))
+>>> sd.moveaxis(a, 0, -1).shape
+(3, 4, 2)
+>>> sd.moveaxis(a, -1, 0).shape
+(4, 2, 3)
+```
+
+Elements follow their axes. Element `[1, 2, 3]` of `a` is element `[2, 3, 1]` after the first axis moves to the end:
+
+```python
+>>> y = sd.moveaxis(a, 0, -1)
+>>> y[2, 3, 1], a[1, 2, 3]
+(23, 23)
+>>> y.shape == sd.permute_dims(a, (1, 2, 0)).shape
+True
+```
+
+Several axes at once. Axis 0 goes to the last position and axis 1 to the one before it:
+
+```python
+>>> sd.moveaxis(a, (0, 1), (-1, -2)).shape
+(4, 3, 2)
+```
+
+`source` and `destination` must name the same number of axes:
+
+```python
+>>> sd.moveaxis(a, (0, 1), 2)
+Traceback (most recent call last):
+    ...
+ValueError: moveaxis(): 'source' and 'destination' must have the same number of axes
+```
+
+<Reference />
+
+## For NumPy, SciPy and R users
+
+The nearest equivalent is `numpy.moveaxis`, which takes the same arguments. R has no direct equivalent; `aperm(a, perm)`
+with a full permutation does the same.
+
+- `x` must be an `sd.ndarray`; lists raise `TypeError`.

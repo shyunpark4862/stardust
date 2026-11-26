@@ -53,9 +53,15 @@ const has = (slug: string) => sections.some((s) => s.slug === slug);
               {data.methods.map((m) => (
                 <div class="methods__row">
                   <dt>
-                    <a class="methods__sig" href={url(methodHref[m.name] ?? `#${m.name}`)}>
-                      <code>{m.signature}</code>
-                    </a>
+                    {methodHref[m.name] === null ? (
+                      <span class="methods__sig">
+                        <code>{m.signature}</code>
+                      </span>
+                    ) : (
+                      <a class="methods__sig" href={url(methodHref[m.name] ?? `#${m.name}`)}>
+                        <code>{m.signature}</code>
+                      </a>
+                    )}
                   </dt>
                   <dd set:html={inlineHtml(m.summary)} />
                 </div>
@@ -107,6 +113,7 @@ const has = (slug: string) => sections.some((s) => s.slug === slug);
   }
   .methods dd {
     margin: 0;
+    line-height: var(--leading-normal);
     color: var(--slate-700);
   }
   .methods__sig {
@@ -120,7 +127,7 @@ const has = (slug: string) => sections.some((s) => s.slug === slug);
     color: var(--area, var(--blue-700));
     overflow-wrap: anywhere;
   }
-  .methods__sig:hover code {
+  a.methods__sig:hover code {
     text-decoration: underline;
     text-underline-offset: 3px;
   }

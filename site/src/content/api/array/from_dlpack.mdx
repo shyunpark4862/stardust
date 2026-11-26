@@ -1,0 +1,105 @@
+---
+kind: function
+title: from_dlpack
+names: [from_dlpack]
+group: Creating arrays
+order: 10
+signatures:
+  - "sd.from_dlpack(x, /, *, device=None, copy=None)"
+summary: Import an array from another library through the DLPack protocol.
+params:
+  - name: x
+    type: object with __dlpack__
+    kind: positional-only
+    desc: "Array of another library (NumPy, PyTorch and others) that implements the DLPack protocol, or an `sd.ndarray`. Its data must be on the CPU."
+  - name: device
+    type: tuple or None
+    kind: keyword-only
+    default: None
+    desc: "Device of the result. Only `None` and the CPU device `(1, 0)` are accepted."
+  - name: copy
+    type: bool or None
+    kind: keyword-only
+    default: None
+    desc: "`True` always gives an array that does not share memory with `x`. `False` never copies and raises `ValueError` when a copy is needed. `None` copies only when needed."
+returns:
+  - type: ndarray
+    desc: "Array with the data of `x`. Without a copy it shares memory with `x`: changes made through either one are visible in the other."
+raises:
+  - type: TypeError
+    desc: "If `x` does not implement the DLPack protocol, if its element type is not bool, 64-bit integer, 64-bit float or 128-bit complex, if `device` is not a tuple or `None`, or if `copy` is not `True`, `False` or `None`."
+  - type: ValueError
+    desc: "If `x` is 0-D or has more than 32 dimensions, if `device` is a device other than the CPU, or if `copy=False` and a copy is needed."
+  - type: BufferError
+    desc: "If the data of `x` is not on the CPU, or if `x` exports a version of the protocol newer than 1.x."
+seeAlso: [asarray, views, ndarray]
+---
+
+DLPack is a common protocol through which array libraries hand their memory to each other without copying. An object
+that implements it has a `__dlpack__` method. `from_dlpack` wraps that memory in an `sd.ndarray`, keeping the shape
+and the strides of `x`, including negative strides of reversed views.
+
+The element type must already be one of the four array dtypes: bool, 64-bit integer, 64-bit float or 128-bit complex.
+Unlike [`asarray`](/api/array/asarray/) with a buffer, `from_dlpack` does not widen narrower types such as 32-bit
+floats; convert them in the source library first. A read-only source gives a read-only array.
+
+The protocol works in both directions: an `sd.ndarray` has `__dlpack__` and `__dlpack_device__`, so other libraries'
+`from_dlpack` functions can import it without a copy.
+
+## Examples
+
+A NumPy array imported without a copy. A change in the source shows through:
+
+```python
+>>> import stardust as sd
+>>> import numpy as np
+>>> a = np.array([1.0, 2.0, 3.0])
+>>> s = sd.from_dlpack(a)
+>>> a[0] = 50.0
+>>> s
+array([50.0,  2.0,  3.0], dtype=float64)
+```
+
+`copy=True` gives an independent array:
+
+```python
+>>> c = sd.from_dlpack(a, copy=True)
+>>> a[1] = -1.0
+>>> c
+array([50.0,  2.0,  3.0], dtype=float64)
+```
+
+The other direction: NumPy imports a stardust array and writes into it:
+
+```python
+>>> x = sd.asarray([1.0, 2.0])
+>>> n = np.from_dlpack(x)
+>>> n[0] = 7.0
+>>> x
+array([7.0, 2.0], dtype=float64)
+```
+
+Element types other than the four array dtypes are refused:
+
+```python
+>>> sd.from_dlpack(np.arange(3, dtype=np.int32))
+Traceback (most recent call last):
+    ...
+TypeError: from_dlpack(): DLPack dtype int32 is not an array dtype (bool, int64, float64, complex128)
+```
+
+<Reference />
+
+## Notes
+
+A result that shares memory with `x` keeps that memory alive.
+
+Memory that is not aligned for its element type, and bool bytes other than 0 and 1, cannot be used directly and are
+copied; with `copy=False` this raises `ValueError`.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalent is `numpy.from_dlpack`.
+
+- Only the four array dtypes are accepted. `numpy.from_dlpack` imports any element type, such as 32-bit integers.
+- `device` accepts only `None` and `(1, 0)`.

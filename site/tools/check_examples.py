@@ -24,9 +24,9 @@ not public. AREA is the site's area key (`array` for the top-level `sd`).
 
 `--links` checks that every in-site link written in the pages
 (`/api/<area>/<slug>/`, `/api/<area>/`, `/start/<slug>/`, in the body or in
-frontmatter text) and every `seeAlso`, `of` and method `slug` reaches an
-existing page. `glance` and `returnedBy` entries without a page are listed as
-pending (the templates show them without a link). If the site has been built
+frontmatter text) and every `seeAlso` and `of` reaches an
+existing page. `glance`, `returnedBy` and method `slug` entries without a page
+are listed as pending (the templates show them without a link). If the site has been built
 (`pnpm build`), it also checks every in-site link of the built pages, `#anchor`
 included, every in-site `src` and file link against dist/, and the search
 index. A site built under a sub-path is checked with the same setting it was
@@ -194,10 +194,9 @@ def links() -> int:
         head = frontmatter(path)
         if area is not None:
             targets |= {ref(area, s) for s in flow_list(head, "seeAlso")}
-            targets |= {ref(area, s) for s in method_slugs(head)}
             if (of := scalar(head, "of")) is not None:
                 targets.add(ref(area, of))
-            for s in flow_list(head, "glance") + flow_list(head, "returnedBy"):
+            for s in flow_list(head, "glance") + flow_list(head, "returnedBy") + method_slugs(head):
                 if ref(area, s) not in pages:
                     pending.append(f"{name}: {ref(area, s)}")
         for t in sorted(targets - pages):

@@ -1,0 +1,76 @@
+---
+kind: function
+title: flip
+names: [flip]
+group: Joining and repeating
+order: 4
+signatures:
+  - "sd.flip(x, /, *, axis=None)"
+summary: Reverse the order of elements along axes.
+params:
+  - name: x
+    type: array
+    kind: positional-only
+    desc: Input array.
+  - name: axis
+    type: int, tuple of int, list of int or None
+    kind: keyword-only
+    default: None
+    desc: "Axis or axes to reverse. Negative numbers count from the end. `None` reverses every axis."
+returns:
+  - type: ndarray
+    desc: "A view of `x` with the same shape and dtype, its elements in reverse order along `axis`."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`, or if `axis` is not an `int`, a tuple or list of `int`, or `None`."
+  - type: ValueError
+    desc: If an axis is out of range or repeated.
+seeAlso: [roll, permute_dims, indexing]
+---
+
+`flip` reverses the order of the elements along one or more axes. For a 2-D array, `axis=0` turns it upside down
+(reverses the order of the rows), and `axis=1` mirrors it left to right (reverses each row). Reversing along one axis
+is the same as indexing with the slice `::-1` on that axis (see [indexing](/api/array/indexing/)).
+
+The result is a [view](/api/array/views/) of `x`: the elements are not moved, they are read backward, through a
+negative stride. Writing to the result changes `x`.
+
+## Examples
+
+A 1-D array, and a 2-D array reversed along each axis and along both:
+
+```python
+>>> import stardust as sd
+>>> sd.flip(sd.asarray([1, 2, 3, 4, 5]))
+array([5, 4, 3, 2, 1], dtype=int64)
+>>> m = sd.asarray([[1, 2, 3], [4, 5, 6]])
+>>> sd.flip(m, axis=0)
+array([[4, 5, 6],
+       [1, 2, 3]], dtype=int64)
+>>> sd.flip(m, axis=1)
+array([[3, 2, 1],
+       [6, 5, 4]], dtype=int64)
+>>> sd.flip(m)
+array([[6, 5, 4],
+       [3, 2, 1]], dtype=int64)
+```
+
+The result is a view with a negative stride. Writing to it writes to `m`:
+
+```python
+>>> f = sd.flip(m, axis=1)
+>>> f.strides
+(24, -8)
+>>> f[0, 0] = 30
+>>> m
+array([[ 1,  2, 30],
+       [ 4,  5,  6]], dtype=int64)
+```
+
+<Reference />
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.flip`, which also returns a view, and R's `rev(x)` for vectors.
+
+- `x` must be an `sd.ndarray`; lists raise `TypeError`.

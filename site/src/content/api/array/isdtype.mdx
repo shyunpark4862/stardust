@@ -1,0 +1,102 @@
+---
+kind: function
+title: isdtype
+names: [isdtype]
+group: Data types
+order: 3
+signatures:
+  - "sd.isdtype(dtype, kind, /)"
+summary: Test whether a data type is of a given kind.
+params:
+  - name: dtype
+    type: dtype or str
+    kind: positional-only
+    desc: "Data type to test, as a dtype object or its name. Arrays are not accepted; pass `x.dtype`."
+  - name: kind
+    type: dtype, str or tuple
+    kind: positional-only
+    desc: "A dtype, a kind name, or a tuple of them. With a tuple, the result is `True` when `dtype` matches any entry."
+    choices:
+      - [ '"bool"', "`bool`" ]
+      - [ '"signed integer"', "`int64`" ]
+      - [ '"unsigned integer"', "none of the array dtypes" ]
+      - [ '"integral"', "`int64`" ]
+      - [ '"real floating"', "`float64`" ]
+      - [ '"complex floating"', "`complex128`" ]
+      - [ '"numeric"', "`int64`, `float64` and `complex128` (not `bool`)" ]
+returns:
+  - type: bool
+    desc: "`True` if `dtype` is in the kind, equals the given dtype, or matches an entry of the tuple."
+raises:
+  - type: TypeError
+    desc: "If `dtype` is not one of the four array dtypes or their names (an array or `sd.string`, for example), or if `kind` is not a dtype, a string or a tuple of them."
+  - type: ValueError
+    desc: If a string in `kind` is neither a kind name nor a dtype name.
+seeAlso: [can_cast-result_type, dtypes, finfo-iinfo]
+---
+
+`isdtype` classifies dtypes by kind. It lets code branch on the kind of data an array holds, for example to accept any
+numeric array but reject `bool`, without listing dtypes one by one. Each kind name stands for a set of dtypes; the
+table under the `kind` parameter lists them. A dtype or dtype name in `kind` matches only that dtype.
+
+`"numeric"` excludes `bool`, although arithmetic treats `bool` values as the integers 0 and 1.
+
+## Examples
+
+Kind names:
+
+```python
+>>> import stardust as sd
+>>> sd.isdtype(sd.float64, "real floating")
+True
+>>> sd.isdtype(sd.int64, "numeric")
+True
+>>> sd.isdtype(sd.bool, "numeric")
+False
+```
+
+A tuple matches any of its entries; dtypes and names can be mixed:
+
+```python
+>>> sd.isdtype(sd.complex128, ("real floating", "complex floating"))
+True
+>>> sd.isdtype("int64", (sd.bool, "integral"))
+True
+```
+
+An array is tested through its `dtype` attribute:
+
+```python
+>>> x = sd.asarray([1.0, 2.0])
+>>> sd.isdtype(x.dtype, "real floating")
+True
+>>> sd.isdtype(x, "real floating")
+Traceback (most recent call last):
+    ...
+TypeError: isdtype(): 'dtype' must be sd.bool, sd.int64, sd.float64 or sd.complex128 (or their names), not ndarray
+```
+
+Kind names must be spelled exactly:
+
+```python
+>>> sd.isdtype(sd.int64, "integer")
+Traceback (most recent call last):
+    ...
+ValueError: isdtype(): 'kind' must be 'bool', 'signed integer', 'unsigned integer', 'integral', 'real floating', 'complex floating' or 'numeric', not 'integer'
+```
+
+<Reference />
+
+## Notes
+
+The entries of a tuple are checked in order, and the check stops at the first match. An invalid entry after a matching
+one raises no error: `isdtype(sd.float64, ("real floating", "bogus"))` is `True`.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalent is `numpy.isdtype`, with the same kind names.
+
+- `dtype` may also be a dtype name such as `"float64"`; `numpy.isdtype` accepts only dtype objects.
+- `"unsigned integer"` never matches, because there is no unsigned array dtype.
+- `numpy.isdtype` checks every entry of a tuple and raises `ValueError` for `("real floating", "bogus")` even with
+  `float64`.

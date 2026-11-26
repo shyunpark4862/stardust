@@ -90,10 +90,10 @@
 /* Inline code: a soft tint without a frame, so a sentence with several
    names in it still reads as a sentence. */
 .prose :not(pre) > code {
-  padding: 0.12em 0.36em;
+  padding: 0.12em 0.3em;
   border-radius: 5px;
   background: var(--slate-100);
-  font-size: 0.86em;
+  font-size: var(--text-code-inline);
   color: var(--blue-800);
   white-space: nowrap;
 }
@@ -230,8 +230,18 @@
   color: inherit;
 }
 
-/* Narrow screens: long inline code may break instead of pushing the page wider. */
+/* Narrow screens: long inline code may break instead of pushing the page wider,
+   and running text hyphenates (lang="en") so a ~40-character line stays even.
+   Code and headings never hyphenate. */
 @media (max-width: 640px) {
+  .prose :is(p, li, td, blockquote) {
+    -webkit-hyphens: auto;
+    hyphens: auto;
+  }
+  .prose :is(code, pre, h2, h3, h4, a[href^='http']) {
+    -webkit-hyphens: manual;
+    hyphens: manual;
+  }
   .prose :not(pre) > code {
     white-space: normal;
     overflow-wrap: anywhere;
@@ -267,8 +277,8 @@ mjx-container[jax='SVG'] > svg {
 .math mjx-break[size='3'] { margin-right: 0.222em; }
 .math mjx-break[size='4'] { margin-right: 0.278em; }
 .math mjx-break[size='5'] { margin-right: 0.333em; }
-/* Text the math font has no glyph for (Korean in \text{...}) is an SVG
-   <text>; it is set in the body font. */
+/* Text the math font has no glyph for (a character STIX Two lacks, in
+   \text{...}) is an SVG <text>; it is set in the body font. */
 mjx-container text {
   font-family: var(--font-sans);
 }

@@ -1,0 +1,301 @@
+---
+kind: concept
+title: Indexing
+group: Array model
+order: 4
+summary: Selection and assignment of array elements with integers, slices, Boolean masks and integer arrays.
+seeAlso: [views, take, take_along_axis, nonzero, where, broadcasting]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+export const grid = [[0, 1, 2, 3], [4, 5, 6, 7], [8, 9, 10, 11]];
+export const gridTones = [['', '', '', ''], ['a', '', 'a', ''], ['a', '', 'a', '']];
+export const picked = [[4, 6], [8, 10]];
+
+`x[index]` selects part of an array and `x[index] = value` writes into it. An index has one entry per axis, separated
+by commas; positions count from 0. Axes left out at the end are selected whole.
+
+There are two kinds of index entries:
+
+- **Basic indices**: integers, slices, the ellipsis `...` and `sd.newaxis`. The result is a [view](/api/array/views/)
+  of the array: it shares memory with it, and writing to it changes the original.
+- **Advanced indices**: integer arrays and Boolean arrays (masks). The result is a new array, a copy.
+
+The examples on this page use this array:
+
+```python
+>>> import stardust as sd
+>>> x = sd.arange(12).reshape((3, 4))
+>>> x
+array([[ 0,  1,  2,  3],
+       [ 4,  5,  6,  7],
+       [ 8,  9, 10, 11]], dtype=int64)
+```
+
+## Integer indices
+
+An integer selects one position along its axis and removes that axis from the result. Negative integers count from
+the end: `-1` is the last position. An integer for every axis selects a single element, which is returned as a Python
+scalar (`bool`, `int`, `float` or `complex`), since stardust has no 0-D arrays.
+
+```python
+>>> x[1]
+array([4, 5, 6, 7], dtype=int64)
+>>> x[-1]
+array([ 8,  9, 10, 11], dtype=int64)
+>>> x[1, 2]
+6
+>>> x[1][2]
+6
+```
+
+`x[1, 2]` and `x[(1, 2)]` are the same index: a tuple is split into one entry per axis. NumPy integers count as
+integers. A position outside the axis, more entries than axes, or an index of another type (a `float`, a `str`, a
+Python `bool`) raises `IndexError`:
+
+```python
+>>> x[3, 0]
+Traceback (most recent call last):
+    ...
+IndexError: index 3 is out of bounds for axis 0 with size 3
+>>> x[0, 0, 0]
+Traceback (most recent call last):
+    ...
+IndexError: too many indices for array: array is 2-dimensional, but 3 were indexed
+>>> x[1.0]
+Traceback (most recent call last):
+    ...
+IndexError: only integers, slices (`:`), ellipsis (`...`), newaxis (`None`) and integer or boolean arrays are valid indices
+```
+
+## Slices
+
+A slice `start:stop:step` selects the positions `start`, `start + step`, ... up to but not including `stop`, and
+keeps the axis. Omitted parts default to the whole axis with step 1; `:` alone selects every position. A negative step
+walks backwards, and `::-1` reverses the axis. Slice bounds beyond the axis are clipped, so a slice never raises
+`IndexError`; a step of 0 raises `ValueError`.
+
+```python
+>>> x[:, 1]
+array([1, 5, 9], dtype=int64)
+>>> x[1:, ::2]
+array([[ 4,  6],
+       [ 8, 10]], dtype=int64)
+>>> x[::-1, 0]
+array([8, 4, 0], dtype=int64)
+>>> x[5:]
+array([], shape=(0, 4), dtype=int64)
+```
+
+<Fig caption="x[1:, ::2]: rows from position 1 on, every second column. The result is a view of the highlighted cells.">
+  <ArrayFig name="x" data={grid} tones={gridTones} axes note="shape (3, 4)" />
+  <Op>→</Op>
+  <ArrayFig data={picked} note="shape (2, 2)" />
+</Fig>
+
+An integer removes its axis and a slice of length 1 keeps it: `x[1]` has shape `(4,)`, `x[1:2]` has shape `(1, 4)`.
+
+## Ellipsis and newaxis
+
+`...` stands for as many `:` entries as needed to cover the axes that the other entries leave out. An index may
+contain one ellipsis. `sd.newaxis` (which is `None`) inserts a new axis of length 1 at its place in the result.
+
+```python
+>>> x[..., 0]
+array([0, 4, 8], dtype=int64)
+>>> x[:, 0, sd.newaxis]
+array([[0],
+       [4],
+       [8]], dtype=int64)
+>>> x[sd.newaxis].shape
+(1, 3, 4)
+```
+
+## Boolean masks
+
+A Boolean array used as an index is a mask: it selects the positions where it is `True`. A mask with the shape of the
+whole array returns the selected elements as a 1-D array, in row-major order (the last axis varies fastest). A mask
+with fewer axes covers as many axes as it has, starting at its place in the index (the leading axes when it stands
+first), and selects whole rows or subarrays. Comparisons produce masks directly.
+
+```python
+>>> x[x > 5]
+array([ 6,  7,  8,  9, 10, 11], dtype=int64)
+>>> x[(x % 2 == 0) & (x > 5)]
+array([ 6,  8, 10], dtype=int64)
+>>> x[sd.asarray([True, False, True])]
+array([[ 0,  1,  2,  3],
+       [ 8,  9, 10, 11]], dtype=int64)
+```
+
+The mask's shape must equal the shape of the axes it applies to. A single Python `True` or `False` is not a mask and
+raises `IndexError`:
+
+```python
+>>> x[sd.asarray([True, False])]
+Traceback (most recent call last):
+    ...
+IndexError: boolean index did not match indexed array along axis 0; size of axis is 3 but size of corresponding boolean axis is 2
+>>> x[True]
+Traceback (most recent call last):
+    ...
+IndexError: a bool is not a valid index; use an int, or a boolean array
+```
+
+To combine conditions, use `&` (and), `|` (or) and `~` (not) with parentheses around each comparison; Python's `and`,
+`or` and `not` do not apply to arrays.
+
+## Integer arrays
+
+An array of integers selects the listed positions along its axis, in the listed order, repeats allowed. The index may be
+an `sd.ndarray` of `int64`, a NumPy integer array, or a list or tuple of integers (nested for more dimensions); the
+last two are converted as by [`asarray`](/api/array/asarray/). The listed positions replace the axis, so the result has the index's shape in its
+place. Negative values count from the end.
+
+```python
+>>> x[[2, 0, 0]]
+array([[ 8,  9, 10, 11],
+       [ 0,  1,  2,  3],
+       [ 0,  1,  2,  3]], dtype=int64)
+>>> x[:, [0, 3]]
+array([[ 0,  3],
+       [ 4,  7],
+       [ 8, 11]], dtype=int64)
+>>> x[[[0, 1], [2, 0]]]
+array([[[ 0,  1,  2,  3],
+        [ 4,  5,  6,  7]],
+
+       [[ 8,  9, 10, 11],
+        [ 0,  1,  2,  3]]], dtype=int64)
+```
+
+`x[[0, 1]]` is an integer-array index on axis 0, while `x[(0, 1)]` is two integer indices; a tuple inside the outer
+index (`x[(0, 1),]`) is an array index as well.
+
+With integer arrays on several axes, the arrays are broadcast against each other (see
+[Broadcasting](/api/array/broadcasting/)) and select one element per position: `x[[0, 2], [1, 3]]` selects `x[0, 1]`
+and `x[2, 3]`. In an index that contains an integer array or a mask, every integer counts as an advanced index too
+and is broadcast with the arrays: `x[1, [0, 3]]` selects `x[1, 0]` and `x[1, 3]`.
+
+```python
+>>> x[[0, 2], [1, 3]]
+array([ 1, 11], dtype=int64)
+>>> x[[0, 1, 2], [0, 1, 2]]
+array([ 0,  5, 10], dtype=int64)
+>>> x[[0, 1], [0, 1, 2]]
+Traceback (most recent call last):
+    ...
+IndexError: shape mismatch: indexing arrays could not be broadcast together with shapes (2,) (3,)
+```
+
+A floating-point array, even with whole-number values, raises `IndexError`. Use `astype(sd.int64)` to convert it.
+
+### Advanced indices must be adjacent
+
+All advanced entries (integer arrays, masks, and the integers of the same index) must stand next to each other. A
+slice, `...` or `sd.newaxis` between two of them raises `IndexError`. Such a selection is written in two steps:
+
+```python
+>>> y = sd.arange(24).reshape((2, 3, 4))
+>>> y[0, :, [0, 1]]
+Traceback (most recent call last):
+    ...
+IndexError: advanced indices (arrays, and ints next to them) separated by a slice, newaxis or ellipsis are not supported; index in two steps, e.g. x[0][:, idx]
+>>> y[0][:, [0, 1]]
+array([[0, 1],
+       [4, 5],
+       [8, 9]], dtype=int64)
+```
+
+Adjacent advanced indices place their result axes where the indexed axes were: `y[:, [0, 1], [0, 1]]` has shape
+`(2, 2)` and `y[..., [0, 1]]` has shape `(2, 3, 2)`.
+
+## Assignment
+
+`x[index] = value` writes `value` into the selected positions. Any index allowed for reading is allowed here. `value`
+may be a Python scalar, an `sd.ndarray`, or a list or tuple (converted as by `asarray`).
+
+```python
+>>> z = sd.zeros((3, 4))
+>>> z[0, 0] = 1.0
+>>> z[1] = 2.0
+>>> z[:, 3] = sd.asarray([7.0, 8.0, 9.0])
+>>> z[z == 0.0] = -1.0
+>>> z
+array([[ 1.0, -1.0, -1.0,  7.0],
+       [ 2.0,  2.0,  2.0,  8.0],
+       [-1.0, -1.0, -1.0,  9.0]], dtype=float64)
+```
+
+The rules:
+
+- `value` must broadcast to the shape of the selection; the selection's shape never changes to fit `value`. A value
+  of shape `(1, 4)` does not fit a selection of shape `(4,)`.
+- A single element takes only a Python scalar. A list or array, even with one element, raises `TypeError`.
+- The value is converted to the array's dtype only when that dtype is the same or wider (see
+  [Implicit conversion](/api/array/dtypes/#implicit-conversion)): a `float` cannot go into an `int64` array, and a
+  Python `int` outside the `int64` range raises `OverflowError`.
+- When an integer array lists the same position several times, the last value written to it remains.
+- Every index is checked before anything is written: an out-of-range position raises `IndexError` and leaves the array
+  unchanged.
+- `value` may share memory with `x`. The result is as if `value` were read completely before writing, so
+  `v[1:] = v[:-1]` shifts the elements by one.
+- Read-only arrays raise `ValueError`. `del x[index]` raises `TypeError`.
+
+```python
+>>> z[0] = sd.asarray([[1.0, 2.0, 3.0, 4.0]])
+Traceback (most recent call last):
+    ...
+ValueError: cannot broadcast a value of shape (1, 4) to the indexed shape (4,)
+>>> z[0, 0] = [7.0]
+Traceback (most recent call last):
+    ...
+TypeError: only a bool, int, float or complex can be assigned to a single element, not list
+>>> k = sd.asarray([1, 2, 3])
+>>> k[0] = 2.5
+Traceback (most recent call last):
+    ...
+TypeError: cannot implicitly convert float64 to int64 (that would lose information); convert explicitly with astype
+>>> k[[0, 0]] = sd.asarray([10, 20])
+>>> k
+array([20,  2,  3], dtype=int64)
+```
+
+## Views, copies and chained indexing
+
+A basic index returns a view, so writing to the result writes to the original. An advanced index returns a copy, so
+writing to the result leaves the original unchanged. In particular, chained indexing that starts with an advanced
+index writes only to a temporary copy; write with one index instead:
+
+```python
+>>> w = sd.arange(6)
+>>> s = w[2:4]
+>>> s[0] = 100
+>>> w
+array([  0,   1, 100,   3,   4,   5], dtype=int64)
+>>> w[[0, 1]][0] = -1
+>>> w
+array([  0,   1, 100,   3,   4,   5], dtype=int64)
+>>> w[0] = -1
+>>> w
+array([ -1,   1, 100,   3,   4,   5], dtype=int64)
+```
+
+The page [Views and copies](/api/array/views/) lists which other operations return views.
+
+## For NumPy, SciPy and R users
+
+Indexing follows NumPy's rules, with these differences:
+
+- Advanced indices separated by a slice, `...` or `newaxis` raise `IndexError`. NumPy accepts them and moves the
+  indexed axes to the front of the result: `y[0, :, [0, 1]]` has shape `(2, 3)` there.
+- In assignment, NumPy drops leading axes of length 1 from the value; here the value must broadcast to the selection
+  as it is.
+- `x[True]` and `x[False]` raise `IndexError`. NumPy treats them as a 0-D mask.
+- Assignment never converts to a narrower dtype. NumPy stores `2.5` into an integer array as 2.
+- Selecting a single element returns a Python scalar, not a NumPy scalar.
+- R counts positions from 1, and a negative index in R removes that position, while here it counts from the end. An
+  integer index removes its axis and a slice keeps it, even with length 1. R drops every dimension of length 1 unless
+  `drop = FALSE` is given.

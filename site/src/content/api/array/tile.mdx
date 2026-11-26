@@ -1,0 +1,88 @@
+---
+kind: function
+title: tile
+names: [tile]
+group: Joining and repeating
+order: 7
+signatures:
+  - "sd.tile(x, repetitions, /)"
+summary: Build an array by repeating a whole array along each axis.
+params:
+  - name: x
+    type: array
+    kind: positional-only
+    desc: Array to repeat.
+  - name: repetitions
+    type: int or tuple of int
+    kind: positional-only
+    desc: "Number of copies along each axis, aligned with the last axes of `x` (see Notes). An `int` means `(repetitions,)`, copies along the last axis. Values must be 0 or more. A list is rejected."
+returns:
+  - type: ndarray
+    desc: "New array with the dtype of `x`. Its length on each axis is the length of `x` times the matching repetition count."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`, or if `repetitions` is not an `int` or a tuple of `int`."
+  - type: ValueError
+    desc: "If a repetition count is negative, or if the result would have more than 32 dimensions or too many elements."
+seeAlso: [repeat, broadcast_to, block, concat]
+---
+
+`tile` lays copies of `x` next to each other along each axis. `tile(x, (2, 3))` for a 2-D `x` gives two copies
+down and three across. Each copy is the whole array, so the copies follow one another; to repeat each element in place
+instead, use [`repeat`](/api/array/repeat/).
+
+The result is always a new array with every copy stored. To use a repeated array only in arithmetic, broadcasting gives
+the same values without copying (see [`broadcast_to`](/api/array/broadcast_to/)).
+
+## Examples
+
+A 1-D array, repeated along its axis and into a second dimension:
+
+```python
+>>> import stardust as sd
+>>> v = sd.asarray([1, 2, 3])
+>>> sd.tile(v, 2)
+array([1, 2, 3, 1, 2, 3], dtype=int64)
+>>> sd.tile(v, (2, 2))
+array([[1, 2, 3, 1, 2, 3],
+       [1, 2, 3, 1, 2, 3]], dtype=int64)
+```
+
+A 2-D array. An `int` repeats along the last axis; `(2, 1)` repeats down:
+
+```python
+>>> m = sd.asarray([[1, 2], [3, 4]])
+>>> sd.tile(m, 2)
+array([[1, 2, 1, 2],
+       [3, 4, 3, 4]], dtype=int64)
+>>> sd.tile(m, (2, 1))
+array([[1, 2],
+       [3, 4],
+       [1, 2],
+       [3, 4]], dtype=int64)
+```
+
+More counts than axes add leading axes, and a count of 0 gives an empty axis:
+
+```python
+>>> sd.tile(m, (3, 1, 1)).shape
+(3, 2, 2)
+>>> sd.tile(m, (0, 1)).shape
+(0, 2)
+```
+
+<Reference />
+
+## Notes
+
+Let `x` have $d$ dimensions and `repetitions` have $k$ entries. If $k \lt d$, `repetitions` is padded with leading 1s
+to length $d$, so the counts apply to the last axes. If $k \gt d$, `x` is given $k - d$ leading axes of length 1. The
+length of the result on each axis is then the length of `x` on that axis times the count for it. An empty tuple
+returns a copy of `x`.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.tile` and, for vectors, R's `rep(x, times = n)`.
+
+- `repetitions` must be an `int` or a tuple; NumPy also accepts a list.
+- `x` must be an `sd.ndarray`; lists and scalars raise `TypeError`.

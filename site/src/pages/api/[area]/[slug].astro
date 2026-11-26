@@ -66,12 +66,14 @@ const owner = data.of ? await resolveRef(area, data.of) : undefined;
 if (data.of && !owner) throw new Error(`api/${entry.id}.mdx: of: "${data.of}" has no page`);
 
 // Methods with their own page link there; the others to their ### heading.
-const methodHref: Record<string, string> = {};
+// A method whose page is not written yet is shown without a link (null);
+// the link check lists it as pending.
+const methodHref: Record<string, string | null> = {};
 for (const m of data.methods) {
   if (!m.slug) continue;
   const target = await resolveRef(area, m.slug);
-  if (!target) throw new Error(`api/${entry.id}.mdx: method ${m.name} has slug "${m.slug}" but no such page`);
-  methodHref[m.name] = hrefOf(target);
+  if (!target) console.warn(`[api] ${entry.id}: method ${m.name} slug "${m.slug}" has no page`);
+  methodHref[m.name] = target ? hrefOf(target) : null;
 }
 Astro.locals.apiPage = { data, methodHref };
 

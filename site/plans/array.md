@@ -54,3 +54,15 @@
 - 비교 절 제목은 정확히 `## For NumPy, SciPy and R users`. array 영역은 NumPy와 R base만 해당. 차이는 고정 인터프리터의 numpy로 실제 확인한 것만.
 - 예제 배열 출력은 고정 빌드의 repr 그대로(`array([...], dtype=float64)`).
 - 아직 없는 페이지로의 링크·seeAlso는 이 문서의 slug 목록에 있는 것만 허용.
+- (A1 일치 점검 뒤 추가, A2–A4 작성·검증이 따름)
+  - 용어: 산문은 "dtype". "data type"은 그 페이지에서 처음 소개할 때(요약, 첫 문장, `dtype` 인자 설명 첫머리 "Data type of the result.")와 "Data types" 페이지 제목·링크 글자에만 쓴다. "(C) order"는 쓰지 않고 "row-major order".
+  - 공통 규칙은 다시 설명하지 말고 한 문장 + 아래 고정 앵커로 링크(제목을 바꾸면 앵커가 깨지므로 이 제목들은 바꾸지 않음):
+    `/api/array/dtypes/#type-promotion`, `#python-scalars`, `#arithmetic-on-booleans`, `#functions-with-floating-point-results`, `#implicit-conversion`, `#explicit-conversion`, `#integer-overflow`, `#data-type-of-a-new-array`;
+    `/start/conventions/#array-shapes`, `#axis-and-keepdims`, `#the-out-argument`, `#missing-values`, `#determinism-and-threads`, `#errors-and-warnings`;
+    `/api/array/views/#the-copy-argument`, `#read-only-arrays`, `#overlapping-memory`; `/api/array/indexing/#assignment`; `/api/array/broadcasting/#the-rule`.
+  - `out=`를 받는 함수 페이지: 인자 설명은 "Array to write the result into. See [the `out=` argument](/start/conventions/#the-out-argument)." 꼴로 짧게, 변환·브로드캐스팅·별칭 규칙은 되풀이하지 않음.
+  - 메모리 배치: 규칙은 `ndarray` Notes("Memory layout")에 한 번. 함수 페이지는 필요할 때만 "The result is laid out in row-major order." 또는 "The result has the memory layout of `x`." 중 하나를 그대로 씀.
+  - 뷰·복사: 함수 페이지는 "The result is a view of `x` or a copy (see [Views and copies](/api/array/views/))." 정도로만, `base` 설명은 Views에만. `from_dlpack` 결과의 `base`는 어디에도 적지 않음(이상 기록됨).
+  - 메서드: `ndarray`의 메서드와 같은 함수 페이지(A3의 `sum`, `prod`, `min-max`, `mean`, `var-std`, `argmin-argmax`, `any-all`)는 `names`에 `ndarray.<method>`를 넣고(예: `names: [sum, ndarray.sum]`), `signatures`에 `sd.ndarray.<method>(...)` 줄을 더하고, `x` 인자 설명에 "In the method form, the array the method is called on."을 붙임(`reshape`·`astype` 페이지와 같은 꼴).
+  - 그 함수 페이지의 `summary`는 `ndarray.mdx`의 `methods[].summary`와 글자까지 같게 한다. 지금 `ndarray.mdx`에 적힌 요약(예: "Sum the elements over the given axes.")을 그대로 쓰거나, 바꾸면 검증 단계에서 `ndarray.mdx` 쪽도 같이 고친다.
+  - 아직 없는 페이지를 가리키는 메서드 `slug`는 링크 없이 보이고 `--links`에서 pending으로 나온다(빌드는 실패하지 않음).

@@ -1,5 +1,11 @@
 ---
 import Button from './Button.astro';
+
+// A no-break space before each separator keeps the dot at the end of a line,
+// never at the start of the next.
+const eyebrow = 'Array · Linear algebra · Sparse · DataFrame · Special · Stats · Tests · Regression · Optimize · Calculus · Random · Spatial · FFT · Interpolate · Graph · Smooth · Plot'
+  .split(' · ')
+  .join('\u00a0· ');
 ---
 
 <section class="hero" data-surface="dark" data-hero>
@@ -11,7 +17,7 @@ import Button from './Button.astro';
   </div>
 
   <div class="container hero__inner">
-    <p class="eyebrow hero__eyebrow">Array · Linear algebra · Sparse · DataFrame · Special · Stats · Tests · Regression · Optimize · Calculus · Random · Spatial · FFT · Interpolate · Graph · Smooth · Plot</p>
+    <p class="eyebrow hero__eyebrow">{eyebrow}</p>
     <h1 class="hero__title">
       <span class="hero__line">Numerics, rebuilt</span>
       <span class="hero__line hero__line--accent">down to the last bit.</span>
@@ -96,6 +102,11 @@ import Button from './Button.astro';
   /* ---- Copy ---- */
   .hero__inner {
     padding-block: var(--space-20) var(--space-24);
+  }
+  /* The area list wraps into lines of even length, not a full line and a
+     stub. */
+  .hero__eyebrow {
+    text-wrap: balance;
   }
   .hero__title {
     margin-top: var(--space-6);

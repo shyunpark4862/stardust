@@ -1,0 +1,106 @@
+---
+kind: function
+title: meshgrid
+names: [meshgrid]
+group: Creating arrays
+order: 9
+signatures:
+  - "sd.meshgrid(*arrays, indexing='xy')"
+summary: Return coordinate arrays for a grid spanned by 1-D arrays.
+params:
+  - name: "*arrays"
+    type: array of shape (n,)
+    desc: "Coordinates along each axis of the grid, one 1-D array per axis."
+  - name: indexing
+    type: str
+    kind: keyword-only
+    default: "'xy'"
+    desc: "Order of the first two axes of the results."
+    choices:
+      - [ '"xy"', "Cartesian order: with two arrays `x` and `y`, the results have shape `(len(y), len(x))`, so `x` varies along the columns." ]
+      - [ '"ij"', "Matrix order: the results have shape `(len(x), len(y), ...)`, one axis per argument in argument order." ]
+returns:
+  - type: tuple of ndarray
+    desc: "One new array per argument, all of the same shape. Array `i` repeats the values of `arrays[i]` along its own axis and keeps their dtype. An empty tuple when no arrays are given."
+raises:
+  - type: TypeError
+    desc: "If an argument is not an `sd.ndarray`, or if `indexing` is not a string."
+  - type: ValueError
+    desc: "If an argument is not 1-D, or if `indexing` is not `'xy'` or `'ij'`."
+seeAlso: [linspace, arange, broadcasting, broadcast_to]
+---
+
+`meshgrid` turns the coordinates along each axis of a grid into full arrays of coordinates, one per axis, so that a
+function of several variables can be evaluated at every grid point with element-wise arithmetic. For two 1-D arrays
+`x` and `y`, element `[r, c]` of the first result is the x-coordinate and element `[r, c]` of the second result the
+y-coordinate of the same grid point.
+
+The default `indexing="xy"` follows the convention of plots and images: rows run along `y` and columns along `x`, so
+the results have shape `(len(y), len(x))`. `indexing="ij"` follows the convention of matrices and multi-dimensional
+arrays: axis `i` belongs to argument `i`. With three or more arrays, `"xy"` swaps only the first two axes.
+
+## Examples
+
+A grid of three x-values and two y-values:
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([1, 2, 3])
+>>> y = sd.asarray([10.0, 20.0])
+>>> X, Y = sd.meshgrid(x, y)
+>>> X
+array([[1, 2, 3],
+       [1, 2, 3]], dtype=int64)
+>>> Y
+array([[10.0, 10.0, 10.0],
+       [20.0, 20.0, 20.0]], dtype=float64)
+```
+
+A function of two variables evaluated on the grid:
+
+```python
+>>> X * Y
+array([[10.0, 20.0, 30.0],
+       [20.0, 40.0, 60.0]], dtype=float64)
+```
+
+The same grid in matrix order:
+
+```python
+>>> I, J = sd.meshgrid(x, y, indexing="ij")
+>>> I
+array([[1, 1],
+       [2, 2],
+       [3, 3]], dtype=int64)
+>>> I.shape, J.shape
+((3, 2), (3, 2))
+```
+
+With three arrays, `"xy"` swaps only the first two axes:
+
+```python
+>>> z = sd.asarray([0, 1, 2, 3])
+>>> [a.shape for a in sd.meshgrid(x, y, z)]
+[(2, 3, 4), (2, 3, 4), (2, 3, 4)]
+>>> [a.shape for a in sd.meshgrid(x, y, z, indexing="ij")]
+[(3, 2, 4), (3, 2, 4), (3, 2, 4)]
+```
+
+<Reference />
+
+## Notes
+
+The results are new arrays that do not share memory with the arguments. The results are laid out in row-major
+order. Each result has the dtype of its own argument; the dtypes are not promoted to a common one.
+
+[Broadcasting](/api/array/broadcasting/) gives the same values without building the full grids: with `x` reshaped to
+shape `(1, 3)` and `y` to shape `(2, 1)`, `x * y` equals `X * Y` above.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.meshgrid` and R's `outer(x, y, FUN)` and `expand.grid(x, y)`.
+
+- Every argument must be a 1-D `sd.ndarray`; NumPy also accepts lists and flattens arrays of higher dimension.
+- There are no `sparse=` and `copy=` arguments. The results are always full, independent arrays.
+- R's `outer(x, y, FUN)` evaluates `FUN` on the grid directly, with `x` along the rows, as `indexing="ij"` arranges
+  it. `expand.grid` returns a data frame with one row per grid point.

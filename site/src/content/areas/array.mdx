@@ -4,26 +4,92 @@ ns: sd
 lead: N-dimensional arrays and the functions that work on them element by element, reduce them along axes, sort them and multiply them. Matrix decompositions and linear solvers are in `sd.linalg`; labeled tabular data is in `sd.frame`.
 glance: [asarray, filled, arange, reshape, sum, mean, sort-argsort, matmul]
 groups:
-  - { title: Array model, desc: The array object, its data types and the rules for indexing, broadcasting and views. }
-  - { title: Creating arrays, desc: Build arrays from Python data, from constants and from ranges. }
-  - { title: Shape and axes, desc: Change the shape of an array or the order of its axes without changing its elements. }
+  - { title: Array model, desc: "The array object, its data types and the rules for indexing, broadcasting and views." }
+  - { title: Creating arrays, desc: "Build arrays from Python data, from constants and from ranges." }
+  - { title: Shape and axes, desc: "Change the shape of an array or the order of its axes without changing its elements." }
   - { title: Joining and repeating, desc: "Combine arrays, and reverse, shift or repeat their elements." }
-  - { title: Data types, desc: Convert between data types and query their properties. }
-  - { title: Arithmetic, desc: Element-wise arithmetic and related functions. }
-  - { title: Exponents and logarithms, desc: Element-wise exponential and logarithmic functions. }
-  - { title: Trigonometric and hyperbolic, desc: Element-wise trigonometric and hyperbolic functions and their inverses. }
-  - { title: Rounding, desc: Round elements to integers. }
+  - { title: Data types, desc: "Convert between data types and query their properties." }
+  - { title: Arithmetic, desc: "Element-wise arithmetic and related functions." }
+  - { title: Exponents and logarithms, desc: "Element-wise exponential and logarithmic functions." }
+  - { title: Trigonometric and hyperbolic, desc: "Element-wise trigonometric and hyperbolic functions and their inverses." }
+  - { title: Rounding, desc: "Round elements to integers." }
   - { title: "Comparison, logic and bits", desc: "Element-wise comparisons, Boolean logic and bitwise operations." }
-  - { title: Classification and selection, desc: Test elements for special values and choose between arrays element by element. }
-  - { title: Complex numbers, desc: Parts and conjugates of complex elements. }
+  - { title: Classification and selection, desc: "Test elements for special values and choose between arrays element by element." }
+  - { title: Complex numbers, desc: "Parts and conjugates of complex elements." }
   - { title: Reductions, desc: "Combine the elements along one or more axes into a single value." }
-  - { title: Cumulative, desc: Running sums and products along an axis. }
-  - { title: Skipping NaN, desc: Reductions that ignore NaN elements. }
+  - { title: Cumulative, desc: "Running sums and products along an axis." }
+  - { title: Skipping NaN, desc: "Reductions that ignore NaN elements." }
   - { title: Statistics, desc: "Quantiles, covariance and histograms." }
   - { title: Indexing and searching, desc: "Select elements by index, locate values and take differences." }
-  - { title: Sorting and sets, desc: Sort arrays and find their distinct values. }
+  - { title: Sorting and sets, desc: "Sort arrays and find their distinct values." }
   - { title: Matrix products, desc: "Matrix, tensor and vector products." }
-  - { title: Threads, desc: Control the number of threads used for computation. }
+  - { title: Threads, desc: "Control the number of threads used for computation." }
 ---
 
+## Concepts
+
+**Arrays.** An array, [`sd.ndarray`](/api/array/ndarray/), holds elements of one data type arranged along one or more
+axes. Its shape is the tuple of axis lengths; shapes are written as in
+[Conventions](/start/conventions/#array-shapes). There are no 0-D arrays: an index or a reduction that leaves no axes
+returns a Python `bool`, `int`, `float` or `complex`.
+[`asarray`](/api/array/asarray/) converts Python lists and arrays of other libraries. The other functions of the area
+require their array arguments to be `sd.ndarray` and raise `TypeError` for lists; element-wise functions also accept
+Python scalars.
+
+**Data types.** Arrays have four data types (dtypes), `bool`, `int64`, `float64` and `complex128`. When a function
+combines two dtypes, both are converted to the wider one in that order
+([type promotion](/api/array/dtypes/#type-promotion)), and a value stored into an existing array is converted only to
+the same or a wider dtype ([implicit conversion](/api/array/dtypes/#implicit-conversion)).
+
+**Element-wise functions and broadcasting.** Element-wise functions, and the operators that call them, apply to each
+element or each pair of elements independently. Arrays of different shapes combine by
+[broadcasting](/api/array/broadcasting/): an axis of length 1 stretches to match the other array, and missing leading
+axes count as length 1. The optional `out=` argument writes the result into an existing array (see
+[Conventions](/start/conventions/#the-out-argument)).
+
+**Reductions.** Reductions such as `sum`, `mean` and `max` combine the elements along the axes given by `axis`, and
+`keepdims=True` keeps the reduced axes with length 1 so the result broadcasts against the input. Both arguments are
+described in [Conventions](/start/conventions/#axis-and-keepdims).
+
+**Indexing, views and copies.** `x[index]` selects elements by position, slice, Boolean mask or integer array
+([Indexing](/api/array/indexing/)). Slices, transposes and most reshapes return views, which share memory with the
+original array, so writing to a view changes the original; other operations return copies
+([Views and copies](/api/array/views/)).
+
 <FunctionTables />
+
+## For NumPy, SciPy and R users
+
+| stardust | NumPy | R |
+|---|---|---|
+| `asarray(obj)` | `numpy.asarray` | `c(...)`, `array(data, dim)` |
+| `zeros(shape)`, `full(shape, v)` | `numpy.zeros`, `numpy.full` | `numeric(n)`, `rep(v, n)`, `matrix(v, m, n)` |
+| `arange(start, stop, step)` | `numpy.arange` | `seq(from, to, by)` |
+| `linspace(start, stop, num)` | `numpy.linspace` | `seq(from, to, length.out = n)` |
+| `reshape(x, shape)` | `numpy.reshape` | `dim(x) <- c(m, n)` |
+| `permute_dims(x, axes)` | `numpy.permute_dims`, `numpy.transpose` | `aperm(x, perm)`, `t(x)` |
+| `concat(arrays, axis=0)` | `numpy.concat`, `numpy.concatenate` | `c(...)`, `rbind`, `cbind` |
+| `sum(x, axis=0)` | `numpy.sum` | `sum(x)`, `colSums(x)` |
+| `mean(x)`, `var(x, correction=1)` | `numpy.mean`, `numpy.var(x, ddof=1)` | `mean(x)`, `var(x)` |
+| `quantile(x, q)` | `numpy.quantile` | `quantile(x, q)` |
+| `sort(x)` | `numpy.sort` | `sort(x)` |
+| `unique_values(x)` | `numpy.unique_values` | `sort(unique(x))` |
+| `where(c, a, b)` | `numpy.where` | `ifelse(c, a, b)` |
+| `matmul(a, b)`, `a @ b` | `numpy.matmul`, `a @ b` | `a %*% b` |
+
+- Function names are those of the Python array API standard (`concat`, `permute_dims`, `pow`, `acos`,
+  `cumulative_sum`), which recent NumPy versions also provide. Each function has one name: the older NumPy names
+  `concatenate`, `transpose`, `power`, `arccos` and `cumsum` do not exist.
+- Array arguments must be `sd.ndarray`; `sd.sum([1, 2])` raises `TypeError`. NumPy converts lists and scalars
+  everywhere.
+- There are four array dtypes. Arithmetic on Booleans returns `int64`, and assignment never converts to a narrower
+  dtype ([implicit conversion](/api/array/dtypes/#implicit-conversion)).
+- Results that are single numbers are Python scalars, not NumPy scalars or 0-D arrays.
+- No function issues warnings. `sd.log` of 0 returns `-inf` silently, and integer `x // 0` is 0 and `x % 0` is `x`;
+  NumPy returns 0 for both and warns.
+- `var` and `std` divide by $n$ by default (`correction=0`), as NumPy does with `ddof=0`. R's `var` and `sd` divide by
+  $n - 1$; pass `correction=1` for the same result.
+- `reshape` and `ravel` read and place elements in row-major order (the last axis varies fastest), so a new shape is
+  filled row by row. R's `matrix` and `dim<-` fill column by column.
+- Indexing follows NumPy's rules except for a few cases listed on the [Indexing](/api/array/indexing/) page; R counts
+  positions from 1.

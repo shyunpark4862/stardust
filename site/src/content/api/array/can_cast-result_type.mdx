@@ -1,0 +1,112 @@
+---
+kind: function
+title: can_cast, result_type
+names: [can_cast, result_type]
+group: Data types
+order: 2
+signatures:
+  - "sd.can_cast(from_, to, /)"
+  - "sd.result_type(*arrays_and_dtypes)"
+summary: Test whether a data type converts implicitly to another, or return the data type that several operands promote to.
+params:
+  - name: from_
+    type: dtype, str or array
+    kind: positional-only
+    desc: "Source dtype (`can_cast` only): a dtype object, its name, or an array, which stands for its dtype."
+  - name: to
+    type: dtype, str or array
+    kind: positional-only
+    desc: "Target dtype (`can_cast` only), in the same forms as `from_`."
+  - name: "*arrays_and_dtypes"
+    type: array, dtype, str, bool, int, float or complex
+    desc: "Operands to promote (`result_type` only): arrays, dtypes or their names, and Python scalars. At least one is required."
+returns:
+  - name: can_cast
+    type: bool
+    desc: "`True` if values of dtype `from_` may be stored in an array of dtype `to` without an explicit conversion."
+  - name: result_type
+    type: dtype
+    desc: "The dtype object that the operands promote to, such as `sd.float64`."
+raises:
+  - type: TypeError
+    desc: "If an argument is not of an accepted kind: for example `sd.string`, a Python type such as `float`, a list, or a NumPy array. `can_cast` also refuses Python scalars."
+  - type: ValueError
+    desc: "If `result_type` is called without arguments."
+seeAlso: [dtypes, astype, isdtype, filled-like]
+---
+
+Both functions answer questions about the order `bool` < `int64` < `float64` < `complex128` described in
+[Data types](/api/array/dtypes/).
+
+`result_type` returns the dtype that its operands promote to ([type promotion](/api/array/dtypes/#type-promotion)): the
+highest of their dtypes in that order, with a Python scalar counting as its own kind (`int` as `int64`, `float` as
+`float64`, `complex` as `complex128`). This is the dtype in which a binary arithmetic operation on the operands is
+computed; some functions return another dtype (dividing two `int64` arrays gives `float64`, for example), so the page
+of each function states its result dtype.
+
+`can_cast` tells whether a value of dtype `from_` may be stored in an array of dtype `to` by an
+[implicit conversion](/api/array/dtypes/#implicit-conversion), as in index assignment, in-place operators such as `+=`,
+the [`out=` argument](/start/conventions/#the-out-argument) and `full_like` without `dtype`. It returns `True` exactly
+when `from_` is `to` or comes before it in the order. Any other conversion must be explicit, with
+[`astype`](/api/array/astype/).
+
+## Examples
+
+Promotion of dtypes, arrays and Python scalars:
+
+```python
+>>> import stardust as sd
+>>> sd.result_type(sd.int64, sd.float64)
+float64
+>>> i = sd.asarray([1, 2, 3])
+>>> sd.result_type(i, 1.5)
+float64
+>>> sd.result_type(True, 1)
+int64
+>>> sd.result_type(1, 1j)
+complex128
+```
+
+Implicit conversion goes only upward:
+
+```python
+>>> sd.can_cast(sd.int64, sd.float64)
+True
+>>> sd.can_cast(sd.float64, sd.int64)
+False
+>>> sd.can_cast("bool", "complex128")
+True
+>>> sd.can_cast(i, sd.bool)
+False
+```
+
+`can_cast` predicts whether an assignment succeeds. The decision depends on the dtypes only, not on the values:
+
+```python
+>>> sd.can_cast(sd.float64, i)
+False
+>>> i[0] = 2.0
+Traceback (most recent call last):
+    ...
+TypeError: cannot implicitly convert float64 to int64 (that would lose information); convert explicitly with astype
+```
+
+<Reference />
+
+## Notes
+
+NumPy scalars count as the Python scalar of the same kind in `result_type`: `numpy.int8(1)` acts as an `int`, and
+`numpy.float32(1)` as a `float`.
+
+The result of `result_type` is one of the dtype objects `sd.bool`, `sd.int64`, `sd.float64` and `sd.complex128`; it
+can be compared with `==` or `is` and passed to any `dtype=` argument.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.can_cast` and `numpy.result_type`.
+
+- `can_cast` has no `casting=` argument. It answers the one question that matters here, implicit conversion, which
+  corresponds to NumPy's default `casting="safe"` for these four dtypes.
+- Python scalars are refused by `can_cast`, as in NumPy, and accepted by `result_type`.
+- Only the four array dtypes and their names are accepted. NumPy dtypes and types such as `numpy.float32` raise
+  `TypeError`.

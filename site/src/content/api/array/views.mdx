@@ -1,0 +1,186 @@
+---
+kind: concept
+title: Views and copies
+group: Array model
+order: 6
+summary: Arrays that share memory with another array, the operations that return them, and the `copy=` argument.
+seeAlso: [indexing, reshape, astype, asarray, broadcast_to, ndarray]
+---
+
+A view is an array that reads and writes the memory of another array. It has its own shape, strides and data type,
+but no elements of its own: writing through a view changes the original array, and changes to the original show
+through the view. A copy owns its memory, and changes to it affect nothing else.
+
+Creating a view copies no elements, and a write through a view reaches every array that shares its memory.
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+>>> row = x[0]
+>>> row[0] = 100.0
+>>> x
+array([[100.0,   2.0,   3.0],
+       [  4.0,   5.0,   6.0]], dtype=float64)
+>>> c = x.copy()
+>>> c[0, 0] = 1.0
+>>> x[0, 0]
+100.0
+```
+
+## Operations that return views
+
+| Operation | Notes |
+|---|---|
+| basic indexing: `x[1]`, `x[:, 1:3]`, `x[::-1]`, `x[..., sd.newaxis]` | see [Indexing](/api/array/indexing/) |
+| `x.T`, `x.mT`, `permute_dims`, `matrix_transpose`, `moveaxis` | |
+| `squeeze`, `expand_dims` | |
+| `flip` | |
+| `unstack` | a tuple of views |
+| `reshape`, `x.reshape`, `ravel` | a view when the new shape can be described with strides, otherwise a copy |
+| `broadcast_to`, `broadcast_arrays` | read-only |
+| `real`, `imag` of a `complex128` array | |
+| iterating over an array with two or more axes | each step is a view of one subarray |
+| `asarray` of an object that exports its memory, such as a NumPy array of a matching type; `from_dlpack` | shares the source's memory unless a copy is needed or requested |
+
+## Operations that return copies
+
+Advanced indexing (integer arrays and masks), [`take`](/api/array/take/), arithmetic and the other element-wise
+functions (without `out=`), reductions, `sort`, `concat`, `stack`, `block`, `roll`, `repeat`, `tile`, `tril`, `triu`,
+`meshgrid`, `x.copy()`, `astype` with its default `copy=True`, and `asarray(x, copy=True)` return new arrays that own
+their memory.
+
+## Operations that can return the input itself
+
+A few functions return their argument unchanged, as the same object, when there is nothing to do:
+
+- `asarray(x)` when `x` is already an `sd.ndarray` and no `dtype=` conversion is requested;
+- `astype(x, dtype, copy=False)` and `astype(x, dtype, copy=None)` when `x` already has that dtype;
+- `real(x)` when `x` is not complex;
+- `diff(x, n=0)`.
+
+```python
+>>> sd.asarray(x) is x
+True
+>>> sd.astype(x, sd.float64) is x
+False
+>>> sd.astype(x, sd.float64, copy=None) is x
+True
+```
+
+## The base attribute
+
+`x.base` is `None` when `x` owns its memory. For a view, it is the array that owns the memory, never an intermediate
+view: a view of a view has the same `base` as the first view. For an array that `asarray` created from a buffer
+without copying, such as a NumPy array, `base` is that source object.
+
+```python
+>>> a = sd.arange(12)
+>>> v = a.reshape((3, 4))[1:]
+>>> v.base is a
+True
+>>> v[0].base is a
+True
+>>> a.base is None
+True
+>>> a[[1, 2]].base is None
+True
+```
+
+`x.base is None` tells whether `x` owns its memory.
+
+## The copy argument
+
+[`asarray`](/api/array/asarray/), [`reshape`](/api/array/reshape/), [`astype`](/api/array/astype/) and
+[`from_dlpack`](/api/array/from_dlpack/) take `copy=`, which controls whether the result may share memory with the
+input:
+
+| `copy` | Meaning |
+|---|---|
+| `True` | Always copy. The result never shares memory with the input. |
+| `None` | Copy only when necessary; otherwise return a view or the input itself. |
+| `False` | Never copy. If the result cannot be produced without copying, raise `ValueError`. |
+
+Any other value, including `0` and `1`, raises `TypeError`. The default is `copy=None` for `asarray`, `reshape` and
+`from_dlpack`, and `copy=True` for `astype`.
+
+```python
+>>> sd.reshape(x, (6,), copy=False).base is x
+True
+>>> sd.reshape(x.T, (6,), copy=False)
+Traceback (most recent call last):
+    ...
+ValueError: reshape(): copy=False, but this reshape cannot be done without copying
+>>> sd.asarray([1.0, 2.0], copy=False)
+Traceback (most recent call last):
+    ...
+ValueError: asarray(): copy=False, but a list or tuple can only be converted by copying
+```
+
+The transpose `x.T` steps through memory column by column, so its rows cannot be laid end to end with a single
+stride; reshaping it to one dimension needs a copy.
+
+## Read-only arrays
+
+Some arrays cannot be written to:
+
+- the results of `broadcast_to` and `broadcast_arrays`, where several positions share one element;
+- arrays held by result objects, such as the fields of `sd.linalg.lstsq`;
+- arrays that share memory with a read-only buffer, such as a NumPy array whose `writeable` flag is off.
+
+Writing to them, by assignment, an in-place operator or `out=`, raises `ValueError`. `x.copy()` returns a writable
+copy.
+
+```python
+>>> b = sd.broadcast_to(sd.asarray([1, 2, 3]), (2, 3))
+>>> b[0, 0] = 7
+Traceback (most recent call last):
+    ...
+ValueError: assignment destination is read-only
+>>> w = b.copy()
+>>> w[0, 0] = 7
+>>> w
+array([[7, 2, 3],
+       [1, 2, 3]], dtype=int64)
+```
+
+## In-place operators and rebinding
+
+An in-place operator writes into the array on its left. On a view, it changes the original. An ordinary assignment
+such as `v = v * 2` computes a new array and rebinds the name `v` to it; the original is not touched.
+
+```python
+>>> base = sd.zeros(4)
+>>> v = base[1:3]
+>>> v += 1.0
+>>> base
+array([0.0, 1.0, 1.0, 0.0], dtype=float64)
+>>> v = v * 2
+>>> base
+array([0.0, 1.0, 1.0, 0.0], dtype=float64)
+```
+
+## Overlapping memory
+
+When the input of an in-place operator, an assignment or an `out=` argument shares memory with the array being
+written, the result is as if every input element were read before any output element is written:
+
+```python
+>>> y = sd.arange(5)
+>>> y[1:] += y[:-1]
+>>> y
+array([0, 1, 3, 5, 7], dtype=int64)
+>>> z = sd.arange(5)
+>>> sd.add(z, z[::-1], out=z)
+array([4, 4, 4, 4, 4], dtype=int64)
+```
+
+## For NumPy, SciPy and R users
+
+Views, `base` and `copy=` behave as in NumPy, with these differences and additions:
+
+- There is no `flags` attribute. Whether an array is read-only shows only when writing to it raises `ValueError`.
+- An `sd.ndarray` and a NumPy array can share memory in both directions: `numpy.asarray(x)` gives a NumPy view of `x`,
+  and `sd.asarray(a)` gives an `sd.ndarray` that shares the memory of a NumPy array `a` of type `bool`, `int64`,
+  `float64` or `complex128`. A read-only array stays read-only on the other side.
+- R has no views: assigning to an element of a copy, as in `y <- x; y[1] <- 0`, never changes `x`. Here a slice is a
+  view, and writing to it changes the original.

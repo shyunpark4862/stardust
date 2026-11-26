@@ -1,0 +1,100 @@
+---
+kind: function
+title: squeeze, expand_dims
+names: [squeeze, expand_dims]
+group: Shape and axes
+order: 5
+signatures:
+  - "sd.squeeze(x, /, *, axis)"
+  - "sd.expand_dims(x, /, *, axis)"
+summary: Remove axes of length 1 from an array, or insert them.
+params:
+  - name: x
+    type: array
+    kind: positional-only
+    desc: Input array.
+  - name: axis
+    type: int, tuple of int or list of int
+    kind: keyword-only
+    desc: "Required. For `squeeze`, the axes of `x` to remove; each must have length 1, and at least one axis must remain. For `expand_dims`, the positions of the new axes in the result, which has `x.ndim + k` dimensions for `k` new axes. Negative numbers count from the end. No axis may appear twice."
+returns:
+  - type: ndarray
+    desc: "A view of `x` with the same elements. `squeeze` gives `x.shape` without the removed axes; `expand_dims` gives a shape with a 1 at each position in `axis`."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`, or if `axis` is missing, `None`, or not an `int`, a tuple or a list of `int`."
+  - type: ValueError
+    desc: "If an axis is out of range or repeated. `squeeze`: if a named axis does not have length 1, or if every axis would be removed. `expand_dims`: if the result would have more than 32 dimensions."
+seeAlso: [reshape, broadcast_to, indexing]
+---
+
+An axis of length 1 does not change the number of elements, only how they are indexed. `squeeze` removes such axes and
+`expand_dims` inserts them. Both return a [view](/api/array/views/) of `x`, so writing to the result changes `x`.
+
+`expand_dims` is most often used to line up arrays for [broadcasting](/api/array/broadcasting/): a 1-D array of
+length `n` becomes a row of shape `(1, n)` with `axis=0`, or a column of shape `(n, 1)` with `axis=1`. Indexing with
+`None` or `sd.newaxis` inserts axes in the same way (see [indexing](/api/array/indexing/)).
+
+`axis` is required for both functions. `squeeze` cannot remove every axis, because stardust has no 0-D arrays; a
+single element is read by indexing instead.
+
+## Examples
+
+Remove the first and the last axis of an array of shape `(1, 3, 1)`, or only one of them:
+
+```python
+>>> import stardust as sd
+>>> c = sd.asarray([[[1.0], [2.0], [3.0]]])
+>>> c.shape
+(1, 3, 1)
+>>> sd.squeeze(c, axis=(0, 2))
+array([1.0, 2.0, 3.0], dtype=float64)
+>>> sd.squeeze(c, axis=0).shape
+(3, 1)
+```
+
+A 1-D array as a row and as a column. Their difference broadcasts to a 3-by-3 table of all pairwise differences:
+
+```python
+>>> v = sd.asarray([1.0, 2.0, 3.0])
+>>> row = sd.expand_dims(v, axis=0)
+>>> col = sd.expand_dims(v, axis=1)
+>>> row.shape, col.shape
+((1, 3), (3, 1))
+>>> col - row
+array([[ 0.0, -1.0, -2.0],
+       [ 1.0,  0.0, -1.0],
+       [ 2.0,  1.0,  0.0]], dtype=float64)
+```
+
+Several new axes at once. The positions refer to the result, which has three dimensions here:
+
+```python
+>>> sd.expand_dims(v, axis=(0, 2)).shape
+(1, 3, 1)
+>>> sd.expand_dims(v, axis=(0, -1)).shape
+(1, 3, 1)
+```
+
+An axis whose length is not 1 cannot be removed, and neither can every axis:
+
+```python
+>>> sd.squeeze(c, axis=1)
+Traceback (most recent call last):
+    ...
+ValueError: squeeze(): cannot squeeze axis 1: its size is 3, not 1
+>>> sd.squeeze(sd.asarray([[5.0]]), axis=(0, 1))
+Traceback (most recent call last):
+    ...
+ValueError: squeeze(): squeezing every axis would give a 0-dimensional array (stardust has none)
+```
+
+<Reference />
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.squeeze`, `numpy.expand_dims` and R's `drop(x)`.
+
+- `squeeze` requires `axis`. `numpy.squeeze` defaults to removing every axis of length 1, and R's `drop` always does.
+- Removing every axis raises `ValueError`; NumPy returns a 0-D array.
+- `expand_dims` matches `numpy.expand_dims`, except that `x` must be an `sd.ndarray`.

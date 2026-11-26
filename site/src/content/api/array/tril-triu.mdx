@@ -1,0 +1,111 @@
+---
+kind: function
+title: tril, triu
+names: [tril, triu]
+group: Creating arrays
+order: 8
+signatures:
+  - "sd.tril(x, /, *, k=0)"
+  - "sd.triu(x, /, *, k=0)"
+summary: Return the lower or upper triangle of a matrix, with the other elements set to zero.
+params:
+  - name: x
+    type: array of shape (..., m, n)
+    kind: positional-only
+    desc: "Matrix, or a stack of matrices. Must have at least two dimensions."
+  - name: k
+    type: int
+    kind: keyword-only
+    default: "0"
+    desc: "Diagonal that bounds the triangle: 0 is the main diagonal, a positive value a diagonal above it, a negative value one below it."
+returns:
+  - type: ndarray of shape (..., m, n)
+    desc: "New array with the dtype of `x`. `tril` keeps the elements `[i, j]` with `j <= i + k`, `triu` those with `j >= i + k`; the others are 0, or `False` for `bool`."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`, or if `k` is not an `int`."
+  - type: ValueError
+    desc: If `x` has fewer than two dimensions.
+  - type: OverflowError
+    desc: "If `k` is outside the `int64` range."
+seeAlso: [diag, eye]
+---
+
+`tril` keeps the lower triangle of a matrix: the main diagonal and everything below it. `triu` keeps the upper
+triangle: the main diagonal and everything above it. All other elements of the result are zero. The matrices need not
+be square.
+
+`k` moves the boundary. `tril(x, k=-1)` drops the main diagonal and keeps the part strictly below it; `triu(x, k=1)`
+keeps the part strictly above. With more than two dimensions, the last two axes form the matrices and each matrix of
+the stack is processed separately.
+
+## Examples
+
+The lower and upper triangles of a 3-by-3 matrix:
+
+```python
+>>> import stardust as sd
+>>> m = sd.asarray([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+>>> sd.tril(m)
+array([[1, 0, 0],
+       [4, 5, 0],
+       [7, 8, 9]], dtype=int64)
+>>> sd.triu(m)
+array([[1, 2, 3],
+       [0, 5, 6],
+       [0, 0, 9]], dtype=int64)
+```
+
+Strictly below and strictly above the main diagonal:
+
+```python
+>>> sd.tril(m, k=-1)
+array([[0, 0, 0],
+       [4, 0, 0],
+       [7, 8, 0]], dtype=int64)
+>>> sd.triu(m, k=1)
+array([[0, 2, 3],
+       [0, 0, 6],
+       [0, 0, 0]], dtype=int64)
+```
+
+A stack of two 2-by-2 matrices:
+
+```python
+>>> s = sd.arange(8).reshape((2, 2, 2))
+>>> sd.tril(s)
+array([[[0, 0],
+        [2, 3]],
+
+       [[4, 0],
+        [6, 7]]], dtype=int64)
+```
+
+The removed elements become zero even when they are NaN, so `tril` differs from multiplying by a mask of ones and
+zeros:
+
+```python
+>>> a = sd.asarray([[1.0, sd.nan], [2.0, 3.0]])
+>>> sd.tril(a)
+array([[1.0, 0.0],
+       [2.0, 3.0]], dtype=float64)
+>>> a * sd.tril(sd.ones((2, 2)))
+array([[1.0, nan],
+       [2.0, 3.0]], dtype=float64)
+```
+
+<Reference />
+
+## Notes
+
+A value of `k` that puts the boundary outside the matrix is allowed: `tril(x, k=-m)` and `triu(x, k=n)` are all
+zeros, and `tril(x, k=n - 1)` is a copy of `x`. The result is always a new array.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.tril` and `numpy.triu`, and in R the masks `lower.tri(x)` and `upper.tri(x)`.
+
+- A 1-D argument raises `ValueError`. `numpy.tril` turns a 1-D array into a square matrix by repeating it as rows.
+- `k` is keyword-only: `numpy.tril(x, -1)` is `sd.tril(x, k=-1)`.
+- R's `lower.tri` and `upper.tri` return logical masks without the diagonal (unless `diag = TRUE`), to be used as
+  in `x[upper.tri(x)] <- 0`.

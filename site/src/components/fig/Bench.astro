@@ -5,7 +5,7 @@
  *
  *   rows    [{ label, times: [t0, t1, ...] }]
  *   series  names of the contenders, in the order of `times` (default:
- *           numpy, stardust 1스레드, stardust 10스레드)
+ *           numpy, stardust 1 thread, stardust 10 threads)
  *   base    index of the contender speed-ups are measured against (default 0)
  */
 interface Row {
@@ -18,7 +18,7 @@ interface Props {
   base?: number;
   caption?: string;
 }
-const { rows, series = ['numpy', 'stardust 1스레드', 'stardust 10스레드'], base = 0, caption } = Astro.props;
+const { rows, series = ['numpy', 'stardust 1 thread', 'stardust 10 threads'], base = 0, caption } = Astro.props;
 
 const fmt = (t: number) =>
   t < 1e-6 ? `${(t * 1e9).toFixed(0)} ns` : t < 1e-3 ? `${(t * 1e6).toFixed(t < 1e-5 ? 1 : 0)} µs` : `${(t * 1e3).toFixed(2)} ms`;

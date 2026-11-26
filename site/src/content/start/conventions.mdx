@@ -56,10 +56,51 @@ array([[ 6.0],
 
 An axis outside the array raises `ValueError`.
 
+## The `out=` argument
+
+The element-wise functions of `sd`, together with `where` and `clip`, take the keyword-only argument `out`: an
+existing `sd.ndarray` that receives the result. With the default `out=None` they return a new array. Reductions,
+`matmul` and the other functions have no `out` argument.
+
+- The inputs broadcast to `out.shape` (see [Broadcasting](/api/array/broadcasting/)). The shape of `out` never
+  changes; inputs that do not broadcast to it raise `ValueError`.
+- The function computes in its usual result data type (dtype), then converts the result to the dtype of `out` by an
+  [implicit conversion](/api/array/dtypes/#implicit-conversion). A result dtype that `out` cannot hold without an
+  explicit conversion, such as `float64` into an `int64` array, raises `TypeError`.
+- `out` must be an `sd.ndarray`; a list or a NumPy array raises `TypeError`. A read-only `out` raises `ValueError`.
+- `out` may share memory with the inputs. The result is as if all inputs were read before anything is written (see
+  [Views and copies](/api/array/views/)).
+- The function returns `out` itself.
+
+```python
+>>> a = sd.asarray([1.0, 2.0, 3.0])
+>>> buf = sd.zeros((2, 3))
+>>> sd.multiply(a, 10.0, out=buf) is buf
+True
+>>> buf
+array([[10.0, 20.0, 30.0],
+       [10.0, 20.0, 30.0]], dtype=float64)
+>>> sd.add(sd.asarray([1, 2, 3]), 1, out=a)
+array([2.0, 3.0, 4.0], dtype=float64)
+>>> sd.divide(sd.asarray([1, 2, 3]), 2, out=sd.zeros(3, dtype=sd.int64))
+Traceback (most recent call last):
+    ...
+TypeError: divide(): cannot implicitly convert float64 to int64 (that would lose information); convert explicitly with astype
+```
+
+The computation does not change with the type of `out`. The square root of a negative `float64` is NaN even when
+`out` is `complex128`:
+
+```python
+>>> sd.sqrt(sd.asarray([-1.0]), out=sd.zeros(1, dtype=sd.complex128))
+array([(nan+0j)], dtype=complex128)
+```
+
 ## Missing values
 
-A missing number is NaN (`sd.nan`). Element-wise functions and reductions propagate it: a sum or mean that includes a
-NaN is NaN. The `nan`-prefixed reductions (`nansum`, `nanmean`, `nanmedian` and others) skip NaN values:
+A missing number is NaN (`sd.nan`). Arithmetic and the numeric reductions propagate it: a sum, mean or maximum that
+includes a NaN is NaN, and `argmin` and `argmax` return the position of the first NaN. A comparison with NaN is
+`False`, except `!=`, which is `True`. The `nan`-prefixed reductions (`nansum`, `nanmean`, `nanmedian` and others) skip NaN values:
 
 ```python
 >>> y = sd.asarray([1.0, sd.nan, 3.0])

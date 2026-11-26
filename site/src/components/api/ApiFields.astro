@@ -81,18 +81,17 @@ const rowId = (f: Field) => {
     margin: 0;
     border-top: 1px solid var(--line);
   }
+  /* Named and unnamed rows share the first column's width, so the text of
+     Parameters, Returns and Raises starts on one edge. */
   .fields__row {
     display: grid;
-    grid-template-columns: 150px 1fr;
+    grid-template-columns: 170px minmax(0, 1fr);
     gap: var(--space-4);
     padding-block: var(--space-3);
     border-bottom: 1px solid var(--line);
     font-size: var(--text-base);
     line-height: var(--leading-snug);
     scroll-margin-top: calc(var(--header-h) + var(--space-6));
-  }
-  .fields--named .fields__row {
-    grid-template-columns: 170px minmax(0, 1fr);
   }
   .fields__row:last-child {
     border-bottom: 0;
@@ -152,6 +151,7 @@ const rowId = (f: Field) => {
   .fields__text {
     margin: 0;
     min-width: 0;
+    line-height: var(--leading-normal);
     color: var(--slate-700);
   }
   .fields__choices {
@@ -182,8 +182,7 @@ const rowId = (f: Field) => {
     color: var(--fg-subtle);
   }
   @media (max-width: 720px) {
-    .fields__row,
-    .fields--named .fields__row {
+    .fields__row {
       grid-template-columns: minmax(0, 1fr);
       gap: var(--space-1);
     }

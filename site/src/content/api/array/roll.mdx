@@ -1,0 +1,111 @@
+---
+kind: function
+title: roll
+names: [roll]
+group: Joining and repeating
+order: 5
+signatures:
+  - "sd.roll(x, /, shift, *, axis=None)"
+summary: Shift the elements of an array cyclically along axes.
+params:
+  - name: x
+    type: array
+    kind: positional-only
+    desc: Input array.
+  - name: shift
+    type: int, tuple of int or list of int
+    desc: "Number of places to shift. Positive values move elements toward higher indices, negative values toward lower ones. Any size within the `int64` range is allowed; shifts are taken modulo the axis length. A sequence gives one shift per entry of `axis` (see Notes). Must be an `int` when `axis` is `None`. May be passed by keyword."
+  - name: axis
+    type: int, tuple of int, list of int or None
+    kind: keyword-only
+    default: None
+    desc: "Axis or axes to shift along. Negative numbers count from the end. No axis may appear twice. `None` shifts the flattened array and restores the shape of `x`."
+returns:
+  - type: ndarray
+    desc: "New array with the shape and dtype of `x`."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`, if `shift` or `axis` is not of an accepted type, or if `shift` is a sequence and `axis` is `None`."
+  - type: ValueError
+    desc: "If an axis is out of range or repeated, or if `shift` and `axis` are sequences of different lengths."
+  - type: OverflowError
+    desc: "If a shift is outside the `int64` range."
+seeAlso: [flip, concat]
+---
+
+`roll` moves every element `shift` places along an axis. Elements pushed past the end come back in at the start, so
+nothing is lost: along an axis of length $n$, the element at index $i$ moves to index $(i + \mathrm{shift}) \bmod n$.
+A positive shift moves elements toward the end, a negative shift toward the start.
+
+With `axis=None` the array is treated as 1-D in row-major order, shifted, and given back its shape. With one or more
+axes, each named axis is shifted on its own.
+
+The result is always a new array, even when the shift is 0.
+
+## Examples
+
+Shift a 1-D array forward by two places and back by one. A shift larger than the length wraps around:
+
+```python
+>>> import stardust as sd
+>>> v = sd.asarray([1, 2, 3, 4, 5])
+>>> sd.roll(v, 2)
+array([4, 5, 1, 2, 3], dtype=int64)
+>>> sd.roll(v, -1)
+array([2, 3, 4, 5, 1], dtype=int64)
+>>> sd.roll(v, 7)
+array([4, 5, 1, 2, 3], dtype=int64)
+```
+
+A 2-D array shifted as a whole, along the rows, and along the columns:
+
+```python
+>>> m = sd.asarray([[0, 1, 2], [3, 4, 5]])
+>>> sd.roll(m, 1)
+array([[5, 0, 1],
+       [2, 3, 4]], dtype=int64)
+>>> sd.roll(m, 1, axis=0)
+array([[3, 4, 5],
+       [0, 1, 2]], dtype=int64)
+>>> sd.roll(m, 1, axis=1)
+array([[2, 0, 1],
+       [5, 3, 4]], dtype=int64)
+```
+
+Different shifts on two axes at once:
+
+```python
+>>> sd.roll(m, (1, -1), axis=(0, 1))
+array([[4, 5, 3],
+       [1, 2, 0]], dtype=int64)
+```
+
+Without `axis`, the shift must be a single `int`:
+
+```python
+>>> sd.roll(m, (1, 1))
+Traceback (most recent call last):
+    ...
+TypeError: roll(): 'shift' must be an int when 'axis' is None
+```
+
+<Reference />
+
+## Notes
+
+`shift` and `axis` pair up as follows.
+
+| `shift` | `axis` | Effect |
+|---|---|---|
+| `int` | `None` | The flattened array shifts by `shift`. |
+| `int` | `int` | That axis shifts by `shift`. |
+| `int` | sequence | Every named axis shifts by `shift`. |
+| sequence | `int` | That axis shifts by the sum of `shift`. |
+| sequence | sequence | Axis `axis[i]` shifts by `shift[i]`; the lengths must be equal. |
+
+## For NumPy, SciPy and R users
+
+The nearest equivalent is `numpy.roll`. Base R has no equivalent.
+
+- An axis named twice in `axis` raises `ValueError`. NumPy accepts it and adds up the shifts for that axis.
+- `x` must be an `sd.ndarray`; lists raise `TypeError`.

@@ -1,0 +1,108 @@
+---
+kind: function
+title: eye
+names: [eye]
+group: Creating arrays
+order: 6
+signatures:
+  - "sd.eye(n_rows, n_cols=None, /, *, k=0, dtype=None)"
+summary: Return a 2-D array with ones on a diagonal and zeros elsewhere.
+params:
+  - name: n_rows
+    type: int
+    kind: positional-only
+    desc: Number of rows. Must be nonnegative.
+  - name: n_cols
+    type: int or None
+    kind: positional-only
+    default: None
+    desc: "Number of columns. Must be nonnegative. `None` means `n_rows`, giving a square matrix."
+  - name: k
+    type: int
+    kind: keyword-only
+    default: "0"
+    desc: "Offset of the diagonal: 0 is the main diagonal, a positive value a diagonal above it, a negative value one below it. A diagonal outside the matrix gives all zeros."
+  - name: dtype
+    type: dtype, str or None
+    kind: keyword-only
+    default: None
+    desc: "Data type of the result, as a dtype object or its name. `None` means `float64`."
+returns:
+  - type: ndarray of shape (n_rows, n_cols)
+    desc: "Array whose element `[i, j]` is 1 when `j - i == k` and 0 otherwise (`True` and `False` for `bool`)."
+raises:
+  - type: TypeError
+    desc: "If `n_rows`, `n_cols` or `k` is not an `int` (a `float` or `bool`, for example), or if `dtype` is not one of the four array dtypes."
+  - type: ValueError
+    desc: If `n_rows` or `n_cols` is negative.
+  - type: OverflowError
+    desc: "If `n_rows`, `n_cols` or `k` is outside the `int64` range."
+seeAlso: [diag, tril-triu, filled]
+---
+
+`eye(n)` is the identity matrix of size `n`: ones on the main diagonal and zeros elsewhere. Multiplying a matrix
+by it leaves the matrix unchanged. The optional `n_cols` makes the result rectangular, and `k` moves the line of ones
+to another diagonal.
+
+The diagonal with offset `k` consists of the elements `[i, i + k]`. For example, `k=1` is the line immediately above the main
+diagonal. To place arbitrary values on a diagonal, use [`diag`](/api/array/diag/).
+
+## Examples
+
+The identity matrix, and a rectangular one:
+
+```python
+>>> import stardust as sd
+>>> sd.eye(3)
+array([[1.0, 0.0, 0.0],
+       [0.0, 1.0, 0.0],
+       [0.0, 0.0, 1.0]], dtype=float64)
+>>> sd.eye(2, 4)
+array([[1.0, 0.0, 0.0, 0.0],
+       [0.0, 1.0, 0.0, 0.0]], dtype=float64)
+```
+
+Ones above and below the main diagonal:
+
+```python
+>>> sd.eye(3, k=1)
+array([[0.0, 1.0, 0.0],
+       [0.0, 0.0, 1.0],
+       [0.0, 0.0, 0.0]], dtype=float64)
+>>> sd.eye(3, k=-2, dtype=sd.int64)
+array([[0, 0, 0],
+       [0, 0, 0],
+       [1, 0, 0]], dtype=int64)
+```
+
+Adding a multiple of the identity shifts the diagonal of a matrix:
+
+```python
+>>> a = sd.asarray([[2.0, 1.0], [1.0, 3.0]])
+>>> a + 10 * sd.eye(2)
+array([[12.0,  1.0],
+       [ 1.0, 13.0]], dtype=float64)
+```
+
+The offset is keyword-only. A third positional argument is an error:
+
+```python
+>>> sd.eye(3, 3, 1)
+Traceback (most recent call last):
+    ...
+TypeError: eye(): incompatible function arguments. The following argument types are supported:
+    1. eye(n_rows, n_cols=None, /, *, k=0, dtype=None)
+
+Invoked with types: int, int, int
+```
+
+<Reference />
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.eye` and R's `diag(n)`.
+
+- `k` is keyword-only; `numpy.eye(3, 3, 1)` must be written `sd.eye(3, 3, k=1)`. The sizes are named `n_rows` and
+  `n_cols` instead of `N` and `M`, and are positional-only.
+- There is no `order=` argument. The result is laid out in row-major order.
+- R's `diag(1, nrow, ncol)` gives a rectangular identity; R has no offset argument like `k`.

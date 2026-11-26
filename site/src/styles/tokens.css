@@ -58,14 +58,17 @@
   --warn-line: #f2d590;
 
   /* ---- Typography ---- */
+  /* Pretendard's Latin glyphs are Inter's, so it stays the text face. The
+     fallbacks are Latin system faces; no Korean faces are needed. */
   --font-sans: 'Pretendard Variable', Pretendard, -apple-system, BlinkMacSystemFont,
-    system-ui, 'Apple SD Gothic Neo', 'Noto Sans KR', sans-serif;
+    system-ui, 'Segoe UI', Roboto, 'Helvetica Neue', Arial, sans-serif;
   --font-mono: 'Cascadia Code Variable', 'Cascadia Code', ui-monospace, SFMono-Regular,
     Menlo, monospace;
 
   --text-xs: 0.75rem; /* 12 */
   --text-sm: 0.8125rem; /* 13 */
   --text-code: 0.84375rem; /* 13.5, code blocks: a 75-column line still fits the text column */
+  --text-code-inline: 0.875em; /* code in running text: the mono face's x-height is smaller */
   --text-base: 0.9375rem; /* 15 */
   --text-md: 1rem; /* 16 */
   --text-lg: 1.125rem; /* 18 */
@@ -74,12 +77,16 @@
   --text-3xl: 2.25rem; /* 36 */
   --text-4xl: 3rem; /* 48 */
 
+  /* Latin text: a little less leading than Hangul needs. Snug is for one-line
+     labels; normal for short multi-line text (reference rows, summaries). */
   --leading-tight: 1.2;
   --leading-snug: 1.4;
-  --leading-body: 1.75;
+  --leading-normal: 1.55;
+  --leading-body: 1.7;
 
-  --tracking-tight: -0.022em;
-  --tracking-display: -0.035em;
+  /* Close to Inter's own optical tracking at heading and title sizes. */
+  --tracking-tight: -0.018em;
+  --tracking-display: -0.028em;
   --tracking-caps: 0.08em;
 
   /* ---- Space: 4px grid ---- */

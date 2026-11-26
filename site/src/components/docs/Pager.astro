@@ -115,13 +115,14 @@ const { prev, next, label } = Astro.props;
     line-height: var(--leading-snug);
     color: var(--fg-subtle);
   }
+  /* Titles wrap rather than cut: an English page title often names two or
+     three functions ("broadcast_to, broadcast_arrays"). */
   .pager__name {
-    overflow: hidden;
     font-size: var(--text-md);
     font-weight: 650;
     line-height: var(--leading-snug);
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
+    text-wrap: balance;
     color: var(--fg);
   }
   .pager__link:hover .pager__name {

@@ -124,9 +124,8 @@ export default defineConfig({
   // these packages directly instead of through Vite's module runner.
   vite: { ssr: { external: ['@mathjax/src', '@mathjax/mathjax-stix2-font'] } },
   markdown: {
-    // GFM is added by hand so a single tilde stays a tilde: Korean text writes
-    // ranges as "5~27%", and two of them in a line must not become strikethrough
-    // (~~text~~ still does).
+    // GFM is added by hand so a single tilde stays a tilde ("~1e-16", "5~27%"):
+    // two of them in a line must not become strikethrough (~~text~~ still does).
     gfm: false,
     // $...$ and $$...$$ render as math (MathJax 4, STIX Two, SVG at build
     // time) in Markdown and MDX.

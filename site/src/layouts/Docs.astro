@@ -935,5 +935,10 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
     .page-head__title {
       font-size: 1.625rem; /* 26 */
     }
+    /* A name in the code font stays a step under the text titles, as on wide
+       screens; long class names still fit a phone's line. */
+    .page-head__title--mono {
+      font-size: 1.375rem; /* 22 */
+    }
   }
 </style>

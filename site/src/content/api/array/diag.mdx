@@ -1,0 +1,107 @@
+---
+kind: function
+title: diag
+names: [diag]
+group: Creating arrays
+order: 7
+signatures:
+  - "sd.diag(x, /, *, k=0)"
+summary: Return a square matrix with the elements of a 1-D array on one diagonal.
+params:
+  - name: x
+    type: array of shape (n,)
+    kind: positional-only
+    desc: Values to place on the diagonal.
+  - name: k
+    type: int
+    kind: keyword-only
+    default: "0"
+    desc: "Offset of the diagonal: 0 is the main diagonal, a positive value a diagonal above it, a negative value one below it."
+returns:
+  - type: ndarray of shape (n + abs(k), n + abs(k))
+    desc: "New array with the dtype of `x`. Element `[i, i + k]` (when `k >= 0`) or `[i - k, i]` (when `k < 0`) is `x[i]`; every other element is 0, or `False` for `bool`."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`, or if `k` is not an `int`."
+  - type: ValueError
+    desc: "If `x` is not 1-D, or if the result would have too many elements. For a 2-D `x`, the message points to `sd.linalg.diagonal`, which reads the diagonal of a matrix."
+  - type: OverflowError
+    desc: "If `k` is outside the `int64` range."
+seeAlso: [eye, tril-triu, filled, indexing]
+---
+
+`diag` builds a diagonal matrix from a vector. With `k=0` the values of `x` run down the main diagonal; with another
+`k` they run along the diagonal `k` places above (positive `k`) or below (negative `k`) it, and the matrix grows by
+`abs(k)` rows and columns so that every value fits.
+
+`diag` only builds matrices. Reading the diagonal of an existing matrix is `sd.linalg.diagonal`, and a 2-D `x` raises
+`ValueError`. Writing values onto the diagonal of an existing matrix is index assignment (see the last example).
+
+## Examples
+
+A diagonal matrix, and the same values one diagonal above and below the main one:
+
+```python
+>>> import stardust as sd
+>>> sd.diag(sd.asarray([1, 2, 3]))
+array([[1, 0, 0],
+       [0, 2, 0],
+       [0, 0, 3]], dtype=int64)
+>>> v = sd.asarray([1.0, 2.0])
+>>> sd.diag(v, k=1)
+array([[0.0, 1.0, 0.0],
+       [0.0, 0.0, 2.0],
+       [0.0, 0.0, 0.0]], dtype=float64)
+>>> sd.diag(v, k=-1)
+array([[0.0, 0.0, 0.0],
+       [1.0, 0.0, 0.0],
+       [0.0, 2.0, 0.0]], dtype=float64)
+```
+
+A tridiagonal matrix as a sum of three diagonals:
+
+```python
+>>> off = sd.full(2, -1.0)
+>>> sd.diag(sd.full(3, 2.0)) + sd.diag(off, k=1) + sd.diag(off, k=-1)
+array([[ 2.0, -1.0,  0.0],
+       [-1.0,  2.0, -1.0],
+       [ 0.0, -1.0,  2.0]], dtype=float64)
+```
+
+Values are written onto the diagonal of an existing matrix by assignment with two index arrays:
+
+```python
+>>> m = sd.zeros((3, 3))
+>>> i = sd.arange(3)
+>>> m[i, i] = sd.asarray([7.0, 8.0, 9.0])
+>>> m
+array([[7.0, 0.0, 0.0],
+       [0.0, 8.0, 0.0],
+       [0.0, 0.0, 9.0]], dtype=float64)
+```
+
+A 2-D argument is an error:
+
+```python
+>>> sd.diag(m)
+Traceback (most recent call last):
+    ...
+ValueError: diag(): 'x' must have 1 dimension, got 2; for the diagonal of a matrix use sd.linalg.diagonal
+```
+
+<Reference />
+
+## Notes
+
+The values are copied unchanged, including `-0.0` and NaN. For a diagonal at offset `k` in a matrix that already
+exists, assign with the index arrays `i + max(-k, 0)` and `i + max(k, 0)`, where `i = sd.arange(len(v))`.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.diag` and R's `diag(x)`.
+
+- `numpy.diag` and R's `diag` also read the diagonal when given a matrix. Here a 2-D argument raises `ValueError`;
+  `sd.linalg.diagonal` reads diagonals.
+- `k` is keyword-only: `numpy.diag(v, 1)` is `sd.diag(v, k=1)`.
+- `x` must be an `sd.ndarray`; lists raise `TypeError`.
+- There is no counterpart of `numpy.fill_diagonal`. Index assignment writes a diagonal in place.

@@ -1,0 +1,128 @@
+---
+kind: function
+title: zeros, ones, empty, full
+names: [zeros, ones, empty, full]
+group: Creating arrays
+order: 2
+signatures:
+  - "sd.zeros(shape, /, *, dtype=None)"
+  - "sd.ones(shape, /, *, dtype=None)"
+  - "sd.empty(shape, /, *, dtype=None)"
+  - "sd.full(shape, fill_value, /, *, dtype=None)"
+summary: Return a new array of a given shape, filled with zeros, ones or one value, or uninitialized.
+params:
+  - name: shape
+    type: int or tuple of int
+    kind: positional-only
+    desc: "Shape of the result. An `int` gives a 1-D array of that length. Lengths must be nonnegative; a length of 0 gives an empty array. At least 1 and at most 32 dimensions."
+  - name: dtype
+    type: dtype, str or None
+    kind: keyword-only
+    default: None
+    desc: "Data type of the result, as a dtype object or its name. `None` means `float64` for `zeros`, `ones` and `empty`, and the dtype of `fill_value` for `full`."
+  - name: fill_value
+    type: bool, int, float or complex
+    kind: positional-only
+    desc: "Value of every element (`full` only). With `dtype`, it is converted as [`astype`](/api/array/astype/) converts."
+returns:
+  - type: ndarray
+    desc: "New, writable array of the given shape. The elements of an `empty` array have unspecified values."
+raises:
+  - type: TypeError
+    desc: "If `shape` is not an `int` or a tuple of `int` (a `list`, `float` or `bool`, for example), if `fill_value` is not a `bool`, `int`, `float` or `complex`, if `dtype` is not one of the four array dtypes, or if a complex `fill_value` would be converted to `float64` or `int64`."
+  - type: ValueError
+    desc: "If a length is negative, if `shape` is `()`, or if the shape has more than 32 dimensions or too many elements."
+  - type: OverflowError
+    desc: "If a length is outside the `int64` range, or if an integer `fill_value` does not fit the result dtype."
+  - type: MemoryError
+    desc: If the array would need more memory than the machine has.
+seeAlso: [filled-like, asarray, eye, arange, broadcast_to]
+---
+
+These four functions allocate a new array of a given shape. `zeros` and `ones` fill it with 0 and 1, `full` fills it
+with `fill_value`, and `empty` leaves the values unspecified. They are the usual way to create an array that a
+computation then fills, for example by [index assignment](/api/array/indexing/).
+
+`zeros`, `ones` and `empty` return `float64` arrays unless `dtype` says otherwise. `full` takes its dtype from
+`fill_value`: a Python `bool` gives `bool`, an `int` gives `int64`, a `float` gives `float64` and a `complex` gives
+`complex128`.
+
+To create an array with the shape and dtype of an existing array, use [`zeros_like` and its
+companions](/api/array/filled-like/).
+
+## Examples
+
+An `int` shape gives a 1-D array; a tuple gives one axis per entry:
+
+```python
+>>> import stardust as sd
+>>> sd.zeros(3)
+array([0.0, 0.0, 0.0], dtype=float64)
+>>> sd.ones((2, 3))
+array([[1.0, 1.0, 1.0],
+       [1.0, 1.0, 1.0]], dtype=float64)
+>>> sd.zeros((2, 3), dtype=sd.int64)
+array([[0, 0, 0],
+       [0, 0, 0]], dtype=int64)
+```
+
+`full` takes its dtype from the fill value, unless `dtype` is given:
+
+```python
+>>> sd.full((2, 2), 7)
+array([[7, 7],
+       [7, 7]], dtype=int64)
+>>> sd.full(3, 1.5)
+array([1.5, 1.5, 1.5], dtype=float64)
+>>> sd.full(3, 1.5, dtype=sd.int64)
+array([1, 1, 1], dtype=int64)
+>>> sd.full(2, True)
+array([True, True], dtype=bool)
+```
+
+A length of 0 gives an empty array:
+
+```python
+>>> sd.zeros((2, 0))
+array([], shape=(2, 0), dtype=float64)
+```
+
+The shape is an `int` or a `tuple`, not a `list`. An empty tuple would give a 0-D array, which stardust does not
+have:
+
+```python
+>>> sd.zeros([2, 3])
+Traceback (most recent call last):
+    ...
+TypeError: zeros(): 'shape' must be an int or a tuple of ints, not list
+>>> sd.zeros(())
+Traceback (most recent call last):
+    ...
+ValueError: zeros(): 0-dimensional arrays are not supported (stardust has no 0-d arrays)
+```
+
+<Reference />
+
+## Notes
+
+`empty` skips the initialization. Its elements can hold any value, including NaN, so every element must be assigned
+before it is read.
+
+A `fill_value` with a `dtype` follows the rules of explicit conversion: `full(3, 1.5, dtype=sd.int64)` truncates to
+1, `full(3, float("nan"), dtype=sd.int64)` gives 0, and a complex value cannot become `float64` or `int64`. A Python
+`int` outside the `int64` range is accepted when the result is `float64` or `complex128`, and rounded to the nearest
+float.
+
+The result is laid out in row-major order.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.zeros`, `numpy.ones`, `numpy.empty` and `numpy.full`, and R's `numeric(n)`,
+`matrix(0, nrow, ncol)`, `array(1, dim)` and `rep(value, n)`.
+
+- `shape` must be an `int` or a `tuple`; NumPy also accepts a `list`. `()` raises `ValueError` instead of creating a
+  0-D array.
+- `shape` and `fill_value` are positional-only and `dtype` is keyword-only. There is no `order=` argument.
+- `fill_value` must be a single Python or NumPy scalar. `numpy.full` also accepts an array that broadcasts to the
+  shape.
+- An integer `fill_value` outside the `int64` range raises `OverflowError`; NumPy creates an object array.

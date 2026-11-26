@@ -1,0 +1,105 @@
+---
+kind: function
+title: block
+names: [block]
+group: Joining and repeating
+order: 3
+signatures:
+  - "sd.block(arrays, /)"
+summary: Assemble an array from nested lists of blocks.
+params:
+  - name: arrays
+    type: array, or nested list or tuple of array
+    kind: positional-only
+    desc: "Blocks, as lists of lists nested to the same depth everywhere. Every leaf must be an `sd.ndarray`; scalars and `None` are rejected. No list may be empty. A single array, not in a list, is also accepted."
+returns:
+  - type: ndarray
+    desc: "New array with `max(d, ndim)` dimensions, where `d` is the nesting depth and `ndim` the largest number of dimensions among the blocks. The dtype is the promoted dtype of all blocks."
+raises:
+  - type: TypeError
+    desc: "If a leaf is not an `sd.ndarray`, or if `arrays` is neither an array nor a list or tuple."
+  - type: ValueError
+    desc: "If the lists are nested to different depths, if a list is empty, or if blocks joined together differ in length on an axis other than the one they are joined along."
+seeAlso: [concat, stack-unstack, tile]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+
+export const assembled = [[1.0, 2.0, 5.0], [3.0, 4.0, 6.0], [7.0, 8.0, 9.0]];
+
+`block` builds an array from blocks arranged as in the nested list, the way a block matrix is written:
+`block([[A, B], [C, D]])` puts `A` and `B` side by side, and `C` and `D` side by side below them.
+
+The innermost lists are joined along the last axis, the lists that contain them along the second-to-last axis, and so
+on outward. With 2-D blocks, a list of lists is therefore a list of block rows. A flat list of arrays joins them along
+the last axis, like `concat(arrays, axis=-1)`. A block with fewer dimensions than the result gets leading axes of
+length 1 first: a 1-D array of length `n` counts as a row of shape `(1, n)` in a 2-D layout.
+
+Blocks in one block row must have the same number of rows, and the block rows must have the same total width. Within
+those limits the blocks may have different sizes. The result is a new array; its dtype follows the
+[promotion rules](/api/array/dtypes/). There is no empty block: use `zeros` of the right shape for a block of zeros.
+
+<Fig caption="The inner lists are joined along the last axis, the outer list along the first: A and the column form the first block row, the 1-by-3 array the second.">
+  <ArrayFig data={assembled} tones={[['a', 'a', 'b'], ['a', 'a', 'b'], ['', '', '']]} axes note="shape (3, 3)" />
+</Fig>
+
+## Examples
+
+A 4-by-4 matrix from four 2-by-2 blocks:
+
+```python
+>>> import stardust as sd
+>>> A = sd.asarray([[1.0, 2.0], [3.0, 4.0]])
+>>> I = sd.eye(2)
+>>> Z = sd.zeros((2, 2))
+>>> sd.block([[A, Z], [Z, I]])
+array([[1.0, 2.0, 0.0, 0.0],
+       [3.0, 4.0, 0.0, 0.0],
+       [0.0, 0.0, 1.0, 0.0],
+       [0.0, 0.0, 0.0, 1.0]], dtype=float64)
+```
+
+Blocks of different sizes, as in the figure above:
+
+```python
+>>> col = sd.asarray([[5.0], [6.0]])
+>>> row = sd.asarray([[7.0, 8.0, 9.0]])
+>>> sd.block([[A, col], [row]])
+array([[1.0, 2.0, 5.0],
+       [3.0, 4.0, 6.0],
+       [7.0, 8.0, 9.0]], dtype=float64)
+```
+
+A flat list joins along the last axis. In a list of lists, 1-D arrays count as rows:
+
+```python
+>>> sd.block([A, I])
+array([[1.0, 2.0, 1.0, 0.0],
+       [3.0, 4.0, 0.0, 1.0]], dtype=float64)
+>>> sd.block([[sd.asarray([1, 2])], [sd.asarray([3, 4])]])
+array([[1, 2],
+       [3, 4]], dtype=int64)
+```
+
+Every leaf must be an array, and every leaf must sit at the same depth:
+
+```python
+>>> sd.block([[A, 0.0], [Z, I]])
+Traceback (most recent call last):
+    ...
+TypeError: block(): 'arrays[0][1]' must be an sd.ndarray or a list of them, not float
+>>> sd.block([[A, Z], I])
+Traceback (most recent call last):
+    ...
+ValueError: block(): the lists are nested unevenly: 'arrays[0][0]' is at depth 2 but 'arrays[1]' at depth 1
+```
+
+<Reference />
+
+## For NumPy, SciPy and R users
+
+The nearest equivalent is `numpy.block`.
+
+- Leaves must be `sd.ndarray`. NumPy also accepts scalars as blocks.
+- Tuples are accepted wherever lists are. NumPy raises `TypeError` for a tuple.
+- A single array, not in a list, gives a copy of it, as in NumPy.
