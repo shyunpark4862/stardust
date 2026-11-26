@@ -415,6 +415,59 @@
 \def\@maketitle{\AddToHookNext{shipout/background}{\sd@drawcover}\sd@maketitle@lettering}
 
 % ---------------------------------------------------------------------------
+% 8d. Part pages list their chapters (user's request 2026-11-26): under the part title, a
+% short contents of that part, chapters only (number, title, page; no leaders), lighter
+% than the main Contents. Every numbered main-matter chapter inside a part writes
+% \sd@partitem{<part>}{<toc entry>}{<page>}{<anchor>} to the .aux file next to its own
+% contents line (so the title is protected exactly as in the .toc); reading the .aux at
+% \begin{document} collects the entries part by part, and \@endpart sets the list of the
+% part just opened. On the first run, and for a part without chapters, nothing is set.
+% ---------------------------------------------------------------------------
+\newif\ifsd@partpending
+\newcommand\sd@partitem[4]{%
+  \@ifundefined{sd@partlist@#1}{\global\@namedef{sd@partlist@#1}{}}{}%
+  \expandafter\g@addto@macro\csname sd@partlist@#1\endcsname{\sd@partline{#2}{#3}{#4}}}
+\def\sd@tocext{toc}\def\sd@tocchapter{chapter}\def\sd@tocpart{part}
+\newcommand\sd@partrecord[3]{%
+  \def\sd@tempa{#1}\def\sd@tempb{#2}%
+  \ifx\sd@tempa\sd@tocext
+    \ifx\sd@tempb\sd@tocpart \global\sd@partpendingtrue \fi
+    \ifx\sd@tempb\sd@tocchapter
+      \ifnum\c@part>\z@ \if@mainmatter \if@chapnum
+        \protected@write\@auxout{}{\string\sd@partitem{\the\c@part}{#3}{\thepage}{\@currentHref}}%
+      \fi\fi\fi
+    \fi
+  \fi}
+\AtBeginDocument{%
+  \let\sd@addcontentsline\addcontentsline
+  \def\addcontentsline#1#2#3{\sd@addcontentsline{#1}{#2}{#3}\sd@partrecord{#1}{#2}{#3}}}
+\pretocmd{\@endpart}{\ifsd@partpending \global\sd@partpendingfalse \sd@partcontents \fi}{}%
+  {\ClassError{sdbook-eng}{patch failed}{}}
+% The look: \small roman, 96pt below the part title, in a block of \sd@pcwidth set flush
+% right so that it ends where the title ends; chapter numbers in a column \sd@pcnum wide,
+% titles wrapping with a hanging indent, page numbers flush right in a column \sd@pcpage
+% wide. Entries are links to the chapters (no boxes: hyperref's hidelinks).
+\newdimen\sd@pcwidth \newdimen\sd@pcnum \newdimen\sd@pcpage
+\sd@pcwidth=.62\textwidth \sd@pcnum=1.6em \sd@pcpage=2.6em
+\newcommand\sd@partcontents{%
+  \@ifundefined{sd@partlist@\the\c@part}{}{%
+    \par\vskip 96\p@
+    \noindent\hfill\begin{minipage}[t]{\sd@pcwidth}%
+      \normalfont\small \parskip 2\p@
+      \csname sd@partlist@\the\c@part\endcsname
+    \end{minipage}\par}}
+\newcommand\sd@pclink[2]{\ifx\relax#1\relax #2\else\hyperlink{#1}{#2}\fi}
+\newcommand\sd@partline[3]{%
+  \begingroup
+    \parindent\z@ \@tempdima\sd@pcnum
+    \rightskip\sd@pcpage \advance\rightskip\z@ \@plus 2cm
+    \parfillskip -\rightskip \pretolerance\@M \hyphenpenalty\@M
+    \def\numberline##1{\hb@xt@\@tempdima{##1\hfil}}%
+    \leavevmode \leftskip\@tempdima \hskip -\leftskip
+    \sd@pclink{#3}{#1}\nobreak\hfill\nobreak\hb@xt@\sd@pcpage{\hfil\sd@pclink{#3}{#2}}\par
+  \endgroup}
+
+% ---------------------------------------------------------------------------
 % 9. Small things
 % ---------------------------------------------------------------------------
 \setcounter{tocdepth}{1}            % chapters and sections in the contents
