@@ -835,7 +835,7 @@ where each $P_i$ is a polynomial of degree less than $m_i$, and the $k$ coeffici
 \end{proposition}
 
 \begin{proof}
-As in \cref{thm:linear-recurrence}, a solution is determined by its first $k$ values, and one checks that each sequence $n^jr_i^n$ with $j<m_i$ is a solution. The remaining point is that the $k$ coefficients can always be fitted to $k$ given initial values, which amounts to the invertibility of a $k\times k$ matrix of the Vandermonde type. Alternatively, the generating function of any solution is a rational function whose denominator is $1-c_1x-\cdots-c_kx^k$, and its partial fraction decomposition yields the formula; this second proof is carried out by Graham, Knuth and Patashnik~\cite[Sect.~7.3]{graham1994concrete}.
+As in \cref{thm:linear-recurrence}, a solution is determined by its first $k$ values, and one checks that each sequence $n^jr_i^n$ with $j<m_i$ is a solution. The remaining point is that the $k$ coefficients can always be fitted to $k$ given initial values, which amounts to the invertibility of a $k\times k$ matrix of the Vandermonde type. Alternatively, the generating function of any solution is a rational function whose denominator is $1-c_1x-\cdots-c_kx^k$, and its partial fraction decomposition yields the formula; this second proof is carried out by Graham, Knuth and Patashnik~\cite[Sect.~7.3]{graham1994concrete}. A complete proof by linear algebra, with the companion matrix and its Jordan form, is \cref{cor:linear-recurrence}.
 \end{proof}
 
 \subsection{Divide-and-Conquer Recurrences}
