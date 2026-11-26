@@ -24,10 +24,10 @@ This list collects the symbols that are used in several chapters, and the conven
 \item[$a\coloneqq b$] $a$ is defined to be $b$
 \item[$\{x\in S: P(x)\}$] the set of the elements $x$ of $S$ for which $P(x)$ holds; $\{t(x): x\in S\}$ is the set of the values $t(x)$
 \item[$A\subseteq B$, $A\subset B$] $A$ is a subset of $B$; $A$ is a \emph{proper} subset of $B$ ($A\subseteq B$ and $A\ne B$)
-\item[$A\setminus B$, $A^{\mathrm c}$] the elements of $A$ not in $B$; the complement $U\setminus A$ in the universe $U$
+\item[$A\setminus B$] the elements of $A$ not in $B$
 \item[$(a,b)$, $A\times B$, $A^n$] an ordered pair; the Cartesian product; the set of $n$-tuples $(a_1,\ldots,a_n)$ of elements of $A$
 \item[$|A|$] the number of elements of a finite set $A$; $|A|=|B|$ means that there is a bijection between $A$ and $B$
-\item[$\sum_{k=m}^{n}a_k$, $\prod_{k=m}^{n}a_k$] sum and product; an empty sum ($n<m$) is $0$, an empty product is $1$
+\item[$\sum_{k=m}^{n}a_k$, $\prod_{k=m}^{n}a_k$] sum and product; if $n<m$, they are empty, with the values $0$ and $1$
 \item[$x^{\underline k}$, $\binom rk$] the falling factorial $x(x-1)\cdots(x-k+1)$, with $x^{\underline 0}=1$; the binomial coefficient $r^{\underline k}/k!$, for real $r$ and $k\in\mathbb N$
 \end{symbols}
 
@@ -39,7 +39,7 @@ This list collects the symbols that are used in several chapters, and the conven
 \item[$\lfloor x\rfloor$, $\lceil x\rceil$] the floor and the ceiling: the integers $n$ with $n\le x<n+1$ and with $n-1<x\le n$
 \item[$\operatorname{sign}x$] $-1$, $0$ or $1$ according as $x<0$, $x=0$ or $x>0$
 \item[$a\mid b$] the integer $a$ divides the integer $b$
-\item[$a\bmod b$] the remainder of $a$ on division by $b>0$, rounded down: $0\le a\bmod b<b$ also for negative $a$
+\item[$a\bmod b$] the remainder of $a$ on division by $b>0$, with $0\le a\bmod b<b$ also for $a<0$
 \item[$a\equiv b\pmod n$, $\mathbb Z/n\mathbb Z$] $n\mid a-b$; the integers modulo $n$
 \item[$(d_k\cdots d_0)_b$] the number $\sum_{i=0}^{k}d_ib^i$ written with the digits $d_i\in\{0,\ldots,b-1\}$ in base $b$
 \item[$\phi$, $H_n$] the golden ratio $(1+\sqrt5)/2$; the harmonic number $1+1/2+\cdots+1/n$
@@ -71,7 +71,6 @@ This list collects the symbols that are used in several chapters, and the conven
 \item[$\int_a^bf$, $\int_a^bf(x)\,dx$] the integral of $f$ over $[a,b]$; $\int_b^af=-\int_a^bf$
 \item[$\Lambda(x)$] the function $\int_1^x dt/t$ ($x>0$) of \cref{ch:integration,ch:series}, which \cref{ch:transcendental} identifies with $\ln x$
 \item[$\Gamma(s)$] the gamma function $\int_0^\infty t^{s-1}e^{-t}\,dt$, $s>0$
-\item[$P_n$; $J_\nu$, $Y_\nu$] the Legendre polynomials, $P_n(1)=1$; the Bessel functions
 \item[$f=O(g)$, $f=o(g)$] $|f|\le C|g|$ near the limit point; $|f|\le\varepsilon|g|$ near it for every $\varepsilon>0$ (the limit point is stated or clear from the context)
 \item[$f\sim g$] $f$ is asymptotically equal to $g$: $f-g=o(g)$
 \end{symbols}
