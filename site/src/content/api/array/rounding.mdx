@@ -1,0 +1,124 @@
+---
+kind: function
+title: floor, ceil, trunc, round
+names: [floor, ceil, trunc, round]
+group: Rounding
+order: 1
+signatures:
+  - "sd.floor(x, /, *, out=None)"
+  - "sd.ceil(x, /, *, out=None)"
+  - "sd.trunc(x, /, *, out=None)"
+  - "sd.round(x, /, *, out=None)"
+summary: Round each element to an integral value, downward, upward, toward zero or to the nearest.
+params:
+  - name: x
+    type: array or scalar
+    kind: positional-only
+    desc: "Input. An `sd.ndarray` or a Python `bool`, `int` or `float`; for `round` also `complex`."
+  - name: out
+    type: ndarray or None
+    kind: keyword-only
+    default: None
+    desc: "Array to write the result into. See [the `out=` argument](/start/conventions/#the-out-argument)."
+returns:
+  - type: ndarray or scalar
+    desc: "Rounded values, with the shape and the dtype of `x`. A Python scalar of the same type when `x` is a Python scalar."
+raises:
+  - type: TypeError
+    desc: "If `x` is complex (`floor`, `ceil` and `trunc`), if `x` is not an `sd.ndarray` or a Python scalar, or if `out` cannot hold the dtype of `x`."
+  - type: ValueError
+    desc: "If `x` does not broadcast to the shape of `out`, or if `out` is read-only."
+  - type: OverflowError
+    desc: "If `x` is a Python `int` outside the `int64` range."
+seeAlso: [astype, floor_divide-remainder, sign]
+---
+
+The four functions replace each element by a whole number:
+
+| Function | Rounds | `-1.5` | `-0.5` | `0.5` | `1.5` | `2.5` |
+|---|---|---|---|---|---|---|
+| `floor` | down, toward `-inf` | `-2.0` | `-1.0` | `0.0` | `1.0` | `2.0` |
+| `ceil` | up, toward `inf` | `-1.0` | `-0.0` | `1.0` | `2.0` | `3.0` |
+| `trunc` | toward zero | `-1.0` | `-0.0` | `0.0` | `1.0` | `2.0` |
+| `round` | to the nearest; halves to the even neighbor | `-2.0` | `-0.0` | `0.0` | `2.0` | `2.0` |
+
+The result keeps the dtype of `x`: rounding a `float64` array gives a `float64` array of whole numbers, not an
+`int64` array. To get integers, convert the result with [`astype`](/api/array/astype/). `int64` and `bool` elements
+are already whole, so for those dtypes the result is a copy of `x`.
+
+`round` has no argument for the number of decimals; it always rounds to a whole number.
+
+## Examples
+
+The four directions on the same values:
+
+```python
+>>> import stardust as sd
+>>> y = sd.asarray([-1.7, -1.2, 1.2, 1.7])
+>>> sd.floor(y)
+array([-2.0, -2.0,  1.0,  1.0], dtype=float64)
+>>> sd.ceil(y)
+array([-1.0, -1.0,  2.0,  2.0], dtype=float64)
+>>> sd.trunc(y)
+array([-1.0, -1.0,  1.0,  1.0], dtype=float64)
+>>> sd.round(y)
+array([-2.0, -1.0,  1.0,  2.0], dtype=float64)
+```
+
+`round` sends a value exactly halfway between two integers to the even one, so 0.5 and 2.5 round down and 1.5 rounds
+up:
+
+```python
+>>> sd.round(sd.asarray([-2.5, -1.5, -0.5, 0.5, 1.5, 2.5]))
+array([-2.0, -2.0, -0.0,  0.0,  2.0,  2.0], dtype=float64)
+>>> sd.round(2.5)
+2.0
+```
+
+The dtype does not change. `astype` converts whole-number floats to `int64`; integer input comes back unchanged:
+
+```python
+>>> sd.floor(sd.asarray([2.7, -2.7])).astype(sd.int64)
+array([ 2, -3], dtype=int64)
+>>> sd.floor(sd.asarray([3, -4]))
+array([ 3, -4], dtype=int64)
+```
+
+`round` rounds the real and imaginary parts of a complex number separately. The other three reject complex input:
+
+```python
+>>> sd.round(sd.asarray([1.5 + 2.5j, -0.5 + 3.7j]))
+array([ (2+2j), (-0+4j)], dtype=complex128)
+>>> sd.floor(sd.asarray([1 + 1j]))
+Traceback (most recent call last):
+    ...
+TypeError: floor(): not supported for complex128
+```
+
+<Reference />
+
+## Notes
+
+For real $x$, `floor(x)` is the largest integer $\le x$ and `ceil(x)` the smallest integer $\ge x$. `trunc(x)` is
+`floor(x)` for $x \ge 0$ and `ceil(x)` for $x \lt 0$. `round(x)` is the integer nearest to $x$; when $x$ lies exactly
+halfway between two integers, it is the even one. This rule, round half to even, has no upward or downward bias on
+average.
+
+The result has the sign of `x`, also when it is zero: `ceil(-0.5)`, `trunc(-0.5)` and `round(-0.5)` are `-0.0`. NaN
+and the infinities are returned unchanged. Every `float64` of magnitude $2^{52}$ or more is already a whole number and
+is returned unchanged.
+
+Rounding to $d$ decimals by `sd.round(x * 10**d) / 10**d` is approximate: most decimal fractions have no exact
+`float64` representation, so the scaled value may lie slightly below or above a half.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.floor`, `numpy.ceil`, `numpy.trunc` and `numpy.round`, and R's `floor`,
+`ceiling`, `trunc` and `round`.
+
+- `round` has no `decimals` argument (NumPy) or `digits` argument (R).
+- Halves round to even, as in `numpy.round` and R's `round`. Python's built-in `round(2.5)` is the `int` 2;
+  `sd.round(2.5)` is the `float` 2.0. The built-in `round` raises `TypeError` for an `sd.ndarray`, which NumPy
+  arrays accept.
+- `floor`, `ceil` and `trunc` raise `TypeError` for complex input, as in NumPy.
+- R's `floor`, `ceiling`, `trunc` and `round` return doubles. Here an `int64` array stays `int64`.

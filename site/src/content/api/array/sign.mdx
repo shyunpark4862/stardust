@@ -1,0 +1,90 @@
+---
+kind: function
+title: sign
+names: [sign]
+group: Arithmetic
+order: 6
+signatures:
+  - "sd.sign(x, /, *, out=None)"
+summary: Return the sign of each element.
+params:
+  - name: x
+    type: array or scalar
+    kind: positional-only
+    desc: "Input. An `sd.ndarray` or a Python `bool`, `int`, `float` or `complex`."
+  - name: out
+    type: ndarray or None
+    kind: keyword-only
+    default: None
+    desc: "Array to write the result into. See [the `out=` argument](/start/conventions/#the-out-argument)."
+returns:
+  - type: ndarray or scalar
+    desc: "Signs, with the shape of `x`: -1, 0 or 1 for real input, `x / abs(x)` for complex input. The dtype of `x`, with `int64` in place of `bool`. A Python scalar when `x` is a Python scalar."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray` or a Python scalar, or if `out` cannot hold the result dtype."
+  - type: ValueError
+    desc: "If `x` does not broadcast to the shape of `out`, or if `out` is read-only."
+  - type: OverflowError
+    desc: "If `x` is a Python `int` outside the `int64` range."
+seeAlso: [abs, copysign, signbit, arithmetic]
+---
+
+`sign` returns $-1$ for negative elements, 0 for zeros and 1 for positive elements, in the dtype of `x`. Booleans
+give `int64` 0 and 1 (see [arithmetic on Booleans](/api/array/dtypes/#arithmetic-on-booleans)). For a `float64` NaN
+the result is NaN.
+
+For a nonzero complex number $z$, the sign is the complex number of magnitude 1 in the same direction,
+$z / \lvert z \rvert$, so that `sign(z) * abs(z)` is `z` up to rounding. The sign of 0 is 0.
+
+To test the sign bit itself, which distinguishes `-0.0` from `0.0` and applies to NaN as well, use
+[`signbit`](/api/array/signbit/).
+
+## Examples
+
+Integers and floating-point numbers:
+
+```python
+>>> import stardust as sd
+>>> sd.sign(sd.asarray([-5, 0, 7]))
+array([-1,  0,  1], dtype=int64)
+>>> sd.sign(sd.asarray([-2.5, -0.0, 0.0, 3.0, -sd.inf, sd.nan]))
+array([-1.0,  0.0,  0.0,  1.0, -1.0,  nan], dtype=float64)
+```
+
+Complex numbers give the direction as a number of magnitude 1:
+
+```python
+>>> z = sd.asarray([3 + 4j, 0 - 2j, 0j])
+>>> sd.sign(z)
+array([(0.6+0.8j),        -1j,         0j], dtype=complex128)
+>>> sd.sign(z) * sd.abs(z)
+array([(3+4j),    -2j,     0j], dtype=complex128)
+```
+
+<Reference />
+
+## Notes
+
+For `float64`, both zeros give `0.0`, so the sign of `-0.0` is lost, and $\pm\infty$ give $\pm 1$.
+
+Complex special values:
+
+| `x` | `sign(x)` |
+|---|---|
+| 0 | 0 |
+| one part infinite, the other finite | $\pm 1$ or $\pm i$, the direction of the infinite part |
+| both parts infinite | NaN in both parts |
+| a part is NaN | NaN in both parts |
+
+```python
+>>> sd.sign(sd.asarray([complex(sd.inf, 1.0), complex(1.0, -sd.inf), complex(sd.inf, sd.inf)]))
+array([    (1+0j),        -1j, (nan+nanj)], dtype=complex128)
+```
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.sign` and R's `sign`.
+
+- Booleans give `int64`. `numpy.sign` raises `TypeError` for Boolean arrays.
+- R's `sign` does not accept complex numbers.

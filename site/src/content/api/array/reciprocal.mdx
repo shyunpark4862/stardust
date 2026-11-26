@@ -1,0 +1,79 @@
+---
+kind: function
+title: reciprocal
+names: [reciprocal]
+group: Arithmetic
+order: 7
+signatures:
+  - "sd.reciprocal(x, /, *, out=None)"
+summary: Return the reciprocal of each element.
+params:
+  - name: x
+    type: array or scalar
+    kind: positional-only
+    desc: "Input. An `sd.ndarray` or a Python `bool`, `int`, `float` or `complex`."
+  - name: out
+    type: ndarray or None
+    kind: keyword-only
+    default: None
+    desc: "Array to write the result into. See [the `out=` argument](/start/conventions/#the-out-argument)."
+returns:
+  - type: ndarray or scalar
+    desc: "Reciprocals `1 / x`, with the shape of `x`. `float64` for `bool`, `int64` and `float64` input, `complex128` for complex input. A Python scalar when `x` is a Python scalar."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray` or a Python scalar, or if `out` cannot hold the result dtype."
+  - type: ValueError
+    desc: "If `x` does not broadcast to the shape of `out`, or if `out` is read-only."
+  - type: OverflowError
+    desc: "If `x` is a Python `int` outside the `int64` range."
+seeAlso: [arithmetic, pow, dtypes]
+---
+
+`reciprocal(x)` computes $1/x$ for each element. `bool` and `int64` input is converted to `float64` first (see
+[functions with floating-point results](/api/array/dtypes/#functions-with-floating-point-results)), so the result of
+`reciprocal` on integers is the fraction, not an integer. For real input it gives the same values as
+[`divide(1, x)`](/api/array/arithmetic/).
+
+## Examples
+
+Integers give `float64` results; zero gives infinity:
+
+```python
+>>> import stardust as sd
+>>> sd.reciprocal(sd.asarray([4, -2, 0]))
+array([0.25, -0.5,  inf], dtype=float64)
+```
+
+Floating-point special values. The sign of a zero is kept as the sign of the infinity:
+
+```python
+>>> sd.reciprocal(sd.asarray([0.5, 0.0, -0.0, sd.inf, sd.nan]))
+array([ 2.0,  inf, -inf,  0.0,  nan], dtype=float64)
+```
+
+Complex numbers. The reciprocal of `0j` is NaN in both parts:
+
+```python
+>>> sd.reciprocal(sd.asarray([3 + 4j, 1j, 0j]))
+array([(0.12-0.16j),          -1j,   (nan+nanj)], dtype=complex128)
+```
+
+<Reference />
+
+## Notes
+
+For `float64`, the result is the correctly rounded value of $1/x$. Numbers smaller than about $5.6 \times 10^{-309}$ in
+magnitude, which are subnormal, have reciprocals beyond the largest `float64` and give $\pm\infty$.
+
+For a complex number $a + bi$, the reciprocal is $(a - bi)/(a^2 + b^2)$, computed with a scaling by the larger part
+(Smith's method) so that the squares do not overflow. A complex zero gives NaN in both parts, while
+`divide(1, 0j)` gives `inf+nanj`.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.reciprocal` and R's `1 / x`.
+
+- Integers give `float64` reciprocals. `numpy.reciprocal` keeps the integer dtype, so the reciprocals of 2 and 4 are
+  0.
+- The reciprocal of 0 is `inf` (with the sign of the zero) without a warning. NumPy issues a `RuntimeWarning`.

@@ -1,0 +1,84 @@
+---
+kind: function
+title: deg2rad, rad2deg
+names: [deg2rad, rad2deg]
+group: Trigonometric and hyperbolic
+order: 4
+signatures:
+  - "sd.deg2rad(x, /, *, out=None)"
+  - "sd.rad2deg(x, /, *, out=None)"
+summary: Convert angles from degrees to radians, or from radians to degrees, element-wise.
+params:
+  - name: x
+    type: array or scalar
+    kind: positional-only
+    desc: "Angles in degrees (`deg2rad`) or radians (`rad2deg`). An `sd.ndarray` or a Python `bool`, `int` or `float`."
+  - name: out
+    type: ndarray or None
+    kind: keyword-only
+    default: None
+    desc: "Array to write the result into. See [the `out=` argument](/start/conventions/#the-out-argument)."
+returns:
+  - type: ndarray or scalar
+    desc: "Converted angles, with the shape of `x`. Always `float64`. A Python `float` when `x` is a Python scalar."
+raises:
+  - type: TypeError
+    desc: "If `x` is complex, if `x` is not an `sd.ndarray` or a Python scalar, or if `out` cannot hold `float64`."
+  - type: ValueError
+    desc: "If `x` does not broadcast to the shape of `out`, or if `out` is read-only."
+  - type: OverflowError
+    desc: "If `x` is a Python `int` outside the `int64` range."
+seeAlso: [trig, atan2, constants]
+---
+
+`deg2rad` multiplies each element by `pi / 180`, and `rad2deg` by `180 / pi`. The trigonometric functions take and
+return radians, so these two functions convert at the boundary: degrees into `sin`, `cos` and `tan`, and the angles
+from `asin`, `acos`, `atan` and `atan2` back into degrees.
+
+`bool` and `int64` input is converted to `float64` first (see
+[functions with floating-point results](/api/array/dtypes/#functions-with-floating-point-results)). NaN,
+infinities and the sign of zero pass through unchanged.
+
+## Examples
+
+Degrees to radians and back:
+
+```python
+>>> import stardust as sd
+>>> sd.deg2rad(sd.asarray([0, 30, 90, 180, 360]))
+array([               0.0, 0.5235987755982988, 1.5707963267948966,
+        3.141592653589793,  6.283185307179586], dtype=float64)
+>>> sd.rad2deg(sd.asarray([sd.pi / 6, sd.pi / 2, sd.pi]))
+array([29.999999999999996,               90.0,              180.0], dtype=float64)
+```
+
+The sine of angles given in degrees:
+
+```python
+>>> sd.sin(sd.deg2rad(sd.asarray([30.0, 150.0])))
+array([0.4999999999999999, 0.4999999999999999], dtype=float64)
+```
+
+A round trip can change the last digit, because neither conversion factor is exact in `float64`:
+
+```python
+>>> sd.rad2deg(sd.deg2rad(sd.asarray([30.0, 45.0, 60.0])))
+array([29.999999999999996,               45.0,  59.99999999999999], dtype=float64)
+```
+
+<Reference />
+
+## Notes
+
+The functions compute $x \cdot c$ in one multiplication, with the constant $c = \pi/180$ or $180/\pi$ rounded to
+`float64` first. The results are within a few units in the last place of the exact conversion. `deg2rad(180)` is
+exactly `sd.pi`.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.deg2rad` and `numpy.rad2deg` (also `numpy.radians` and `numpy.degrees`). Base R
+has no conversion functions; multiply by `pi / 180` or `180 / pi`.
+
+- The results agree with NumPy's, which uses the same formula.
+- Complex input raises `TypeError`, as in NumPy.
+- There are no `radians` and `degrees` aliases.

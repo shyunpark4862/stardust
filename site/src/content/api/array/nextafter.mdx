@@ -1,0 +1,101 @@
+---
+kind: function
+title: nextafter
+names: [nextafter]
+group: Arithmetic
+order: 12
+signatures:
+  - "sd.nextafter(x1, x2, /, *, out=None)"
+summary: Return the next floating-point number after each element of one array in the direction of another.
+params:
+  - name: x1
+    type: array or scalar
+    kind: positional-only
+    desc: "Starting values. An `sd.ndarray` or a Python `bool`, `int` or `float`."
+  - name: x2
+    type: array or scalar
+    kind: positional-only
+    desc: "Directions, in the same forms as `x1`. It broadcasts against `x1` (see [Broadcasting](/api/array/broadcasting/))."
+  - name: out
+    type: ndarray or None
+    kind: keyword-only
+    default: None
+    desc: "Array to write the result into. See [the `out=` argument](/start/conventions/#the-out-argument)."
+returns:
+  - type: ndarray or scalar
+    desc: "The `float64` number next to `x1` toward `x2`, with the broadcast shape of the operands. Always `float64`. A Python `float` when both operands are Python scalars."
+raises:
+  - type: TypeError
+    desc: "If an operand is complex, if an operand is not an `sd.ndarray` or a Python scalar, or if `out` cannot hold `float64`."
+  - type: ValueError
+    desc: "If the operands do not broadcast against each other or to the shape of `out`, or if `out` is read-only."
+  - type: OverflowError
+    desc: "If a Python `int` outside the `int64` range is an operand and the promoted dtype is `bool` or `int64`."
+seeAlso: [finfo-iinfo, copysign]
+---
+
+`float64` numbers are discrete: between two neighboring values there is no other. `nextafter(x1, x2)` returns the
+neighbor of `x1` on the side of `x2`, the smallest possible step from `x1` toward `x2`. If `x1` equals `x2`, the
+result is `x2`.
+
+The distance from `x` to the next number, `nextafter(x, inf) - x`, is the spacing of `float64` numbers at `x`. It
+grows with the magnitude of `x`; at 1 it is the machine epsilon, `finfo(float64).eps` (see
+[`finfo`](/api/array/finfo-iinfo/)). Stepping with `nextafter` is a way to test how a computation reacts to the
+smallest possible change of its input.
+
+The result is always `float64`. `bool` and `int64` operands are converted to `float64` first (see
+[functions with floating-point results](/api/array/dtypes/#functions-with-floating-point-results)), and complex
+operands raise `TypeError`.
+
+## Examples
+
+The neighbors of 1 above and below. The step up is the machine epsilon:
+
+```python
+>>> import stardust as sd
+>>> sd.nextafter(sd.asarray([1.0, 1.0]), sd.asarray([2.0, 0.0]))
+array([1.0000000000000002, 0.9999999999999999], dtype=float64)
+>>> sd.nextafter(1.0, 2.0) - 1.0
+2.220446049250313e-16
+>>> sd.finfo(sd.float64).eps
+2.220446049250313e-16
+```
+
+The spacing grows with the magnitude:
+
+```python
+>>> x = sd.asarray([1.0, 1e10, 1e-10])
+>>> sd.nextafter(x, sd.inf) - x
+array([ 2.220446049250313e-16,    1.9073486328125e-06,
+       1.2924697071141057e-26], dtype=float64)
+```
+
+At the ends of the range. From 0 the next number is the smallest positive `float64`, $5 \times 10^{-324}$, with the
+sign of the direction; past the largest finite number comes infinity:
+
+```python
+>>> sd.nextafter(sd.asarray([0.0, 0.0]), sd.asarray([1.0, -1.0]))
+array([ 5e-324, -5e-324], dtype=float64)
+>>> big = sd.finfo(sd.float64).max
+>>> sd.nextafter(sd.asarray([big, sd.inf]), sd.asarray([sd.inf, 0.0]))
+array([                    inf, 1.7976931348623157e+308], dtype=float64)
+```
+
+<Reference />
+
+## Notes
+
+Special values:
+
+| Operands | Result |
+|---|---|
+| `x1` equal to `x2` | `x2`, so `nextafter(0.0, -0.0)` is `-0.0` |
+| `x1` is $\pm 0$, `x2` nonzero | $5 \times 10^{-324}$, the smallest positive number, with the sign of `x2` |
+| `x1` is the largest finite number, `x2` larger | $+\infty$ (and likewise for the most negative number) |
+| `x1` is $\pm\infty$, `x2` finite | the largest finite number of the same sign |
+| an operand is NaN | NaN |
+
+```python
+>>> sd.nextafter(sd.asarray([1.0, sd.nan, 1.0, 0.0]), sd.asarray([1.0, 2.0, sd.nan, -0.0]))
+array([ 1.0,  nan,  nan, -0.0], dtype=float64)
+```

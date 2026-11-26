@@ -1,0 +1,122 @@
+---
+kind: function
+title: real, imag, conj
+names: [real, imag, conj]
+group: Complex numbers
+order: 1
+signatures:
+  - "sd.real(x, /, *, out=None)"
+  - "sd.imag(x, /, *, out=None)"
+  - "sd.conj(x, /, *, out=None)"
+summary: Return the real part, the imaginary part, or the complex conjugate of each element.
+params:
+  - name: x
+    type: array or scalar
+    kind: positional-only
+    desc: "Input of any dtype. An `sd.ndarray` or a Python `bool`, `int`, `float` or `complex`."
+  - name: out
+    type: ndarray or None
+    kind: keyword-only
+    default: None
+    desc: "Array to write the result into. See [the `out=` argument](/start/conventions/#the-out-argument)."
+returns:
+  - type: ndarray or scalar
+    desc: "Array with the shape of `x`. For `complex128` input, `real` and `imag` give `float64` and `conj` gives `complex128`; for other dtypes, all three keep the dtype of `x`. A Python scalar when `x` is a Python scalar. Without `out`, see the description for which results are views."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray` or a Python scalar, or if `out` cannot hold the result dtype."
+  - type: ValueError
+    desc: "If `x` does not broadcast to the shape of `out`, or if `out` is read-only."
+  - type: OverflowError
+    desc: "If `x` is a Python `int` outside the `int64` range."
+seeAlso: [abs, atan2, dtypes, views]
+---
+
+`real` and `imag` return the real and imaginary parts of each element, and `conj` its complex conjugate, the number
+with the same real part and the negated imaginary part. They accept every dtype, so code written for complex arrays also
+runs on real ones: a real number has itself as real part, 0 as imaginary part, and itself as conjugate.
+
+Without `out`, the results share memory with `x` in some cases (see [Views and copies](/api/array/views/)):
+
+| Input | `real(x)` | `imag(x)` | `conj(x)` |
+|---|---|---|---|
+| `complex128` | `float64` view of the real parts | `float64` view of the imaginary parts | new `complex128` array |
+| `bool`, `int64`, `float64` | `x` itself | new [read-only](/api/array/views/#read-only-arrays) array of zeros, dtype of `x` | new copy of `x` |
+
+Writing to the view returned by `real` or `imag` of a complex array changes `x`. `sd.ndarray` has no `real` and
+`imag` attributes; these functions take their place.
+
+The modulus of a complex number is given by [`abs`](/api/array/abs/), and its argument (angle) by
+[`atan2(imag(z), real(z))`](/api/array/atan2/). A complex array is built from two real ones as `x + 1j * y`.
+
+## Examples
+
+The parts and the conjugate of three complex numbers. The product of a number and its conjugate is the square of
+its modulus:
+
+```python
+>>> import stardust as sd
+>>> z = sd.asarray([3 + 4j, 1 - 2j, 2 + 0j])
+>>> sd.real(z)
+array([3.0, 1.0, 2.0], dtype=float64)
+>>> sd.imag(z)
+array([ 4.0, -2.0,  0.0], dtype=float64)
+>>> sd.conj(z)
+array([(3-4j), (1+2j), (2-0j)], dtype=complex128)
+>>> sd.real(z * sd.conj(z))
+array([25.0,  5.0,  4.0], dtype=float64)
+```
+
+`real` of a complex array is a view, so assigning to it changes `z`:
+
+```python
+>>> r = sd.real(z)
+>>> r[0] = 30.0
+>>> z
+array([(30+4j),  (1-2j),  (2+0j)], dtype=complex128)
+```
+
+Real input. `real` returns the array itself, and `imag` a read-only array of zeros:
+
+```python
+>>> x = sd.asarray([1.0, 2.0])
+>>> sd.real(x) is x
+True
+>>> im = sd.imag(x)
+>>> im
+array([0.0, 0.0], dtype=float64)
+>>> im[0] = 5.0
+Traceback (most recent call last):
+    ...
+ValueError: assignment destination is read-only
+```
+
+Python scalars give Python scalars, and two real arrays combine into a complex one:
+
+```python
+>>> sd.real(3 - 4j), sd.imag(3), sd.conj(3 - 4j)
+(3.0, 0, (3+4j))
+>>> sd.asarray([1.0, 2.0]) + 1j * sd.asarray([3.0, 4.0])
+array([(1+3j), (2+4j)], dtype=complex128)
+```
+
+<Reference />
+
+## Notes
+
+`conj` negates the imaginary part exactly, including the sign of a zero: the conjugate of `2 + 0j` is `2 - 0j`. On the
+branch cut of a complex function, this sign selects the other side (see
+[`exp`, `log`](/api/array/exp-log/) and [`sin`, `cos`, `tan`](/api/array/trig/)).
+
+With `out`, every function writes into `out` and returns it, as other element-wise functions do; no view is created.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.real`, `numpy.imag` and `numpy.conj` (also `numpy.conjugate`), and R's `Re`, `Im`
+and `Conj`.
+
+- There are no `x.real` and `x.imag` attributes and no `x.conj()` method, which NumPy arrays have.
+- As in NumPy, `real` of a complex array is a writable view, `real` of a real array is the array itself, and `imag`
+  of a real array is read-only.
+- There is no `conjugate` alias and no `angle` function. R's `Mod` and `Arg` correspond to `abs(z)` and
+  `atan2(imag(z), real(z))`.

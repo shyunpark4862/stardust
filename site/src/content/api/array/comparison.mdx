@@ -1,0 +1,165 @@
+---
+kind: function
+title: equal, not_equal, less, less_equal, greater, greater_equal
+names: [equal, not_equal, less, less_equal, greater, greater_equal]
+group: Comparison, logic and bits
+order: 1
+signatures:
+  - "sd.equal(x1, x2, /, *, out=None)"
+  - "sd.not_equal(x1, x2, /, *, out=None)"
+  - "sd.less(x1, x2, /, *, out=None)"
+  - "sd.less_equal(x1, x2, /, *, out=None)"
+  - "sd.greater(x1, x2, /, *, out=None)"
+  - "sd.greater_equal(x1, x2, /, *, out=None)"
+summary: Compare two arrays element-wise and return Boolean arrays.
+params:
+  - name: x1
+    type: array or scalar
+    kind: positional-only
+    desc: "Left operand. An `sd.ndarray` or a Python `bool`, `int`, `float` or `complex`. `less`, `less_equal`, `greater` and `greater_equal` do not accept complex values."
+  - name: x2
+    type: array or scalar
+    kind: positional-only
+    desc: "Right operand, in the same forms as `x1`. It broadcasts against `x1` (see [Broadcasting](/api/array/broadcasting/))."
+  - name: out
+    type: ndarray or None
+    kind: keyword-only
+    default: None
+    desc: "Array to write the result into. See [the `out=` argument](/start/conventions/#the-out-argument)."
+returns:
+  - type: ndarray or scalar
+    desc: "`bool` array with the broadcast shape of the operands. A Python `bool` when both operands are Python scalars."
+raises:
+  - type: TypeError
+    desc: "If an operand is complex (`less`, `less_equal`, `greater`, `greater_equal`), or if an operand is not an `sd.ndarray` or a Python scalar (a list or `None`, for example)."
+  - type: ValueError
+    desc: "If the operands do not broadcast against each other or to the shape of `out`, or if `out` is read-only."
+  - type: OverflowError
+    desc: "If a Python `int` outside the `int64` range is an operand and the promoted dtype is `bool` or `int64`."
+seeAlso: [logical, where, any-all, isnan-isinf-isfinite, maximum-minimum]
+---
+
+The six comparison functions compare `x1` and `x2` element by element and return `True` where the relation holds.
+The comparison operators of `sd.ndarray` call them:
+
+| Operator | Function | True where |
+|---|---|---|
+| `x1 == x2` | `equal` | the elements are equal |
+| `x1 != x2` | `not_equal` | the elements differ |
+| `x1 < x2` | `less` | `x1` is smaller |
+| `x1 <= x2` | `less_equal` | `x1` is smaller or equal |
+| `x1 > x2` | `greater` | `x1` is larger |
+| `x1 >= x2` | `greater_equal` | `x1` is larger or equal |
+
+Before comparing, both operands are converted to their promoted dtype (see
+[Type promotion](/api/array/dtypes/#type-promotion)); the result is always `bool`. Complex numbers have no order:
+`equal` and `not_equal` accept them, the other four raise `TypeError`.
+
+The result is a Boolean mask. It selects elements by [indexing](/api/array/indexing/), chooses between values in
+[`where`](/api/array/where/), and combines with other masks through [`logical_and`](/api/array/logical/) and the
+operators `&`, `|` and `~`. [`any` and `all`](/api/array/any-all/) reduce it to one `bool`.
+
+## Examples
+
+Comparison with a scalar, with an array of the same shape, and with broadcasting:
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([1, 2, 3, 4])
+>>> x > 2
+array([False, False,  True,  True], dtype=bool)
+>>> sd.equal(x, sd.asarray([1, 0, 3, 0]))
+array([ True, False,  True, False], dtype=bool)
+>>> sd.asarray([[1.0], [2.0]]) < sd.asarray([0.5, 1.5, 2.5])
+array([[False,  True,  True],
+       [False, False,  True]], dtype=bool)
+```
+
+A mask selects elements:
+
+```python
+>>> x[x > 2]
+array([3, 4], dtype=int64)
+```
+
+NaN is not equal to anything, itself included, and every order comparison with NaN is `False`. Positive and negative
+zero are equal:
+
+```python
+>>> n = sd.asarray([1.0, sd.nan])
+>>> n == n
+array([ True, False], dtype=bool)
+>>> n != n
+array([False,  True], dtype=bool)
+>>> n < sd.inf
+array([ True, False], dtype=bool)
+>>> sd.asarray([0.0]) == -0.0
+array([True], dtype=bool)
+```
+
+An `int64` and a `float64` are compared as `float64`. Integers above `2**53` in magnitude may round in that
+conversion:
+
+```python
+>>> sd.asarray([2**53 + 1]) == 2.0**53
+array([True], dtype=bool)
+>>> sd.asarray([2**53 + 1]) == 2**53
+array([False], dtype=bool)
+```
+
+Complex numbers can be tested for equality but not ordered. A list operand raises `TypeError`, for `==` as well;
+convert it with `asarray` first:
+
+```python
+>>> z = sd.asarray([1 + 2j, 3 + 0j])
+>>> z == 3
+array([False,  True], dtype=bool)
+>>> sd.less(z, 3)
+Traceback (most recent call last):
+    ...
+TypeError: less(): not supported for complex128 and int64
+>>> x == [1, 2, 3, 4]
+Traceback (most recent call last):
+    ...
+TypeError: '==' not supported between instances of 'ndarray' and 'list'
+```
+
+An array has no truth value, so a comparison cannot be used directly in `if`, `and`, `or`, `not` or a chained
+comparison such as `0 < x < 3`. Reduce it with `any` or `all`, or combine masks with `&` and `|`:
+
+```python
+>>> if x > 0:
+...     pass
+Traceback (most recent call last):
+    ...
+TypeError: the truth value of an array is ambiguous; use any() or all()
+>>> sd.all(x > 0)
+True
+>>> (0 < x) & (x < 3)
+array([ True,  True, False, False], dtype=bool)
+```
+
+<Reference />
+
+## Notes
+
+The comparisons follow the IEEE 754 rules for floating-point numbers: NaN compares unequal to every value, so `equal`
+and the four order comparisons are `False` and `not_equal` is `True`; `0.0 == -0.0` is `True`; `inf` is larger than
+every finite number. Two complex numbers are equal when their real parts are equal and their imaginary parts are
+equal.
+
+`bool` operands take part in promotion like other dtypes: `sd.equal(True, 1)` and `sd.greater(True, False)` are
+`True`. To test whether
+two whole arrays are equal, combine `equal` with `all`. To test for NaN, use
+[`isnan`](/api/array/isnan-isinf-isfinite/); `x == sd.nan` is always `False`.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.equal`, `numpy.not_equal`, `numpy.less`, `numpy.less_equal`, `numpy.greater` and
+`numpy.greater_equal`, and R's operators `==`, `!=`, `<`, `<=`, `>` and `>=`.
+
+- `x == [1, 2]` and `x == None` raise `TypeError`. NumPy compares a list element by element, and `x == None`
+  gives an array of `False`.
+- The order comparisons raise `TypeError` for complex numbers. NumPy orders complex numbers by their real parts first,
+  then by their imaginary parts.
+- R gives `NA` for a comparison with `NA` or `NaN`; here a comparison with NaN is `False` (`True` for `!=`).

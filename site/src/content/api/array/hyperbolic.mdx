@@ -1,0 +1,138 @@
+---
+kind: function
+title: sinh, cosh, tanh, asinh, acosh, atanh
+names: [sinh, cosh, tanh, asinh, acosh, atanh]
+group: Trigonometric and hyperbolic
+order: 3
+signatures:
+  - "sd.sinh(x, /, *, out=None)"
+  - "sd.cosh(x, /, *, out=None)"
+  - "sd.tanh(x, /, *, out=None)"
+  - "sd.asinh(x, /, *, out=None)"
+  - "sd.acosh(x, /, *, out=None)"
+  - "sd.atanh(x, /, *, out=None)"
+summary: Compute the hyperbolic functions and their inverses element-wise.
+params:
+  - name: x
+    type: array or scalar
+    kind: positional-only
+    desc: "Input. An `sd.ndarray` or a Python `bool`, `int`, `float` or `complex`."
+  - name: out
+    type: ndarray or None
+    kind: keyword-only
+    default: None
+    desc: "Array to write the result into. See [the `out=` argument](/start/conventions/#the-out-argument)."
+returns:
+  - type: ndarray or scalar
+    desc: "Result with the shape of `x`. `float64` for `bool`, `int64` and `float64` input, `complex128` for complex input. A Python scalar when `x` is a Python scalar."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray` or a Python scalar, or if `out` cannot hold the result dtype."
+  - type: ValueError
+    desc: "If `x` does not broadcast to the shape of `out`, or if `out` is read-only."
+  - type: OverflowError
+    desc: "If `x` is a Python `int` outside the `int64` range."
+seeAlso: [trig, exp-log]
+---
+
+`sinh`, `cosh` and `tanh` are the hyperbolic sine, cosine and tangent, built from the exponential function. `asinh`,
+`acosh` and `atanh` are their inverse functions. `tanh` maps every real number into the interval from -1 to 1.
+
+The inverse functions have restricted real domains: `acosh` is defined for arguments of at least 1, and `atanh` for
+arguments between -1 and 1. A real argument outside the domain gives NaN, and `atanh` of 1 or -1 gives an infinity;
+no error is raised. For a complex result, the input must be complex. `bool` and `int64` input is converted to
+`float64` first (see [functions with floating-point results](/api/array/dtypes/#functions-with-floating-point-results)).
+
+## Examples
+
+The three hyperbolic functions. `sinh` and `tanh` are odd, `cosh` is even:
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([-2.0, 0.0, 1.0, 2.0])
+>>> sd.sinh(x)
+array([-3.6268604078470186,                 0.0,  1.1752011936438014,
+        3.6268604078470186], dtype=float64)
+>>> sd.cosh(x)
+array([3.7621956910836314,                1.0, 1.5430806348152437,
+       3.7621956910836314], dtype=float64)
+>>> sd.tanh(x)
+array([-0.9640275800758169,                 0.0,  0.7615941559557649,
+        0.9640275800758169], dtype=float64)
+>>> sd.asinh(sd.sinh(x))
+array([-2.0,  0.0,  1.0,  2.0], dtype=float64)
+```
+
+The domains of `acosh` and `atanh`. Arguments outside them give NaN:
+
+```python
+>>> sd.acosh(sd.asarray([0.5, 1.0, 2.0, sd.inf]))
+array([               nan,                0.0, 1.3169578969248166,
+                      inf], dtype=float64)
+>>> sd.atanh(sd.asarray([-1.0, 0.5, 1.0, 2.0]))
+array([              -inf, 0.5493061443340548,                inf,
+                      nan], dtype=float64)
+```
+
+A complex argument gives the complex inverse:
+
+```python
+>>> sd.acosh(sd.asarray([0.5 + 0j, -2 + 0j]))
+array([                    1.0471975511965979j,
+       (1.3169578969248166+3.141592653589793j)], dtype=complex128)
+```
+
+`sinh` and `cosh` overflow to infinity for large arguments, while `tanh` approaches -1 and 1:
+
+```python
+>>> sd.sinh(sd.asarray([710.0, 711.0]))
+array([1.1169973830808555e+308,                     inf], dtype=float64)
+>>> sd.tanh(sd.asarray([20.0, -sd.inf, sd.inf]))
+array([ 1.0, -1.0,  1.0], dtype=float64)
+```
+
+<Reference />
+
+## Notes
+
+**Definitions.** For real $x$:
+
+$$
+\sinh x = \frac{e^x - e^{-x}}{2}, \qquad \cosh x = \frac{e^x + e^{-x}}{2}, \qquad \tanh x = \frac{\sinh x}{\cosh x},
+$$
+
+$$
+\operatorname{asinh} x = \ln\bigl(x + \sqrt{x^2 + 1}\bigr), \quad
+\operatorname{acosh} x = \ln\bigl(x + \sqrt{x^2 - 1}\bigr), \quad
+\operatorname{atanh} x = \tfrac{1}{2} \ln \frac{1 + x}{1 - x}.
+$$
+
+`acosh` requires $x \ge 1$ and returns values $\ge 0$; `atanh` requires $-1 \le x \le 1$.
+
+**Special values.** `sinh` and `cosh` are infinite for $\lvert x \rvert$ above about 710.48. `sinh`, `tanh`, `asinh`
+and `atanh` keep the sign of a zero, and NaN gives NaN in every function.
+
+**Complex arguments.** The inverse functions return principal values, with branch cuts on the axes:
+
+| Function | Branch cuts |
+|---|---|
+| `asinh` | the imaginary axis outside $[-i, i]$ |
+| `acosh` | the real axis to the left of 1 |
+| `atanh` | the real axis outside $[-1, 1]$ |
+
+On a cut, the sign of the zero part chooses the side: `atanh(complex(2, 0.0))` has imaginary part $\pi/2$ and
+`atanh(complex(2, -0.0))` has imaginary part $-\pi/2$.
+
+**Accuracy.** For `float64` input, the results are within a few units in the last place of the exact value, and the
+special values are exact.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.sinh`, `numpy.cosh`, `numpy.tanh`, `numpy.asinh` (also `numpy.arcsinh`),
+`numpy.acosh` and `numpy.atanh`, and R's functions of the same names.
+
+- The inverse functions are named `asinh`, `acosh` and `atanh`; there are no `arcsinh`, `arccosh` and `arctanh`
+  aliases.
+- Results for `float64` input can differ from NumPy's in the last digit.
+- No warning is issued for an argument outside the domain or for an overflow. NumPy issues a `RuntimeWarning` for
+  each; R warns "NaNs produced" for an argument outside the domain and returns `Inf` silently on overflow.

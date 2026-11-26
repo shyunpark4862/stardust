@@ -1,0 +1,185 @@
+---
+kind: function
+title: add, subtract, multiply, divide, negative, positive
+names: [add, subtract, multiply, divide, negative, positive]
+group: Arithmetic
+order: 1
+signatures:
+  - "sd.add(x1, x2, /, *, out=None)"
+  - "sd.subtract(x1, x2, /, *, out=None)"
+  - "sd.multiply(x1, x2, /, *, out=None)"
+  - "sd.divide(x1, x2, /, *, out=None)"
+  - "sd.negative(x, /, *, out=None)"
+  - "sd.positive(x, /, *, out=None)"
+summary: Add, subtract, multiply or divide element-wise, or apply unary minus or plus.
+params:
+  - name: x1
+    type: array or scalar
+    kind: positional-only
+    desc: "First operand, the left side of the operator. An `sd.ndarray` or a Python `bool`, `int`, `float` or `complex`."
+  - name: x2
+    type: array or scalar
+    kind: positional-only
+    desc: "Second operand, the right side of the operator, in the same forms as `x1`. It broadcasts against `x1` (see [Broadcasting](/api/array/broadcasting/))."
+  - name: out
+    type: ndarray or None
+    kind: keyword-only
+    default: None
+    desc: "Array to write the result into. See [the `out=` argument](/start/conventions/#the-out-argument)."
+  - name: x
+    type: array or scalar
+    kind: positional-only
+    desc: "Operand of `negative` and `positive`, in the same forms as `x1`."
+returns:
+  - type: ndarray or scalar
+    desc: "Result with the broadcast shape of the operands. `add`, `subtract`, `multiply`, `negative` and `positive` return the promoted dtype of the operands, with `int64` in place of `bool`. `divide` returns `float64`, or `complex128` when an operand is complex. A Python scalar when every operand is a Python scalar."
+raises:
+  - type: TypeError
+    desc: "If an operand is not an `sd.ndarray` or a Python scalar, or if `out` cannot hold the result dtype."
+  - type: ValueError
+    desc: "If the operands do not broadcast against each other or to the shape of `out`, or if `out` is read-only."
+  - type: OverflowError
+    desc: "If a Python `int` outside the `int64` range is an operand and the promoted dtype is `bool` or `int64`."
+seeAlso: [floor_divide-remainder, pow, reciprocal, matmul, sum, dtypes]
+---
+
+These functions apply an arithmetic operation to each pair of elements of `x1` and `x2`, or to each element of `x`.
+The operands broadcast against each other (see [Broadcasting](/api/array/broadcasting/)), and either may be a Python
+scalar. The operators call them: `x1 + x2` is `add(x1, x2)` and `-x` is `negative(x)`.
+
+The result dtype is the promoted dtype of the operands (see [type promotion](/api/array/dtypes/#type-promotion)),
+with two exceptions. Booleans count as 0 and 1, so `bool` operands give `int64`
+(see [arithmetic on Booleans](/api/array/dtypes/#arithmetic-on-booleans)). `divide` always returns floating-point
+values: `bool` and `int64` operands are divided in `float64`
+(see [functions with floating-point results](/api/array/dtypes/#functions-with-floating-point-results)).
+
+`int64` results wrap around when they leave the `int64` range (see
+[integer overflow](/api/array/dtypes/#integer-overflow)). `float64` and `complex128` results follow IEEE 754
+arithmetic: an overflow gives infinity, a division by zero gives infinity or NaN, and a NaN operand gives NaN. No value
+raises an error or a warning.
+
+`positive` returns a new array with the values of `x` (Booleans converted to `int64`). `negative` changes the sign of
+every element, including zeros: `negative(0.0)` is `-0.0`.
+
+## Examples
+
+Element-wise operations on two arrays, and with a Python scalar on either side:
+
+```python
+>>> import stardust as sd
+>>> a = sd.asarray([1, 2, 3])
+>>> b = sd.asarray([10, 20, 30])
+>>> sd.add(a, b)
+array([11, 22, 33], dtype=int64)
+>>> b - a
+array([ 9, 18, 27], dtype=int64)
+>>> a * 2.5
+array([2.5, 5.0, 7.5], dtype=float64)
+>>> 1 / a
+array([               1.0,                0.5, 0.3333333333333333], dtype=float64)
+>>> -a
+array([-1, -2, -3], dtype=int64)
+```
+
+`divide` returns `float64` for integers. Booleans count as 0 and 1:
+
+```python
+>>> b / a
+array([10.0, 10.0, 10.0], dtype=float64)
+>>> t = sd.asarray([True, False, True])
+>>> t + t
+array([2, 0, 2], dtype=int64)
+>>> -t
+array([-1,  0, -1], dtype=int64)
+```
+
+Arrays of different shapes broadcast. A column of shape `(2, 1)` and a row of shape `(3,)` give shape `(2, 3)`:
+
+```python
+>>> col = sd.asarray([[100], [200]])
+>>> col + a
+array([[101, 102, 103],
+       [201, 202, 203]], dtype=int64)
+```
+
+With Python scalars only, the result is a Python scalar computed with the rules of the dtypes, so an `int` result
+wraps around like an `int64` element:
+
+```python
+>>> sd.add(2, 3)
+5
+>>> sd.divide(1, 2)
+0.5
+>>> sd.add(2**62, 2**62)
+-9223372036854775808
+```
+
+Division by zero and overflow give special values, not errors. A list operand raises `TypeError`:
+
+```python
+>>> sd.asarray([1.0, -1.0, 0.0]) / 0.0
+array([ inf, -inf,  nan], dtype=float64)
+>>> a / 0
+array([inf, inf, inf], dtype=float64)
+>>> sd.asarray([2**63 - 1]) + 1
+array([-9223372036854775808], dtype=int64)
+>>> sd.add(a, [1, 2, 3])
+Traceback (most recent call last):
+    ...
+TypeError: add(): 'x2' must be an sd.ndarray or a bool, int, float or complex, not list
+```
+
+<Reference />
+
+## Notes
+
+**Operators.** The arithmetic operators of `sd.ndarray` call these functions and the others of this group. The
+operand rules and the in-place forms such as `x += y` are described under
+[Operators](/api/array/ndarray/#operators).
+
+| Operator | Function |
+|---|---|
+| `x1 + x2` | `add(x1, x2)` |
+| `x1 - x2` | `subtract(x1, x2)` |
+| `x1 * x2` | `multiply(x1, x2)` |
+| `x1 / x2` | `divide(x1, x2)` |
+| `-x` | `negative(x)` |
+| `+x` | `positive(x)` |
+| `x1 // x2`, `x1 % x2` | [`floor_divide`, `remainder`](/api/array/floor_divide-remainder/) |
+| `x1 ** x2` | [`pow`](/api/array/pow/) |
+| `abs(x)` | [`abs`](/api/array/abs/) |
+
+`*` multiplies element by element. The matrix product is `@`, which calls [`matmul`](/api/array/matmul/).
+
+**Division by zero.** For real operands, `divide` gives $+\infty$ or $-\infty$ for a nonzero dividend, with the sign
+of the exact quotient (a divisor of `-0.0` counts as negative), and NaN for $0/0$. `int64` operands are converted to
+`float64` first, so integer division by zero gives the same values; integers larger than $2^{53}$ in magnitude may be
+rounded by that conversion. For integer quotients rounded down, use
+[`floor_divide`](/api/array/floor_divide-remainder/).
+
+**Complex operands.** Complex products use the formula $(a + bi)(c + di) = (ac - bd) + (ad + bc)i$, and complex
+division scales by the larger part of the divisor to avoid intermediate overflow (Smith's method). Neither applies
+special rules for infinite operands, so a product or quotient that involves both infinity and zero can be NaN in both
+parts:
+
+```python
+>>> sd.asarray([complex(sd.inf, 0.0)]) * 0j
+array([(nan+nanj)], dtype=complex128)
+>>> sd.asarray([1 + 0j]) / 0j
+array([(inf+nanj)], dtype=complex128)
+```
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.add`, `numpy.subtract`, `numpy.multiply`, `numpy.divide`, `numpy.negative` and
+`numpy.positive`, and R's `+`, `-`, `*` and `/`.
+
+- Booleans count as 0 and 1 and give `int64`. In NumPy, `+` and `*` on two Boolean arrays give `bool` (logical or and
+  and), and `-` and unary minus raise `TypeError`.
+- Each operand must be an `sd.ndarray` or a Python scalar; NumPy converts lists. With Python scalars only, the result
+  is a Python `int`, `float` or `complex`, not a NumPy scalar.
+- Division by zero and invalid operations give infinity or NaN without a warning. NumPy issues a `RuntimeWarning`.
+- There are no `where=`, `dtype=` or `casting=` arguments, and no methods such as `add.reduce`; use
+  [`sum`](/api/array/sum/) and [`cumulative_sum`](/api/array/cumulative/) instead.
+- R recycles the shorter operand to the length of the longer one. Here the shapes must broadcast, and arrays of
+  lengths 2 and 4 raise `ValueError`.

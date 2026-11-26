@@ -1,0 +1,84 @@
+---
+kind: function
+title: copysign
+names: [copysign]
+group: Arithmetic
+order: 10
+signatures:
+  - "sd.copysign(x1, x2, /, *, out=None)"
+summary: Return the magnitude of each element of one array with the sign of the matching element of another.
+params:
+  - name: x1
+    type: array or scalar
+    kind: positional-only
+    desc: "Values whose magnitude is kept. An `sd.ndarray` or a Python `bool`, `int` or `float`."
+  - name: x2
+    type: array or scalar
+    kind: positional-only
+    desc: "Values whose sign is taken, in the same forms as `x1`. It broadcasts against `x1` (see [Broadcasting](/api/array/broadcasting/))."
+  - name: out
+    type: ndarray or None
+    kind: keyword-only
+    default: None
+    desc: "Array to write the result into. See [the `out=` argument](/start/conventions/#the-out-argument)."
+returns:
+  - type: ndarray or scalar
+    desc: "`abs(x1)` with the sign of `x2`, with the broadcast shape of the operands. Always `float64`. A Python `float` when both operands are Python scalars."
+raises:
+  - type: TypeError
+    desc: "If an operand is complex, if an operand is not an `sd.ndarray` or a Python scalar, or if `out` cannot hold `float64`."
+  - type: ValueError
+    desc: "If the operands do not broadcast against each other or to the shape of `out`, or if `out` is read-only."
+  - type: OverflowError
+    desc: "If a Python `int` outside the `int64` range is an operand and the promoted dtype is `bool` or `int64`."
+seeAlso: [sign, abs, signbit, nextafter]
+---
+
+`copysign(x1, x2)` returns, for each pair of elements, a number with the magnitude of `x1` and the sign of `x2`. The
+sign is read from the sign bit of `x2`, so `-0.0` and a NaN with its sign bit set count as negative. The magnitude of
+`x1` is copied unchanged, including infinity and NaN: `copysign` can give a NaN or a zero a sign.
+
+The result is always `float64`. `bool` and `int64` operands are converted to `float64` first (see
+[functions with floating-point results](/api/array/dtypes/#functions-with-floating-point-results)), and complex
+operands raise `TypeError`.
+
+## Examples
+
+The sign comes from `x2`; `0.0` counts as positive and `-0.0` as negative:
+
+```python
+>>> import stardust as sd
+>>> sd.copysign(sd.asarray([1.0, 2.0, -3.0, 4.0]), sd.asarray([-1.0, 0.0, 5.0, -0.0]))
+array([-1.0,  2.0,  3.0, -4.0], dtype=float64)
+```
+
+Integers give `float64`. Infinity, zero and NaN take the sign too; the sign of NaN shows in
+[`signbit`](/api/array/signbit/), not in the printed value:
+
+```python
+>>> sd.copysign(sd.asarray([1, 2, 3]), -1)
+array([-1.0, -2.0, -3.0], dtype=float64)
+>>> sd.copysign(sd.asarray([sd.inf, 0.0]), -1.0)
+array([-inf, -0.0], dtype=float64)
+>>> n = sd.copysign(sd.asarray([sd.nan]), -1.0)
+>>> n
+array([nan], dtype=float64)
+>>> sd.signbit(n)
+array([True], dtype=bool)
+```
+
+<Reference />
+
+## Notes
+
+`copysign` is exact: it changes only the sign bit of `x1`. Unlike `abs(x1) * sign(x2)`, it keeps the magnitude of
+`x1` when `x2` is zero, and it reads the sign of `-0.0` and of NaN.
+
+```python
+>>> x = sd.asarray([2.0, 2.0])
+>>> y = sd.asarray([-0.0, 0.0])
+>>> sd.copysign(x, y)
+array([-2.0,  2.0], dtype=float64)
+>>> sd.abs(x) * sd.sign(y)
+array([0.0, 0.0], dtype=float64)
+```

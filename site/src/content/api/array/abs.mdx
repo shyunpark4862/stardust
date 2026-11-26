@@ -1,0 +1,93 @@
+---
+kind: function
+title: abs
+names: [abs]
+group: Arithmetic
+order: 4
+signatures:
+  - "sd.abs(x, /, *, out=None)"
+summary: Return the absolute value of each element.
+params:
+  - name: x
+    type: array or scalar
+    kind: positional-only
+    desc: "Input. An `sd.ndarray` or a Python `bool`, `int`, `float` or `complex`."
+  - name: out
+    type: ndarray or None
+    kind: keyword-only
+    default: None
+    desc: "Array to write the result into. See [the `out=` argument](/start/conventions/#the-out-argument)."
+returns:
+  - type: ndarray or scalar
+    desc: "Absolute values, with the shape of `x`. `int64` for `bool` and `int64` input, `float64` for `float64` and `complex128` input. A Python scalar when `x` is a Python scalar."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray` or a Python scalar, or if `out` cannot hold the result dtype."
+  - type: ValueError
+    desc: "If `x` does not broadcast to the shape of `out`, or if `out` is read-only."
+  - type: OverflowError
+    desc: "If `x` is a Python `int` outside the `int64` range."
+seeAlso: [sign, copysign, hypot, complex, arithmetic]
+---
+
+`abs` returns $\lvert x \rvert$ for each element: the value without its sign for real numbers, and the magnitude
+$\sqrt{a^2 + b^2}$ for a complex number $a + bi$. Python's built-in `abs(x)` calls it for an array.
+
+The result has the dtype of `x`, except that Booleans give `int64` (see
+[arithmetic on Booleans](/api/array/dtypes/#arithmetic-on-booleans)) and complex numbers give their magnitude as
+`float64`.
+
+## Examples
+
+Absolute values of integers and floating-point numbers; the built-in `abs` gives the same:
+
+```python
+>>> import stardust as sd
+>>> sd.abs(sd.asarray([-3, 0, 4]))
+array([3, 0, 4], dtype=int64)
+>>> abs(sd.asarray([-1.5, -0.0, 2.0]))
+array([1.5, 0.0, 2.0], dtype=float64)
+```
+
+The magnitude of complex numbers is `float64`, and large parts do not overflow:
+
+```python
+>>> sd.abs(sd.asarray([3 + 4j, -1j, 1e300 + 1e300j]))
+array([                    5.0,                     1.0,
+       1.4142135623730952e+300], dtype=float64)
+```
+
+Infinity and NaN. In a complex number, an infinite part gives infinity even when the other part is NaN:
+
+```python
+>>> sd.abs(sd.asarray([-sd.inf, sd.nan]))
+array([inf, nan], dtype=float64)
+>>> sd.abs(sd.asarray([complex(sd.inf, sd.nan), complex(sd.nan, 1.0)]))
+array([inf, nan], dtype=float64)
+```
+
+The smallest `int64`, $-2^{63}$, has no positive counterpart in `int64`, and its absolute value wraps around to
+itself:
+
+```python
+>>> sd.abs(sd.asarray([-2**63, -2**63 + 1]))
+array([-9223372036854775808,  9223372036854775807], dtype=int64)
+```
+
+<Reference />
+
+## Notes
+
+For `float64`, `abs` clears the sign bit: `abs(-0.0)` is `0.0`, `abs(-inf)` is `inf`, and NaN stays NaN.
+
+For `complex128`, the magnitude is infinite when either part is infinite, even if the other part is NaN; otherwise it
+is NaN when either part is NaN. The computation avoids overflow and underflow in the squares $a^2$ and $b^2$, so the
+result is finite whenever the magnitude itself is a finite `float64`. The results are within a few units in the last
+place of the exact value. [`hypot`](/api/array/hypot/) computes the same quantity from two real arrays.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.abs` (`numpy.absolute`) and R's `abs` and `Mod`.
+
+- Booleans give `int64`. `numpy.abs` of a Boolean array returns `bool`.
+- The magnitude of complex numbers may differ from NumPy's in the last bit.

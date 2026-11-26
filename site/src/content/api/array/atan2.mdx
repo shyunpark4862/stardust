@@ -1,0 +1,117 @@
+---
+kind: function
+title: atan2
+names: [atan2]
+group: Trigonometric and hyperbolic
+order: 2
+signatures:
+  - "sd.atan2(x1, x2, /, *, out=None)"
+summary: Compute the arc tangent of `x1 / x2` element-wise, with the quadrant chosen by the signs of both arguments.
+params:
+  - name: x1
+    type: array or scalar
+    kind: positional-only
+    desc: "The y coordinate. An `sd.ndarray` or a Python `bool`, `int` or `float`."
+  - name: x2
+    type: array or scalar
+    kind: positional-only
+    desc: "The x coordinate, in the same forms as `x1`. It broadcasts against `x1` (see [Broadcasting](/api/array/broadcasting/))."
+  - name: out
+    type: ndarray or None
+    kind: keyword-only
+    default: None
+    desc: "Array to write the result into. See [the `out=` argument](/start/conventions/#the-out-argument)."
+returns:
+  - type: ndarray or scalar
+    desc: "Angles in radians, from `-pi` to `pi`, with the broadcast shape of the operands. Always `float64`. A Python `float` when both operands are Python scalars."
+raises:
+  - type: TypeError
+    desc: "If an operand is complex, if an operand is not an `sd.ndarray` or a Python scalar, or if `out` cannot hold `float64`."
+  - type: ValueError
+    desc: "If the operands do not broadcast against each other or to the shape of `out`, or if `out` is read-only."
+  - type: OverflowError
+    desc: "If a Python `int` outside the `int64` range is an operand and the promoted dtype is `bool` or `int64`."
+seeAlso: [trig, deg2rad-rad2deg, hypot, complex]
+---
+
+`atan2(x1, x2)` is the angle, in radians, between the positive x-axis and the ray from the origin to the point with
+x coordinate `x2` and y coordinate `x1`. The y coordinate comes first, as in the quotient `x1 / x2` whose arc tangent
+it extends. `atan(x1 / x2)` returns angles between `-pi/2` and `pi/2` only; `atan2` uses the signs of both arguments
+to place the angle in the correct quadrant, between `-pi` and `pi`, and it is defined when `x2` is 0.
+
+Together with [`hypot`](/api/array/hypot/), which gives the distance from the origin, `atan2` converts Cartesian
+coordinates to polar coordinates. `bool` and `int64` operands are converted to `float64` first (see
+[functions with floating-point results](/api/array/dtypes/#functions-with-floating-point-results)).
+
+## Examples
+
+Four points, one in each quadrant. `atan` of the quotient cannot tell opposite quadrants apart:
+
+```python
+>>> import stardust as sd
+>>> y = sd.asarray([1.0, 1.0, -1.0, -1.0])
+>>> x = sd.asarray([1.0, -1.0, -1.0, 1.0])
+>>> sd.atan2(y, x)
+array([ 0.7853981633974483,   2.356194490192345,  -2.356194490192345,
+       -0.7853981633974483], dtype=float64)
+>>> sd.atan(y / x)
+array([ 0.7853981633974483, -0.7853981633974483,  0.7853981633974483,
+       -0.7853981633974483], dtype=float64)
+>>> sd.rad2deg(sd.atan2(y, x))
+array([  45.0,  135.0, -135.0,  -45.0], dtype=float64)
+```
+
+The argument (the angle) of complex numbers, from their imaginary and real parts:
+
+```python
+>>> z = sd.asarray([1 + 1j, -1 + 0j, 0 - 2j])
+>>> sd.atan2(sd.imag(z), sd.real(z))
+array([ 0.7853981633974483,   3.141592653589793, -1.5707963267948966], dtype=float64)
+```
+
+A zero `x2` is allowed, and the signs of zeros decide the result on the axes:
+
+```python
+>>> sd.atan2(sd.asarray([3, 4]), 0)
+array([1.5707963267948966, 1.5707963267948966], dtype=float64)
+>>> sd.atan2(sd.asarray([0.0, -0.0, 0.0, -0.0]), sd.asarray([0.0, 0.0, -0.0, -0.0]))
+array([               0.0,               -0.0,  3.141592653589793,
+       -3.141592653589793], dtype=float64)
+```
+
+Complex arguments are not accepted:
+
+```python
+>>> sd.atan2(z, 1.0)
+Traceback (most recent call last):
+    ...
+TypeError: atan2(): not supported for complex128 and float64
+```
+
+<Reference />
+
+## Notes
+
+For $x_2 \gt 0$, $\operatorname{atan2}(x_1, x_2) = \arctan(x_1 / x_2)$. For $x_2 \lt 0$ the result differs from
+$\arctan(x_1 / x_2)$ by $\pi$ (added when $x_1 \ge 0$, subtracted when $x_1 \lt 0$, with the sign of a zero $x_1$
+counting). For $x_2 = 0$ and $x_1 \ne 0$ it is $\pm\pi/2$ with the sign of $x_1$.
+
+The special values follow the C standard's `atan2`:
+
+- A zero `x1` gives $\pm 0$ when `x2` is $+0$ or positive, and $\pm\pi$ when `x2` is $-0$ or negative, with the
+  sign of `x1`.
+- Infinite arguments give the angle of the limiting direction: `atan2(1, inf)` is 0, `atan2(inf, inf)` is $\pi/4$,
+  `atan2(inf, -inf)` is $3\pi/4$.
+- NaN in either argument gives NaN.
+
+For `float64` input, the results are within a few units in the last place of the exact value.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.atan2` (also `numpy.arctan2`) and R's `atan2(y, x)`.
+
+- The function is named `atan2`; there is no `arctan2` alias.
+- The argument order is the same as in NumPy and R: $y$ first, then $x$.
+- Results can differ from NumPy's in the last digit.
+- Complex input raises `TypeError`, as in NumPy. For the angle of a complex number, use
+  `atan2(imag(z), real(z))`; there is no `angle` function.

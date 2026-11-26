@@ -1,0 +1,120 @@
+---
+kind: function
+title: clip
+names: [clip]
+group: Arithmetic
+order: 9
+signatures:
+  - "sd.clip(x, /, *, min=None, max=None, out=None)"
+summary: Limit the elements of an array to an interval.
+params:
+  - name: x
+    type: array or scalar
+    kind: positional-only
+    desc: "Input. An `sd.ndarray` or a Python `bool`, `int` or `float`."
+  - name: min
+    type: array, scalar or None
+    kind: keyword-only
+    default: None
+    desc: "Lower bound. An array broadcasts to the shape of `x`. Its dtype must convert implicitly to the dtype of `x`. `None` means no lower bound."
+  - name: max
+    type: array, scalar or None
+    kind: keyword-only
+    default: None
+    desc: "Upper bound, in the same forms as `min`. `None` means no upper bound."
+  - name: out
+    type: ndarray or None
+    kind: keyword-only
+    default: None
+    desc: "Array to write the result into. See [the `out=` argument](/start/conventions/#the-out-argument)."
+returns:
+  - type: ndarray or scalar
+    desc: "The elements of `x`, raised to `min` where smaller and lowered to `max` where larger. The shape and the dtype of `x`. A Python scalar when every argument is a Python scalar."
+raises:
+  - type: TypeError
+    desc: "If `x`, `min` or `max` is complex or is not an `sd.ndarray` or a Python scalar, if a bound does not convert implicitly to the dtype of `x`, if `out` cannot hold the result dtype, or if the bounds are passed by position."
+  - type: ValueError
+    desc: "If a bound does not broadcast to the shape of `x`, if `x` does not broadcast to the shape of `out`, or if `out` is read-only."
+  - type: OverflowError
+    desc: "If a Python `int` outside the `int64` range is given and the dtype of `x` is `bool` or `int64`."
+seeAlso: [maximum-minimum, where, dtypes]
+---
+
+`clip(x, min=a, max=b)` replaces every element of `x` below `a` by `a` and every element above `b` by `b`, and keeps
+the elements in between. It gives the same values as `minimum(maximum(x, a), b)`. Either bound can be
+left out, and each can be a Python scalar or an array with a bound per element.
+
+The result has the shape and the dtype of `x`. The bounds are converted to the dtype of `x` by
+[implicit conversion](/api/array/dtypes/#implicit-conversion), so they must have the same dtype or a narrower one: an
+`int64` array accepts integer bounds but not `0.5`. Array bounds broadcast to the shape of `x`
+(see [Broadcasting](/api/array/broadcasting/)); they never make the result larger than `x`. When `x` is a Python
+scalar, `x` and the bounds broadcast against each other, as in other element-wise functions.
+
+`min` and `max` are keyword-only. When `min` is greater than `max`, every element becomes `max`.
+
+## Examples
+
+Clip to the interval from 0 to 1. NaN stays NaN:
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([-2.0, 0.5, 3.0, sd.nan])
+>>> sd.clip(x, min=0.0, max=1.0)
+array([0.0, 0.5, 1.0, nan], dtype=float64)
+```
+
+Only a lower or only an upper bound:
+
+```python
+>>> k = sd.asarray([1, 5, 9])
+>>> sd.clip(k, min=3)
+array([3, 5, 9], dtype=int64)
+>>> sd.clip(k, max=4)
+array([1, 4, 4], dtype=int64)
+```
+
+Bounds per column, as 1-D arrays that broadcast over the rows:
+
+```python
+>>> m = sd.asarray([[1.0, 5.0, 9.0], [-1.0, 4.0, 12.0]])
+>>> sd.clip(m, min=sd.asarray([0.0, 0.0, 10.0]), max=sd.asarray([2.0, 6.0, 11.0]))
+array([[ 1.0,  5.0, 10.0],
+       [ 0.0,  4.0, 11.0]], dtype=float64)
+```
+
+A bound that `x` cannot hold, and a bound array larger than `x`, raise errors:
+
+```python
+>>> sd.clip(k, min=0.5)
+Traceback (most recent call last):
+    ...
+TypeError: clip(): cannot implicitly convert float64 to int64 (that would lose information); convert explicitly with astype
+>>> sd.clip(sd.asarray([1.0, 5.0, 9.0]), min=sd.asarray([[0.0], [6.0]]))
+Traceback (most recent call last):
+    ...
+ValueError: clip(): 'min' of shape (2, 1) cannot be broadcast to the shape of 'x' (3,)
+```
+
+<Reference />
+
+## Notes
+
+`clip` follows the rules of [`maximum` and `minimum`](/api/array/maximum-minimum/): NaN in `x`, `min` or `max` gives
+NaN, and $-0 \lt +0$, so `clip(-0.0, min=0.0)` is `0.0`. Complex numbers have no order and raise `TypeError`.
+
+With `min` greater than `max`, the upper bound is applied last:
+
+```python
+>>> sd.clip(k, min=6, max=4)
+array([4, 4, 4], dtype=int64)
+```
+
+## For NumPy, SciPy and R users
+
+The nearest equivalent is `numpy.clip`. R has no single function; `pmin(pmax(x, lo), hi)` does the same.
+
+- The bounds are keyword-only: `clip(x, min=0, max=1)`. `numpy.clip` also takes them by position.
+- The result keeps the dtype of `x`, and a bound of a wider dtype raises `TypeError`. `numpy.clip` promotes:
+  `numpy.clip(int_array, 0.5, 3)` returns floats.
+- The result has the shape of `x`. `numpy.clip` broadcasts `x` and the bounds against each other, so a larger bound
+  array gives a larger result.

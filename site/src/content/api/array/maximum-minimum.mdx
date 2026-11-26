@@ -1,0 +1,121 @@
+---
+kind: function
+title: maximum, minimum
+names: [maximum, minimum]
+group: Arithmetic
+order: 8
+signatures:
+  - "sd.maximum(x1, x2, /, *, out=None)"
+  - "sd.minimum(x1, x2, /, *, out=None)"
+summary: Return the larger or the smaller of each pair of elements.
+params:
+  - name: x1
+    type: array or scalar
+    kind: positional-only
+    desc: "First operand. An `sd.ndarray` or a Python `bool`, `int` or `float`."
+  - name: x2
+    type: array or scalar
+    kind: positional-only
+    desc: "Second operand, in the same forms as `x1`. It broadcasts against `x1` (see [Broadcasting](/api/array/broadcasting/))."
+  - name: out
+    type: ndarray or None
+    kind: keyword-only
+    default: None
+    desc: "Array to write the result into. See [the `out=` argument](/start/conventions/#the-out-argument)."
+returns:
+  - type: ndarray or scalar
+    desc: "The larger (`maximum`) or smaller (`minimum`) element of each pair, with the broadcast shape of the operands and their promoted dtype: `bool`, `int64` or `float64`. A Python scalar when both operands are Python scalars."
+raises:
+  - type: TypeError
+    desc: "If an operand is complex, if an operand is not an `sd.ndarray` or a Python scalar, or if `out` cannot hold the result dtype."
+  - type: ValueError
+    desc: "If the operands do not broadcast against each other or to the shape of `out`, or if `out` is read-only."
+  - type: OverflowError
+    desc: "If a Python `int` outside the `int64` range is an operand and the promoted dtype is `bool` or `int64`."
+seeAlso: [clip, min-max, where, nan-reductions, comparison]
+---
+
+`maximum(x1, x2)` compares the elements of `x1` and `x2` pair by pair and returns the larger of each pair;
+`minimum` returns the smaller. They combine two arrays element by element. To find the largest or smallest element
+within one array, use the reductions [`max` and `min`](/api/array/min-max/).
+
+The result dtype is the promoted dtype of the operands (see [type promotion](/api/array/dtypes/#type-promotion)).
+Booleans stay `bool`, with `False < True`: `maximum` of two Booleans is their logical or, and `minimum` their logical
+and. Complex numbers have no order, so complex operands raise `TypeError`.
+
+NaN propagates: if either element of a pair is NaN, the result is NaN. To ignore NaN in one operand, select with
+[`where`](/api/array/where/) and [`isnan`](/api/array/isnan-isinf-isfinite/), as in the last example.
+
+## Examples
+
+The larger and the smaller element of each pair, and a Python scalar as one operand:
+
+```python
+>>> import stardust as sd
+>>> a = sd.asarray([1, 5, 3])
+>>> b = sd.asarray([4, 2, 3])
+>>> sd.maximum(a, b)
+array([4, 5, 3], dtype=int64)
+>>> sd.minimum(a, b)
+array([1, 2, 3], dtype=int64)
+>>> sd.maximum(a, 2.5)
+array([2.5, 5.0, 3.0], dtype=float64)
+```
+
+A column broadcast against a row:
+
+```python
+>>> sd.minimum(sd.asarray([[1], [5]]), sd.asarray([2, 4, 6]))
+array([[1, 1, 1],
+       [2, 4, 5]], dtype=int64)
+```
+
+NaN wins over every number. Replacing NaN elements of `x` by the other operand skips them:
+
+```python
+>>> x = sd.asarray([1.0, sd.nan, 3.0])
+>>> y = sd.asarray([2.0, 2.0, 2.0])
+>>> sd.maximum(x, y)
+array([2.0, nan, 3.0], dtype=float64)
+>>> sd.where(sd.isnan(x), y, sd.maximum(x, y))
+array([2.0, 2.0, 3.0], dtype=float64)
+```
+
+Booleans stay `bool`. Complex operands raise `TypeError`:
+
+```python
+>>> sd.maximum(sd.asarray([True, False, False]), sd.asarray([False, True, False]))
+array([ True,  True, False], dtype=bool)
+>>> sd.maximum(sd.asarray([1 + 1j]), sd.asarray([2 + 0j]))
+Traceback (most recent call last):
+    ...
+TypeError: maximum(): not supported for complex128 and complex128
+```
+
+<Reference />
+
+## Notes
+
+The two zeros are ordered $-0 \lt +0$: `maximum(0.0, -0.0)` and `maximum(-0.0, 0.0)` are both `0.0`, and `minimum`
+gives `-0.0` for both orders.
+
+```python
+>>> sd.maximum(sd.asarray([0.0, -0.0]), sd.asarray([-0.0, 0.0]))
+array([0.0, 0.0], dtype=float64)
+>>> sd.minimum(sd.asarray([0.0, -0.0]), sd.asarray([-0.0, 0.0]))
+array([-0.0, -0.0], dtype=float64)
+```
+
+An `int64` and a `float64` operand are compared after converting the integer to `float64`, so integers larger than
+$2^{53}$ in magnitude may be rounded.
+
+[`clip`](/api/array/clip/) applies `maximum` with a lower bound and `minimum` with an upper bound in one call.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.maximum` and `numpy.minimum`, and R's `pmax` and `pmin`.
+
+- Complex operands raise `TypeError`. NumPy compares complex numbers by real part, then imaginary part.
+- There is no NaN-skipping variant like `numpy.fmax` and `numpy.fmin`; combine `where` and `isnan`. The reductions
+  [`nanmax` and `nanmin`](/api/array/nan-reductions/) skip NaN within one array.
+- R's `pmax` and `pmin` return `NA` for a pair with `NA` unless `na.rm = TRUE`.

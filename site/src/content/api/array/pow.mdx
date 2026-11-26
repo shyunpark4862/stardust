@@ -1,0 +1,145 @@
+---
+kind: function
+title: pow
+names: [pow]
+group: Arithmetic
+order: 3
+signatures:
+  - "sd.pow(x1, x2, /, *, out=None)"
+summary: Raise each element of one array to the power given by the matching element of another.
+params:
+  - name: x1
+    type: array or scalar
+    kind: positional-only
+    desc: "Base. An `sd.ndarray` or a Python `bool`, `int`, `float` or `complex`."
+  - name: x2
+    type: array or scalar
+    kind: positional-only
+    desc: "Exponent, in the same forms as `x1`. It broadcasts against `x1` (see [Broadcasting](/api/array/broadcasting/))."
+  - name: out
+    type: ndarray or None
+    kind: keyword-only
+    default: None
+    desc: "Array to write the result into. See [the `out=` argument](/start/conventions/#the-out-argument)."
+returns:
+  - type: ndarray or scalar
+    desc: "`x1` raised to the power `x2`, with the broadcast shape of the operands. The promoted dtype of the operands, with `int64` in place of `bool`: integer operands give `int64` even for negative exponents. A Python scalar when both operands are Python scalars."
+raises:
+  - type: TypeError
+    desc: "If an operand is not an `sd.ndarray` or a Python scalar, or if `out` cannot hold the result dtype. The operator form also raises it for a third argument, as in `pow(x, 2, 5)`."
+  - type: ValueError
+    desc: "If the operands do not broadcast against each other or to the shape of `out`, or if `out` is read-only."
+  - type: OverflowError
+    desc: "If a Python `int` outside the `int64` range is an operand and the promoted dtype is `bool` or `int64`."
+seeAlso: [square-sqrt, exp-log, reciprocal, arithmetic, dtypes]
+---
+
+`pow(x1, x2)` computes $x_1^{x_2}$ for each pair of elements. The operator `x1 ** x2` calls it, and a Python scalar
+on the left, as in `2 ** x`, works too.
+
+The result dtype is the promoted dtype of the operands (see [type promotion](/api/array/dtypes/#type-promotion)), with
+Booleans counted as 0 and 1 (see [arithmetic on Booleans](/api/array/dtypes/#arithmetic-on-booleans)). An integer
+raised to an integer power stays an integer, also for negative exponents, where the exact result is a fraction: only
+1 and $-1$ have integer reciprocals, and every other base gives 0. To get fractional results, make the base or the
+exponent a `float`.
+
+A negative `float64` base with an exponent that is not a whole number has no real power, and the result is NaN.
+The complex power exists for every nonzero base; convert the base to `complex128` to get it.
+
+## Examples
+
+Integer powers, with the array as base or as exponent:
+
+```python
+>>> import stardust as sd
+>>> n = sd.asarray([2, 3, 4])
+>>> n ** 2
+array([ 4,  9, 16], dtype=int64)
+>>> 2 ** n
+array([ 4,  8, 16], dtype=int64)
+```
+
+Broadcasting a column of bases against a row of exponents gives a table of powers:
+
+```python
+>>> sd.pow(sd.asarray([[1], [2], [3]]), sd.asarray([0, 1, 2, 3]))
+array([[ 1,  1,  1,  1],
+       [ 1,  2,  4,  8],
+       [ 1,  3,  9, 27]], dtype=int64)
+```
+
+A negative integer exponent keeps the integer dtype. A `float` exponent gives the fractional values, and $0^{-1}$
+is infinity. With Python integers only, the result is also computed as `int64`:
+
+```python
+>>> b = sd.asarray([2, -1, 1, 0])
+>>> b ** -1
+array([ 0, -1,  1,  0], dtype=int64)
+>>> b ** -1.0
+array([ 0.5, -1.0,  1.0,  inf], dtype=float64)
+>>> sd.pow(2, -1)
+0
+>>> sd.pow(2.0, -1)
+0.5
+```
+
+The cube root of a negative `float64` is NaN; as a complex number it is the principal root:
+
+```python
+>>> sd.asarray([-8.0, 8.0]) ** (1 / 3)
+array([nan, 2.0], dtype=float64)
+>>> sd.asarray([-8.0 + 0j]) ** (1 / 3)
+array([(1+1.732050807568877j)], dtype=complex128)
+```
+
+Integer powers wrap around when they leave the `int64` range; `float64` powers overflow to infinity or underflow to 0:
+
+```python
+>>> sd.asarray([2]) ** 63
+array([-9223372036854775808], dtype=int64)
+>>> sd.asarray([10.0]) ** sd.asarray([2.0, 300.0, 400.0, -400.0])
+array([ 100.0, 1e+300,    inf,    0.0], dtype=float64)
+```
+
+<Reference />
+
+## Notes
+
+**Integers.** `int64` powers are computed by repeated squaring and wrap around on overflow (see
+[integer overflow](/api/array/dtypes/#integer-overflow)). For a negative exponent $-n$ the result is 1 for base 1,
+$(-1)^n$ for base $-1$, and 0 for every other base, including 0. Any base to the power 0 is 1.
+
+**Floating point.** `float64` powers follow the C function `pow`, including its special values:
+
+| Case | Result |
+|---|---|
+| `x2` is $\pm 0$ | 1, for every `x1`, including NaN |
+| `x1` is 1 | 1, for every `x2`, including NaN |
+| `x1` is negative and finite, `x2` finite and not a whole number | NaN |
+| `x1` is $\pm 0$, `x2` negative | $+\infty$, or $-\infty$ for `x1` $= -0$ and an odd whole `x2` |
+| any other NaN operand | NaN |
+
+The exponents 2, 0, 1, $-1$ and 0.5 are computed as `x1 * x1`, 1, `x1`, `1 / x1` and the square root, so these
+results are correctly rounded. For other exponents, the results are within a few units in the last place of the exact
+value. `x1 ** 0.5` equals [`sqrt(x1)`](/api/array/square-sqrt/) except at two points, where it follows `pow`:
+$(-0)^{0.5}$ is `0.0` and $(-\infty)^{0.5}$ is `inf`, while `sqrt` gives `-0.0` and NaN.
+
+**Complex numbers.** Whole-number exponents of magnitude less than 100 are computed by repeated multiplication;
+other exponents use the principal branch, $x_1^{x_2} = e^{x_2 \log x_1}$, with the imaginary part of $\log x_1$ in
+$[-\pi, \pi]$. On the negative real axis, the sign of a zero imaginary part chooses the side, as for
+[`log`](/api/array/exp-log/). A zero base gives 1 for exponent 0, 0 for an exponent with positive real part, and NaN
+in both parts otherwise.
+
+`pow` has no modulus argument: the three-argument form `pow(x, y, m)` raises `TypeError`.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.pow` (`numpy.power`) and R's `^`.
+
+- Integers raised to negative integer powers give `int64` results (0 for most bases). NumPy raises `ValueError`.
+- `(-0.0) ** 0.5` is `0.0` and `(-inf) ** 0.5` is `inf`. With a scalar exponent of 0.5, NumPy uses the square root
+  and returns `-0.0` and NaN.
+- In `float64`, a zero base with a negative exponent gives `inf`, and a negative base with a non-integer exponent
+  gives NaN, without a warning. NumPy issues a `RuntimeWarning`; R's `^` gives `Inf` and `NaN` silently.
+- Booleans count as 0 and 1 and give `int64`.
+- R's `^` always returns doubles: `2L^-1L` is 0.5.

@@ -1,0 +1,79 @@
+---
+kind: function
+title: hypot
+names: [hypot]
+group: Arithmetic
+order: 11
+signatures:
+  - "sd.hypot(x1, x2, /, *, out=None)"
+summary: Compute the square root of the sum of squares of each pair of elements, without intermediate overflow.
+params:
+  - name: x1
+    type: array or scalar
+    kind: positional-only
+    desc: "First leg. An `sd.ndarray` or a Python `bool`, `int` or `float`."
+  - name: x2
+    type: array or scalar
+    kind: positional-only
+    desc: "Second leg, in the same forms as `x1`. It broadcasts against `x1` (see [Broadcasting](/api/array/broadcasting/))."
+  - name: out
+    type: ndarray or None
+    kind: keyword-only
+    default: None
+    desc: "Array to write the result into. See [the `out=` argument](/start/conventions/#the-out-argument)."
+returns:
+  - type: ndarray or scalar
+    desc: "The lengths, with the broadcast shape of the operands. Always `float64`. A Python `float` when both operands are Python scalars."
+raises:
+  - type: TypeError
+    desc: "If an operand is complex, if an operand is not an `sd.ndarray` or a Python scalar, or if `out` cannot hold `float64`."
+  - type: ValueError
+    desc: "If the operands do not broadcast against each other or to the shape of `out`, or if `out` is read-only."
+  - type: OverflowError
+    desc: "If a Python `int` outside the `int64` range is an operand and the promoted dtype is `bool` or `int64`."
+seeAlso: [abs, square-sqrt, atan2]
+---
+
+`hypot(x1, x2)` computes $\sqrt{x_1^2 + x_2^2}$ for each pair of elements: the length of the hypotenuse of a right
+triangle with legs $x_1$ and $x_2$, or the distance of the point $(x_1, x_2)$ from the origin. Together with
+[`atan2`](/api/array/atan2/), which gives the angle, it converts Cartesian coordinates to polar coordinates.
+
+The computation does not form the squares $x_1^2$ and $x_2^2$ directly, so it neither overflows nor underflows where
+they would, and `hypot` is preferable to `sqrt(x1**2 + x2**2)`.
+
+The result is always `float64`; `bool` and `int64` operands are converted to `float64` first (see
+[functions with floating-point results](/api/array/dtypes/#functions-with-floating-point-results)). Complex operands
+raise `TypeError`; [`abs`](/api/array/abs/) gives the magnitude of a complex number.
+
+## Examples
+
+Lengths of the hypotenuse of three right triangles:
+
+```python
+>>> import stardust as sd
+>>> sd.hypot(sd.asarray([3.0, 5.0, 8.0]), sd.asarray([4.0, 12.0, 15.0]))
+array([ 5.0, 13.0, 17.0], dtype=float64)
+>>> sd.hypot(3, 4)
+5.0
+```
+
+Large and small values. The squares overflow to infinity or underflow to 0, but `hypot` does not:
+
+```python
+>>> big = sd.asarray([1e200, 3e-200])
+>>> sd.hypot(big, big)
+array([1.414213562373095e+200, 4.242640687119285e-200], dtype=float64)
+>>> sd.sqrt(big**2 + big**2)
+array([inf, 0.0], dtype=float64)
+```
+
+<Reference />
+
+## Notes
+
+An infinite operand gives `inf`, even when the other operand is NaN; otherwise a NaN operand gives NaN.
+
+```python
+>>> sd.hypot(sd.asarray([sd.inf, sd.nan, sd.nan, -sd.inf]), sd.asarray([sd.nan, sd.inf, 1.0, 0.0]))
+array([inf, inf, nan, inf], dtype=float64)
+```

@@ -1,0 +1,113 @@
+---
+kind: function
+title: logaddexp
+names: [logaddexp]
+group: Exponents and logarithms
+order: 2
+signatures:
+  - "sd.logaddexp(x1, x2, /, *, out=None)"
+summary: Compute `log(exp(x1) + exp(x2))` element-wise without overflow or underflow.
+params:
+  - name: x1
+    type: array or scalar
+    kind: positional-only
+    desc: "First logarithm. An `sd.ndarray` or a Python `bool`, `int` or `float`."
+  - name: x2
+    type: array or scalar
+    kind: positional-only
+    desc: "Second logarithm, in the same forms as `x1`. It broadcasts against `x1` (see [Broadcasting](/api/array/broadcasting/))."
+  - name: out
+    type: ndarray or None
+    kind: keyword-only
+    default: None
+    desc: "Array to write the result into. See [the `out=` argument](/start/conventions/#the-out-argument)."
+returns:
+  - type: ndarray or scalar
+    desc: "`log(exp(x1) + exp(x2))`, with the broadcast shape of the operands. Always `float64`. A Python `float` when both operands are Python scalars."
+raises:
+  - type: TypeError
+    desc: "If an operand is complex, if an operand is not an `sd.ndarray` or a Python scalar, or if `out` cannot hold `float64`."
+  - type: ValueError
+    desc: "If the operands do not broadcast against each other or to the shape of `out`, or if `out` is read-only."
+  - type: OverflowError
+    desc: "If a Python `int` outside the `int64` range is an operand and the promoted dtype is `bool` or `int64`."
+seeAlso: [exp-log, maximum-minimum]
+---
+
+`logaddexp` adds two numbers that are stored as their logarithms. If `x1` holds `log(a)` and `x2` holds `log(b)`, the
+result is `log(a + b)`. Probabilities and likelihoods are often kept as logarithms because the numbers themselves
+are too small for `float64`; `logaddexp` adds them without leaving the logarithmic scale.
+
+The direct form `log(exp(x1) + exp(x2))` fails when the exponentials overflow to `inf` or underflow to 0.
+`logaddexp` computes the same value from the larger argument and the difference of the two, so no intermediate
+result overflows or underflows.
+
+The result is always `float64`. `bool` and `int64` operands are converted to `float64` first (see
+[functions with floating-point results](/api/array/dtypes/#functions-with-floating-point-results)), and complex
+operands raise `TypeError`. To add more than two values along an axis, use `sd.special.logsumexp`.
+
+## Examples
+
+The probabilities 0.25 and 0.5 as logarithms; the sum is the logarithm of 0.75:
+
+```python
+>>> import stardust as sd
+>>> lp = sd.log(sd.asarray([0.25, 0.5]))
+>>> s = sd.logaddexp(lp[0], lp[1])
+>>> s
+-0.2876820724517809
+>>> sd.exp(s)
+0.75
+```
+
+With large negative arguments, the exponentials underflow to 0 and the direct form gives `-inf`. `logaddexp` does
+not:
+
+```python
+>>> a = sd.asarray([-1000.0, -1000.0])
+>>> b = sd.asarray([-1000.0, -1001.0])
+>>> sd.log(sd.exp(a) + sd.exp(b))
+array([-inf, -inf], dtype=float64)
+>>> sd.logaddexp(a, b)
+array([-999.3068528194401, -999.6867383124818], dtype=float64)
+```
+
+`-inf` is the logarithm of 0, so it leaves the other argument unchanged. NaN gives NaN:
+
+```python
+>>> sd.logaddexp(sd.asarray([2.0, -sd.inf, sd.inf, sd.nan]),
+...              sd.asarray([-sd.inf, -sd.inf, sd.inf, 1.0]))
+array([ 2.0, -inf,  inf,  nan], dtype=float64)
+```
+
+The arguments must be real:
+
+```python
+>>> sd.logaddexp(sd.asarray([1 + 0j]), 0.0)
+Traceback (most recent call last):
+    ...
+TypeError: logaddexp(): not supported for complex128 and float64
+```
+
+<Reference />
+
+## Notes
+
+For $x_1 \ne x_2$ the function computes
+
+$$
+\operatorname{logaddexp}(x_1, x_2) = \max(x_1, x_2) + \ln\bigl(1 + e^{-\lvert x_1 - x_2 \rvert}\bigr),
+$$
+
+with the last term evaluated as `log1p(exp(-abs(x1 - x2)))`. The exponential is at most 1, so nothing overflows.
+When $x_1 = x_2$, including two infinities of the same sign, the result is $x_1 + \ln 2$, so `logaddexp(inf, inf)` is
+`inf` and `logaddexp(-inf, -inf)` is `-inf`. `logaddexp(inf, -inf)` is `inf`.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalent is `numpy.logaddexp`. Base R has no such function.
+
+- The values agree with NumPy's, including the infinite cases. A NaN operand gives NaN without a warning; NumPy
+  issues a `RuntimeWarning`.
+- Complex operands raise `TypeError`, as in NumPy.
+- Each operand must be an `sd.ndarray` or a Python scalar; a list raises `TypeError`.

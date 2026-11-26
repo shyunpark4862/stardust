@@ -1,0 +1,105 @@
+---
+kind: function
+title: isnan, isinf, isfinite
+names: [isnan, isinf, isfinite]
+group: Classification and selection
+order: 1
+signatures:
+  - "sd.isnan(x, /, *, out=None)"
+  - "sd.isinf(x, /, *, out=None)"
+  - "sd.isfinite(x, /, *, out=None)"
+summary: Test each element for NaN, for infinity, or for a finite value.
+params:
+  - name: x
+    type: array or scalar
+    kind: positional-only
+    desc: "Input of any dtype. An `sd.ndarray` or a Python `bool`, `int`, `float` or `complex`."
+  - name: out
+    type: ndarray or None
+    kind: keyword-only
+    default: None
+    desc: "Array to write the result into. See [the `out=` argument](/start/conventions/#the-out-argument)."
+returns:
+  - type: ndarray or scalar
+    desc: "`bool` array with the shape of `x`. A Python `bool` when `x` is a Python scalar."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray` or a Python scalar."
+  - type: ValueError
+    desc: "If `x` does not broadcast to the shape of `out`, or if `out` is read-only."
+  - type: OverflowError
+    desc: "If `x` is a Python `int` outside the `int64` range."
+seeAlso: [signbit, where, comparison, nan-reductions, constants]
+---
+
+`isnan` is `True` where an element is NaN, `isinf` where it is `inf` or `-inf`, and `isfinite` where it is neither.
+Every float is exactly one of finite, infinite or NaN, so `isfinite(x)` equals `~(isnan(x) | isinf(x))`.
+
+The functions accept every dtype. `bool` and `int64` values are always finite: `isnan` and `isinf` are `False` for
+them and `isfinite` is `True`. A complex number is NaN if either part is NaN, infinite if either part is infinite,
+and finite only if both parts are finite.
+
+`isnan` is the way to find missing values: NaN is not equal to anything, so `x == sd.nan` is `False` everywhere (see
+[Missing values](/start/conventions/#missing-values)).
+
+## Examples
+
+The three tests on the special floating-point values:
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([1.0, sd.nan, sd.inf, -sd.inf, -0.0])
+>>> sd.isnan(x)
+array([False,  True, False, False, False], dtype=bool)
+>>> sd.isinf(x)
+array([False, False,  True,  True, False], dtype=bool)
+>>> sd.isfinite(x)
+array([ True, False, False, False,  True], dtype=bool)
+```
+
+Removing or replacing missing values. A comparison with `sd.nan` finds nothing:
+
+```python
+>>> y = sd.asarray([1.0, sd.nan, 3.0, sd.inf])
+>>> y[sd.isfinite(y)]
+array([1.0, 3.0], dtype=float64)
+>>> sd.where(sd.isnan(y), 0.0, y)
+array([1.0, 0.0, 3.0, inf], dtype=float64)
+>>> sd.any(sd.isnan(y))
+True
+>>> y == sd.nan
+array([False, False, False, False], dtype=bool)
+```
+
+Complex numbers count a NaN or an infinity in either part. A number with an infinite part and a NaN part is both NaN
+and infinite:
+
+```python
+>>> z = sd.asarray([1 + 2j, complex(sd.nan, 0.0), complex(1.0, sd.inf), complex(sd.inf, sd.nan)])
+>>> sd.isnan(z)
+array([False,  True, False,  True], dtype=bool)
+>>> sd.isinf(z)
+array([False, False,  True,  True], dtype=bool)
+>>> sd.isfinite(z)
+array([ True, False, False, False], dtype=bool)
+```
+
+Integers are never NaN or infinite:
+
+```python
+>>> sd.isnan(sd.asarray([1, 2]))
+array([False, False], dtype=bool)
+>>> sd.isfinite(5)
+True
+```
+
+<Reference />
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.isnan`, `numpy.isinf` and `numpy.isfinite`, and R's `is.nan`, `is.infinite` and
+`is.finite`.
+
+- The results agree with NumPy's for every dtype, complex included.
+- R distinguishes the missing value `NA` from `NaN`: `is.nan(NA)` is `FALSE`, while `is.na` is `TRUE` for both.
+  stardust represents a missing number as NaN, so `isnan` plays the role of `is.na` for numbers.

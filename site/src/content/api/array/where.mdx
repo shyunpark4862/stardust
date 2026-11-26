@@ -1,0 +1,116 @@
+---
+kind: function
+title: where
+names: [where]
+group: Classification and selection
+order: 3
+signatures:
+  - "sd.where(condition, x1, x2, /, *, out=None)"
+summary: Choose each element from `x1` where `condition` is true and from `x2` elsewhere.
+params:
+  - name: condition
+    type: array or bool
+    kind: positional-only
+    desc: "Selector. An `sd.ndarray` of dtype `bool` or a Python `bool`; other dtypes are not accepted."
+  - name: x1
+    type: array or scalar
+    kind: positional-only
+    desc: "Values taken where `condition` is `True`. An `sd.ndarray` or a Python `bool`, `int`, `float` or `complex`."
+  - name: x2
+    type: array or scalar
+    kind: positional-only
+    desc: "Values taken where `condition` is `False`, in the same forms as `x1`. `condition`, `x1` and `x2` broadcast against each other (see [Broadcasting](/api/array/broadcasting/))."
+  - name: out
+    type: ndarray or None
+    kind: keyword-only
+    default: None
+    desc: "Array to write the result into. See [the `out=` argument](/start/conventions/#the-out-argument)."
+returns:
+  - type: ndarray or scalar
+    desc: "Chosen values, with the broadcast shape of the three arguments and the promoted dtype of `x1` and `x2`. A Python scalar when all three arguments are Python scalars."
+raises:
+  - type: TypeError
+    desc: "If `condition` is not of dtype `bool`, if an argument is not an `sd.ndarray` or a Python scalar, if `x1` or `x2` is missing, or if `out` cannot hold the result dtype."
+  - type: ValueError
+    desc: "If the arguments do not broadcast against each other or to the shape of `out`, or if `out` is read-only."
+  - type: OverflowError
+    desc: "If `x1` or `x2` is a Python `int` outside the `int64` range and the promoted dtype of `x1` and `x2` is `bool` or `int64`."
+seeAlso: [comparison, logical, isnan-isinf-isfinite, clip, nonzero, indexing]
+---
+
+`where` builds an array element by element: where `condition` is `True` the element comes from `x1`, where it is
+`False` from `x2`. It is the element-wise form of the expression `a if c else b`.
+
+The three arguments broadcast against each other, so `x1` or `x2` can be a single value. The dtype of the result is
+the promoted dtype of `x1` and `x2` (see [Type promotion](/api/array/dtypes/#type-promotion)); `condition` does not
+take part. `condition` must be `bool`, usually the result of a [comparison](/api/array/comparison/); numbers raise
+`TypeError` and need an explicit test such as `x != 0`.
+
+`x1` and `x2` are complete arrays computed before `where` is called, so an expression in them is evaluated for every
+element, also where its value is not used. In `where(x != 0, 1 / x, 0.0)` the division by zero still happens; it gives
+`inf` without an error, and `where` discards it.
+
+## Examples
+
+Replace negative values by zero, and compute a reciprocal that is 0 where `x` is 0:
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([-2.0, -1.0, 0.0, 1.0, 2.0])
+>>> sd.where(x > 0, x, 0.0)
+array([0.0, 0.0, 0.0, 1.0, 2.0], dtype=float64)
+>>> sd.where(x != 0, 1 / x, 0.0)
+array([-0.5, -1.0,  0.0,  1.0,  0.5], dtype=float64)
+```
+
+A column of conditions broadcast against rows of values:
+
+```python
+>>> c = sd.asarray([[True], [False]])
+>>> sd.where(c, sd.asarray([1, 2, 3]), sd.asarray([10, 20, 30]))
+array([[ 1,  2,  3],
+       [10, 20, 30]], dtype=int64)
+```
+
+The result dtype comes from `x1` and `x2` together, even where one of them is never chosen:
+
+```python
+>>> sd.where(sd.asarray([True, False]), sd.asarray([1, 2]), 0)
+array([1, 0], dtype=int64)
+>>> sd.where(sd.asarray([True, False]), sd.asarray([1, 2]), 2.5)
+array([1.0, 2.5], dtype=float64)
+```
+
+The condition must be Boolean, and all three arguments are required:
+
+```python
+>>> sd.where(sd.asarray([1, 0]), 1, 2)
+Traceback (most recent call last):
+    ...
+TypeError: where(): 'condition' must be bool, not int64; compare explicitly, e.g. x != 0
+>>> sd.where(x > 0)
+Traceback (most recent call last):
+    ...
+TypeError: where(): incompatible function arguments. ...
+```
+
+<Reference />
+
+## Notes
+
+`out` may be one of the arguments. `sd.where(x > 0, x, -x, out=x)` replaces `x` by its absolute values in place, because
+all inputs are read before the result is written (see [Overlapping memory](/api/array/views/#overlapping-memory)).
+
+To find the positions where a condition holds, use [`nonzero`](/api/array/nonzero/). To limit values to a range,
+[`clip`](/api/array/clip/) is shorter than two nested `where` calls.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.where(condition, x, y)` and R's `ifelse(test, yes, no)`.
+
+- `condition` must be `bool`. NumPy and R treat nonzero numbers as true.
+- There is no one-argument form. `numpy.where(condition)` returns the indices where `condition` is true; here
+  that is `nonzero(condition)`.
+- R's `ifelse` takes the shape of `test` and recycles `yes` and `no`. Here all three arguments broadcast, and the
+  result can be larger than `condition`.
+- R's `ifelse` gives `NA` where `test` is `NA`. A `bool` array has no missing values.

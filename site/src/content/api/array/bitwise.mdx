@@ -1,0 +1,152 @@
+---
+kind: function
+title: bitwise_and, bitwise_or, bitwise_xor, bitwise_invert, bitwise_left_shift, bitwise_right_shift
+names: [bitwise_and, bitwise_or, bitwise_xor, bitwise_invert, bitwise_left_shift, bitwise_right_shift]
+group: Comparison, logic and bits
+order: 3
+signatures:
+  - "sd.bitwise_and(x1, x2, /, *, out=None)"
+  - "sd.bitwise_or(x1, x2, /, *, out=None)"
+  - "sd.bitwise_xor(x1, x2, /, *, out=None)"
+  - "sd.bitwise_invert(x, /, *, out=None)"
+  - "sd.bitwise_left_shift(x1, x2, /, *, out=None)"
+  - "sd.bitwise_right_shift(x1, x2, /, *, out=None)"
+summary: Apply bitwise operations and bit shifts to integer and Boolean arrays element-wise.
+params:
+  - name: x1
+    type: array or scalar
+    kind: positional-only
+    desc: "First operand. An `sd.ndarray` or a Python `bool` or `int`. `bitwise_and`, `bitwise_or` and `bitwise_xor` accept `bool` and `int64`; the shifts accept `int64` only."
+  - name: x2
+    type: array or scalar
+    kind: positional-only
+    desc: "Second operand, in the same forms as `x1`; for the shifts, the number of bit positions. It broadcasts against `x1` (see [Broadcasting](/api/array/broadcasting/))."
+  - name: out
+    type: ndarray or None
+    kind: keyword-only
+    default: None
+    desc: "Array to write the result into. See [the `out=` argument](/start/conventions/#the-out-argument)."
+  - name: x
+    type: array or scalar
+    kind: positional-only
+    desc: "Operand of `bitwise_invert`: an `sd.ndarray` of dtype `bool` or `int64`, or a Python `bool` or `int`."
+returns:
+  - type: ndarray or scalar
+    desc: "Result with the broadcast shape of the operands: `bool` when every operand is `bool`, `int64` otherwise. A Python scalar when every operand is a Python scalar."
+raises:
+  - type: TypeError
+    desc: "If an operand is `float64` or `complex128`, if an operand of a shift is `bool`, if an operand is not an `sd.ndarray` or a Python scalar, or if `out` cannot hold the result dtype."
+  - type: ValueError
+    desc: "If the operands do not broadcast against each other or to the shape of `out`, or if `out` is read-only."
+  - type: OverflowError
+    desc: "If a Python `int` outside the `int64` range is an operand."
+seeAlso: [logical, comparison, floor_divide-remainder]
+---
+
+These functions work on the bits of each element. An `int64` element is a 64-bit two's complement integer, in which
+the highest bit carries the sign and -1 has every bit set. The operators of `sd.ndarray` call these functions:
+
+| Operator | Function | Result bit or value |
+|---|---|---|
+| `x1 & x2` | `bitwise_and` | 1 where both bits are 1 |
+| `x1 \| x2` | `bitwise_or` | 1 where at least one bit is 1 |
+| `x1 ^ x2` | `bitwise_xor` | 1 where exactly one bit is 1 |
+| `~x` | `bitwise_invert` | every bit flipped, so `~x == -x - 1` |
+| `x1 << x2` | `bitwise_left_shift` | the bits of `x1` moved `x2` places to the left |
+| `x1 >> x2` | `bitwise_right_shift` | the bits of `x1` moved `x2` places to the right, filled with the sign bit |
+
+On `bool` arrays, `&`, `|`, `^` and `~` are the logical and, or, exclusive or and not, and the result is `bool` (see
+also [`logical_and`](/api/array/logical/)). A `bool` combined with an `int64` counts as 0 or 1 and gives `int64`.
+The shifts accept only `int64`: a `bool` operand raises `TypeError` even with an integer on the other side.
+Floating-point and complex input raises `TypeError` in all six functions.
+
+## Examples
+
+The bit patterns 1100 (12) and 1010 (10), and -1 with all bits set:
+
+```python
+>>> import stardust as sd
+>>> a = sd.asarray([12, 10, -1])
+>>> b = sd.asarray([10, 6, 5])
+>>> a & b
+array([8, 2, 5], dtype=int64)
+>>> a | b
+array([14, 14, -1], dtype=int64)
+>>> a ^ b
+array([ 6, 12, -6], dtype=int64)
+>>> ~a
+array([-13, -11,   0], dtype=int64)
+```
+
+Testing one bit of a set of flags:
+
+```python
+>>> flags = sd.asarray([0b0101, 0b0011, 0b0100])
+>>> (flags & 0b0001) != 0
+array([ True,  True, False], dtype=bool)
+```
+
+A left shift by `k` multiplies by `2**k` while the result fits; a right shift by `k` divides by `2**k`, rounding
+toward `-inf`, like `//`:
+
+```python
+>>> v = sd.asarray([1, 5, -7])
+>>> v << 2
+array([  4,  20, -28], dtype=int64)
+>>> v >> 1
+array([ 0,  2, -4], dtype=int64)
+>>> v // 2
+array([ 0,  2, -4], dtype=int64)
+```
+
+Bits shifted past the highest position are lost, and a shift by 64 or more, or by a negative count, shifts out every
+bit:
+
+```python
+>>> sd.bitwise_left_shift(1, sd.asarray([62, 63, 64, -1]))
+array([ 4611686018427387904, -9223372036854775808,                    0,
+                          0], dtype=int64)
+>>> sd.bitwise_right_shift(sd.asarray([-8, 8]), 64)
+array([-1,  0], dtype=int64)
+```
+
+On Boolean arrays the operators are logical. Shifts and floating-point input are rejected:
+
+```python
+>>> m = sd.asarray([True, False, True])
+>>> m & sd.asarray([True, True, False])
+array([ True, False, False], dtype=bool)
+>>> ~m
+array([False,  True, False], dtype=bool)
+>>> m << 1
+Traceback (most recent call last):
+    ...
+TypeError: unsupported operand dtypes for <<: bool and int64
+>>> sd.bitwise_and(sd.asarray([1.0]), 1)
+Traceback (most recent call last):
+    ...
+TypeError: bitwise_and(): not supported for float64 and int64
+```
+
+<Reference />
+
+## Notes
+
+For $0 \le k \lt 64$, `x << k` is $x \cdot 2^k$ reduced to the `int64` range by wrapping around, as in
+[integer overflow](/api/array/dtypes/#integer-overflow), and `x >> k` is $\lfloor x / 2^k \rfloor$. The shift count is
+read as an unsigned number, so a negative count acts as a count of 64 or more: `x << k` is then 0, and `x >> k` is
+0 for $x \ge 0$ and $-1$ for $x \lt 0$.
+
+`~x` equals $-x - 1$ for every `int64` $x$; on `bool`, `~True` is `False`. Shifting never raises an error for the
+value of the count.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.bitwise_and`, `numpy.bitwise_or`, `numpy.bitwise_xor`, `numpy.bitwise_invert`
+(also `numpy.invert`), `numpy.bitwise_left_shift` (also `numpy.left_shift`) and `numpy.bitwise_right_shift` (also
+`numpy.right_shift`), and R's `bitwAnd`, `bitwOr`, `bitwXor`, `bitwNot`, `bitwShiftL` and `bitwShiftR`.
+
+- The shifts reject `bool` input. NumPy shifts a `bool` array as integers and returns an integer array.
+- There are no `invert`, `left_shift` and `right_shift` aliases.
+- R's bitwise functions work on 32-bit integers, and `bitwShiftR` fills with zeros. Here integers have 64 bits, and
+  `>>` fills with the sign bit.

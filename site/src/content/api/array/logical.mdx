@@ -1,0 +1,123 @@
+---
+kind: function
+title: logical_and, logical_or, logical_xor, logical_not
+names: [logical_and, logical_or, logical_xor, logical_not]
+group: Comparison, logic and bits
+order: 2
+signatures:
+  - "sd.logical_and(x1, x2, /, *, out=None)"
+  - "sd.logical_or(x1, x2, /, *, out=None)"
+  - "sd.logical_xor(x1, x2, /, *, out=None)"
+  - "sd.logical_not(x, /, *, out=None)"
+summary: Combine or negate Boolean arrays element-wise.
+params:
+  - name: x1
+    type: array or scalar
+    kind: positional-only
+    desc: "First operand of `logical_and`, `logical_or` and `logical_xor`. An `sd.ndarray` of dtype `bool` or a Python `bool`; other dtypes are not accepted."
+  - name: x2
+    type: array or scalar
+    kind: positional-only
+    desc: "Second operand, in the same forms as `x1`. It broadcasts against `x1` (see [Broadcasting](/api/array/broadcasting/))."
+  - name: out
+    type: ndarray or None
+    kind: keyword-only
+    default: None
+    desc: "Array to write the result into. See [the `out=` argument](/start/conventions/#the-out-argument)."
+  - name: x
+    type: array or scalar
+    kind: positional-only
+    desc: "Operand of `logical_not`, in the same forms as `x1`."
+returns:
+  - type: ndarray or scalar
+    desc: "`bool` array with the broadcast shape of the operands. A Python `bool` when every operand is a Python `bool`."
+raises:
+  - type: TypeError
+    desc: "If an operand is not of dtype `bool` (an `int64` array or a Python `int`, for example), or if an operand is not an `sd.ndarray` or a Python scalar."
+  - type: ValueError
+    desc: "If the operands do not broadcast against each other or to the shape of `out`, or if `out` is read-only."
+seeAlso: [comparison, bitwise, where, any-all]
+---
+
+The logical functions combine Boolean values element by element:
+
+| Function | Operator on `bool` arrays | True where |
+|---|---|---|
+| `logical_and(x1, x2)` | `x1 & x2` | both are `True` |
+| `logical_or(x1, x2)` | `x1 \| x2` | at least one is `True` |
+| `logical_xor(x1, x2)` | `x1 ^ x2` | exactly one is `True` |
+| `logical_not(x)` | `~x` | `x` is `False` |
+
+The inputs must have dtype `bool`, usually masks produced by [comparisons](/api/array/comparison/) or
+[`isnan`](/api/array/isnan-isinf-isfinite/). Numbers are not treated as true or false: an `int64` or `float64` input
+raises `TypeError`, and `x != 0` converts it explicitly.
+
+On `bool` arrays, the operators `&`, `|`, `^` and `~` give the same results as these functions; they call the
+[bitwise functions](/api/array/bitwise/), which keep `bool` for `bool` input. Python's `and`, `or` and `not` do not
+work element-wise: they need the truth value of a whole array and raise `TypeError`.
+
+## Examples
+
+The four functions on all combinations of two values:
+
+```python
+>>> import stardust as sd
+>>> a = sd.asarray([True, True, False, False])
+>>> b = sd.asarray([True, False, True, False])
+>>> sd.logical_and(a, b)
+array([ True, False, False, False], dtype=bool)
+>>> sd.logical_or(a, b)
+array([ True,  True,  True, False], dtype=bool)
+>>> sd.logical_xor(a, b)
+array([False,  True,  True, False], dtype=bool)
+>>> sd.logical_not(a)
+array([False, False,  True,  True], dtype=bool)
+```
+
+Combining conditions on the elements of an array, with the functions or with the operators:
+
+```python
+>>> x = sd.asarray([-2.0, 0.5, 3.0, sd.nan])
+>>> sd.logical_and(x > 0, x < 1)
+array([False,  True, False, False], dtype=bool)
+>>> (x > 0) & (x < 1)
+array([False,  True, False, False], dtype=bool)
+>>> ~sd.isnan(x)
+array([ True,  True,  True, False], dtype=bool)
+```
+
+The comparisons need parentheses: `&` binds more tightly than `>` and `<`, so `x > 0 & x < 1` means
+`x > (0 & x) < 1` and fails:
+
+```python
+>>> x > 0 & x < 1
+Traceback (most recent call last):
+    ...
+TypeError: unsupported operand dtypes for &: int64 and float64
+```
+
+Numbers must be converted to `bool` explicitly:
+
+```python
+>>> k = sd.asarray([0, 1, 2])
+>>> sd.logical_not(k)
+Traceback (most recent call last):
+    ...
+TypeError: logical_not(): not supported for int64
+>>> sd.logical_not(k != 0)
+array([ True, False, False], dtype=bool)
+```
+
+<Reference />
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.logical_and`, `numpy.logical_or`, `numpy.logical_xor` and `numpy.logical_not`, and
+R's `&`, `|`, `xor` and `!`.
+
+- Only `bool` input is accepted. NumPy and R treat nonzero numbers as true; here `int64` and `float64` input raise
+  `TypeError`.
+- R's `&` and `|` work on logical vectors element by element like these functions, and `&&` and `||` take single
+  values. Here Python's `and` and `or` correspond to `&&` and `||` and raise `TypeError` for arrays.
+- There is no missing Boolean value. R's `NA & FALSE` is `FALSE` and `NA & TRUE` is `NA`; a `bool` array holds only
+  `True` and `False`.

@@ -1,0 +1,144 @@
+---
+kind: function
+title: sin, cos, tan, asin, acos, atan
+names: [sin, cos, tan, asin, acos, atan]
+group: Trigonometric and hyperbolic
+order: 1
+signatures:
+  - "sd.sin(x, /, *, out=None)"
+  - "sd.cos(x, /, *, out=None)"
+  - "sd.tan(x, /, *, out=None)"
+  - "sd.asin(x, /, *, out=None)"
+  - "sd.acos(x, /, *, out=None)"
+  - "sd.atan(x, /, *, out=None)"
+summary: Compute the trigonometric functions and their inverses element-wise, with angles in radians.
+params:
+  - name: x
+    type: array or scalar
+    kind: positional-only
+    desc: "Input. An `sd.ndarray` or a Python `bool`, `int`, `float` or `complex`. Angles for `sin`, `cos` and `tan` are in radians."
+  - name: out
+    type: ndarray or None
+    kind: keyword-only
+    default: None
+    desc: "Array to write the result into. See [the `out=` argument](/start/conventions/#the-out-argument)."
+returns:
+  - type: ndarray or scalar
+    desc: "Result with the shape of `x`. `float64` for `bool`, `int64` and `float64` input, `complex128` for complex input. A Python scalar when `x` is a Python scalar. The inverse functions return angles in radians."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray` or a Python scalar, or if `out` cannot hold the result dtype."
+  - type: ValueError
+    desc: "If `x` does not broadcast to the shape of `out`, or if `out` is read-only."
+  - type: OverflowError
+    desc: "If `x` is a Python `int` outside the `int64` range."
+seeAlso: [atan2, hyperbolic, deg2rad-rad2deg, constants]
+---
+
+`sin`, `cos` and `tan` take angles in radians; [`deg2rad`](/api/array/deg2rad-rad2deg/) converts degrees. `asin`,
+`acos` and `atan` are their inverse functions and return angles in radians: `asin` and `atan` between `-pi/2` and
+`pi/2`, `acos` between 0 and `pi`. The domain of `asin` and `acos` is the interval from -1 to 1.
+
+`bool` and `int64` input is converted to `float64` first (see
+[functions with floating-point results](/api/array/dtypes/#functions-with-floating-point-results)). A real argument
+outside the domain of `asin` or `acos` gives NaN, as do `sin`, `cos` and `tan` of an infinity; no error is raised.
+For the angle of a point `(x, y)` in all four quadrants, use [`atan2`](/api/array/atan2/) instead of `atan`.
+
+## Examples
+
+The values at a few standard angles. `sd.pi` is the `float64` nearest to pi, not pi itself, so `sin(sd.pi)` is a
+small number instead of 0:
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([0.0, sd.pi / 6, sd.pi / 4, sd.pi / 2, sd.pi])
+>>> sd.sin(x)
+array([                   0.0,     0.4999999999999999,
+           0.7071067811865476,                    1.0,
+       1.2246467991473532e-16], dtype=float64)
+>>> sd.cos(x)
+array([                  1.0,    0.8660254037844387,    0.7071067811865476,
+       6.123233995736766e-17,                  -1.0], dtype=float64)
+```
+
+The inverse functions return angles:
+
+```python
+>>> sd.asin(sd.asarray([-1.0, 0.0, 0.5, 1.0]))
+array([-1.5707963267948966,                 0.0,  0.5235987755982989,
+        1.5707963267948966], dtype=float64)
+>>> sd.acos(sd.asarray([-1.0, 0.0, 0.5, 1.0]))
+array([ 3.141592653589793, 1.5707963267948966, 1.0471975511965976,
+                      0.0], dtype=float64)
+>>> sd.atan(sd.asarray([-sd.inf, -1.0, 0.0, 1.0, sd.inf]))
+array([-1.5707963267948966, -0.7853981633974483,                 0.0,
+        0.7853981633974483,  1.5707963267948966], dtype=float64)
+```
+
+Integers count as radians, not degrees. Convert degrees first:
+
+```python
+>>> sd.sin(sd.asarray([30, 90]))
+array([-0.9880316240928618,  0.8939966636005577], dtype=float64)
+>>> sd.sin(sd.deg2rad(sd.asarray([30, 90])))
+array([0.4999999999999999,                1.0], dtype=float64)
+```
+
+Outside the interval from -1 to 1, `asin` of a real number is NaN. A complex argument gives the complex inverse sine:
+
+```python
+>>> sd.asin(sd.asarray([1.5, -2.0]))
+array([nan, nan], dtype=float64)
+>>> sd.asin(sd.asarray([1.5 + 0j, -2 + 0j]))
+array([ (1.5707963267948966+0.9624236501192069j),
+       (-1.5707963267948966+1.3169578969248166j)], dtype=complex128)
+```
+
+<Reference />
+
+## Notes
+
+**Ranges.** The inverse functions return principal values:
+
+| Function | Real domain | Range |
+|---|---|---|
+| `asin(x)` | $-1 \le x \le 1$ | $[-\pi/2, \pi/2]$ |
+| `acos(x)` | $-1 \le x \le 1$ | $[0, \pi]$ |
+| `atan(x)` | all $x$ | $[-\pi/2, \pi/2]$ |
+
+**Special values.** `sin`, `cos` and `tan` of `inf` or `-inf` are NaN, and NaN gives NaN in every function. `sin`,
+`tan`, `asin` and `atan` keep the sign of a zero: `sin(-0.0)` is `-0.0`. The tangent has no pole in `float64`,
+because no `float64` equals $\pi/2$: `tan(sd.pi / 2)` is about $1.6 \times 10^{16}$.
+
+**Large arguments.** `sin`, `cos` and `tan` reduce an argument of any size to the interval around 0 accurately, so
+`sin(1e22)` is correct to the last digit. The reduction cannot recover precision that the argument itself does not
+have: at $10^{22}$, neighboring `float64` values are about $2 \times 10^6$ apart.
+
+**Complex arguments.** `sin`, `cos` and `tan` of $z = a + bi$ follow the usual formulas, for example
+$\sin z = \sin a \cosh b + i \cos a \sinh b$. The inverse functions return principal values. Their branch cuts lie on
+the axes:
+
+| Function | Branch cuts |
+|---|---|
+| `asin`, `acos` | the real axis outside $[-1, 1]$ |
+| `atan` | the imaginary axis outside $[-i, i]$ |
+
+On a cut, the sign of the zero part chooses the side: `asin(complex(2, 0.0))` is $\pi/2 + 1.317\ldots i$ and
+`asin(complex(2, -0.0))` is $\pi/2 - 1.317\ldots i$.
+
+**Accuracy.** For `float64` input, the results are within a few units in the last place of the exact value, and the
+special values are exact.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.sin`, `numpy.cos`, `numpy.tan`, `numpy.asin` (also `numpy.arcsin`), `numpy.acos`
+and `numpy.atan`, and R's `sin`, `cos`, `tan`, `asin`, `acos` and `atan`.
+
+- The inverse functions are named `asin`, `acos` and `atan`; there are no `arcsin`, `arccos` and `arctan` aliases.
+- Results for `float64` input can differ from NumPy's in the last digit.
+- No warning is issued for an argument outside the domain. NumPy issues a `RuntimeWarning`, and R warns "NaNs
+  produced".
+- On the branch cuts, R chooses the other side for a zero imaginary part: R's `asin(2+0i)` is `1.570796-1.316958i`,
+  while `sd.asin(2 + 0j)` is `(1.5707963267948966+1.3169578969248166j)`, the value NumPy also gives.
+- R has `sinpi`, `cospi` and `tanpi`, which compute `sin(pi * x)` and the others without rounding `pi * x` first,
+  so `sinpi(1)` is exactly 0; stardust has no such functions.

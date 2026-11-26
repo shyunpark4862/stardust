@@ -1,0 +1,149 @@
+---
+kind: function
+title: exp, expm1, log, log1p, log2, log10
+names: [exp, expm1, log, log1p, log2, log10]
+group: Exponents and logarithms
+order: 1
+signatures:
+  - "sd.exp(x, /, *, out=None)"
+  - "sd.expm1(x, /, *, out=None)"
+  - "sd.log(x, /, *, out=None)"
+  - "sd.log1p(x, /, *, out=None)"
+  - "sd.log2(x, /, *, out=None)"
+  - "sd.log10(x, /, *, out=None)"
+summary: Compute exponentials and logarithms element-wise.
+params:
+  - name: x
+    type: array or scalar
+    kind: positional-only
+    desc: "Input. An `sd.ndarray` or a Python `bool`, `int`, `float` or `complex`."
+  - name: out
+    type: ndarray or None
+    kind: keyword-only
+    default: None
+    desc: "Array to write the result into. See [the `out=` argument](/start/conventions/#the-out-argument)."
+returns:
+  - type: ndarray or scalar
+    desc: "Result with the shape of `x`. `float64` for `bool`, `int64` and `float64` input, `complex128` for complex input. A Python scalar when `x` is a Python scalar."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray` or a Python scalar, or if `out` cannot hold the result dtype."
+  - type: ValueError
+    desc: "If `x` does not broadcast to the shape of `out`, or if `out` is read-only."
+  - type: OverflowError
+    desc: "If `x` is a Python `int` outside the `int64` range."
+seeAlso: [logaddexp, pow, hyperbolic, constants]
+---
+
+`exp` raises $e$, the base of the natural logarithm, to the power `x`. `log` is its inverse, the natural logarithm;
+`log2` and `log10` are the logarithms to the bases 2 and 10. `expm1(x)` and `log1p(x)` give the same values as
+`exp(x) - 1` and `log(1 + x)`, but stay accurate when `x` is close to 0, where the two-step forms lose most of their
+digits.
+
+`bool` and `int64` input is converted to `float64` first (see
+[functions with floating-point results](/api/array/dtypes/#functions-with-floating-point-results)). A real argument
+outside the domain of a logarithm gives NaN, and the end of the domain (0 for `log`, `log2` and `log10`, $-1$ for
+`log1p`) gives `-inf`; neither raises an error. For a complex result, the input must be complex.
+
+## Examples
+
+`exp` and `log` undo each other:
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([0.0, 1.0, 2.0])
+>>> sd.exp(x)
+array([              1.0, 2.718281828459045,  7.38905609893065], dtype=float64)
+>>> sd.log(sd.exp(x))
+array([0.0, 1.0, 2.0], dtype=float64)
+```
+
+Integer input is converted to `float64`. Powers of the base give whole numbers:
+
+```python
+>>> sd.log2(sd.asarray([1, 2, 8, 1024]))
+array([ 0.0,  1.0,  3.0, 10.0], dtype=float64)
+>>> sd.log10(sd.asarray([1, 10, 1000]))
+array([0.0, 1.0, 3.0], dtype=float64)
+>>> sd.log(2)
+0.6931471805599453
+```
+
+Close to 0, `expm1` and `log1p` keep the digits that `exp(x) - 1` and `log(1 + x)` lose:
+
+```python
+>>> t = sd.asarray([1e-10])
+>>> sd.exp(t) - 1
+array([1.000000082740371e-10], dtype=float64)
+>>> sd.expm1(t)
+array([1.00000000005e-10], dtype=float64)
+>>> sd.log(1 + t)
+array([1.000000082690371e-10], dtype=float64)
+>>> sd.log1p(t)
+array([9.999999999500001e-11], dtype=float64)
+```
+
+Zero and negative numbers are outside the domain of the logarithm. Zero of either sign gives `-inf`, a negative
+number gives NaN. A complex input gives the complex logarithm instead:
+
+```python
+>>> sd.log(sd.asarray([-1.0, -0.0, 0.0, sd.inf, sd.nan]))
+array([ nan, -inf, -inf,  inf,  nan], dtype=float64)
+>>> sd.log(sd.asarray([-1 + 0j, 1j]))
+array([ 3.141592653589793j, 1.5707963267948966j], dtype=complex128)
+```
+
+`exp` overflows to infinity and underflows to 0 without an error:
+
+```python
+>>> sd.exp(sd.asarray([709.0, 710.0, -746.0]))
+array([8.218407461554972e+307,                    inf,
+                          0.0], dtype=float64)
+```
+
+<Reference />
+
+## Notes
+
+**Definitions.** For real $x$:
+
+| Function | Value | Domain |
+|---|---|---|
+| `exp(x)` | $e^x$ | all $x$ |
+| `expm1(x)` | $e^x - 1$ | all $x$ |
+| `log(x)` | $\ln x$ | $x \gt 0$ |
+| `log1p(x)` | $\ln(1 + x)$ | $x \gt -1$ |
+| `log2(x)` | $\log_2 x = \ln x / \ln 2$ | $x \gt 0$ |
+| `log10(x)` | $\log_{10} x = \ln x / \ln 10$ | $x \gt 0$ |
+
+**Range of `exp`.** `exp(x)` is `inf` for $x$ above about 709.78, where $e^x$ exceeds the largest `float64`, and 0
+for $x$ below about $-745.13$. `exp(-inf)` is 0, and `expm1(-inf)` is $-1$.
+
+**Special values.** `log(0)` and `log(-0.0)` are `-inf`, `log1p(-1)` is `-inf`, and `log(inf)` is `inf`. A NaN input
+gives NaN in every function. Signed zeros are kept where the function passes through 0: `expm1(-0.0)` and `log1p(-0.0)`
+are `-0.0`.
+
+**Other bases.** The logarithm to a base $b$ is $\log_b x = \ln x / \ln b$, computed as
+`sd.log(x) / sd.log(b)`.
+
+**Complex arguments.** For $z = a + bi$, `exp(z)` is $e^a(\cos b + i \sin b)$. `log(z)` is the principal value
+$\ln\lvert z \rvert + i \arg z$, with $\arg z$ in $[-\pi, \pi]$. Its branch cut is the negative real axis: on the
+cut, the sign of the zero imaginary part chooses the side, so `log(-1 + 0j)` is $\pi i$ and `log(complex(-1, -0.0))`
+is $-\pi i$. `log(0j)` is `-inf + 0j`. `log1p(z)` is $\ln(1 + z)$ with its cut on $(-\infty, -1]$. `log2(z)` and
+`log10(z)` are `log(z)` multiplied by $1/\ln 2$ and $1/\ln 10$, so an exact power of the base can be off in the
+last digit: `log2(8 + 0j)` is `(2.9999999999999996+0j)`, while `log2(8.0)` is `3.0`.
+
+**Accuracy.** For `float64` input, the results are within a few units in the last place of the exact value, and the
+special values (signed zeros, infinities, NaN) are exact.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.exp`, `numpy.expm1`, `numpy.log`, `numpy.log1p`, `numpy.log2` and `numpy.log10`,
+and R's `exp`, `expm1`, `log`, `log1p`, `log2` and `log10`.
+
+- `log(0)`, the logarithm of a negative number and an overflow of `exp` give `-inf`, NaN and `inf` without a warning.
+  NumPy issues a `RuntimeWarning` for each; R warns "NaNs produced" for the logarithm of a negative number.
+- Results for `float64` input can differ from NumPy's in the last digit.
+- `x` must be an `sd.ndarray` or a Python scalar; a list raises `TypeError`.
+- The only keyword argument is `out`. There is no `where=`, `dtype=` or `casting=`.
+- R's `log(x, base)` takes a base; here, divide by `sd.log(base)`.

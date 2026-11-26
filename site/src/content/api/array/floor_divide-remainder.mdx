@@ -1,0 +1,147 @@
+---
+kind: function
+title: floor_divide, remainder
+names: [floor_divide, remainder]
+group: Arithmetic
+order: 2
+signatures:
+  - "sd.floor_divide(x1, x2, /, *, out=None)"
+  - "sd.remainder(x1, x2, /, *, out=None)"
+summary: Divide element-wise and round the quotient down, or return the remainder of that division.
+params:
+  - name: x1
+    type: array or scalar
+    kind: positional-only
+    desc: "Dividend. An `sd.ndarray` or a Python `bool`, `int` or `float`."
+  - name: x2
+    type: array or scalar
+    kind: positional-only
+    desc: "Divisor, in the same forms as `x1`. It broadcasts against `x1` (see [Broadcasting](/api/array/broadcasting/))."
+  - name: out
+    type: ndarray or None
+    kind: keyword-only
+    default: None
+    desc: "Array to write the result into. See [the `out=` argument](/start/conventions/#the-out-argument)."
+returns:
+  - type: ndarray or scalar
+    desc: "Quotient rounded down (`floor_divide`) or remainder (`remainder`), with the broadcast shape of the operands. `int64` for `bool` and `int64` operands, `float64` when an operand is `float64`. A Python scalar when both operands are Python scalars."
+raises:
+  - type: TypeError
+    desc: "If an operand is complex, if an operand is not an `sd.ndarray` or a Python scalar, or if `out` cannot hold the result dtype."
+  - type: ValueError
+    desc: "If the operands do not broadcast against each other or to the shape of `out`, or if `out` is read-only."
+  - type: OverflowError
+    desc: "If a Python `int` outside the `int64` range is an operand and the promoted dtype is `bool` or `int64`."
+seeAlso: [arithmetic, rounding, dtypes]
+---
+
+`floor_divide(x1, x2)` divides each element of `x1` by the matching element of `x2` and rounds the quotient down,
+toward negative infinity. `remainder(x1, x2)` is what remains: `x1 - floor_divide(x1, x2) * x2`. The remainder is zero
+or has the sign of the divisor `x2`, and its magnitude is smaller than that of `x2`. The operators `x1 // x2` and
+`x1 % x2` call these functions, and both follow the rules of Python's `//` and `%`.
+
+The result dtype is the promoted dtype of the operands (see [type promotion](/api/array/dtypes/#type-promotion)):
+`int64` for integers and Booleans, `float64` when an operand is floating point. Complex numbers have no order, so
+complex operands raise `TypeError`.
+
+Integer division never fails: a division by zero gives 0 for `floor_divide` and `x1` for `remainder`, so
+`x1 == floor_divide(x1, x2) * x2 + remainder(x1, x2)` holds for every pair of integers. For `float64`, a division by
+zero gives infinity or NaN.
+
+## Examples
+
+The quotient is rounded down and the remainder takes the sign of the divisor:
+
+```python
+>>> import stardust as sd
+>>> a = sd.asarray([7, -7, 7, -7])
+>>> b = sd.asarray([2, 2, -2, -2])
+>>> a // b
+array([ 3, -4, -4,  3], dtype=int64)
+>>> a % b
+array([ 1,  1, -1, -1], dtype=int64)
+>>> (a // b) * b + a % b
+array([ 7, -7,  7, -7], dtype=int64)
+```
+
+Floating-point operands give a whole-number quotient as `float64`:
+
+```python
+>>> x = sd.asarray([5.5, -5.5])
+>>> sd.floor_divide(x, 2)
+array([ 2.0, -3.0], dtype=float64)
+>>> sd.remainder(x, 2)
+array([1.5, 0.5], dtype=float64)
+```
+
+The divisor `0.1` is slightly larger than one tenth in binary floating point, so it fits into 1 only nine times,
+although the quotient `1.0 / 0.1` rounds to 10:
+
+```python
+>>> sd.floor_divide(sd.asarray([1.0]), 0.1)
+array([9.0], dtype=float64)
+>>> sd.asarray([1.0]) / 0.1
+array([10.0], dtype=float64)
+>>> sd.remainder(sd.asarray([1.0]), 0.1)
+array([0.09999999999999995], dtype=float64)
+```
+
+Division by zero gives 0 and `x1` for integers, and infinity or NaN for floating point. Complex operands raise
+`TypeError`:
+
+```python
+>>> k = sd.asarray([5, -5, 0])
+>>> k // 0
+array([0, 0, 0], dtype=int64)
+>>> k % 0
+array([ 5, -5,  0], dtype=int64)
+>>> f = sd.asarray([5.0, -5.0, 0.0])
+>>> f // 0.0
+array([ inf, -inf,  nan], dtype=float64)
+>>> f % 0.0
+array([nan, nan, nan], dtype=float64)
+>>> sd.floor_divide(sd.asarray([1 + 2j]), 2)
+Traceback (most recent call last):
+    ...
+TypeError: floor_divide(): not supported for complex128 and int64
+```
+
+<Reference />
+
+## Notes
+
+For a nonzero divisor $b$, `floor_divide(a, b)` is $\lfloor a/b \rfloor$ and `remainder(a, b)` is
+$a - b \lfloor a/b \rfloor$.
+
+**Integers.** `int64` results wrap around like other integer arithmetic (see
+[integer overflow](/api/array/dtypes/#integer-overflow)). The only quotient outside the range is
+$-2^{63} / (-1)$: `floor_divide` returns $-2^{63}$ and `remainder` returns 0.
+
+| `x2` | `floor_divide(x1, x2)` | `remainder(x1, x2)` |
+|---|---|---|
+| nonzero | $\lfloor x_1 / x_2 \rfloor$ | $x_1 - x_2 \lfloor x_1 / x_2 \rfloor$, sign of $x_2$ |
+| 0 | 0 | `x1` |
+
+**Floating point.** The quotient is derived from the remainder of the exact division, not from the rounded quotient
+`x1 / x2`, so `floor_divide` can be one less than `floor(x1 / x2)` when `x1 / x2` rounds up to a whole number. A zero
+remainder has the sign of the divisor, for example `remainder(2.0, -2.0)` is `-0.0`. Special values:
+
+| Operands | `floor_divide` | `remainder` |
+|---|---|---|
+| `x2` is $\pm 0$ | `x1 / x2`: $\pm\infty$, or NaN for $0/0$ | NaN |
+| `x1` is infinite | NaN | NaN |
+| `x2` is infinite, `x1` finite and nonzero | 0 if the signs agree, $-1$ otherwise | `x1` if the signs agree, `x2` otherwise |
+| an operand is NaN | NaN | NaN |
+
+The last two rows follow Python: `-1.0 % float("inf")` is `inf`, as here.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.floor_divide` and `numpy.remainder`, and R's `%/%` and `%%`.
+
+- An integer remainder by zero is `x1`. NumPy returns 0 with a `RuntimeWarning`; both give 0 for the quotient.
+- Booleans count as 0 and 1 and give `int64`. NumPy returns `int8` for two Boolean arrays.
+- `divmod(x1, x2)` and `numpy.divmod` have no counterpart: `divmod` on an array raises `TypeError`. Call both
+  functions instead.
+- In R, an integer division by zero gives `NA` for both `%/%` and `%%`. For doubles, R gives `Inf` and `NaN`, as
+  here.
