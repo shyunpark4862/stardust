@@ -29,11 +29,11 @@ import Button from './Button.astro';
 </section>
 
 <script>
-  // The backdrop: the finished galaxy, turning slowly.
+  // The backdrop: the finished galaxy, turning slowly, without the jets.
   const host = document.querySelector<HTMLElement>('.hero');
   const canvas = document.querySelector<HTMLCanvasElement>('.hero__canvas');
   if (host && canvas) {
-    import('../scripts/stardust').then((m) => m.mountStardust(canvas, host));
+    import('../scripts/stardust').then((m) => m.mountStardust(canvas, host, false));
   }
 </script>
 
