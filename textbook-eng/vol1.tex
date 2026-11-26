@@ -79,8 +79,8 @@ This list collects the symbols that are used in several chapters, and the conven
 \item[$\exp x$, $e^x$] the exponential function $\sum_{k\ge0}x^k/k!$, for real or complex $x$
 \item[$\ln x$, $\log_ax$] the natural logarithm; the logarithm $\ln x/\ln a$ to the base $a$; $\log$ without a base only where the base does not matter, as in $O(n\log n)$
 \item[$a^x$] the power $e^{x\ln a}$ for $a>0$; $0^x=0$ for $x>0$, and $0^0=1$
-\item[$\arcsin$, $\arccos$, $\arctan$] the inverses of $\sin$ on $[-\pi/2,\pi/2]$, of $\cos$ on $[0,\pi]$ and of $\tan$ on $(-\pi/2,\pi/2)$
-\item[$\operatorname{atan2}(y,x)$] the angle $\theta\in(-\pi,\pi]$ with $(x,y)=r(\cos\theta,\sin\theta)$, $r>0$ (note the order of the arguments)
+\item[$\arcsin$, $\arccos$, $\arctan$] the inverses of $\sin$, $\cos$, $\tan$ on $[-\pi/2,\pi/2]$, $[0,\pi]$, $(-\pi/2,\pi/2)$
+\item[$\operatorname{atan2}(y,x)$] the angle $\theta\in(-\pi,\pi]$ with $(x,y)=r(\cos\theta,\sin\theta)$, $r>0$ ($y$ first)
 \item[$u$] the unit roundoff $2^{-53}$ of binary64 floating-point arithmetic
 \end{symbols}
 
@@ -103,7 +103,7 @@ This list collects the symbols that are used in several chapters, and the conven
 \item[$S^\perp$, $T^*$] the orthogonal complement of $S$; the adjoint of $T$ ($A^{\mathsf H}$ for a matrix)
 \item[$p_A$, $\rho(A)$, $E_\lambda$] the characteristic polynomial $\det(\lambda I-A)$; the spectral radius, the largest modulus of an eigenvalue; the eigenspace $\mathcal N(A-\lambda I)$
 \item[$A\succeq0$, $\lambda_k(A)$] $A$ is Hermitian positive semidefinite ($A\succ0$: definite); the eigenvalues of a Hermitian $A$ in \emph{increasing} order, $\lambda_1(A)\le\cdots\le\lambda_n(A)$
-\item[$\sigma_i(A)$, $A^+$, $\kappa_2(A)$] the singular values, \emph{decreasing}, $\sigma_i(A)^2=\lambda_{n+1-i}(A^{\mathsf H}A)$; the pseudoinverse; the condition number $\sigma_1/\sigma_r$, $r=\operatorname{rank}A$
+\item[$\sigma_i(A)$, $A^+$, $\kappa_2(A)$] the singular values, \emph{decreasing}; the pseudoinverse; $\sigma_1/\sigma_r$
 \item[{$[T]_{\mathcal D\leftarrow\mathcal B}$}] the matrix of $T$ with respect to the bases $\mathcal B$ and $\mathcal D$; $[T]_{\mathcal B}$ if $\mathcal D=\mathcal B$
 \item[$B(\mathbf a,r)$, $\bar B(\mathbf a,r)$] the open and the closed ball with centre $\mathbf a$ and radius $r$
 \item[$\mathbf f=(f_1,\ldots,f_m)$] a vector-valued function, in bold, with component functions $f_i$
