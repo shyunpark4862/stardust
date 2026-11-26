@@ -45,7 +45,7 @@ MILESTONE = {
     ),
     **dict.fromkeys("affinity_propagation AffinityPropagationResult".split(), "CL6"),
 }
-DONE = ("CL1", "CL2")  # the milestones whose names are public
+DONE = ("CL1", "CL2", "CL3")  # the milestones whose names are public
 RESULTS = {
     "HierarchyResult",
     "KMeansResult",

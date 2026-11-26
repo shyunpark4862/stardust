@@ -364,6 +364,37 @@ def test_hdbscan_pieces():
     assert value(SK["rule/hdbscan_duplicates"]) == [0, 1, 2]
 
 
+def test_hdbscan_and_optics_definitions():
+    # the definitions of milestone CL3 (tools/cluster_ref.py): labels numbered by first appearance, a probability
+    # 0 exactly at noise and in (0, 1] elsewhere, GLOSH in [0, 1], stabilities >= 0 (inf or NaN only with duplicate
+    # points), the OPTICS order a permutation from a start of infinite reachability, each predecessor earlier
+    for sid in REFS["density"].group_inputs["set"].tolist():
+        if "|hdbscan" not in sid:
+            continue
+        s = obj(sid)
+        for name in ("hdbscan_eom", "hdbscan_leaf"):
+            _, lab, _, _ = per_set("density", name, sid, 0)
+            assert S.first_seen(lab).tolist() == lab.astype(int).tolist(), sid
+        _, lab, _, _ = per_set("density", "hdbscan_eom", sid, 0)
+        _, prob, _, _ = per_set("density", "probability", sid, 0)
+        _, out, _, _ = per_set("density", "outlier", sid, 0)
+        assert np.all((prob == 0) == (lab < 0)) and np.all((prob >= 0) & (prob <= 1)), sid
+        assert np.all((out >= 0) & (out <= 1)), sid
+        _, st, _, f = per_set("density", "stability", sid, 2)
+        fin = np.isfinite(st)
+        assert np.all(st[fin] >= 0) and (fin.all() or "dups" in sid or "allsame" in sid), sid
+        _, order, _, _ = per_set("density", "optics_order", sid, 3)
+        order = order.astype(int)
+        assert sorted(order.tolist()) == list(range(s.n)), sid
+        _, reach, _, f = per_set("density", "optics_reach", sid, 0)
+        assert math.isinf(reach[order[0]]) and f["pred"][order[0]] == -1
+        place = np.empty(s.n, int)
+        place[order] = np.arange(s.n)
+        pred = f["pred"].astype(int)
+        has = pred >= 0
+        assert np.all(place[pred[has]] < place[has]), sid
+
+
 # ---- mixtures -------------------------------------------------------------------------------------
 
 

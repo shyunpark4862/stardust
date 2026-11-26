@@ -673,6 +673,7 @@ DBSCAN_PARAMS = {  # set -> [(eps, min_samples)], eps dyadic doubles
     "sizes/k3p2": [(0.5, 5)],
 }
 HDBSCAN_MIN_SAMPLES = 5
+HDBSCAN_MIN_CLUSTER_SIZE = 5  # scikit-learn's default; the reference's min_samples is the same 5
 
 
 def density_items():
@@ -755,9 +756,333 @@ def density_task(item):
         for q, (wv, _, a, b) in enumerate(edges):
             h, lo = sqrt_dd(wv)
             pts.append((1, q, {"mst": (h, lo, {"a": float(a), "b": float(b)})}))
+        hd = _hdbscan_exact(n, rank, edges, HDBSCAN_MIN_CLUSTER_SIZE)
+        for i in range(n):
+            pts.append((0, i, hd["points"][i]))
+        for c, entry in enumerate(hd["clusters"]):
+            pts.append((2, c, {"stability": entry}))
+        gm["selection_gap"] = (hd["gap"], 0.0, {})
+        op = _optics_exact(n, rank, D2, core2)
+        for i in range(n):
+            pts.append((0, i, op["points"][i]))
+        for q, i in enumerate(op["order"]):
+            pts.append((3, q, {"optics_order": (float(i), 0.0, {"near": float(op["near"][q])})}))
         tag = f"|hdbscan{m}"
         ginputs = {"eps": np.array(math.nan), "min_samples": np.array(m)}
     return {"set": pid + tag, "digest": s.digest, "ginputs": ginputs, "points": pts, "gmethods": gm}
+
+
+def _lam(w2):
+    """lambda = 1 / sqrt(w2) in Arb (w2 > 0)."""
+    return arb_q(w2).rsqrt()
+
+
+def _hdbscan_exact(n, rank, edges, mcs):
+    """HDBSCAN's condensed tree, stabilities, cluster selection ('eom' and 'leaf', scikit-learn's defaults otherwise),
+    probabilities and GLOSH scores from the exact minimum spanning tree (edges sorted by (w2, key pair)), the
+    definition of docs/design/cluster.md §3.6 (CL67-CL69): Kruskal in that order in key numbering, the merges of
+    one height taken together. Heights are exact squared mutual reachabilities (w2), lambda = 1 / sqrt(w2) in Arb
+    (inf at 0). -> {"points": per input index {method: entry}, "clusters": stability entries, "gap": the smallest
+    relative gap of the 'eom' comparisons (0: an exact tie)}."""
+    key_of = rank
+    # Kruskal in key numbering: points by key, merge i is n + i; (smaller, larger) cluster numbers
+    parent = list(range(n))
+
+    def find(x):
+        while parent[x] != x:
+            parent[x] = parent[parent[x]]
+            x = parent[x]
+        return x
+
+    cid = list(range(n))
+    sz = [1] * n
+    left, right, h2, size = [], [], [], []
+    for i, (w2, _, a, b) in enumerate(edges):
+        ra, rb = find(key_of[a]), find(key_of[b])
+        ca, cb = cid[ra], cid[rb]
+        left.append(min(ca, cb))
+        right.append(max(ca, cb))
+        h2.append(w2)
+        size.append(sz[ra] + sz[rb])
+        r = min(ra, rb)
+        parent[max(ra, rb)] = r
+        cid[r] = n + i
+        sz[r] = size[-1]
+    root = 2 * (n - 1)
+
+    def count(v):
+        return size[v - n] if v >= n else 1
+
+    def height(v):
+        return h2[v - n] if v >= n else None
+
+    minkey = list(range(n)) + [0] * (n - 1)
+    for i in range(n - 1):
+        minkey[n + i] = min(minkey[left[i]], minkey[right[i]])
+    rows = []  # (parent, child (key or cluster), w2 of the height, child size)
+
+    def drop(v, par, w2):
+        sub = [v]
+        at = 0
+        while at < len(sub):
+            u = sub[at]
+            at += 1
+            if u < n:
+                rows.append((par, u, w2, 1))
+            else:
+                sub += [left[u - n], right[u - n]]
+
+    queue = [(root, n)]
+    nxt = n + 1
+    at = 0
+    while at < len(queue):
+        node, me = queue[at]
+        at += 1
+        w2 = height(node)
+        group, frontier = [node], []
+        g = 0
+        while g < len(group):
+            v = group[g]
+            g += 1
+            for ch in (left[v - n], right[v - n]):
+                if ch >= n and height(ch) == w2:
+                    group.append(ch)
+                else:
+                    frontier.append(ch)
+        frontier.sort(key=lambda f: minkey[f])
+        big = sum(count(f) >= mcs for f in frontier)
+        for f in frontier:
+            if count(f) < mcs:
+                drop(f, me, w2)
+            elif big >= 2:
+                rows.append((me, nxt, w2, count(f)))
+                queue.append((f, nxt))
+                nxt += 1
+            else:
+                queue.append((f, me))
+    m = nxt - n
+    birth = {n: None}  # None: lambda 0 (the root)
+    prow = {}
+    for q, (_, ch, w2, _) in enumerate(rows):
+        if ch >= n:
+            birth[ch] = w2
+        else:
+            prow[ch] = q
+    kids = {c: [] for c in range(n, n + m)}
+    for par, ch, _, cs in rows:
+        if cs > 1:
+            kids[par].append(ch)
+
+    def lam_kind(w2):  # 'zero' (the root's birth), 'inf' or the exact w2
+        if w2 is None:
+            return "zero"
+        return "inf" if w2 == 0 else w2
+
+    def stab_terms(c):
+        """the nonzero terms (w2 of the row, size) of c's stability and whether one is inf (or NaN)."""
+        b = birth[c]
+        out, special = [], None
+        for par, _, w2, cs in rows:
+            if par != c:
+                continue
+            if b is not None and w2 == b:
+                continue  # lambda equal to the birth: 0
+            if w2 == 0:
+                special = "nan" if b == 0 else "inf"
+                continue
+            out.append((w2, cs))
+        return out, special
+
+    def stab_arb(c):
+        terms, _ = stab_terms(c)
+        b = birth[c]
+        v = arb(0)
+        for w2, cs in terms:
+            v += (_lam(w2) - (0 if b is None else _lam(b))) * cs
+        return v
+
+    def stab_entry(c):
+        terms, special = stab_terms(c)
+        b = birth[c]
+        plus = 0.0  # S+ = sum (lambda + birth) size, for the contract
+        for w2, cs in terms:
+            plus += (float(_lam(w2).mid()) + (0.0 if b is None else float(_lam(b).mid()))) * cs
+        nrows = sum(1 for r in rows if r[0] == c)
+        if special is not None:
+            return (math.inf if special == "inf" else math.nan), 0.0, {"plus": math.inf, "rows": float(nrows)}
+        if not terms:
+            return 0.0, 0.0, {"plus": 0.0, "rows": float(nrows)}
+        hi, lo = settle(lambda: stab_arb(c))
+        return hi, lo, {"plus": plus, "rows": float(nrows)}
+
+    # eom selection (scikit-learn's _get_clusters with its defaults: allow_single_cluster False, epsilon 0)
+    gap = math.inf
+    stab_val = {}  # an exact-comparable value per cluster: (special or None, Arb at 1024 bits)
+    for c in range(n, n + m):
+        _, special = stab_terms(c)
+        stab_val[c] = ("special", special) if special else ("arb", c)
+    cur = {c: [c] for c in range(n, n + m)}  # the clusters whose stabilities sum to the current value
+
+    def value_of(cs):
+        if any(stab_val[c][0] == "special" for c in cs):
+            return None
+        with arbref.precision(1024):
+            v = arb(0)
+            for c in cs:
+                v += stab_arb(c)
+        return v
+
+    is_cl = {c: c != n for c in range(n, n + m)}
+    for c in sorted(range(n + 1, n + m), reverse=True):
+        sub = [x for k_ in kids[c] for x in cur[k_]]
+        vs, vc = value_of(sub) if kids[c] else arb(0), value_of(cur[c])
+        if vs is None or vc is None:
+            greater = False  # inf / nan comparisons: scikit-learn's float result
+            fs = sum(float(stab_entry(x)[0]) for x in sub) if kids[c] else 0.0
+            fc = sum(float(stab_entry(x)[0]) for x in cur[c])
+            greater = fs > fc
+        else:
+            with arbref.precision(1024):
+                d = vs - vc
+                scale = abs(vs) + abs(vc)
+                if d > 0:
+                    greater = True
+                elif d < 0:
+                    greater = False
+                else:
+                    greater = False
+                if scale > 0:
+                    gap = min(gap, float(abs(d.mid()) / scale.mid()))
+                elif kids[c]:
+                    gap = 0.0
+        if greater:
+            is_cl[c] = False
+            cur[c] = sub
+        else:
+            stack = list(kids[c])
+            while stack:
+                x = stack.pop()
+                is_cl[x] = False
+                stack += kids[x]
+    sel_eom = {c for c in range(n + 1, n + m) if is_cl[c]}
+    leaves = set()
+    stack = [n]
+    while stack:
+        x = stack.pop()
+        if x != n and not kids[x]:
+            leaves.add(x)
+        stack += kids[x]
+    out_pts = [dict() for _ in range(n)]
+    par_of = {ch: par for par, ch, _, cs in rows if ch >= n}
+    death = {}
+    for par, _, w2, _ in rows:
+        cur_d = death.get(par)
+        if cur_d is None or (w2 == 0 or (cur_d != 0 and w2 < cur_d)):
+            death[par] = w2  # the largest lambda: the smallest w2
+    deep = dict(death)
+    for c in sorted(range(n + 1, n + m), reverse=True):
+        p_ = par_of[c]
+        if c in deep and (deep[p_] is None or (deep[c] == 0 or (deep[p_] != 0 and deep[c] < deep[p_]))):
+            deep[p_] = deep[c]
+
+    def labels(sel):
+        lab = [-1] * n
+        num = {c: j for j, c in enumerate(sorted(sel))}
+        for key in range(n):
+            par = rows[prow[key]][0]
+            v = par
+            while v != n and v not in sel:
+                v = par_of[v]
+            if v != n:
+                lab[key] = num[v]
+        return lab, num
+
+    inv = [0] * n
+    for i in range(n):
+        inv[key_of[i]] = i
+    lab_eom, _ = labels(sel_eom)
+    lab_leaf, _ = labels(leaves)
+    fe = S().first_seen([lab_eom[key_of[i]] for i in range(n)]).tolist()
+    fl = S().first_seen([lab_leaf[key_of[i]] for i in range(n)]).tolist()
+    for i in range(n):
+        key = key_of[i]
+        par, _, w2, _ = rows[prow[key]]
+        # the probability (eom): min(lambda, death) / death of the selected cluster
+        if lab_eom[key] >= 0:
+            v = par
+            while v not in sel_eom:
+                v = par_of[v]
+            dw = death[v]
+            if dw == 0 or w2 == 0:  # death inf: lambda / inf = 0 unless lambda is inf too
+                pr = (1.0, 0.0) if w2 == 0 else (0.0, 0.0)
+            elif w2 <= dw:  # lambda >= death
+                pr = (1.0, 0.0)
+            else:
+                pr = settle(lambda w2=w2, dw=dw: _lam(w2) / _lam(dw))
+        else:
+            pr = (0.0, 0.0)
+        lm = deep[par]
+        if w2 == 0:
+            g = (0.0, 0.0)
+        elif lm == 0:
+            g = (1.0, 0.0)
+        elif lm == w2:
+            g = (0.0, 0.0)
+        else:
+            g = settle(lambda w2=w2, lm=lm: 1 - _lam(w2) / _lam(lm))
+        out_pts[i] = {
+            "hdbscan_eom": (float(fe[i]), 0.0, {}),
+            "hdbscan_leaf": (float(fl[i]), 0.0, {}),
+            "probability": (*pr, {}),
+            "outlier": (*g, {}),
+        }
+    clusters = [stab_entry(c) for c in range(n, n + m)]
+    return {"points": out_pts, "clusters": clusters, "gap": 0.0 if gap == math.inf else gap}
+
+
+def _optics_exact(n, rank, D2, core2):
+    """scikit-learn's OPTICS order at max_eps = inf in exact arithmetic (squared reachabilities; the smaller key on
+    a tie), the reachability (sqrt in Arb) and predecessor of each point, and per step whether its choice was near
+    a tie the computed values may break otherwise ("near": the runner-up within 2^-40 relative, or exactly equal
+    but reached from another point or by its own distance)."""
+    reach = [None] * n  # None: inf
+    src = [None] * n  # (predecessor, whether reach == its core)
+    pred = [-1] * n
+    done = [False] * n
+    order, near = [], []
+    for _ in range(n):
+        cand = [j for j in range(n) if not done[j]]
+
+        def k_(j):
+            return (0 if reach[j] is not None else 1, reach[j] if reach[j] is not None else 0, rank[j])
+
+        cand.sort(key=k_)
+        pt = cand[0]
+        nr = False
+        if len(cand) > 1:
+            a, b = cand[0], cand[1]
+            if reach[a] is not None and reach[b] is not None:
+                if reach[a] == reach[b]:
+                    nr = not (src[a] == src[b] and src[a] is not None and src[a][1])
+                elif (reach[b] - reach[a]) <= reach[a] * fmpq(1, 2**40):
+                    nr = True
+        order.append(pt)
+        near.append(nr)
+        done[pt] = True
+        c = core2[pt]
+        for j in range(n):
+            if done[j]:
+                continue
+            rd = max(D2[pt][j], c)
+            if reach[j] is None or rd < reach[j]:
+                reach[j] = rd
+                pred[j] = pt
+                src[j] = (pt, rd == c)
+    pts = []
+    for i in range(n):
+        h, lo = (math.inf, 0.0) if reach[i] is None else sqrt_dd(reach[i])
+        pts.append({"optics_reach": (h, lo, {"pred": float(pred[i])})})
+    return {"points": pts, "order": order, "near": near}
 
 
 # ---------------------------------------------------------------- mixtures

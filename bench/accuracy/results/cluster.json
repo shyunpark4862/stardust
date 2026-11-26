@@ -2,43 +2,31 @@
  "schema": 1,
  "area": "cluster",
  "runs": {
-  "20261127-011132-bceeca6e+": {
-   "commit": "bceeca6e",
+  "20261127-021048-16e66978+": {
+   "commit": "16e66978",
    "dirty": true,
    "changed": [
+    "ARCHITECTURE.md",
     "CMakeLists.txt",
     "bench/accuracy/cluster.py",
+    "bench/speed/cases/cluster.py",
     "csrc/bind/cluster_bind.cpp",
     "csrc/cluster/cluster.hpp",
-    "csrc/cluster/common.hpp",
-    "csrc/cluster/prototype.cpp",
-    "site/src/components/ApiFields.astro",
-    "site/src/components/Footer.astro",
-    "site/src/components/Header.astro",
-    "site/src/components/RefCard.astro",
-    "site/src/components/docs/Related.astro",
-    "site/src/content.config.ts",
-    "site/src/data/api.ts",
-    "site/src/data/inline.ts",
-    "site/src/data/nav.ts",
-    "site/src/data/sections.ts",
-    "site/src/env.d.ts",
-    "site/src/layouts/Docs.astro",
-    "site/src/pages/api/[area]/[fn].astro",
-    "site/src/pages/api/[area]/index.astro",
-    "site/src/pages/api/index.astro",
-    "site/src/pages/search.json.ts",
+    "csrc/cluster/mst.cpp",
+    "csrc/cluster/mst.hpp",
+    "csrc/graph/traversal.cpp",
+    "docs/api/cluster.md",
+    "docs/design/cluster.md",
     "src/stardust/cluster/__init__.py",
-    "tests/cluster/data/prototype.json",
-    "tests/cluster/data/r.json",
+    "tests/cluster/ref/density.npz",
     "tests/cluster/refdata.py",
     "tests/cluster/test_api_surface.py",
+    "tests/cluster/test_reference_data.py",
     "tests/golden/cases_cluster.py",
     "tests/golden/data/cluster.json",
-    "tools/cluster_probe.py",
     "tools/cluster_ref.py"
    ],
-   "date": "2026-11-27T01:11:32",
+   "date": "2026-11-27T02:10:48",
    "machine": "arm64",
    "python": "3.15.0",
    "references": {
@@ -69,6 +57,178 @@
   }
  },
  "sweeps": [
+  {
+   "id": "cluster/density",
+   "area": "cluster",
+   "name": "density",
+   "points": 3626,
+   "regions": {
+    "hdbscan/core_distance": {
+     "points": 717,
+     "rel_max": 4.440892098500626e-16,
+     "contract": 0.6628992001260384,
+     "bound": 1.0,
+     "worst": [
+      "weights/k2p2|hdbscan5 #32"
+     ]
+    },
+    "hdbscan/mst": {
+     "points": 703,
+     "rel_max": 5.756178194226119e-16,
+     "contract": 0.5600326203400714,
+     "bound": 1.0,
+     "worst": [
+      "weights/k2p2|hdbscan5 #25"
+     ]
+    },
+    "hdbscan/outlier": {
+     "points": 717,
+     "rel_max": 2.2555641018718305e-16,
+     "contract": 0.16930262747833727,
+     "bound": 1.0,
+     "worst": [
+      "moons/p2|hdbscan5 #68"
+     ]
+    },
+    "hdbscan/probability": {
+     "points": 717,
+     "rel_max": 2.7846547620447567e-16,
+     "contract": 0.2090161691450039,
+     "bound": 1.0,
+     "worst": [
+      "moons/p2|hdbscan5 #68"
+     ]
+    },
+    "hdbscan/stability": {
+     "points": 69,
+     "rel_max": 3.554537374307258e-14,
+     "contract": 0.18763948493531707,
+     "bound": 1.0,
+     "worst": [
+      "moons/p2|hdbscan5 #0"
+     ]
+    },
+    "optics/reachability": {
+     "points": 703,
+     "rel_max": 5.756178194226119e-16,
+     "contract": 0.5600326203400714,
+     "bound": 1.0,
+     "worst": [
+      "weights/k2p2|hdbscan5 #4"
+     ]
+    },
+    "dbscan_differ": {
+     "points": 0,
+     "rel_max": null,
+     "contract": null,
+     "bound": null,
+     "worst": []
+    },
+    "dbscan_border_differ": {
+     "points": 0,
+     "rel_max": null,
+     "contract": null,
+     "bound": null,
+     "worst": []
+    },
+    "hdbscan_eom_differ": {
+     "points": 0,
+     "rel_max": null,
+     "contract": null,
+     "bound": null,
+     "worst": []
+    },
+    "hdbscan_leaf_differ": {
+     "points": 0,
+     "rel_max": null,
+     "contract": null,
+     "bound": null,
+     "worst": []
+    },
+    "optics_order_differ": {
+     "points": 0,
+     "rel_max": null,
+     "contract": null,
+     "bound": null,
+     "worst": []
+    }
+   },
+   "comparators": {
+    "sklearn": {
+     "hdbscan/core_distance": {
+      "points": 717,
+      "rel_max": 4.440892098500626e-16,
+      "contract": 0.6628992001260384,
+      "bound": 1.0,
+      "worst": [
+       "weights/k2p2|hdbscan5 #32"
+      ]
+     },
+     "hdbscan/mst": {
+      "points": 703,
+      "rel_max": 5.756178194226119e-16,
+      "contract": 0.5600326203400714,
+      "bound": 1.0,
+      "worst": [
+       "weights/k2p2|hdbscan5 #25"
+      ]
+     },
+     "optics/reachability": {
+      "points": 703,
+      "rel_max": Infinity,
+      "contract": Infinity,
+      "bound": 1.0,
+      "worst": [
+       "blobs/k3p2|hdbscan5 #0"
+      ]
+     },
+     "dbscan_differ": {
+      "points": 0,
+      "rel_max": null,
+      "contract": null,
+      "bound": null,
+      "worst": []
+     },
+     "dbscan_border_differ": {
+      "points": 0,
+      "rel_max": null,
+      "contract": null,
+      "bound": null,
+      "worst": []
+     },
+     "hdbscan_eom_differ": {
+      "points": 4,
+      "rel_max": 0.0,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       "density/k3p2|hdbscan5"
+      ]
+     },
+     "hdbscan_leaf_differ": {
+      "points": 6,
+      "rel_max": 0.0,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       "density/k3p2|hdbscan5"
+      ]
+     },
+     "optics_order_differ": {
+      "points": 10,
+      "rel_max": 0.0,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       "blobs/k3p2|hdbscan5"
+      ]
+     }
+    }
+   },
+   "comparator_seconds": 60.0,
+   "run": "20261127-021048-16e66978+",
+   "comparators_run": "20261127-021048-16e66978+"
+  },
   {
    "id": "cluster/fuzzy",
    "area": "cluster",
@@ -112,7 +272,7 @@
      ]
     }
    },
-   "run": "20261127-011132-bceeca6e+"
+   "run": "20261127-021048-16e66978+"
   },
   {
    "id": "cluster/hierarchy",
@@ -853,8 +1013,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261127-011132-bceeca6e+",
-   "comparators_run": "20261127-011132-bceeca6e+"
+   "run": "20261127-021048-16e66978+",
+   "comparators_run": "20261127-021048-16e66978+"
   },
   {
    "id": "cluster/kmeans",
@@ -949,8 +1109,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261127-011132-bceeca6e+",
-   "comparators_run": "20261127-011132-bceeca6e+"
+   "run": "20261127-021048-16e66978+",
+   "comparators_run": "20261127-021048-16e66978+"
   },
   {
    "id": "cluster/kmedoids",
@@ -1000,8 +1160,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261127-011132-bceeca6e+",
-   "comparators_run": "20261127-011132-bceeca6e+"
+   "run": "20261127-021048-16e66978+",
+   "comparators_run": "20261127-021048-16e66978+"
   }
  ]
 }

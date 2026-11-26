@@ -1,4 +1,5 @@
-// Euclidean minimum spanning trees (csrc/cluster/mst.hpp; docs/design/cluster.md §3.2, decisions CL17, CL47).
+// Minimum spanning trees (csrc/cluster/mst.hpp; docs/design/cluster.md §3.2, §3.6, decisions CL17, CL47, CL54,
+// CL67): of the distances and of HDBSCAN's mutual reachability.
 #include "cluster/mst.hpp"
 
 #include "cluster/common.hpp"
@@ -90,7 +91,7 @@ std::vector<Edge> prim(int64_t n, int64_t cost, const Dist& dist) {
 
 class Boruvka {
 public:
-    Boruvka(const spatial::KdTree& t, bool dual)
+    Boruvka(const spatial::KdTree& t, bool dual, const double* core, double alpha)
         : T_(t),
           dual_(dual),
           n_(t.n),
@@ -102,7 +103,23 @@ public:
           bd_(static_cast<size_t>(t.n)),
           bj_(static_cast<size_t>(t.n)),
           bound_(t.nodes.size()),
-          cbest_(static_cast<size_t>(t.n)) {}
+          cbest_(static_cast<size_t>(t.n)),
+          mr_(core != nullptr),
+          alpha_(alpha) {
+        if (!mr_) return;
+        // the core distances by leaf position, and each node's smallest (its points' edges weigh at least that)
+        corepos_.resize(static_cast<size_t>(n_));
+        for (int64_t q = 0; q < n_; ++q) corepos_[static_cast<size_t>(q)] = core[T_.idx[static_cast<size_t>(q)]];
+        mincore_.resize(T_.nodes.size());
+        for (int64_t id = static_cast<int64_t>(T_.nodes.size()) - 1; id >= 0; --id) {
+            const spatial::KdNode& nd = T_.nodes[static_cast<size_t>(id)];
+            double m = kInf;
+            if (nd.right < 0)
+                for (int64_t q = nd.start; q < nd.end; ++q) m = std::min(m, corepos_[static_cast<size_t>(q)]);
+            else m = std::min(mincore_[static_cast<size_t>(id + 1)], mincore_[static_cast<size_t>(nd.right)]);
+            mincore_[static_cast<size_t>(id)] = m;
+        }
+    }
 
     std::vector<Edge> run() {
         std::vector<Edge> out;
@@ -178,6 +195,10 @@ private:
     std::vector<double> bd_;             // per leaf position: the smallest distance to another component
     std::vector<int64_t> bj_;            // and its point's key
     std::vector<double> bound_;          // per node: at least every point's radius
+    bool mr_;                        // the mutual reachability (core distances given)
+    double alpha_;
+    std::vector<double> corepos_;    // per leaf position: the core distance
+    std::vector<double> mincore_;    // per node: the smallest core distance of its points
     // per component: the smallest distance any of its points has found so far. It only prunes: a point need not
     // look past its component's best (the component keeps its smallest edge), and the cuts are strict, so an
     // edge at exactly that distance is still seen. Tasks lower it concurrently; the edges chosen do not depend
@@ -252,7 +273,9 @@ private:
     }
 
     // The points of a query leaf one by one: each searches the tree from the root, nearer child first, cutting
-    // the nodes of its own component and those beyond its radius (its best, or its component's if smaller).
+    // the nodes of its own component and those beyond its radius (its best, or its component's if smaller); with
+    // core distances also the nodes whose smallest core distance is beyond it, and the whole search once the
+    // point's own core distance is.
     void query_leaf(int64_t Q, std::vector<int64_t>& stack, std::vector<double>& clamp) {
         const spatial::KdNode& nq = T_.nodes[static_cast<size_t>(Q)];
         for (int64_t q = nq.start; q < nq.end; ++q) {
@@ -260,6 +283,7 @@ private:
             const int64_t cq = comp_[qq];
             const int64_t iq = T_.idx[qq];
             const double* x = T_.data.data() + q * p_;
+            const double cx = mr_ ? corepos_[qq] : 0.0;
             double b = bd_[qq];
             int64_t bj = bj_[qq];
             auto radius = [&] { return std::min(b, cbest_[static_cast<size_t>(cq)].load(std::memory_order_relaxed)); };
@@ -276,9 +300,13 @@ private:
                 stack.pop_back();
                 if (ncomp_[static_cast<size_t>(id)] == cq) continue;
                 const double T = radius();
+                if (mr_) {
+                    if (cx > T) break;  // every edge of the point weighs more than the radius
+                    if (mincore_[static_cast<size_t>(id)] > T) continue;
+                }
                 if (T < kInf) {
                     (void)bound_sum(id);
-                    if (spatial::kd_beyond(E_, x, clamp.data(), cut_(T))) continue;
+                    if (spatial::kd_beyond(E_, x, clamp.data(), cut_(mr_ ? reach_bound(T, alpha_) : T))) continue;
                 }
                 const spatial::KdNode& nd = T_.nodes[static_cast<size_t>(id)];
                 if (nd.right >= 0) {
@@ -291,10 +319,17 @@ private:
                     const auto rr = static_cast<size_t>(r);
                     if (comp_[rr] == cq) continue;
                     const double* y = T_.data.data() + r * p_;
-                    const double sv = E_.raw(x, y);
                     const double lim = radius();
-                    if (spatial::KdEuclid::plain(sv) && sv > spatial::KdEuclid::above(lim)) continue;
-                    const double d = E_.finish(sv, x, y);
+                    double c = 0.0;
+                    if (mr_) {
+                        c = std::max(cx, corepos_[rr]);
+                        if (c > lim) continue;
+                    }
+                    const double sv = E_.raw(x, y);
+                    const double tl = mr_ ? reach_bound(lim, alpha_) : lim;
+                    if (spatial::KdEuclid::plain(sv) && sv > spatial::KdEuclid::above(tl)) continue;
+                    double d = E_.finish(sv, x, y);
+                    if (mr_) d = std::max(c, over_alpha(d, alpha_));
                     if (d > lim) continue;
                     const int64_t j = T_.idx[rr];
                     if (d < b || (d == b && (bj < 0 || j < bj))) b = d, bj = j;
@@ -356,27 +391,49 @@ bool boruvka_shape(int64_t n, int64_t p) {
     return (p <= 3 && n >= 1024) || (p <= 5 && n >= 2048) || (p <= 6 && n >= 4096) || (p <= 8 && n >= 16384);
 }
 
-std::vector<Edge> mst_prim(const double* X, int64_t n, int64_t p) {
-    const spatial::KdEuclid E{p};
+double reach_bound(double r, double alpha) {
+    if (alpha == 1.0 || !(r < kInf)) return r;
+    // d > up(up(r) alpha) >= up(r) alpha gives d / alpha > up(r), so the rounded quotient is at least up(r) > r
+    return std::nextafter(std::nextafter(r, kInf) * alpha, kInf);
+}
+
+template <class Dist>
+std::vector<Edge> prim_points(const double* X, int64_t n, int64_t p, const Dist& E, const double* core, double alpha) {
     auto dist = [&](int64_t cur, int64_t v, double& dmin, int64_t& from) {
+        double c = 0.0;
+        if (core) {
+            c = std::max(core[cur], core[v]);
+            if (c > dmin) return;  // the weight is above dmin: not better
+        }
         const double* x = X + cur * p;
         const double* y = X + v * p;
         const double s = E.raw(x, y);
-        if (spatial::KdEuclid::plain(s) && s > spatial::KdEuclid::above(dmin)) return;  // d > dmin: not better
-        const double d = E.finish(s, x, y);
+        // d > dmin (the distances), d / alpha > dmin (the mutual reachability): not better
+        if (Dist::plain(s) && s > Dist::above(core ? reach_bound(dmin, alpha) : dmin)) return;
+        double d = E.finish(s, x, y);
+        if (core) d = std::max(c, over_alpha(d, alpha));
         if (better_to(d, cur, dmin, from)) dmin = d, from = cur;
     };
     return prim(n, p + 2, dist);
 }
 
-std::vector<Edge> mst_prim_matrix(const double* D, int64_t n) {
+std::vector<Edge> mst_prim(const double* X, int64_t n, int64_t p, const double* core, double alpha, int metric) {
+    if (metric == 1) return prim_points(X, n, p, spatial::KdCity{p}, core, alpha);
+    if (metric == 2) return prim_points(X, n, p, spatial::KdCheb{p}, core, alpha);
+    return prim_points(X, n, p, spatial::KdEuclid{p}, core, alpha);
+}
+
+std::vector<Edge> mst_prim_matrix(const double* D, int64_t n, const double* core, double alpha) {
     auto dist = [&](int64_t cur, int64_t v, double& dmin, int64_t& from) {
-        const double d = D[cpair(n, cur, v)];
+        double d = D[cpair(n, cur, v)];
+        if (core) d = std::max(std::max(core[cur], core[v]), over_alpha(d, alpha));
         if (better_to(d, cur, dmin, from)) dmin = d, from = cur;
     };
     return prim(n, 2, dist);
 }
 
-std::vector<Edge> mst_boruvka(const spatial::KdTree& T, bool dual) { return Boruvka(T, dual).run(); }
+std::vector<Edge> mst_boruvka(const spatial::KdTree& T, bool dual, const double* core, double alpha) {
+    return Boruvka(T, dual && !core, core, alpha).run();
+}
 
 }  // namespace sd::cluster

@@ -14,12 +14,16 @@ The partitions (CL2 milestone): kmeans, minibatch_kmeans, bisecting_kmeans, kmed
 metrics and 'precomputed') and fuzzy_cmeans on those point sets and their options, the results' predict, transform
 and predict_proba, nan_policy, the wrong calls, and cases of tens of thousands of points.
 
+The density methods (CL3 milestone): dbscan, hdbscan and optics on those point sets, each option's values (eps,
+min_samples, weights; min_cluster_size, cluster_selection_method, cluster_selection_epsilon, max_cluster_size,
+allow_single_cluster, alpha; max_eps, xi, predecessor_correction, cluster_method), four metrics and 'precomputed',
+the results' dbscan_clustering, extract_xi and extract_dbscan, nan_policy, the wrong calls, and cases of tens of
+thousands of points.
+
 The plan for the rest (docs/design/cluster.md §7.5): every public function on the representatives of
-tests/cluster/samples.py times each option's values (init, n_init, max_iter, tol; eps, min_samples,
-min_cluster_size, cluster_selection_method; covariance_type, reg_covar; average_method, beta), the results' methods
-(predict, transform, sample with its rng, extract_xi, extract_dbscan, dbscan_clustering), NaN under each
-nan_policy and the same points in two orders (decision CL7). Results are the same at 1, 3 and 10 threads (decision
-CL9), so no case is thread dependent.
+tests/cluster/samples.py times each option's values (covariance_type, reg_covar; average_method, beta), the
+results' methods (predict, sample with its rng), NaN under each nan_policy and the same points in two orders
+(decision CL7). Results are the same at 1, 3 and 10 threads (decision CL9), so no case is thread dependent.
 """
 
 import math
@@ -300,7 +304,96 @@ def _partition_cases(L):
     yield "kmedoids clara 30000", lambda: cl.kmedoids(a(big), 5, method="clara", rng=g())
 
 
+def _density_cases(L):
+    """Milestone CL3: dbscan, hdbscan and optics on the hierarchy's point sets and their options, the results'
+    methods (dbscan_clustering, extract_xi, extract_dbscan), the metrics and 'precomputed', NaN, the wrong calls and
+    large cases."""
+    sd, np = L.sd, L.np
+    a = L.arr
+    cl = sd.cluster
+    sets = dict(_sets(L))
+    names = ("blobs60", "overlap45", "p5_40", "lattice16", "lattice16_shuffled", "line7", "dups20", "allsame6",
+             "hexagon7", "two", "three", "collinear25", "narrow30", "shifted30", "huge30", "subnormal30")  # fmt: skip
+    for name in names:
+        X = sets[name]
+        sc = float(np.max(np.abs(X - np.median(X, axis=0)))) or 1.0
+        eps = 0.3 * sc if name in ("narrow30", "shifted30", "huge30", "subnormal30") else 1.0
+        ms = min(3, len(X))
+        m2 = max(2, ms)
+        yield f"dbscan {name}", lambda X=X, eps=eps, ms=ms: cl.dbscan(a(X), eps=eps, min_samples=ms)
+        yield f"hdbscan {name}", lambda X=X, ms=ms, m2=m2: cl.hdbscan(a(X), min_cluster_size=m2, min_samples=ms)
+        yield f"optics {name}", lambda X=X, m2=m2: cl.optics(a(X), min_samples=m2)
+    X = sets["blobs60"]
+    for eps in (0.3, 1.0, 3.0):
+        for ms in (1, 4, 10):
+            yield (
+                f"dbscan blobs60 eps={eps} min_samples={ms}",
+                lambda eps=eps, ms=ms: cl.dbscan(a(X), eps=eps, min_samples=ms),
+            )
+    w = np.linspace(0.0, 2.0, len(X))
+    yield "dbscan weights", lambda: cl.dbscan(a(X), eps=1.0, weights=a(w))
+    yield "DBSCANResult summary", lambda: cl.dbscan(a(X), eps=1.0).summary()
+    for metric in ("cityblock", "chebyshev", "cosine", "minkowski"):
+        yield f"dbscan metric={metric}", lambda metric=metric: cl.dbscan(a(X), eps=0.8, metric=metric)
+        yield f"hdbscan metric={metric}", lambda metric=metric: cl.hdbscan(a(X), metric=metric)
+        yield f"optics metric={metric}", lambda metric=metric: cl.optics(a(X), metric=metric)
+    y = sd.spatial.pdist(a(X))
+    yield "dbscan precomputed", lambda: cl.dbscan(y, eps=1.0, metric="precomputed")
+    yield "hdbscan precomputed square", lambda: cl.hdbscan(sd.spatial.squareform(y), metric="precomputed")
+    yield "optics precomputed", lambda: cl.optics(y, metric="precomputed")
+    for kw in ({"cluster_selection_method": "leaf"}, {"min_cluster_size": 10}, {"min_samples": 2},
+               {"allow_single_cluster": True}, {"cluster_selection_epsilon": 1.5}, {"max_cluster_size": 15},
+               {"alpha": 0.5}, {"cluster_selection_method": "leaf", "cluster_selection_epsilon": 1.0},
+               {"allow_single_cluster": True, "min_cluster_size": 40}):  # fmt: skip
+        yield f"hdbscan {sorted(kw.items())!r}", lambda kw=kw: cl.hdbscan(a(X), **kw)
+    rh = cl.hdbscan(a(X))
+    for cut in (0.3, 0.8, 2.0):
+        yield f"HDBSCANResult dbscan_clustering {cut}", lambda cut=cut: rh.dbscan_clustering(cut)
+    yield "HDBSCANResult dbscan_clustering min_cluster_size", lambda: rh.dbscan_clustering(0.8, min_cluster_size=2)
+    for kw in ({"max_eps": 1.0}, {"min_samples": 0.1}, {"xi": 0.2}, {"predecessor_correction": False},
+               {"min_cluster_size": 10}, {"cluster_method": "dbscan"}, {"cluster_method": "dbscan", "eps": 0.7},
+               {"cluster_method": "dbscan", "max_eps": 2.0, "eps": 1.0}):  # fmt: skip
+        yield f"optics {sorted(kw.items())!r}", lambda kw=kw: cl.optics(a(X), **kw)
+    ro = cl.optics(a(X))
+    for xi in (0.01, 0.1, 0.4):
+        yield f"OPTICSResult extract_xi {xi}", lambda xi=xi: ro.extract_xi(xi=xi)
+    yield "OPTICSResult extract_xi options", lambda: ro.extract_xi(min_samples=3, min_cluster_size=0.2,
+                                                                   predecessor_correction=False)  # fmt: skip
+    for eps in (0.2, 0.6, INF):
+        yield f"OPTICSResult extract_dbscan {eps}", lambda eps=eps: ro.extract_dbscan(eps)
+    Xn = X.copy()
+    Xn[[3, 17], 0] = NAN
+    for pol in ("raise", "omit"):
+        yield f"dbscan nan_policy={pol}", lambda pol=pol: cl.dbscan(a(Xn), eps=1.0, nan_policy=pol)
+        yield f"hdbscan nan_policy={pol}", lambda pol=pol: cl.hdbscan(a(Xn), nan_policy=pol)
+        yield f"optics nan_policy={pol}", lambda pol=pol: cl.optics(a(Xn), nan_policy=pol)
+    yield (
+        "hdbscan nan_policy=omit dbscan_clustering",
+        lambda: cl.hdbscan(a(Xn), nan_policy="omit").dbscan_clustering(1.0),
+    )
+    yield "dbscan error eps", lambda: cl.dbscan(a(X), eps=0.0)
+    yield "dbscan error positional eps", lambda: cl.dbscan(a(X), 0.5)
+    yield "dbscan error weights", lambda: cl.dbscan(a(X), weights=a(-w))
+    yield "hdbscan error min_cluster_size", lambda: cl.hdbscan(a(X), min_cluster_size=1)
+    yield "hdbscan error min_samples", lambda: cl.hdbscan(a(X), min_samples=100)
+    yield "hdbscan error copy", lambda: cl.hdbscan(a(X), copy=True)
+    yield "hdbscan error one point", lambda: cl.hdbscan(a(X[:1]))
+    yield "optics error min_samples", lambda: cl.optics(a(X), min_samples=1)
+    yield "optics error eps above max_eps", lambda: cl.optics(a(X), cluster_method="dbscan", max_eps=1.0, eps=2.0)
+    yield "OPTICSResult extract_dbscan error", lambda: ro.extract_dbscan(-1.0)
+    # large enough to split into tasks
+    rr = L.rng(11)
+    big = np.vstack([rr.normal(c, 0.5, (10000, 2)) for c in (0.0, 2.0, 4.0)] + [rr.uniform(-2, 6, (2000, 2))])
+    yield "dbscan 32000", lambda: cl.dbscan(a(big), eps=0.05)
+    yield "dbscan 32000 weights", lambda: cl.dbscan(a(big), eps=0.05, weights=a(rr.uniform(0.0, 2.0, len(big))))
+    yield "hdbscan 32000", lambda: cl.hdbscan(a(big))
+    yield "hdbscan 32000 p=5", lambda: cl.hdbscan(a(rr.standard_normal((8000, 5))), min_cluster_size=20)
+    yield "optics 12000", lambda: cl.optics(a(big[::3]))
+    yield "optics 12000 max_eps", lambda: cl.optics(a(big[::3]), max_eps=0.3, cluster_method="dbscan", eps=0.1)
+
+
 def cases(L):
     yield from _linkage_cases(L)
     yield from _tool_cases(L)
     yield from _partition_cases(L)
+    yield from _density_cases(L)

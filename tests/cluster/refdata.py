@@ -19,7 +19,13 @@ computed with; and per method the reference hi + lo:
     kmedoids   pam (kind 0: the medoids' input indices, sorted), optimum (kind 1, sets of <= 20 points);
                over the groups pam_build, pam_swap (field swaps), optimum_objective (field ties); group input k
     density    label (kind 0, DBSCAN at the group's eps and min_samples; fields core, near), core_distance (kind
-               0) and mst (kind 1; fields a, b) of HDBSCAN at min_samples 5
+               0) and mst (kind 1; fields a, b) of HDBSCAN at min_samples 5; on the same "|hdbscan5" sets HDBSCAN's
+               definition at min_cluster_size 5 (CL67-CL69): hdbscan_eom and hdbscan_leaf (kind 0, the labels),
+               probability and outlier (kind 0, 'eom'), stability (kind 2, index the condensed cluster - n; fields
+               plus = S+ and rows), selection_gap (over the groups: the smallest relative gap of an 'eom'
+               comparison, 0 an exact tie); OPTICS at min_samples 5, max_eps inf: optics_reach (kind 0; field pred)
+               and optics_order (kind 3, index the position, hi the input index; field near: a choice within a
+               near tie)
     mixture    score, logdens_<j>, resp_<j> (kind 0, the mixture's points), mstep (kind 1: weights, means,
                covariances in sklearn's shapes)
     metrics    over the labelings' groups: ari, ri, fm, mi, nmi_<avg>, ami_<avg>, homogeneity, completeness, v
@@ -49,6 +55,11 @@ holds them to these constants), and each milestone settles its own):
     fuzzy memberships      |u - u*| <= 2 u (max(q, 1) (2p + 7) + k + 2), q = 1 / (m - 1)                  (§4.3)
     fuzzy centres          |c - c*| <= 4 gamma(ceil(log2 n) + 2p + k + 8) max |x| (one step from given
                            centres)                                                                    (§4.3)
+    the density distances  a reachability, core distance or mutual reachability: spatial's computed distance,
+                           |d - d*| <= gamma(p / 2 + 2) d* (as single linkage's heights)                (§4.4)
+    HDBSCAN's stability    |S - S*| <= gamma(p / 2 + 6 + rows) S+, S+ = sum of (lambda + birth) size over the
+                           cluster's rows                                                              (§4.4)
+    probability, GLOSH     |v - v*| <= 2 gamma(p / 2 + 5) (absolute; both in [0, 1])                   (§4.4)
 """
 
 from __future__ import annotations
@@ -154,6 +165,18 @@ def membership_bound(p, k, m):
 
 def fuzzy_centre_bound(n, p, k, maxabs):
     return 4 * gamma(math.ceil(math.log2(max(n, 2))) + 2 * p + k + 8) * maxabs
+
+
+def distance_bound(p, d):
+    return gamma(p / 2 + 2) * abs(d) + (p + 2) * 2.0**-1074
+
+
+def stability_bound(p, plus, rows):
+    return gamma(p / 2 + 6 + rows) * plus
+
+
+def membership_strength_bound(p):
+    return 2 * gamma(p / 2 + 5)
 
 
 def tree_shape(Z, n, keys):

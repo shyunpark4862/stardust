@@ -22,6 +22,7 @@
 #include "bind/pyutil.hpp"
 #include "graph/graph.hpp"
 #include "graph/graph_mod.hpp"
+#include "graph/unionfind.hpp"
 #include "parallel/pool.hpp"
 
 #include <algorithm>
@@ -246,16 +247,8 @@ nb::object traverse(
 
 // ---- connected components ----
 
-// Union-find whose root is the smallest node of its set: a union links the larger root under the smaller.
-// find halves the path.
-int64_t find(int64_t* parent, int64_t x) {
-    while (parent[x] != x) {
-        parent[x] = parent[parent[x]];
-        x = parent[x];
-    }
-    return x;
-}
-
+// Union-find whose root is the smallest node of its set (graph/unionfind.hpp): a union links the larger root under
+// the smaller.
 void unite_serial(const View& g, int64_t* parent) {
     for (int64_t i = 0; i < g.n; ++i) {
         for (int64_t k = g.indptr[i], e = g.indptr[i + 1]; k < e; ++k) {
@@ -272,30 +265,6 @@ void unite_serial(const View& g, int64_t* parent) {
 // pointer stays inside its set. The partition the edges define is unique, so any interleaving ends with it.
 constexpr int64_t kUniteTask = 1 << 16;    // stored entries per task
 constexpr int64_t kUniteSplit = 1 << 18;  // from this many stored entries the unions split (measured, GR1)
-
-int64_t find_shared(int64_t* parent, int64_t x) {
-    for (;;) {
-        const int64_t p = std::atomic_ref<int64_t>(parent[x]).load(std::memory_order_relaxed);
-        if (p == x) return x;
-        const int64_t gp = std::atomic_ref<int64_t>(parent[p]).load(std::memory_order_relaxed);
-        if (gp != p) std::atomic_ref<int64_t>(parent[x]).store(gp, std::memory_order_relaxed);
-        x = gp;
-    }
-}
-
-void unite_shared(int64_t* parent, int64_t a, int64_t b) {
-    for (;;) {
-        a = find_shared(parent, a);
-        b = find_shared(parent, b);
-        if (a == b) return;
-        if (a < b) std::swap(a, b);  // link the larger root a under b
-        int64_t expected = a;
-        if (std::atomic_ref<int64_t>(parent[a]).compare_exchange_weak(
-                expected, b, std::memory_order_relaxed, std::memory_order_relaxed
-            ))
-            return;
-    }
-}
 
 void unite_parallel(const View& g, int64_t* parent) {
     // row ranges with about kUniteTask entries each, found by size alone

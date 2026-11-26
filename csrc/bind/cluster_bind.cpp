@@ -13,6 +13,7 @@ void bind_cluster(nb::module_& core) {
     cluster::bind_kmeans(m);
     cluster::bind_kmedoids(m);
     cluster::bind_fuzzy(m);
+    cluster::bind_density(m);
 }
 
 }  // namespace sd

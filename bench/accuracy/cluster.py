@@ -17,8 +17,10 @@ tests/cluster/refdata.py:
               that differ; comparator R's pam, live
   fuzzy       CL2 (done): the memberships at given centres for m = 1.5, 2, 3 (refdata.membership_bound) and one
               step's centres (fuzzy_centre_bound); no comparator (e1071 is not installed)
-  density     CL3: DBSCAN's partition (the points near eps counted apart), HDBSCAN's core distances and minimum
-              spanning tree; comparators scikit-learn's DBSCAN and HDBSCAN
+  density     CL3 (done): DBSCAN's labels against the exact partition; HDBSCAN's core distances and minimum
+              spanning tree weights (refdata.distance_bound), stabilities (stability_bound), probabilities and GLOSH
+              scores (membership_strength_bound), the 'eom' and 'leaf' labels against the exact definition; OPTICS's
+              reachabilities and order; comparator scikit-learn's DBSCAN, HDBSCAN and OPTICS, live
   mixture     CL4: the log densities and responsibilities at given parameters (relative to max(1, |value|)) and
               the M step at given responsibilities; comparator scikit-learn's GaussianMixture at the same
               parameters (its one-pass diagonal covariance loses digits: 6.6e-12 measured at CL0)
@@ -345,6 +347,125 @@ def _fuzzy_regions():
     }
 
 
+# ---- density (CL3) ---------------------------------------------------------------------------------------------------
+# density.npz: DBSCAN at each set's eps and min_samples ("dbscan_differ": the sets whose labels are not the exact
+# partition; scikit-learn's border points go to the first cluster that reaches them, so its column counts the sets
+# whose core points or noise differ, "dbscan_border_differ" the others); on the "|hdbscan5" sets the core
+# distances and the spanning tree's sorted weights in units of refdata.distance_bound, the stabilities in units of
+# stability_bound, the probabilities and GLOSH scores in units of membership_strength_bound, the sets whose labels
+# differ from the exact definition's ('eom', 'leaf'); OPTICS's reachabilities (distance_bound) and the sets whose
+# order differs. scikit-learn's HDBSCAN breaks equal mutual reachabilities by its Prim's order and has no GLOSH
+# (its probabilities and stabilities are not compared); its OPTICS rounds to 15 decimals and breaks ties by the input
+# index.
+
+
+def _density_fit(lib, kind, X, **kw):
+    if lib == "sd":
+        import stardust as sd
+
+        return getattr(sd.cluster, kind)(X, **kw)
+    import sklearn.cluster as skc
+
+    if kind == "dbscan":
+        w = kw.pop("weights", None)
+        return skc.DBSCAN(**kw).fit(X, sample_weight=w)
+    if kind == "hdbscan":
+        return skc.HDBSCAN(copy=True, **kw).fit(X)
+    return skc.OPTICS(**kw).fit(X)
+
+
+def _attr(r, sd_name, sk_name):
+    v = getattr(r, sd_name, None)
+    if v is None:
+        v = getattr(r, sk_name)
+    return np.asarray(v)
+
+
+def _density_regions(lib):
+    from tests.cluster import refdata as D
+    from tests.cluster import samples as S
+
+    r = D.ref("density")
+    pts = {}
+    lists = {"dbscan_differ": [], "dbscan_border_differ": [], "hdbscan_eom_differ": [], "hdbscan_leaf_differ": [],
+             "optics_order_differ": []}  # fmt: skip
+
+    def add(key, where, err, bound):
+        e = pts.setdefault(key, {"where": [], "contract": [], "rel": []})
+        for q, (v, b) in enumerate(zip(np.atleast_1d(err), np.atleast_1d(bound))):
+            e["where"].append(f"{where} #{q}")
+            e["contract"].append(v / b if b > 0 else (0.0 if v == 0 else math.inf))
+            e["rel"].append(v)
+
+    def per(method, sid, kind=0):
+        pos, idx = D.at(r, method, sid, kind)
+        o = np.argsort(idx, kind="stable")
+        m = r.methods[method]
+        return m.hi[pos[o]], m.lo[pos[o]], {k: v[pos[o]] for k, v in m.fields.items()}
+
+    for g, sid in enumerate(r.group_inputs["set"].tolist()):
+        base = sid.split("|")[0]
+        s = S.points(base)
+        if "|eps" in sid:
+            eps, ms = float(r.group_inputs["eps"][g]), int(r.group_inputs["min_samples"][g])
+            lab, _, f = per("label", sid)
+            got = _density_fit(lib, "dbscan", s.X, eps=eps, min_samples=ms, weights=s.w)
+            gl = S.first_seen(_attr(got, "labels", "labels_"))
+            if not np.array_equal(gl, lab.astype(int)):
+                core = f["core"] == 1
+                same_core = np.array_equal(S.first_seen(np.where(core, gl, -1)), S.first_seen(np.where(core, lab, -1)))
+                lists[
+                    "dbscan_border_differ" if same_core and np.array_equal(gl < 0, lab < 0) else "dbscan_differ"
+                ].append(sid)
+            continue
+        h = _density_fit(lib, "hdbscan", s.X, min_samples=5)
+        hl = _density_fit(lib, "hdbscan", s.X, min_samples=5, cluster_selection_method="leaf")
+        for name, res, key in (("hdbscan_eom", h, "hdbscan_eom_differ"), ("hdbscan_leaf", hl, "hdbscan_leaf_differ")):
+            ref, _, _ = per(name, sid)
+            if not np.array_equal(S.first_seen(_attr(res, "labels", "labels_")), ref.astype(int)):
+                lists[key].append(sid)
+        core_ref, _, _ = per("core_distance", sid)
+        if lib == "sd":
+            import stardust as sd
+
+            Z = np.asarray(h.single_linkage)
+            o = np.asarray(sd._core.cluster.lex_order(sd.asarray(s.X)))
+            core = np.empty(s.n)
+            core[o] = np.asarray(sd._core.cluster.core_distances(sd.asarray(s.X[o]), None, 5, 0, 0))
+            st, sl, f = per("stability", sid, 2)
+            got = np.asarray(h._stability)
+            fin = np.isfinite(st) & np.isfinite(got)
+            add("hdbscan/stability", sid, np.abs(got[fin] - st[fin] - sl[fin]),
+                D.stability_bound(s.p, f["plus"][fin], f["rows"][fin]))  # fmt: skip
+            for name, field in (("probability", "probabilities"), ("outlier", "outlier_scores")):
+                v, lo, _ = per(name, sid)
+                add(f"hdbscan/{name}", sid, np.abs(np.asarray(getattr(h, field)) - v - lo),
+                    np.full(s.n, D.membership_strength_bound(s.p)))  # fmt: skip
+        else:
+            from sklearn.neighbors import NearestNeighbors
+
+            Z = np.asarray([list(t) for t in h._single_linkage_tree_.tolist()], float)
+            core = NearestNeighbors(n_neighbors=5).fit(s.X).kneighbors(s.X, 5)[0][:, -1]
+        add("hdbscan/core_distance", sid, np.abs(core - core_ref), D.distance_bound(s.p, core_ref))
+        w, wl, _ = per("mst", sid, 1)
+        add("hdbscan/mst", sid, np.abs(np.sort(Z[:, 2]) - w - wl), D.distance_bound(s.p, w))
+        o = _density_fit(lib, "optics", s.X, min_samples=5)
+        order, _, _ = per("optics_order", sid, 3)
+        if not np.array_equal(_attr(o, "ordering", "ordering_"), order.astype(int)):
+            lists["optics_order_differ"].append(sid)
+        rh, rl, _ = per("optics_reach", sid)
+        got = _attr(o, "reachability", "reachability_")
+        fin = np.isfinite(rh)
+        add("optics/reachability", sid, np.abs(got[fin] - rh[fin] - rl[fin]), D.distance_bound(s.p, rh[fin]))
+    out = {
+        key: region(p["where"], rel=np.array(p["rel"]), contract=np.array(p["contract"]), bound=1.0)
+        for key, p in sorted(pts.items())
+    }
+    for key, where in lists.items():
+        out[key] = region(np.array(where, dtype=object), rel=np.zeros(len(where)))
+    return out
+
+
 def sweeps():
     return [
         Custom(
@@ -356,4 +477,5 @@ def sweeps():
         Custom("cluster", "kmeans", lambda: _kmeans_regions("sd"), compare_libs(_kmeans_regions, ("sklearn", "R"))),
         Custom("cluster", "kmedoids", lambda: _kmedoids_regions("sd"), compare_libs(_kmedoids_regions, ("R",))),
         Custom("cluster", "fuzzy", _fuzzy_regions),
+        Custom("cluster", "density", lambda: _density_regions("sd"), compare_libs(_density_regions, ("sklearn",))),
     ]

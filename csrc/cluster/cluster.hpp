@@ -9,5 +9,6 @@ void bind_hierarchy(nanobind::module_& m);  // hierarchy.cpp: linkage, DIANA, co
 void bind_kmeans(nanobind::module_& m);     // kmeans.cpp: k-means, mini-batch and bisecting k-means
 void bind_kmedoids(nanobind::module_& m);   // kmedoids.cpp: PAM and CLARA
 void bind_fuzzy(nanobind::module_& m);      // fuzzy.cpp: fuzzy c-means
+void bind_density(nanobind::module_& m);    // density.cpp: DBSCAN, HDBSCAN, OPTICS
 
 }  // namespace sd::cluster

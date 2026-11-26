@@ -386,6 +386,12 @@ def _density_specs():
                 ),
             ),
             quick=True,
+            check=Check(
+                sd=lambda r: np.array([r.n_clusters, int((np.asarray(r.labels) < 0).sum())], float),
+                ref=lambda label, r: np.array([len(set(r.labels_.tolist()) - {-1}), int((r.labels_ < 0).sum())], float),
+                rtol=0.0,
+                atol=0.0,
+            ),
         ),
         Spec(
             "CL3",
@@ -403,7 +409,26 @@ def _density_specs():
                     ),
                 ),
             ),
-            check=Check(skip="the labels of equal partitions are compared by the tests"),
+            check=Check(
+                skip="equal mutual reachabilities: scikit-learn's tree follows its Prim's order (tests compare at "
+                "min_samples = 1)"
+            ),
+        ),
+        Spec(
+            "CL3",
+            "density",
+            "optics p=2",
+            ("optics",),
+            "5000",
+            _points(5000, 2),
+            lambda d: lambda: _cl().optics(d["sX"]),
+            (
+                Ref(
+                    "sklearn", lambda d: lambda: __import__("sklearn.cluster", fromlist=["OPTICS"]).OPTICS().fit(d["X"])
+                ),
+            ),
+            note="scikit-learn starts from the first input point, sd from the first in key order (CL7): other orders",
+            check=Check(sd=lambda r: np.asarray(r.core_distances), ref=lambda label, r: r.core_distances_, rtol=1e-12),
         ),
     ]
 

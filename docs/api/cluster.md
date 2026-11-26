@@ -1,8 +1,8 @@
 # sd.cluster API
 
-> 상태: **확정** (2026-11-24; 설계 결정 CL1–CL66). CL2 마일스톤(분할, 2026-11-27)까지 마쳤다: §2·§3의 이름이 공개됐고 나머지 이름은 CL3–CL6 마일스톤에서 생긴다(tests/cluster/test_api_surface.py가 이름마다의 마일스톤을 쥔다). 이름과 시그니처는 [docs/design/cluster.md](../design/cluster.md) §9의 답(13번만 (b), 나머지 (a))을 따른다. 시그니처는 scikit-learn 1.9.1(`sklearn.cluster`, `sklearn.mixture`, `sklearn.metrics`), scipy 1.18.1(`scipy.cluster.hierarchy`), R 4.6.2의 `stats`와 `cluster` 2.1.8.3의 이름과 뜻에 stardust의 규칙과 CL1–CL40의 결정을 입힌 것이다. `fuzzy_cmeans`의 `tol`과 `kmedoids`의 `max_iter`는 CL2 마일스톤이 정했다(설계 문서 CL65·CL66). 남은 임시 값(`affinity_propagation`의 `metric='precomputed'`의 이름, `gap_statistic`의 `select` 이름)은 해당 마일스톤에서 정한다(표시가 그 자리에 있다).
+> 상태: **확정** (2026-11-24; 설계 결정 CL1–CL74). CL3 마일스톤(밀도, 2026-11-27)까지 마쳤다: §2·§3·§4의 이름이 공개됐고 나머지 이름은 CL4–CL6 마일스톤에서 생긴다(tests/cluster/test_api_surface.py가 이름마다의 마일스톤을 쥔다). 이름과 시그니처는 [docs/design/cluster.md](../design/cluster.md) §9의 답(13번만 (b), 나머지 (a))을 따른다. 시그니처는 scikit-learn 1.9.1(`sklearn.cluster`, `sklearn.mixture`, `sklearn.metrics`), scipy 1.18.1(`scipy.cluster.hierarchy`), R 4.6.2의 `stats`와 `cluster` 2.1.8.3의 이름과 뜻에 stardust의 규칙과 CL1–CL40의 결정을 입힌 것이다. `fuzzy_cmeans`의 `tol`과 `kmedoids`의 `max_iter`는 CL2 마일스톤이 정했다(설계 문서 CL65·CL66). 남은 임시 값(`affinity_propagation`의 `metric='precomputed'`의 이름, `gap_statistic`의 `select` 이름)은 해당 마일스톤에서 정한다(표시가 그 자리에 있다).
 
-- 설계와 결정의 근거는 [docs/design/cluster.md](../design/cluster.md)(§1.1 CL1–CL66), 공통 규칙은 [API.md](../../API.md)다.
+- 설계와 결정의 근거는 [docs/design/cluster.md](../design/cluster.md)(§1.1 CL1–CL74), 공통 규칙은 [API.md](../../API.md)다.
 - 언어 표시가 없는 코드 블록은 `tests/cluster/test_api_surface.py`가 읽는다. 블록의 줄은 모듈의 함수(`name(...)`), 결과 클래스(`Name`), 결과의 메서드(`Name.method(...)`)다. 블록의 모듈 수준 이름이 마일스톤을 마칠 때마다 `sd.cluster.__all__`에 들어가 CL6 마일스톤에서 그 전부가 된다.
 - 절 끝의 "(§9의 n번)"은 그 줄을 정한 설계 문서의 질문이다(답은 §1.1의 CL4–CL40).
 
@@ -72,7 +72,8 @@
 - 계층: 동점은 정의와 열쇠, 높이는 최종 트리 위의 Lance–Williams 재귀(고른 알고리즘과 무관한 비트; scipy와 끝자리가 다를 수 있다), 역전 트리의 높이 자르기는 에러, 행렬 없는 길(큰 n).
 - k-평균: 차의 제곱합 거리(sklearn은 전개식), `algorithm`이 없다(가속은 같은 비트), 서로 다른 점이 k보다 적으면 에러.
 - DBSCAN: 경계 점은 가장 가까운 핵심 점의 군집(sklearn은 먼저 펼친 군집).
-- HDBSCAN: GLOSH `outlier_scores`가 더 있다, `copy`·`store_centers`가 없다.
+- HDBSCAN: 같은 높이의 병합을 한꺼번에 줄인다(sklearn은 그때 입력 순서에 따라 다르다), GLOSH `outlier_scores`가 더 있다, `copy`·`store_centers`가 없다.
+- OPTICS: 거리를 소수 15자리로 반올림하지 않는다, 가장 작은 열쇠에서 시작한다.
 - 혼합 모형: `k`, `bic`·`aic`는 필드, `lower_bound`와 `loglik`을 나눈다.
 - 지표: ARI·RI는 정확한 정수 셈, `silhouette_score`에 표본 뽑기가 없다.
 
@@ -191,15 +192,18 @@ OPTICSResult.extract_xi(*, xi=0.05, min_samples=None, min_cluster_size=None, pre
 OPTICSResult.extract_dbscan(eps, /)
 OPTICSResult.summary()
 ```
-- **`dbscan`**: 핵심 점은 거리 ≤ `eps`인 점(자기 포함)의 수(무게가 있으면 무게 합)가 `min_samples` 이상인 점이다(sklearn과 같다). 군집은 핵심 점의 연결 요소다. 경계 점은 `eps` 안의 핵심 점 가운데 가장 가까운 것(같으면 열쇠)의 군집이다(`[sklearn과 다름]`: sklearn은 먼저 펼친 군집이라 입력 순서에 달려 있다). 잡음은 −1이다. `min_samples` ≥ 1, `eps` > 0(유한)이다.
-- **`hdbscan`**: sklearn 1.9의 뜻과 기본값이다. `min_samples=None`은 `min_cluster_size`이고 자기를 센다(원본 `hdbscan` 꾸러미의 값보다 1 크다). 잡음은 −1이다. sklearn의 `copy`, `store_centers`, `leaf_size`, `algorithm`, `n_jobs`는 없다(중심과 medoid는 게으른 필드, 길은 모양으로 정한다).
-- **`optics`**: sklearn `OPTICS`의 뜻과 기본값이다(`metric`의 기본은 `'euclidean'`: sklearn의 `'minkowski'`, p = 2와 같은 거리). 순서의 동점은 열쇠다. `cluster_method`는 `'xi'` 또는 `'dbscan'`(`eps` 필요).
+- **`dbscan`**: 핵심 점은 거리 ≤ `eps`인 점(자기 포함)의 수(무게가 있으면 무게 합; 열쇠 차례로 더한다)가 `min_samples` 이상인 점이다(sklearn과 같다). 군집은 `eps` 안의 핵심 점끼리 이은 연결 요소다. 경계 점은 `eps` 안의 핵심 점 가운데 가장 가까운 것(같으면 열쇠)의 군집이다(`[sklearn과 다름]`: sklearn은 먼저 펼친 군집이라 입력 순서에 달려 있다). 잡음은 −1이다. `min_samples` ≥ 1(int), `eps` > 0(유한)이다. `weights`는 핵심 판정에만 쓴다. `metric='precomputed'`의 무게에 NaN이 있으면 `ValueError`다.
+- **`hdbscan`**: sklearn 1.9의 뜻과 기본값이다. `min_samples=None`은 `min_cluster_size`이고 자기를 센다(원본 `hdbscan` 꾸러미의 값보다 1 크다). 상호 도달 거리는 max(core_a, core_b, d/`alpha`)이고 핵심 거리는 `alpha`로 나누지 않는다(`[sklearn과 다름]`: sklearn의 미리 계산한 거리 길은 핵심 거리도 나눈다; 설계 문서 CL67). 줄인 트리는 같은 높이의 병합을 한꺼번에 본다(Campello 외 2013): 같은 높이가 없으면 sklearn과 같은 트리이고, 있으면(`min_samples` > 1에서 흔하다) sklearn은 입력 순서에 따라 라벨이 달라지지만 sd는 같은 점이면 같은 라벨이다(`[sklearn과 다름]`; CL68). 고르기(`'eom'`, `'leaf'`, `cluster_selection_epsilon`, `max_cluster_size`, `allow_single_cluster`)와 확률은 sklearn의 규칙이다. `min_cluster_size` ≥ 2, `min_samples` 1 이상 n 이하, `cluster_selection_epsilon` ≥ 0(유한), `max_cluster_size`는 None 또는 1 이상, `alpha` > 0(유한), n ≥ 2다. 잡음은 −1이다. sklearn의 `copy`, `store_centers`, `leaf_size`, `algorithm`, `n_jobs`, `metric_params`는 없다(중심과 medoid는 게으른 필드, 길은 모양으로 정한다).
+  - `dbscan_clustering(cut_distance, /, *, min_cluster_size=5)`: 단일 연결 트리를 `cut_distance`에서 자른 분할(높이 < `cut_distance`의 병합을 잇고, `min_cluster_size`보다 작은 성분은 잡음; sklearn과 같다)의 (n,) 라벨.
+- **`optics`**: sklearn `OPTICS`의 뜻과 기본값이다(`metric`의 기본은 `'euclidean'`: sklearn의 `'minkowski'`, p = 2와 같은 거리). 순서의 동점(같은 도달 거리, 그리고 모두 inf일 때의 시작점)은 열쇠다(`[sklearn과 다름]`: sklearn은 입력 색인). 핵심 거리와 도달 거리는 계산한 거리 그대로다(`[sklearn과 다름]`: sklearn은 소수 15자리로 반올림한다). `cluster_method`는 `'xi'` 또는 `'dbscan'`(`eps`의 기본은 `max_eps`; `eps` ≤ `max_eps`). `min_samples`와 `min_cluster_size`는 sklearn처럼 2 이상의 int 또는 (0, 1]의 float(점 수의 비율, 적어도 2)이다. `max_eps` ≥ 0(inf 가능), `xi`는 [0, 1].
+  - `extract_xi(...)`와 `extract_dbscan(eps)`는 같은 차례에서 다시 뽑은 새 `OPTICSResult`다(sklearn의 `cluster_optics_xi`, `cluster_optics_dbscan`과 같은 연산). `extract_dbscan`도 `eps` ≤ `max_eps`다.
+- **`nan_policy='omit'`**: 뺀 행의 라벨은 −1, 점마다의 실수 필드(`probabilities`, `outlier_scores`, `reachability`, `core_distances`)는 NaN, `core_mask`는 False, `predecessor`는 −1이다. `ordering`과 `predecessor`는 입력 행의 번호, `single_linkage`와 `condensed_tree`의 점 번호는 남은 행의 번호다(`HierarchyResult`와 같다).
 
 | 결과 | 필드와 메서드 |
 |---|---|
-| `DBSCANResult` | 공통 필드, `core_mask`(n,) bool, `eps`, `min_samples` |
-| `HDBSCANResult` | 공통 필드, `probabilities`(n,), `outlier_scores`(n,; GLOSH), `single_linkage`(상호 도달 거리의 Z), `condensed_tree`(namedtuple `parent`, `child`, `lambda_val`, `child_size`), `persistence`(군집마다), `centroids`, `medoids`(게으른 필드), `dbscan_clustering(cut_distance)` |
-| `OPTICSResult` | 공통 필드(라벨은 `cluster_method`의 것), `ordering`, `reachability`, `core_distances`, `predecessor`, `cluster_hierarchy`(ξ의 (m, 2)), `extract_xi`, `extract_dbscan` |
+| `DBSCANResult` | 공통 필드, `core_mask`(n,) bool, `eps`, `min_samples`, `metric` |
+| `HDBSCANResult` | 공통 필드, `probabilities`(n,; 잡음은 0), `outlier_scores`(n,; GLOSH: 점이 떠나는 군집의 부분 트리에서 가장 큰 λ로 1 − λ/λ_max), `single_linkage`(상호 도달 거리의 Z), `condensed_tree`(namedtuple `parent`, `child`, `lambda_val`, `child_size`; 뿌리 군집은 n, 점은 0 … n − 1), `persistence`(군집마다: 안정성/(크기 × 트리의 가장 큰 λ), 원본 `hdbscan`의 꼴), `centroids`, `medoids`(게으른 필드, 확률을 무게로; 미리 계산한 거리면 None), `min_cluster_size`, `min_samples`, `cluster_selection_method`, `metric`, `dbscan_clustering(cut_distance)` |
+| `OPTICSResult` | 공통 필드(라벨은 `cluster_method`의 것), `ordering`(nobs,), `reachability`, `core_distances`(n,; 정해지지 않으면 inf), `predecessor`(n,; 시작점은 −1), `cluster_hierarchy`(ξ의 (m, 2): 차례의 [시작, 끝], 안의 작은 군집이 먼저; `'dbscan'`이면 None), `min_samples`, `max_eps`, `cluster_method`, `eps`, `xi`, `metric`, `extract_xi`, `extract_dbscan` |
 
 ## §5. 혼합 모형 (§9의 29–32번)
 ```

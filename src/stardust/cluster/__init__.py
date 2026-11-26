@@ -9,9 +9,11 @@ fitting functions return <Name>Result objects, the scipy-named hierarchy tools t
 (decisions CL1-CL57 in docs/design/cluster.md §1.1).
 
 Milestone CL0 made the common base of the results (_results.py) and the argument checks (_common.py); the
-public names come with milestones CL1 to CL6 (CL1: the hierarchy, _hierarchy.py).
+public names come with milestones CL1 to CL6 (CL1: the hierarchy, _hierarchy.py; CL2: the partitions, _kmeans.py,
+_kmedoids.py, _fuzzy.py; CL3: the density methods, _density.py).
 """
 
+from ._density import DBSCANResult, HDBSCANResult, OPTICSResult, dbscan, hdbscan, optics
 from ._fuzzy import FuzzyCMeansResult, fuzzy_cmeans
 from ._hierarchy import (
     CophenetResult,
@@ -72,4 +74,10 @@ __all__ = [
     "KMedoidsResult",
     "fuzzy_cmeans",
     "FuzzyCMeansResult",
+    "dbscan",
+    "DBSCANResult",
+    "hdbscan",
+    "HDBSCANResult",
+    "optics",
+    "OPTICSResult",
 ]
