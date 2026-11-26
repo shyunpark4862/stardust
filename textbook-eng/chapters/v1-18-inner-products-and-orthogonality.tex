@@ -1,0 +1,1513 @@
+%% Volume I, Chapter 18: Inner Products and Orthogonality
+\chapter{Inner Products and Orthogonality}
+\label{ch:inner-products}
+
+\abstract{When a model with a few parameters is fitted to many measurements, the equations outnumber the unknowns and usually have no exact solution; the natural question is which choice comes closest. A right angle decides it: the best approximation is the one whose error is perpendicular to everything the model can produce. Perpendicularity needs an inner product, and with an inner product come lengths, angles, and bases in which every coordinate is a single inner product. Such bases also make computation safe. Transformations that preserve lengths cannot magnify errors, and this is why the most reliable algorithms of numerical linear algebra are built from reflections and rotations.}
+
+Inner products have accompanied us since \cref{ch:several-variables}. \Cref{sec:vectors-rn} defined the inner product of $\mathbb R^n$ and used it to project a vector onto a line (\cref{prop:projection-line}) and to fit a straight line to data by least squares, with the normal equations \eqref{eq:normal-equations}. \Cref{ch:vectors-matrices} added the Hermitian inner product of $\mathbb C^n$, orthonormal vectors, orthogonal and unitary matrices and the Householder reflection, \cref{ch:vector-spaces} found that the row space and the null space of a real matrix are orthogonal, \cref{ch:linear-maps} identified projections with idempotent operators, and \cref{ch:determinants} computed the distance of a vector from a column space to obtain the Gram determinant. Each of these chapters left questions for the present one: how to project onto a subspace of any dimension, how to construct orthonormal bases, why the normal equations of least squares characterise the best fit and how to solve them without forming them, which matrices are orthogonal projections, and how the four fundamental subspaces fit together at right angles. This chapter answers them.
+
+We begin with the axioms of an inner product on an arbitrary vector space, so that the geometry of $\mathbb R^n$ applies verbatim to spaces of polynomials and functions, where it leads to Fourier coefficients and orthogonal polynomials. The central result is the theorem on best approximation: the point of a finite-dimensional subspace closest to a given vector exists, is unique, and is characterised by the orthogonality of the error to the subspace. Everything else follows from it or from its constructive companion, the Gram--Schmidt process, which turns any basis into an orthonormal one and, written in matrices, is the factorisation $A=QR$ of a matrix into a matrix with orthonormal columns and an upper triangular one. Least squares problems are best approximation problems in $\mathbb F^m$, and the QR factorisation solves them more accurately than the normal equations. On the computational side we meet the reflections and rotations from which the QR factorisation is computed in practice, and we see in experiments that the classical form of the Gram--Schmidt process can lose orthogonality completely while Householder's method does not.
+
+As in the preceding chapters, $\mathbb F$ denotes $\mathbb R$ or $\mathbb C$. Complex inner products follow the convention of \cref{sec:complex-matrices}: $\langle\mathbf x,\mathbf y\rangle=\mathbf x^{\mathsf H}\mathbf y$ is linear in its second argument and conjugate linear in its first. Eigenvalues, which are the subject of Chapters~19 and~20, and the singular value decomposition of Chapter~21 are not used; we indicate where they will extend the results. Every result stated in the chapter is proved; a few further facts, among them the theorem of Mazur and Ulam, are quoted in remarks and notes with references.
+
+The chapter is organised as follows. \Cref{sec:inner-product-spaces} states the axioms, collects examples and proves the Cauchy--Schwarz inequality, the parallelogram law and the polarisation identities. \Cref{sec:orthonormal-sets} shows that coordinates with respect to an orthonormal basis are inner products and proves Parseval's identity and Bessel's inequality, with the discrete Fourier basis and the trigonometric functions as examples. \Cref{sec:orthogonal-complements} introduces orthogonal complements and completes the picture of the four fundamental subspaces. \Cref{sec:orthogonal-projection} proves the best approximation theorem and characterises the matrices of orthogonal projections, and \cref{sec:gram-schmidt} develops the Gram--Schmidt process, the QR factorisation, the Legendre polynomials, and the Gram determinant and Hadamard's inequality from this point of view. \Cref{sec:unitary-matrices} studies orthogonal and unitary matrices, reflections and rotations, and \cref{sec:householder-qr} computes the QR factorisation by reflections. \Cref{sec:least-squares} treats least squares problems, \cref{sec:adjoints} the adjoint of a linear map, and \cref{sec:orthogonality-computation} measures what orthogonality does in floating-point arithmetic.
+
+\section{Inner Product Spaces}
+\label{sec:inner-product-spaces}
+
+\subsection{The Axioms}
+
+The inner products of $\mathbb R^n$ and $\mathbb C^n$ have a handful of properties from which all their geometric consequences follow: \cref{prop:inner-product} listed them for real vectors and \cref{prop:hermitian-inner-product} for complex ones. As with the eight rules of vector arithmetic in \cref{ch:vector-spaces}, we take these properties as axioms. Every argument that uses only the axioms then applies to every space that satisfies them.
+
+\begin{definition}[Inner product]
+\label{def:inner-product-space}
+Let $V$ be a vector space over $\mathbb F$. An \term{inner product} on $V$ is a function that assigns to every pair $\mathbf u,\mathbf v\in V$ a number $\langle\mathbf u,\mathbf v\rangle\in\mathbb F$ such that, for all $\mathbf u,\mathbf v,\mathbf w\in V$ and $s,t\in\mathbb F$,
+\begin{enumerate}
+\item $\langle\mathbf u,s\mathbf v+t\mathbf w\rangle=s\langle\mathbf u,\mathbf v\rangle+t\langle\mathbf u,\mathbf w\rangle$ (linearity in the second argument);
+\item $\langle\mathbf v,\mathbf u\rangle=\overline{\langle\mathbf u,\mathbf v\rangle}$ (conjugate symmetry);
+\item $\langle\mathbf v,\mathbf v\rangle>0$ for $\mathbf v\ne\mathbf 0$ (positivity).
+\end{enumerate}
+A vector space together with an inner product is an \term{inner product space}; it is \term{real} or \term{complex} according as $\mathbb F=\mathbb R$ or $\mathbb F=\mathbb C$. The \term{norm} of $\mathbf v\in V$ is $\|\mathbf v\|\coloneqq\langle\mathbf v,\mathbf v\rangle^{1/2}$, and the \term{distance} between $\mathbf u$ and $\mathbf v$ is $\|\mathbf u-\mathbf v\|$.
+\end{definition}
+
+By (ii), $\langle\mathbf v,\mathbf v\rangle$ equals its own conjugate and is therefore real, so the inequality in (iii) makes sense. Over $\mathbb R$ the conjugation does nothing, (ii) says that the inner product is symmetric, and (i) and (ii) together say that it is bilinear, as in \cref{prop:inner-product}. Over $\mathbb C$ the two arguments behave differently, and the next proposition records how.
+
+\begin{proposition}[First consequences of the axioms]
+\label{prop:inner-product-rules}
+Let $V$ be an inner product space, $\mathbf u,\mathbf v,\mathbf w\in V$ and $s,t\in\mathbb F$.
+\begin{enumerate}
+\item $\langle s\mathbf u+t\mathbf v,\mathbf w\rangle=\bar s\langle\mathbf u,\mathbf w\rangle+\bar t\langle\mathbf v,\mathbf w\rangle$: the inner product is conjugate linear in its first argument.
+\item $\langle\mathbf 0,\mathbf v\rangle=\langle\mathbf v,\mathbf 0\rangle=0$, and $\langle\mathbf v,\mathbf v\rangle=0$ only for $\mathbf v=\mathbf 0$.
+\item $\|t\mathbf v\|=|t|\,\|\mathbf v\|$, and $\|\mathbf v\|=0$ only for $\mathbf v=\mathbf 0$.
+\item If $\langle\mathbf u,\mathbf v\rangle=0$ for all $\mathbf v$ in a spanning set of $V$, then $\mathbf u=\mathbf 0$. Consequently, if $\langle\mathbf u,\mathbf v\rangle=\langle\mathbf u',\mathbf v\rangle$ for all $\mathbf v\in V$, then $\mathbf u=\mathbf u'$.
+\item $\|\mathbf u+\mathbf v\|^2=\|\mathbf u\|^2+2\operatorname{Re}\langle\mathbf u,\mathbf v\rangle+\|\mathbf v\|^2$.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) By (ii) and (i) of the definition,
+\[
+\langle s\mathbf u+t\mathbf v,\mathbf w\rangle=\overline{\langle\mathbf w,s\mathbf u+t\mathbf v\rangle}=\overline{s\langle\mathbf w,\mathbf u\rangle+t\langle\mathbf w,\mathbf v\rangle}=\bar s\langle\mathbf u,\mathbf w\rangle+\bar t\langle\mathbf v,\mathbf w\rangle .
+\] (ii) $\langle\mathbf v,\mathbf 0\rangle=\langle\mathbf v,0\cdot\mathbf 0\rangle=0\cdot\langle\mathbf v,\mathbf 0\rangle=0$, and $\langle\mathbf 0,\mathbf v\rangle$ is its conjugate; the second statement is (iii) of the definition. (iii) $\|t\mathbf v\|^2=\langle t\mathbf v,t\mathbf v\rangle=\bar tt\langle\mathbf v,\mathbf v\rangle=|t|^2\|\mathbf v\|^2$ by (i), and the rest is (ii). (iv) By linearity in the second argument, $\langle\mathbf u,\mathbf v\rangle=0$ for all $\mathbf v$ of the spanning set implies $\langle\mathbf u,\mathbf v\rangle=0$ for all combinations $\mathbf v$ of them, that is, for all $\mathbf v\in V$, in particular for $\mathbf v=\mathbf u$; so $\mathbf u=\mathbf 0$ by (ii). For the second statement apply the first to $\mathbf u-\mathbf u'$. (v) Expanding by (i) of the definition and (i) of the proposition, $\langle\mathbf u+\mathbf v,\mathbf u+\mathbf v\rangle=\langle\mathbf u,\mathbf u\rangle+\langle\mathbf u,\mathbf v\rangle+\langle\mathbf v,\mathbf u\rangle+\langle\mathbf v,\mathbf v\rangle$, and $\langle\mathbf u,\mathbf v\rangle+\overline{\langle\mathbf u,\mathbf v\rangle}=2\operatorname{Re}\langle\mathbf u,\mathbf v\rangle$.
+\end{proof}
+
+Part (iv) is used constantly: to prove that two vectors are equal, it suffices to show that they have the same inner products with every vector, or with every vector of a basis. Part (v) is the identity \eqref{eq:norm-expansion} of the real case, in which $\operatorname{Re}\langle\mathbf u,\mathbf v\rangle=\langle\mathbf u,\mathbf v\rangle$.
+
+\subsection{Examples}
+
+The following inner products will all be used in this chapter or later in the series. \Cref{tab:inner-products} collects them.
+
+\emph{The standard inner products.} On $\mathbb F^n$, $\langle\mathbf x,\mathbf y\rangle=\mathbf x^{\mathsf H}\mathbf y=\sum_i\bar x_iy_i$, which is $\sum_ix_iy_i$ for real vectors; \cref{prop:hermitian-inner-product} verified the axioms. Whenever $\mathbb F^n$ appears without further comment, it carries this inner product. On the matrices $\mathbb F^{m\times n}$, the Frobenius inner product $\langle A,B\rangle_{\mathrm F}=\operatorname{tr}(A^{\mathsf H}B)=\sum_{i,j}\bar a_{ij}b_{ij}$ of \cref{sec:trace-norms} is the standard inner product of $\mathbb F^{mn}$ with the entries arranged in a rectangle, and its norm is the Frobenius norm.
+
+\emph{Weighted inner products.} For positive numbers $w_1,\ldots,w_n$,
+\[
+\langle\mathbf x,\mathbf y\rangle_W\coloneqq\sum_{i=1}^nw_i\bar x_iy_i=\mathbf x^{\mathsf H}W\mathbf y,\qquad W\coloneqq\operatorname{diag}(w_1,\ldots,w_n),
+\]
+is an inner product on $\mathbb F^n$: (i) and (ii) hold termwise, and $\langle\mathbf x,\mathbf x\rangle_W=\sum_iw_i|x_i|^2>0$ for $\mathbf x\ne\mathbf 0$. In a least squares fit, large weights mark measurements that are trusted more (\cref{sec:least-squares}). A weight $w_i=0$ is not allowed: with $w_1=0$, the vector $\mathbf e_1$ would have length $0$.
+
+\emph{All inner products on $\mathbb F^n$.} Every inner product on $\mathbb F^n$ has the form $\mathbf x^{\mathsf H}G\mathbf y$ for a matrix $G$. Indeed, writing $\mathbf x=\sum_ix_i\mathbf e_i$ and $\mathbf y=\sum_jy_j\mathbf e_j$ and expanding by \cref{prop:inner-product-rules}\,(i) and (i) of the definition,
+\begin{equation}
+\langle\mathbf x,\mathbf y\rangle=\sum_{i,j}\bar x_iy_j\langle\mathbf e_i,\mathbf e_j\rangle=\mathbf x^{\mathsf H}G\mathbf y,\qquad g_{ij}\coloneqq\langle\mathbf e_i,\mathbf e_j\rangle .
+\label{eq:gram-form}
+\end{equation}
+The matrix $G$ is Hermitian by (ii), and $\mathbf x^{\mathsf H}G\mathbf x>0$ for $\mathbf x\ne\mathbf 0$ by (iii); conversely, every Hermitian $G$ with this property defines an inner product by $\mathbf x^{\mathsf H}G\mathbf y$, since the three axioms translate into exactly these properties. For real $G$ these are the symmetric positive definite matrices of \cref{def:definite}. The weighted inner products are the case of a diagonal $G$, and Chapter~20 studies the general case, where the test for positivity is less obvious. The same computation in any finite-dimensional space shows that an inner product is determined by its values $\langle\mathbf b_i,\mathbf b_j\rangle$ on a basis; we return to this matrix, the Gram matrix of the basis, in \cref{sec:orthonormal-sets}.
+
+\emph{Functions.} On the space $C[a,b]$ of continuous real functions on $[a,b]$,
+\[
+\langle f,g\rangle\coloneqq\int_a^bf(x)g(x)\,dx
+\]
+is an inner product. The integral exists by \cref{thm:continuous-integrable}, linearity is \cref{thm:integral-linear}, symmetry is evident, and if $f\ne0$, then $f^2$ is continuous, nonnegative and positive at some point, so $\langle f,f\rangle=\int_a^bf^2>0$ by \cref{prop:positive-integral}. The norm $\|f\|=(\int_a^bf^2)^{1/2}$ measures the size of $f$ on average, so two functions can be close in this norm although their values differ greatly on a short interval. For complex-valued continuous functions, whose integral is defined by integrating the real and the imaginary parts separately, the inner product is $\int_a^b\overline{f(x)}g(x)\,dx$; Volume~XI uses it for the Fourier transform. The Cauchy--Schwarz inequality for integrals, \cref{thm:cauchy-schwarz-integral}, is the Cauchy--Schwarz inequality of this inner product, as we shall see in a moment.
+
+\emph{Polynomials.} The space $\mathcal P_n$ of real polynomials of degree at most $n$ inherits the inner product $\int_a^bpq$ from $C[a,b]$, and the interval $[-1,1]$ will lead to the Legendre polynomials in \cref{sec:gram-schmidt}. A different inner product on $\mathcal P_n$ uses $n+1$ pairwise different points $t_0,\ldots,t_n$:
+\[
+\langle p,q\rangle\coloneqq\sum_{k=0}^np(t_k)q(t_k).
+\]
+Linearity and symmetry are clear. If $\langle p,p\rangle=\sum_kp(t_k)^2=0$, then $p$ vanishes at $n+1$ different points, and since a nonzero polynomial of degree at most $n$ has at most $n$ roots (\cref{cor:factor}), $p=0$. With fewer points positivity fails: on $\mathcal P_2$ with the two points $t_0,t_1$, the nonzero polynomial $(x-t_0)(x-t_1)$ has $\langle p,p\rangle=0$. This inner product is the standard inner product of the vectors of values $(p(t_0),\ldots,p(t_n))$, and it is the one behind discrete least squares fitting of polynomials.
+
+Not every reasonable formula is an inner product. The function $\langle\mathbf x,\mathbf y\rangle\coloneqq x_1y_1-x_2y_2$ on $\mathbb R^2$ is symmetric and bilinear, but $\langle\mathbf e_2,\mathbf e_2\rangle=-1$, so positivity fails; such indefinite forms appear in the geometry of special relativity, and Chapter~20 classifies them.
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}{colspec={lll}, row{1}={font=\small\bfseries}}
+\toprule
+space & inner product & norm \\
+\midrule
+$\mathbb F^n$ & $\mathbf x^{\mathsf H}\mathbf y=\sum_i\bar x_iy_i$ & $(\sum_i|x_i|^2)^{1/2}$ \\
+$\mathbb F^n$, weights $w_i>0$ & $\mathbf x^{\mathsf H}W\mathbf y=\sum_iw_i\bar x_iy_i$ & $(\sum_iw_i|x_i|^2)^{1/2}$ \\
+$\mathbb F^{m\times n}$ & $\operatorname{tr}(A^{\mathsf H}B)=\sum_{i,j}\bar a_{ij}b_{ij}$ & $\|A\|_{\mathrm F}$ \\
+$C[a,b]$, real & $\int_a^bf(x)g(x)\,dx$ & $(\int_a^bf^2)^{1/2}$ \\
+$\mathcal P_n$, points $t_0,\ldots,t_n$ & $\sum_kp(t_k)q(t_k)$ & $(\sum_kp(t_k)^2)^{1/2}$ \\
+\bottomrule
+\end{sdtable}}{Inner products used in this chapter. On $\mathcal P_n$ the points $t_0,\ldots,t_n$ must be pairwise different; $\mathcal P_n$ also carries the inner product of $C[a,b]$.\label{tab:inner-products}}
+\end{table}
+
+\subsection{The Cauchy--Schwarz Inequality}
+
+The inequality that \cref{thm:cauchy-schwarz} proved for sums, \cref{thm:cauchy-schwarz-integral} for integrals and \cref{prop:hermitian-inner-product} for complex vectors holds in every inner product space, with the same proof.
+
+\begin{theorem}[Cauchy--Schwarz inequality]
+\label{thm:cauchy-schwarz-general}
+In every inner product space, $|\langle\mathbf u,\mathbf v\rangle|\le\|\mathbf u\|\,\|\mathbf v\|$ for all $\mathbf u,\mathbf v$, with equality if and only if $\mathbf u$ and $\mathbf v$ are linearly dependent.
+\end{theorem}
+
+\begin{proof}
+If $\mathbf v=\mathbf 0$, both sides vanish, and the vectors are dependent. Let $\mathbf v\ne\mathbf 0$ and $t\coloneqq\langle\mathbf v,\mathbf u\rangle/\|\mathbf v\|^2$. By \cref{prop:inner-product-rules},
+\[
+0\le\|\mathbf u-t\mathbf v\|^2=\|\mathbf u\|^2-t\langle\mathbf u,\mathbf v\rangle-\bar t\langle\mathbf v,\mathbf u\rangle+|t|^2\|\mathbf v\|^2=\|\mathbf u\|^2-\frac{|\langle\mathbf u,\mathbf v\rangle|^2}{\|\mathbf v\|^2},
+\]
+since $t\langle\mathbf u,\mathbf v\rangle=\bar t\langle\mathbf v,\mathbf u\rangle=|t|^2\|\mathbf v\|^2=|\langle\mathbf u,\mathbf v\rangle|^2/\|\mathbf v\|^2$. This is the inequality. Equality holds exactly when $\|\mathbf u-t\mathbf v\|=0$, that is, when $\mathbf u=t\mathbf v$. If, conversely, $\mathbf u$ and $\mathbf v\ne\mathbf 0$ are dependent, then $\mathbf u=s\mathbf v$ for some $s$, and $|\langle\mathbf u,\mathbf v\rangle|=|s|\|\mathbf v\|^2=\|\mathbf u\|\|\mathbf v\|$.
+\end{proof}
+
+The proof has a geometric meaning that the rest of the chapter develops: $t\mathbf v$ is the orthogonal projection of $\mathbf u$ onto the line spanned by $\mathbf v$, and the inequality says that the remainder $\mathbf u-t\mathbf v$ has nonnegative squared length. For the inner product of $C[a,b]$ the theorem reads $\bigl(\int_a^bfg\bigr)^2\le\int_a^bf^2\int_a^bg^2$, which is \cref{thm:cauchy-schwarz-integral}; for the Frobenius inner product it reads $|\operatorname{tr}(A^{\mathsf H}B)|\le\|A\|_{\mathrm F}\|B\|_{\mathrm F}$. The norm of an inner product space is a norm in the sense of \cref{def:norm}, whose definition carries over to any vector space over $\mathbb F$.
+
+\begin{corollary}[The norm of an inner product space]
+\label{cor:inner-product-norm}
+The norm of an inner product space satisfies $\|\mathbf v\|\ge0$ with equality only for $\mathbf v=\mathbf 0$, $\|t\mathbf v\|=|t|\|\mathbf v\|$, and the triangle inequality $\|\mathbf u+\mathbf v\|\le\|\mathbf u\|+\|\mathbf v\|$. Equality holds in the triangle inequality if and only if one of the vectors is a nonnegative multiple of the other.
+\end{corollary}
+
+\begin{proof}
+The first two properties are \cref{prop:inner-product-rules}\,(iii). By \cref{prop:inner-product-rules}\,(v), $\operatorname{Re}z\le|z|$ and the Cauchy--Schwarz inequality,
+\[
+\|\mathbf u+\mathbf v\|^2=\|\mathbf u\|^2+2\operatorname{Re}\langle\mathbf u,\mathbf v\rangle+\|\mathbf v\|^2\le\|\mathbf u\|^2+2\|\mathbf u\|\|\mathbf v\|+\|\mathbf v\|^2=(\|\mathbf u\|+\|\mathbf v\|)^2 .
+\]
+Equality requires $\operatorname{Re}\langle\mathbf u,\mathbf v\rangle=|\langle\mathbf u,\mathbf v\rangle|=\|\mathbf u\|\|\mathbf v\|$. If $\mathbf v=\mathbf 0$, then $\mathbf v=0\cdot\mathbf u$. Otherwise, by the equality case of the theorem, $\mathbf u=s\mathbf v$ for some $s$, and then $\langle\mathbf u,\mathbf v\rangle=\bar s\|\mathbf v\|^2$ is real and nonnegative only if $s\ge0$. Conversely, if $\mathbf u=s\mathbf v$ with $s\ge0$, both sides equal $(1+s)\|\mathbf v\|$.
+\end{proof}
+
+\subsection{The Parallelogram Law and Polarisation}
+
+A norm that comes from an inner product has a special property, which is a theorem about parallelograms.
+
+\begin{proposition}[Parallelogram law and polarisation identities]
+\label{prop:parallelogram}
+In every inner product space, for all $\mathbf u,\mathbf v$:
+\begin{enumerate}
+\item $\|\mathbf u+\mathbf v\|^2+\|\mathbf u-\mathbf v\|^2=2\|\mathbf u\|^2+2\|\mathbf v\|^2$;
+\item in a real space, $\langle\mathbf u,\mathbf v\rangle=\bigl(\|\mathbf u+\mathbf v\|^2-\|\mathbf u-\mathbf v\|^2\bigr)/4$;
+\item in a complex space,
+\[
+\langle\mathbf u,\mathbf v\rangle=\frac14\sum_{k=0}^3i^{-k}\,\|\mathbf u+i^k\mathbf v\|^2=\frac14\bigl(\|\mathbf u+\mathbf v\|^2-\|\mathbf u-\mathbf v\|^2-i\|\mathbf u+i\mathbf v\|^2+i\|\mathbf u-i\mathbf v\|^2\bigr).
+\]
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+By \cref{prop:inner-product-rules}\,(v) with $\mathbf v$ and $-\mathbf v$, $\|\mathbf u\pm\mathbf v\|^2=\|\mathbf u\|^2\pm2\operatorname{Re}\langle\mathbf u,\mathbf v\rangle+\|\mathbf v\|^2$; adding gives (i), and subtracting gives $\|\mathbf u+\mathbf v\|^2-\|\mathbf u-\mathbf v\|^2=4\operatorname{Re}\langle\mathbf u,\mathbf v\rangle$, which is (ii) in a real space. (iii) Let $z\coloneqq\langle\mathbf u,\mathbf v\rangle$. With $i^k\mathbf v$ in place of $\mathbf v$, the same formula gives $\|\mathbf u+i^k\mathbf v\|^2=\|\mathbf u\|^2+\|\mathbf v\|^2+2\operatorname{Re}(i^kz)$, since $|i^k|=1$ and $\langle\mathbf u,i^k\mathbf v\rangle=i^kz$. Because $\sum_{k=0}^3i^{-k}=0$, the terms $\|\mathbf u\|^2+\|\mathbf v\|^2$ drop out of the sum, and with $2\operatorname{Re}(i^kz)=i^kz+i^{-k}\bar z$,
+\[
+\sum_{k=0}^3i^{-k}\bigl(i^kz+i^{-k}\bar z\bigr)=4z+\bar z\sum_{k=0}^3(-1)^k=4z ,
+\]
+and dividing by $4$ gives (iii).
+\end{proof}
+
+The parallelogram law says that the squares of the two diagonals of a parallelogram add up to the squares of its four sides, a fact of plane geometry (\cref{fig:parallelogram}). The polarisation identities express the inner product through norms, so that a linear map that preserves norms preserves inner products as well; this was the step (iv)$\Rightarrow$(iii) in the proof of \cref{thm:orthogonal}. For $\mathbf u=\mathbf e_1$ and $\mathbf v=i\mathbf e_1$ in $\mathbb C^1$, where $\langle\mathbf u,\mathbf v\rangle=i$, the four norms in (iii) are $|1+i|^2=2$, $|1-i|^2=2$, $|1+i^2|^2=0$ and $|1-i^2|^2=4$, and the formula gives $(2-2-0+4i)/4=i$, as it should.
+
+\begin{figure}
+\sdfloat{%
+\begin{tikzpicture}[scale=1.05, font=\scriptsize]
+\fill[sdfill] (0,0) -- (3,0.4) -- (4.2,2.2) -- (1.2,1.8) -- cycle;
+\draw[line width=0.6pt] (0,0) -- (3,0.4) -- (4.2,2.2) -- (1.2,1.8) -- cycle;
+\draw[line width=0.9pt, -{Latex[length=1.8mm]}] (0,0) -- (3,0.4) node[below right=-1pt] {$\mathbf u$};
+\draw[line width=0.9pt, -{Latex[length=1.8mm]}] (0,0) -- (1.2,1.8) node[above left=-1pt] {$\mathbf v$};
+\draw[dashed, line width=0.7pt, -{Latex[length=1.6mm]}] (0,0) -- (4.2,2.2) node[above right=-1pt] {$\mathbf u+\mathbf v$};
+\draw[dashed, line width=0.7pt, -{Latex[length=1.6mm]}] (1.2,1.8) -- (3,0.4);
+\node at (2.12,0.6) {$\mathbf u-\mathbf v$};
+\end{tikzpicture}}{The parallelogram law (\cref{prop:parallelogram}\,(i)). The squared lengths of the two diagonals $\mathbf u+\mathbf v$ and $\mathbf u-\mathbf v$ (dashed) add up to the squared lengths of the four sides: $\|\mathbf u+\mathbf v\|^2+\|\mathbf u-\mathbf v\|^2=2\|\mathbf u\|^2+2\|\mathbf v\|^2$. For $\mathbf u=(3,0.4)$ and $\mathbf v=(1.2,1.8)$ both sides are $27.68$.\label{fig:parallelogram}}
+\end{figure}
+
+The law gives a quick test of whether a norm comes from an inner product. The norms $\|\cdot\|_1$ and $\|\cdot\|_\infty$ of \cref{def:norm} do not: for $\mathbf e_1$ and $\mathbf e_2$ in $\mathbb R^2$,
+\[
+\|\mathbf e_1+\mathbf e_2\|_1^2+\|\mathbf e_1-\mathbf e_2\|_1^2=4+4=8,\qquad\|\mathbf e_1+\mathbf e_2\|_\infty^2+\|\mathbf e_1-\mathbf e_2\|_\infty^2=1+1=2,
+\]
+while $2\|\mathbf e_1\|^2+2\|\mathbf e_2\|^2=4$ in both norms. So there is no inner product whose norm is $\|\cdot\|_1$ or $\|\cdot\|_\infty$, and the geometry of this chapter, orthogonal projections in particular, has no exact counterpart for them; the corners of the unit balls in \cref{fig:unit-balls} are the visible sign of this.
+
+\begin{note}{Norms that come from inner products}
+The parallelogram law characterises the norms that come from inner products: if a norm on a real or complex vector space satisfies (i) of \cref{prop:parallelogram} for all vectors, then the right-hand side of (ii), respectively (iii), defines an inner product whose norm is the given one. This theorem of Jordan and von Neumann~\cite{jordanvonneumann1935} is harder than it looks: conjugate symmetry and positivity of the polarised expression are immediate, but additivity in each argument requires a clever use of the law, and homogeneity under real multiples is first proved for integers, then for rationals, and finally for all reals by continuity. The $p$-norms of the note in \cref{sec:inner-product-length} satisfy the law only for $p=2$, as $\mathbf e_1$ and $\mathbf e_2$ show: the two sides are $2\cdot2^{2/p}$ and $4$.
+\end{note}
+
+\subsection{Orthogonality and Pythagoras' Theorem}
+
+\begin{definition}[Orthogonality]
+\label{def:orthogonality}
+Two vectors $\mathbf u,\mathbf v$ of an inner product space are \term{orthogonal}, $\mathbf u\perp\mathbf v$, if $\langle\mathbf u,\mathbf v\rangle=0$. A vector $\mathbf u$ is orthogonal to a set $S$, $\mathbf u\perp S$, if it is orthogonal to every vector of $S$. A family of vectors is \term{orthogonal} if any two different members are orthogonal, and \term{orthonormal} if moreover every member has norm $1$, that is, $\langle\mathbf q_i,\mathbf q_j\rangle=\delta_{ij}$.
+\end{definition}
+
+Orthogonality is symmetric, since $\langle\mathbf v,\mathbf u\rangle=\overline{\langle\mathbf u,\mathbf v\rangle}$. The zero vector is orthogonal to everything and is the only vector orthogonal to itself. In a real inner product space, the Cauchy--Schwarz inequality allows us to define the \term{angle} $\theta\in[0,\pi]$ between nonzero vectors by $\cos\theta=\langle\mathbf u,\mathbf v\rangle/(\|\mathbf u\|\|\mathbf v\|)$, as in \eqref{eq:angle}. In $C[0,1]$, for example, the constant function $1$ and the function $x$ have $\langle1,x\rangle=\int_0^1x\,dx=1/2$, $\|1\|=1$ and $\|x\|=(\int_0^1x^2\,dx)^{1/2}=1/\sqrt3$, so $\cos\theta=\sqrt3/2$, and the angle between them is $\pi/6$. The functions $1$ and $x-1/2$, on the other hand, are orthogonal, since $\int_0^1(x-1/2)\,dx=0$. In complex spaces one uses orthogonality but not angles.
+
+\begin{proposition}[Pythagoras' theorem]
+\label{prop:pythagoras-general}
+If $\mathbf v_1,\ldots,\mathbf v_k$ are pairwise orthogonal vectors of an inner product space, then
+\[
+\|\mathbf v_1+\cdots+\mathbf v_k\|^2=\|\mathbf v_1\|^2+\cdots+\|\mathbf v_k\|^2 .
+\]
+In a real space, $\|\mathbf u+\mathbf v\|^2=\|\mathbf u\|^2+\|\mathbf v\|^2$ holds only if $\mathbf u\perp\mathbf v$; in a complex space it holds exactly when $\operatorname{Re}\langle\mathbf u,\mathbf v\rangle=0$.
+\end{proposition}
+
+\begin{proof}
+Expanding, $\|\sum_i\mathbf v_i\|^2=\sum_{i,j}\langle\mathbf v_i,\mathbf v_j\rangle$, and only the terms with $i=j$ remain, as in \cref{prop:pythagoras}. The second statement is \cref{prop:inner-product-rules}\,(v).
+\end{proof}
+
+In a complex space the converse of Pythagoras' theorem fails: $\mathbf u=\mathbf e_1$ and $\mathbf v=i\mathbf e_1$ in $\mathbb C^1$ satisfy $\|\mathbf u+\mathbf v\|^2=|1+i|^2=2=\|\mathbf u\|^2+\|\mathbf v\|^2$, but $\langle\mathbf u,\mathbf v\rangle=i\ne0$. They are not orthogonal; they are even linearly dependent.
+
+\section{Orthogonal and Orthonormal Sets}
+\label{sec:orthonormal-sets}
+
+\subsection{Orthogonal Vectors Are Independent}
+
+Perpendicular directions cannot be combined into one another, and the algebraic form of this observation is the first fact about orthogonal families.
+
+\begin{proposition}[Orthogonality and independence]
+\label{prop:orthogonal-independent}
+An orthogonal family of nonzero vectors is linearly independent. In particular, an orthonormal family of $n$ vectors in an $n$-dimensional inner product space is a basis.
+\end{proposition}
+
+\begin{proof}
+Let $\mathbf v_1,\ldots,\mathbf v_k$ be orthogonal and nonzero, and let $\sum_jc_j\mathbf v_j=\mathbf 0$. Taking the inner product with $\mathbf v_i$ gives $0=\sum_jc_j\langle\mathbf v_i,\mathbf v_j\rangle=c_i\|\mathbf v_i\|^2$, so $c_i=0$ for every $i$. The second statement follows by \cref{thm:basis-extension}\,(iii).
+\end{proof}
+
+The proof contains more than the statement: the coefficients of a combination of orthogonal vectors are obtained one at a time, each from a single inner product. For a general basis this is not so. If $\mathbf b_1,\ldots,\mathbf b_n$ is a basis and $\mathbf v=\sum_jc_j\mathbf b_j$, then taking inner products with the basis vectors gives
+\begin{equation}
+\sum_{j=1}^n\langle\mathbf b_i,\mathbf b_j\rangle\,c_j=\langle\mathbf b_i,\mathbf v\rangle\qquad(i=1,\ldots,n),
+\label{eq:gram-system}
+\end{equation}
+a linear system for the coefficients whose matrix $G=(\langle\mathbf b_i,\mathbf b_j\rangle)$ is the \term{Gram matrix} of the basis. For the vectors of $\mathbb F^m$ that form the columns of a matrix $B$, the Gram matrix is $B^{\mathsf H}B$, which \cref{prop:gram} met for real matrices.
+
+\begin{lemma}[Gram matrices]
+\label{lem:gram-matrix}
+Let $\mathbf b_1,\ldots,\mathbf b_k$ be vectors of an inner product space and $G\coloneqq(\langle\mathbf b_i,\mathbf b_j\rangle)\in\mathbb F^{k\times k}$. Then $G^{\mathsf H}=G$, and for every $\mathbf c\in\mathbb F^k$,
+\[
+\mathbf c^{\mathsf H}G\mathbf c=\Bigl\|\sum_{j=1}^kc_j\mathbf b_j\Bigr\|^2\ge0 .
+\]
+$G$ is invertible if and only if $\mathbf b_1,\ldots,\mathbf b_k$ are linearly independent.
+\end{lemma}
+
+\begin{proof}
+$\bar g_{ji}=\overline{\langle\mathbf b_j,\mathbf b_i\rangle}=\langle\mathbf b_i,\mathbf b_j\rangle=g_{ij}$. Expanding the norm on the right by \cref{prop:inner-product-rules}\,(i) and the linearity in the second argument gives $\sum_{i,j}\bar c_ic_j\langle\mathbf b_i,\mathbf b_j\rangle=\mathbf c^{\mathsf H}G\mathbf c$. If the vectors are independent and $G\mathbf c=\mathbf 0$, then $\|\sum_jc_j\mathbf b_j\|^2=\mathbf c^{\mathsf H}G\mathbf c=0$, so $\sum_jc_j\mathbf b_j=\mathbf 0$ and $\mathbf c=\mathbf 0$; hence $G$ is invertible (\cref{thm:invertible}). If they are dependent, some $\mathbf c\ne\mathbf 0$ has $\sum_jc_j\mathbf b_j=\mathbf 0$, and then every entry $\sum_j\langle\mathbf b_i,\mathbf b_j\rangle c_j=\langle\mathbf b_i,\sum_jc_j\mathbf b_j\rangle$ of $G\mathbf c$ vanishes, so $G$ is singular.
+\end{proof}
+
+So the coordinates with respect to any basis can be found from inner products, at the price of solving the $n\times n$ system \eqref{eq:gram-system}. For an orthonormal basis, $G=I$ and the price is nothing.
+
+\subsection{Coordinates in an Orthonormal Basis}
+
+\begin{theorem}[Orthonormal expansion and Parseval's identity]
+\label{thm:orthonormal-expansion}
+Let $\mathbf q_1,\ldots,\mathbf q_n$ be an orthonormal basis of an inner product space $V$. For all $\mathbf v,\mathbf w\in V$:
+\begin{enumerate}
+\item $\mathbf v=\sum_{i=1}^n\langle\mathbf q_i,\mathbf v\rangle\,\mathbf q_i$: the coordinates of $\mathbf v$ are the inner products $\langle\mathbf q_i,\mathbf v\rangle$;
+\item $\langle\mathbf v,\mathbf w\rangle=\sum_{i=1}^n\overline{\langle\mathbf q_i,\mathbf v\rangle}\,\langle\mathbf q_i,\mathbf w\rangle$ (Parseval's identity);
+\item $\|\mathbf v\|^2=\sum_{i=1}^n|\langle\mathbf q_i,\mathbf v\rangle|^2$.
+\end{enumerate}
+In other words, the coordinate map $\mathbf v\mapsto[\mathbf v]_{\mathcal Q}$ of the basis $\mathcal Q=(\mathbf q_1,\ldots,\mathbf q_n)$ preserves inner products: $\langle\mathbf v,\mathbf w\rangle=\langle[\mathbf v]_{\mathcal Q},[\mathbf w]_{\mathcal Q}\rangle$, the right side being the standard inner product of $\mathbb F^n$.
+\end{theorem}
+
+\begin{proof}
+(i) Write $\mathbf v=\sum_jc_j\mathbf q_j$. Then $\langle\mathbf q_i,\mathbf v\rangle=\sum_jc_j\langle\mathbf q_i,\mathbf q_j\rangle=c_i$. (ii) With $\mathbf v=\sum_ic_i\mathbf q_i$ and $\mathbf w=\sum_jd_j\mathbf q_j$, expanding gives $\langle\mathbf v,\mathbf w\rangle=\sum_{i,j}\bar c_id_j\langle\mathbf q_i,\mathbf q_j\rangle=\sum_i\bar c_id_i$, and $c_i$, $d_i$ are the inner products of (i). (iii) is (ii) with $\mathbf w=\mathbf v$.
+\end{proof}
+
+The theorem says that an $n$-dimensional inner product space with an orthonormal basis is, for all purposes of geometry, the space $\mathbb F^n$ with its standard inner product: the coordinate map is an isomorphism (\cref{thm:coordinate-map}) that preserves lengths, angles and orthogonality. \Cref{sec:gram-schmidt} shows that every finite-dimensional inner product space has an orthonormal basis, so this is true of all of them.
+
+\Cref{fig:orthonormal-coordinates} shows the difference between orthonormal and general bases in the plane. With respect to the orthonormal basis $\mathbf q_1=(3,4)/5$, $\mathbf q_2=(-4,3)/5$ of $\mathbb R^2$, the vector $\mathbf x=(1,3)$ has the coordinates $\langle\mathbf q_1,\mathbf x\rangle=(3+12)/5=3$ and $\langle\mathbf q_2,\mathbf x\rangle=(-4+9)/5=1$; indeed $3\mathbf q_1+\mathbf q_2=(9-4,12+3)/5=(1,3)$, and $\|\mathbf x\|^2=10=3^2+1^2$, as (iii) requires. Each coordinate is the signed length of the perpendicular shadow of $\mathbf x$ on one of the two axes. With respect to the basis $\mathbf b_1=(2,1)$, $\mathbf b_2=(1,2)$ of \cref{fig:linear-combinations}, the inner products $\langle\mathbf b_1,\mathbf x\rangle=5$ and $\langle\mathbf b_2,\mathbf x\rangle=7$ are not the coordinates. The coordinates solve the Gram system \eqref{eq:gram-system},
+\[
+\begin{bmatrix}5&4\\4&5\end{bmatrix}\begin{bmatrix}c_1\\c_2\end{bmatrix}=\begin{bmatrix}5\\7\end{bmatrix},\qquad c_1=-\frac13,\quad c_2=\frac53,
+\]
+and indeed $-(2,1)/3+5(1,2)/3=(1,3)$. Geometrically, a coordinate in an oblique basis is read off by moving parallel to the other basis vector, not perpendicularly, and the perpendicular shadows do not add up to the vector.
+
+\begin{figure}
+\sdpanel{A}{\begin{tikzpicture}[scale=0.95, font=\scriptsize]
+\draw[black!40, line width=0.4pt, -{Latex[length=1.4mm]}] (-1.6,0) -- (2.6,0) node[below] {$x_1$};
+\draw[black!40, line width=0.4pt, -{Latex[length=1.4mm]}] (0,-0.4) -- (0,3.5) node[left] {$x_2$};
+\draw[black!45, dashed, line width=0.45pt] (-0.36,-0.48) -- (2.16,2.88);
+\draw[black!45, dashed, line width=0.45pt] (-1.52,1.14) -- (0.32,-0.24);
+\draw[densely dotted, line width=0.6pt] (1,3) -- (1.8,2.4);
+\draw[densely dotted, line width=0.6pt] (1,3) -- (-0.8,0.6);
+\draw[line width=0.4pt] (1.68,2.24) -- (1.52,2.36) -- (1.64,2.52);
+\draw[line width=0.4pt] (-0.64,0.48) -- (-0.52,0.64) -- (-0.68,0.76);
+\draw[line width=1.3pt, -{Latex[length=1.8mm]}] (0,0) -- (1.8,2.4);
+\draw[line width=1.3pt, -{Latex[length=1.8mm]}] (0,0) -- (-0.8,0.6);
+\draw[line width=0.8pt, -{Latex[length=1.8mm]}] (0,0) -- (0.6,0.8);
+\draw[line width=0.8pt, -{Latex[length=1.8mm]}] (0,0) -- (-0.8,0.6);
+\draw[line width=0.8pt, -{Latex[length=1.8mm]}] (0,0) -- (1,3);
+\node[above] at (1,3) {$\mathbf x=(1,3)$};
+\node[right] at (1.85,2.35) {$3\mathbf q_1$};
+\node[below left=-1pt] at (-0.8,0.6) {$\mathbf q_2$};
+\node[right] at (0.55,0.6) {$\mathbf q_1$};
+\end{tikzpicture}}\hfill
+\sdpanel{B}{\begin{tikzpicture}[scale=0.95, font=\scriptsize]
+\draw[black!40, line width=0.4pt, -{Latex[length=1.4mm]}] (-1.6,0) -- (2.6,0) node[below] {$x_1$};
+\draw[black!40, line width=0.4pt, -{Latex[length=1.4mm]}] (0,-0.4) -- (0,3.5) node[left] {$x_2$};
+\draw[black!45, dashed, line width=0.45pt] (-1.4,-0.7) -- (2.4,1.2);
+\draw[black!45, dashed, line width=0.45pt] (-0.3,-0.6) -- (1.75,3.5);
+\draw[densely dotted, line width=0.6pt] (1,3) -- (-0.6667,-0.3333);
+\draw[densely dotted, line width=0.6pt] (1,3) -- (1.6667,3.3333);
+\draw[densely dotted, line width=0.6pt] (1,3) -- (2,1);
+\draw[line width=0.4pt] (1.85,0.925) -- (1.785,1.055) -- (1.915,1.12);
+\draw[line width=1.3pt, -{Latex[length=1.8mm]}] (0,0) -- (-0.6667,-0.3333);
+\draw[line width=1.3pt, -{Latex[length=1.8mm]}] (0,0) -- (1.6667,3.3333);
+\draw[line width=0.8pt, -{Latex[length=1.8mm]}] (0,0) -- (2,1);
+\draw[line width=0.8pt, -{Latex[length=1.8mm]}] (0,0) -- (1,2);
+\draw[line width=0.8pt, -{Latex[length=1.8mm]}] (0,0) -- (1,3);
+\node[left] at (1,3.05) {$\mathbf x$};
+\node[below right=-1pt] at (2,1) {$\mathbf b_1$};
+\node[right] at (1.0,1.9) {$\mathbf b_2$};
+\node[above left=-1pt] at (-0.67,-0.33) {$-\mathbf b_1/3$};
+\node[right] at (1.7,3.35) {$5\mathbf b_2/3$};
+\end{tikzpicture}}
+\caption{Coordinates in an orthonormal and in an oblique basis. (A) In the orthonormal basis $\mathbf q_1=(3,4)/5$, $\mathbf q_2=(-4,3)/5$, the coordinates $3$ and $1$ of $\mathbf x=(1,3)$ are the inner products $\langle\mathbf q_i,\mathbf x\rangle$, the signed lengths of the perpendicular shadows of $\mathbf x$ on the two axes (dashed), and $\mathbf x=3\mathbf q_1+\mathbf q_2$. (B) In the basis $\mathbf b_1=(2,1)$, $\mathbf b_2=(1,2)$, the coordinates $-1/3$ and $5/3$ are found by moving parallel to the axes (dotted), and $\mathbf x=-\mathbf b_1/3+5\mathbf b_2/3$. The foot of the perpendicular from $\mathbf x$ to the first axis (right angle) is the point $(2,1)=\mathbf b_1$, not $-\mathbf b_1/3$, and the inner products $\langle\mathbf b_1,\mathbf x\rangle=5$ and $\langle\mathbf b_2,\mathbf x\rangle=7$ are not the coordinates.\label{fig:orthonormal-coordinates}}
+\end{figure}
+
+\subsection{Bessel's Inequality}
+
+An orthonormal family that is not a basis still yields coordinates, but they no longer describe the whole vector. What they describe is its shadow on the span of the family, and the following inequality says that the shadow is never longer than the vector.
+
+\begin{theorem}[Bessel's inequality]
+\label{thm:bessel}
+Let $\mathbf q_1,\ldots,\mathbf q_k$ be an orthonormal family in an inner product space $V$, and let $\mathbf v\in V$. Then the vector $\mathbf w\coloneqq\mathbf v-\sum_{i=1}^k\langle\mathbf q_i,\mathbf v\rangle\mathbf q_i$ is orthogonal to every $\mathbf q_j$, and
+\[
+\sum_{i=1}^k|\langle\mathbf q_i,\mathbf v\rangle|^2=\|\mathbf v\|^2-\|\mathbf w\|^2\le\|\mathbf v\|^2,
+\]
+with equality if and only if $\mathbf v\in\operatorname{span}\{\mathbf q_1,\ldots,\mathbf q_k\}$.
+\end{theorem}
+
+\begin{proof}
+For each $j$, $\langle\mathbf q_j,\mathbf w\rangle=\langle\mathbf q_j,\mathbf v\rangle-\sum_i\langle\mathbf q_i,\mathbf v\rangle\langle\mathbf q_j,\mathbf q_i\rangle=\langle\mathbf q_j,\mathbf v\rangle-\langle\mathbf q_j,\mathbf v\rangle=0$. So $\mathbf v=\sum_i\langle\mathbf q_i,\mathbf v\rangle\mathbf q_i+\mathbf w$ is a sum of $k+1$ pairwise orthogonal vectors, and Pythagoras' theorem (\cref{prop:pythagoras-general}) gives $\|\mathbf v\|^2=\sum_i|\langle\mathbf q_i,\mathbf v\rangle|^2+\|\mathbf w\|^2$. Equality holds exactly when $\mathbf w=\mathbf 0$. If $\mathbf w=\mathbf 0$, then $\mathbf v$ lies in the span; conversely, if $\mathbf v=\sum_ic_i\mathbf q_i$, then $c_i=\langle\mathbf q_i,\mathbf v\rangle$ as in \cref{thm:orthonormal-expansion}\,(i), and $\mathbf w=\mathbf 0$.
+\end{proof}
+
+The vector $\sum_i\langle\mathbf q_i,\mathbf v\rangle\mathbf q_i$ is the point of the span closest to $\mathbf v$, as \cref{sec:orthogonal-projection} proves, and $\|\mathbf w\|$ is the distance of $\mathbf v$ from the span. In $\mathbb R^3$, for the orthonormal family $\mathbf e_1,\mathbf e_2$ and $\mathbf v=(1,2,2)$, the inequality reads $1+4\le9$, and $\mathbf w=(0,0,2)$ is the part of $\mathbf v$ perpendicular to the plane of $\mathbf e_1$ and $\mathbf e_2$.
+
+\subsection{Two Orthogonal Families}
+
+Two families of the greatest importance in applications are orthogonal, the columns of the discrete Fourier transform and the trigonometric functions.
+
+\begin{proposition}[The discrete Fourier basis]
+\label{prop:fourier-basis}
+Let $n\ge1$, $\omega\coloneqq e^{2\pi i/n}$, and for $k=0,\ldots,n-1$ let $\mathbf f_k\in\mathbb C^n$ have the components $\omega^{lk}/\sqrt n$, $l=0,\ldots,n-1$ (components numbered from $0$). Then $\mathbf f_0,\ldots,\mathbf f_{n-1}$ is an orthonormal basis of $\mathbb C^n$, and every $\mathbf x\in\mathbb C^n$ is
+\[
+\mathbf x=\sum_{k=0}^{n-1}\hat x_k\mathbf f_k,\qquad\hat x_k=\langle\mathbf f_k,\mathbf x\rangle=\frac1{\sqrt n}\sum_{l=0}^{n-1}\omega^{-lk}x_l,\qquad\sum_{l=0}^{n-1}|x_l|^2=\sum_{k=0}^{n-1}|\hat x_k|^2 .
+\]
+\end{proposition}
+
+\begin{proof}
+Since $\bar\omega=\omega^{-1}$,
+\[
+\langle\mathbf f_j,\mathbf f_k\rangle=\frac1n\sum_{l=0}^{n-1}\omega^{-lj}\omega^{lk}=\frac1n\sum_{l=0}^{n-1}\omega^{l(k-j)},
+\]
+which is $1$ for $j=k$ and $0$ for $j\ne k$ by \cref{prop:roots-of-unity}, because $n$ does not divide $k-j$ when $0<|k-j|<n$. So the $n$ vectors are orthonormal, hence a basis of $\mathbb C^n$ (\cref{prop:orthogonal-independent}), and the rest is \cref{thm:orthonormal-expansion}.
+\end{proof}
+
+The vectors $\mathbf f_k$ are the columns of the unitary matrix $F_n/\sqrt n$ of \cref{sec:complex-matrices}. The component $l$ of $\mathbf f_k$ is a sample of the oscillation $e^{2\pi ikt}$ at $t=l/n$, so $\hat x_k$ measures how much of the frequency $k$ the vector $\mathbf x$ contains, and the last identity, again Parseval's, says that the energy $\sum|x_l|^2$ is distributed over the frequencies without loss. For $n=4$, $\omega=i$, and $\mathbf x=(1,2,3,4)$ has the coefficients $\hat x_0=(1+2+3+4)/2=5$, $\hat x_1=(1-2i-3+4i)/2=-1+i$, $\hat x_2=(1-2+3-4)/2=-1$ and $\hat x_3=(1+2i-3-4i)/2=-1-i$; indeed $25+2+1+2=30=1+4+9+16$. Computing all $n$ coefficients from the formula costs about $n^2$ operations, and the fast Fourier transform of Volume~XI reduces this to a multiple of $n\log n$.
+
+\begin{proposition}[The trigonometric system]
+\label{prop:trig-orthogonal}
+In $C[-\pi,\pi]$ with the inner product $\int_{-\pi}^\pi fg$, the functions $1,\cos x,\sin x,\cos2x,\sin2x,\ldots$ are pairwise orthogonal, and
+\[
+\|1\|^2=2\pi,\qquad\|\cos kx\|^2=\|\sin kx\|^2=\pi\qquad(k\ge1).
+\]
+\end{proposition}
+
+\begin{proof}
+For an integer $m\ne0$, $\int_{-\pi}^\pi\cos mx\,dx=[\sin(mx)/m]_{-\pi}^{\pi}=0$ and $\int_{-\pi}^\pi\sin mx\,dx=[-\cos(mx)/m]_{-\pi}^{\pi}=0$, since $\sin(\pm m\pi)=0$ and $\cos(m\pi)=\cos(-m\pi)$; for $m=0$ the second integral is $0$ as well. By the addition formulas (\cref{thm:addition}),
+\[
+\begin{aligned}
+\cos jx\cos kx&=\frac{\cos(j-k)x+\cos(j+k)x}2,\\
+\sin jx\sin kx&=\frac{\cos(j-k)x-\cos(j+k)x}2,\\
+\sin jx\cos kx&=\frac{\sin(j+k)x+\sin(j-k)x}2 .
+\end{aligned}
+\]
+For $j,k\ge0$ with $j\ne k$, both $j-k$ and $j+k$ are nonzero integers, and the first two products have the integral $0$; the third has the integral $0$ for all $j,k$. For $j=k\ge1$, $j-k=0$ and $j+k\ne0$, so $\int\cos^2kx=\int\sin^2kx=(2\pi+0)/2=\pi$, and $\int_{-\pi}^\pi1\,dx=2\pi$.
+\end{proof}
+
+For a continuous function $f$ on $[-\pi,\pi]$, the inner products with the orthonormal functions $1/\sqrt{2\pi}$, $\cos kx/\sqrt\pi$ and $\sin kx/\sqrt\pi$, $k=1,\ldots,N$, give the trigonometric polynomial
+\[
+\begin{gathered}
+S_Nf(x)\coloneqq\frac{a_0}2+\sum_{k=1}^N\bigl(a_k\cos kx+b_k\sin kx\bigr),\\
+a_k\coloneqq\frac1\pi\int_{-\pi}^\pi f(x)\cos kx\,dx,\qquad b_k\coloneqq\frac1\pi\int_{-\pi}^\pi f(x)\sin kx\,dx,
+\end{gathered}
+\]
+which is the sum $\sum_i\langle\mathbf q_i,f\rangle\mathbf q_i$ of \cref{thm:bessel} written out: for instance, the term of the function $q(x)=\cos kx/\sqrt\pi$ is $\langle q,f\rangle q=a_k\cos kx$. The numbers $a_k$ and $b_k$ are the \term{Fourier coefficients} of $f$, and \cref{sec:orthogonal-projection} shows that $S_Nf$ is the trigonometric polynomial of degree at most $N$ closest to $f$ in the norm of $C[-\pi,\pi]$. Since $|\langle1/\sqrt{2\pi},f\rangle|^2=\pi a_0^2/2$ and $|\langle\cos kx/\sqrt\pi,f\rangle|^2=\pi a_k^2$, and similarly for the sines, Bessel's inequality becomes
+\[
+\pi\Bigl(\frac{a_0^2}2+\sum_{k=1}^N\bigl(a_k^2+b_k^2\bigr)\Bigr)\le\int_{-\pi}^\pi f(x)^2\,dx .
+\]
+For $f(x)=x$, which is odd, all $a_k$ vanish, and integration by parts (\cref{thm:parts}) gives
+\[
+b_k=\frac2\pi\int_0^\pi x\sin kx\,dx=\frac2\pi\Bigl[-\frac{x\cos kx}k\Bigr]_0^\pi+\frac2{\pi k}\int_0^\pi\cos kx\,dx=\frac{2(-1)^{k+1}}k .
+\]
+With $\int_{-\pi}^\pi x^2\,dx=2\pi^3/3$ the inequality reads $4\pi\sum_{k=1}^N1/k^2\le2\pi^3/3$, that is,
+\[
+\sum_{k=1}^N\frac1{k^2}\le\frac{\pi^2}6\qquad\text{for every }N .
+\]
+
+\begin{note}{Fourier series and Parseval's identity}
+Whether $S_Nf$ converges to $f$ as $N\to\infty$, and in what sense, is the subject of Fourier analysis (Volume~II). In the norm of $C[-\pi,\pi]$ it does converge for every continuous $f$, and the inequality above then becomes the identity $\pi\bigl(a_0^2/2+\sum_{k\ge1}(a_k^2+b_k^2)\bigr)=\int_{-\pi}^\pi f^2$, the infinite form of Parseval's identity. For $f(x)=x$ it gives $\sum_{k\ge1}1/k^2=\pi^2/6$, the value that Euler found in 1735 by other means~\cite{hairer1996analysis}; the inequality above is the half of it that finitely many orthonormal functions can prove. Pointwise convergence is a subtler matter, and there are continuous functions whose Fourier series diverge at some points; Rudin~\cite[Chap.~8]{rudin1976} and Folland~\cite[Chap.~8]{folland1999} develop the theory.
+\end{note}
+
+\section{Orthogonal Complements}
+\label{sec:orthogonal-complements}
+
+\subsection{The Complement of a Subspace}
+
+\begin{definition}[Orthogonal complement]
+\label{def:orthogonal-complement}
+The \term{orthogonal complement} of a subset $S$ of an inner product space $V$ is the set
+\[
+S^\perp\coloneqq\{\mathbf v\in V: \langle\mathbf s,\mathbf v\rangle=0\text{ for all }\mathbf s\in S\}
+\]
+of the vectors orthogonal to $S$; it is read ``$S$ perp''.
+\end{definition}
+
+In $\mathbb R^3$, the complement of the plane $z=x+y$ of \cref{sec:vectors-in-rn}, spanned by $(1,0,1)$ and $(0,1,1)$, consists of the vectors $\mathbf v$ with $v_1+v_3=0$ and $v_2+v_3=0$, that is, of the multiples of $(1,1,-1)$, the normal vector of the plane; and the complement of that line is the plane again. In $\mathcal P_2$ with the inner product $\int_{-1}^1pq$, the complement of the constants is the set of polynomials with $\int_{-1}^1p=0$, which consists of the polynomials $c_1x+c_2(x^2-1/3)$ and has dimension $2$. The complement of $\{\mathbf 0\}$ is $V$, and that of $V$ is $\{\mathbf 0\}$, by \cref{prop:inner-product-rules}\,(iv).
+
+\begin{proposition}[Properties of complements]
+\label{prop:complement-properties}
+Let $S$ and $T$ be subsets of an inner product space $V$.
+\begin{enumerate}
+\item $S^\perp$ is a subspace of $V$, even if $S$ is not.
+\item If $S\subseteq T$, then $T^\perp\subseteq S^\perp$.
+\item $S^\perp=(\operatorname{span}S)^\perp$; in particular, $\mathbf v\perp U$ for a subspace $U$ with a spanning set $\mathbf u_1,\ldots,\mathbf u_k$ as soon as $\mathbf v\perp\mathbf u_i$ for every $i$.
+\item $S\subseteq(S^\perp)^\perp$.
+\item For a subspace $U$, $U\cap U^\perp=\{\mathbf 0\}$, so the sum $U+U^\perp$ is direct.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) $\mathbf 0\in S^\perp$, and if $\langle\mathbf s,\mathbf v\rangle=\langle\mathbf s,\mathbf w\rangle=0$, then $\langle\mathbf s,a\mathbf v+b\mathbf w\rangle=0$ by linearity in the second argument. (ii) A vector orthogonal to every vector of $T$ is orthogonal to every vector of $S$. (iii) By (ii), $(\operatorname{span}S)^\perp\subseteq S^\perp$. Conversely, if $\mathbf v\perp S$, then $\langle\sum_ic_i\mathbf s_i,\mathbf v\rangle=\sum_i\bar c_i\langle\mathbf s_i,\mathbf v\rangle=0$ for every combination of vectors of $S$. (iv) Every $\mathbf s\in S$ is orthogonal to every vector of $S^\perp$, by the symmetry of orthogonality. (v) A vector of $U\cap U^\perp$ is orthogonal to itself, hence zero, and \cref{thm:direct-sum}\,(ii) applies.
+\end{proof}
+
+\subsection{Complements in Finite Dimensions}
+
+In a finite-dimensional space the complement of a subspace is as large as it can be, and the two together fill the space.
+
+\begin{theorem}[Orthogonal decomposition]
+\label{thm:orthogonal-decomposition}
+Let $V$ be an inner product space of dimension $n$ and $U$ a subspace of dimension $k$. Then
+\[
+V=U\oplus U^\perp,\qquad\dim U^\perp=n-k,\qquad(U^\perp)^\perp=U .
+\]
+Every $\mathbf v\in V$ is in exactly one way the sum $\mathbf v=\mathbf u+\mathbf w$ of a vector $\mathbf u\in U$ and a vector $\mathbf w\perp U$.
+\end{theorem}
+
+\begin{proof}
+Let $\mathbf u_1,\ldots,\mathbf u_k$ be a basis of $U$, and consider the map $L\colon V\to\mathbb F^k$, $L\mathbf v\coloneqq(\langle\mathbf u_1,\mathbf v\rangle,\ldots,\langle\mathbf u_k,\mathbf v\rangle)$. It is linear, because the inner product is linear in its second argument, and by \cref{prop:complement-properties}\,(iii) its kernel is $U^\perp$. Its restriction to $U$ is injective: if $\mathbf u\in U$ and $L\mathbf u=\mathbf 0$, then $\mathbf u\in U\cap U^\perp=\{\mathbf 0\}$. An injective linear map from the $k$-dimensional space $U$ to $\mathbb F^k$ is surjective (\cref{cor:injective-surjective}), so already $L(U)=\mathbb F^k$, and $L$ is surjective. By the rank--nullity theorem (\cref{thm:rank-nullity}), $\dim U^\perp=\dim\ker L=n-k$. The sum $U+U^\perp$ is direct by \cref{prop:complement-properties}\,(v), so its dimension is $k+(n-k)=n$ (\cref{thm:dimension-formula}), and it is all of $V$ (\cref{prop:subspace-dimension}). Finally $U\subseteq(U^\perp)^\perp$ by \cref{prop:complement-properties}\,(iv), and by what has been shown, applied to $U^\perp$, $\dim(U^\perp)^\perp=n-(n-k)=k=\dim U$; so the two are equal. The last statement is the definition of the direct sum (\cref{thm:direct-sum}).
+\end{proof}
+
+The proof uses the dimension of $V$ in an essential way, and the conclusion fails in infinite-dimensional spaces, as the following note explains. The decomposition $\mathbf v=\mathbf u+\mathbf w$ is the subject of \cref{sec:orthogonal-projection}, which shows that $\mathbf u$ is the vector of $U$ closest to $\mathbf v$ and proves that the decomposition exists whenever $U$ is finite-dimensional, whatever the dimension of $V$.
+
+\begin{note}{Complements in infinite dimensions and Hilbert spaces}
+Let $U$ be the subspace of polynomials in $V=C[-1,1]$ with the inner product $\int_{-1}^1fg$. If $f\perp U$, the Weierstrass approximation theorem~\cite[Thm.~7.26]{rudin1976} provides polynomials $p_k$ with $\max|f-p_k|\to0$, and then $\|f\|^2=\langle f,f-p_k\rangle\le\|f\|\,\|f-p_k\|\le\|f\|\sqrt2\max|f-p_k|\to0$, by the Cauchy--Schwarz inequality; so $U^\perp=\{0\}$. Hence $(U^\perp)^\perp=V\ne U$, since $e^x$ is not a polynomial, and $U\oplus U^\perp=U\ne V$. In infinite dimensions the right objects are the \emph{closed} subspaces of a \emph{complete} inner product space, a \emph{Hilbert space}, and for them the theorem holds again: $V=U\oplus U^\perp$ and $(U^\perp)^\perp=U$ for every closed subspace $U$. Completeness is the property that the space $C[-1,1]$ lacks and that its completion, the space $L^2(-1,1)$ of square-integrable functions in the sense of Lebesgue, has. Volume~II develops this theory; Folland~\cite[Sect.~5.5]{folland1999} gives a concise account.
+\end{note}
+
+\subsection{The Four Fundamental Subspaces at Right Angles}
+
+\Cref{prop:row-null-real} showed that the row space and the null space of a real matrix are orthogonal and together span $\mathbb R^n$, and the remark after it observed that over $\mathbb C$ the transpose must be replaced by the conjugate transpose. With orthogonal complements, the complete statement is short.
+
+\begin{theorem}[The four subspaces and their complements]
+\label{thm:four-subspaces-orthogonal}
+For $A\in\mathbb F^{m\times n}$,
+\[
+\mathcal N(A)=\mathcal C(A^{\mathsf H})^\perp,\quad\mathcal C(A^{\mathsf H})=\mathcal N(A)^\perp,\qquad\mathcal N(A^{\mathsf H})=\mathcal C(A)^\perp,\quad\mathcal C(A)=\mathcal N(A^{\mathsf H})^\perp .
+\]
+Consequently $\mathbb F^n=\mathcal C(A^{\mathsf H})\oplus\mathcal N(A)$ and $\mathbb F^m=\mathcal C(A)\oplus\mathcal N(A^{\mathsf H})$, with orthogonal summands. For real $A$, $A^{\mathsf H}=A^{\mathsf T}$, and $\mathcal C(A^{\mathsf T})$ is the row space of \cref{def:four-subspaces}.
+\end{theorem}
+
+\begin{proof}
+A vector $\mathbf x\in\mathbb F^n$ lies in $\mathcal C(A^{\mathsf H})^\perp$ if and only if $\langle A^{\mathsf H}\mathbf y,\mathbf x\rangle=0$ for all $\mathbf y\in\mathbb F^m$. By \cref{prop:hermitian-inner-product}\,(v), $\langle A^{\mathsf H}\mathbf y,\mathbf x\rangle=\langle\mathbf y,A\mathbf x\rangle$, and $\langle\mathbf y,A\mathbf x\rangle=0$ for all $\mathbf y$ if and only if $A\mathbf x=\mathbf 0$ (\cref{prop:inner-product-rules}\,(iv)). So $\mathcal C(A^{\mathsf H})^\perp=\mathcal N(A)$. Taking complements and using \cref{thm:orthogonal-decomposition} gives $\mathcal C(A^{\mathsf H})=\mathcal N(A)^\perp$. Applying both to $A^{\mathsf H}$ in place of $A$, with $(A^{\mathsf H})^{\mathsf H}=A$, gives the other two equations, and the decompositions are \cref{thm:orthogonal-decomposition}.
+\end{proof}
+
+The row space of a complex matrix in the sense of \cref{def:four-subspaces}, the span $\mathcal C(A^{\mathsf T})$ of its rows, consists of the complex conjugates of the vectors of $\mathcal C(A^{\mathsf H})$, since $A^{\mathsf H}\bar{\mathbf y}=\overline{A^{\mathsf T}\mathbf y}$; the two spaces have the same dimension, $\operatorname{rank}A$, but they are in general different. For the $1\times2$ matrix with the entries $1$ and $i$ of the example after \cref{prop:row-null-real}, the null space is spanned by $(1,i)$, because $1+i\cdot i=0$, and so is the row space $\mathcal C(A^{\mathsf T})$: the two meet in more than $\mathbf 0$. The space $\mathcal C(A^{\mathsf H})$, on the other hand, is spanned by $(1,-i)$, and
+\[
+\langle(1,-i),(1,i)\rangle=\bar1\cdot1+\overline{(-i)}\cdot i=1+i^2=0 ,
+\]
+so it is orthogonal to the null space, as the theorem asserts.
+
+For the real matrix of \cref{sec:four-subspaces},
+\[
+A=\begin{bmatrix}1&2&0&3\\2&4&1&8\\-1&-2&1&-1\end{bmatrix},
+\]
+the row space is spanned by $(1,2,0,3)$ and $(0,0,1,2)$ and the null space by $(-2,1,0,0)$ and $(-3,0,-2,1)$; each of the four inner products between them vanishes, for instance $\langle(0,0,1,2),(-3,0,-2,1)\rangle=-2+2=0$, and the two planes are orthogonal complements in $\mathbb R^4$. In $\mathbb R^3$, the left null space is the line spanned by $(3,-1,1)$, and the column space is the plane orthogonal to it, the plane $3b_1-b_2+b_3=0$. \Cref{fig:four-subspaces-orthogonal} completes \cref{fig:four-subspaces} accordingly.
+
+\begin{figure}
+\centering
+\begin{tikzpicture}[font=\scriptsize]
+\fill[sdfill] (0.2,0) rectangle (2.4,2.2);
+\draw[line width=0.5pt] (0.2,0) rectangle (2.4,2.2);
+\fill[black!5] (2.4,0) rectangle (4.5,-2.0);
+\draw[line width=0.5pt] (2.4,0) rectangle (4.5,-2.0);
+\fill[sdfill] (7.4,0) rectangle (9.6,2.2);
+\draw[line width=0.5pt] (7.4,0) rectangle (9.6,2.2);
+\fill[black!5] (5.3,0) rectangle (7.4,-2.0);
+\draw[line width=0.5pt] (5.3,0) rectangle (7.4,-2.0);
+\draw[line width=0.5pt] (2.15,0) -- (2.15,-0.25) -- (2.4,-0.25);
+\draw[line width=0.5pt] (7.65,0) -- (7.65,-0.25) -- (7.4,-0.25);
+\fill (2.4,0) circle (1.6pt); \node[above right] at (2.4,0) {$\mathbf 0$};
+\fill (7.4,0) circle (1.6pt); \node[right] at (7.68,-0.14) {$\mathbf 0$};
+\node[align=center] at (1.3,1.6) {row space $\mathcal C(A^{\mathsf H})$\\$=\mathcal N(A)^\perp$\\dimension $r$};
+\node[align=center] at (3.45,-0.68) {null space\\$\mathcal N(A)=\mathcal C(A^{\mathsf H})^\perp$\\dimension $n-r$};
+\node[align=center] at (8.5,1.6) {column space $\mathcal C(A)$\\$=\mathcal N(A^{\mathsf H})^\perp$\\dimension $r$};
+\node[align=center] at (6.35,-0.68) {left null space\\$\mathcal N(A^{\mathsf H})=\mathcal C(A)^\perp$\\dimension $m-r$};
+\fill (1.5,0.55) circle (1.4pt); \node[left] at (1.5,0.55) {$\mathbf x_{\mathrm r}$};
+\fill (8.3,0.55) circle (1.4pt); \node[right] at (8.3,0.55) {$A\mathbf x=\mathbf p$};
+\draw[line width=0.7pt, -{Latex[length=2mm]}] (1.6,0.6) .. controls (4.0,1.9) and (6.0,1.9) .. (8.2,0.6);
+\node[above] at (4.9,1.6) {$A\mathbf x_{\mathrm r}=A\mathbf x$};
+\fill (4.1,-1.7) circle (1.4pt); \node[left] at (4.05,-1.7) {$\mathbf x_{\mathrm n}$};
+\draw[line width=0.7pt, -{Latex[length=2mm]}] (4.2,-1.65) .. controls (4.9,-0.4) and (6.6,0.9) .. (7.33,0.08);
+\node[above] at (4.95,0.05) {$A\mathbf x_{\mathrm n}=\mathbf 0$};
+\fill (5.8,-1.7) circle (1.4pt); \node[below] at (5.8,-1.72) {$\mathbf e$};
+\fill (8.9,-0.8) circle (1.4pt); \node[right] at (8.9,-0.8) {$\mathbf b=\mathbf p+\mathbf e$};
+\draw[dashed, line width=0.5pt] (8.3,0.55) -- (8.9,-0.8) -- (5.8,-1.7);
+\node at (1.8,-2.4) {$\mathbb F^n$};
+\node at (8.0,-2.4) {$\mathbb F^m$};
+\end{tikzpicture}
+\caption{The four fundamental subspaces of $A\in\mathbb F^{m\times n}$ of rank $r$, now as two pairs of orthogonal complements (\cref{thm:four-subspaces-orthogonal}); the row space is $\mathcal C(A^{\mathsf H})$, which is $\mathcal C(A^{\mathsf T})$ for a real matrix. In $\mathbb F^n$, every $\mathbf x$ splits orthogonally into $\mathbf x_{\mathrm r}+\mathbf x_{\mathrm n}$, and $A$ maps the first part to $A\mathbf x$ and the second to $\mathbf 0$. In $\mathbb F^m$, every $\mathbf b$ splits orthogonally into a part $\mathbf p\in\mathcal C(A)$ and a part $\mathbf e\in\mathcal N(A^{\mathsf H})$ (dashed); the system $A\mathbf x=\mathbf b$ is consistent exactly when $\mathbf e=\mathbf 0$ (\cref{cor:fredholm-orthogonal}), and $\mathbf p$ is the right-hand side of the least squares problem of \cref{sec:least-squares}.\label{fig:four-subspaces-orthogonal}}
+\end{figure}
+
+\subsection{The Fredholm Alternative Revisited}
+
+The fourth equation of \cref{thm:four-subspaces-orthogonal}, $\mathcal C(A)=\mathcal N(A^{\mathsf H})^\perp$, is the Fredholm alternative of \cref{thm:fredholm} in the language of orthogonality.
+
+\begin{corollary}[Fredholm alternative, orthogonal form]
+\label{cor:fredholm-orthogonal}
+For $A\in\mathbb F^{m\times n}$ and $\mathbf b\in\mathbb F^m$, the system $A\mathbf x=\mathbf b$ has a solution if and only if $\mathbf b\perp\mathcal N(A^{\mathsf H})$, that is, if and only if $\langle\mathbf y,\mathbf b\rangle=0$ for every solution $\mathbf y$ of $A^{\mathsf H}\mathbf y=\mathbf 0$. For a square matrix, either $A\mathbf x=\mathbf b$ has exactly one solution for every $\mathbf b$, or $A^{\mathsf H}\mathbf y=\mathbf 0$ has a nonzero solution, and then $A\mathbf x=\mathbf b$ is solvable exactly for the $\mathbf b$ orthogonal to all such $\mathbf y$.
+\end{corollary}
+
+\begin{proof}
+The system is solvable if and only if $\mathbf b\in\mathcal C(A)=\mathcal N(A^{\mathsf H})^\perp$. For a square matrix, the first alternative holds if and only if $\operatorname{rank}A=n$ (\cref{thm:invertible}), that is, if and only if $\mathcal N(A^{\mathsf H})$, of dimension $n-\operatorname{rank}A$ by \cref{thm:orthogonal-decomposition,thm:four-subspaces-orthogonal}, is $\{\mathbf 0\}$.
+\end{proof}
+
+\Cref{thm:fredholm} tested $\mathbf b$ with the products $\mathbf y^{\mathsf T}\mathbf b$ for $\mathbf y\in\mathcal N(A^{\mathsf T})$, which needs no inner product and holds over every field. The two forms agree: $\mathbf y\in\mathcal N(A^{\mathsf T})$ exactly when $\bar{\mathbf y}\in\mathcal N(A^{\mathsf H})$, and $\mathbf y^{\mathsf T}\mathbf b=\langle\bar{\mathbf y},\mathbf b\rangle$. What the inner product adds is geometry. The consistent right-hand sides form the subspace orthogonal to $\mathcal N(A^{\mathsf H})$, and for an inconsistent $\mathbf b$ the component $\mathbf e$ in \cref{fig:four-subspaces-orthogonal} measures how far $\mathbf b$ is from being consistent: $\|\mathbf e\|$ is the distance from $\mathbf b$ to $\mathcal C(A)$, the smallest possible residual $\|A\mathbf x-\mathbf b\|$, as \cref{sec:least-squares} shows. For the matrix above and $\mathbf b=(1,0,0)$, the test gives $\langle(3,-1,1),\mathbf b\rangle=3\ne0$, so the system is inconsistent, and $\mathbf e$ is the projection $3(3,-1,1)/11$ of $\mathbf b$ onto the left null space, of length $3/\sqrt{11}$.
+
+\section{Orthogonal Projection}
+\label{sec:orthogonal-projection}
+
+\subsection{Best Approximation}
+
+\Cref{prop:projection-line} found the point of a line closest to a given vector and characterised it by the orthogonality of the residual. The same is true for subspaces of any finite dimension, in any inner product space, and this is the most important theorem of the chapter.
+
+\begin{theorem}[Best approximation]
+\label{thm:best-approximation}
+Let $U$ be a finite-dimensional subspace of an inner product space $V$, and let $\mathbf v\in V$.
+\begin{enumerate}
+\item There is exactly one vector $\mathbf u^*\in U$ with $\mathbf v-\mathbf u^*\perp U$.
+\item For every $\mathbf u\in U$,
+\[
+\|\mathbf v-\mathbf u\|^2=\|\mathbf v-\mathbf u^*\|^2+\|\mathbf u-\mathbf u^*\|^2 .
+\]
+In particular, $\mathbf u^*$ is the unique vector of $U$ closest to $\mathbf v$.
+\item If $\mathbf b_1,\ldots,\mathbf b_k$ is a basis of $U$, then $\mathbf u^*=\sum_jc_j\mathbf b_j$, where $\mathbf c$ is the unique solution of the Gram system $\sum_j\langle\mathbf b_i,\mathbf b_j\rangle c_j=\langle\mathbf b_i,\mathbf v\rangle$, $i=1,\ldots,k$. If the basis is orthonormal, $\mathbf u^*=\sum_j\langle\mathbf b_j,\mathbf v\rangle\mathbf b_j$.
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+Let $\mathbf b_1,\ldots,\mathbf b_k$ be a basis of $U$. By \cref{lem:gram-matrix}, the Gram matrix is invertible, so the Gram system has exactly one solution $\mathbf c$. For $\mathbf u^*\coloneqq\sum_jc_j\mathbf b_j$ and each $i$,
+\[
+\langle\mathbf b_i,\mathbf v-\mathbf u^*\rangle=\langle\mathbf b_i,\mathbf v\rangle-\sum_jc_j\langle\mathbf b_i,\mathbf b_j\rangle=0,
+\]
+so $\mathbf v-\mathbf u^*$ is orthogonal to every basis vector and hence to $U$ (\cref{prop:complement-properties}\,(iii)). If $\mathbf u_1,\mathbf u_2\in U$ both have the property in (i), then $\mathbf u_1-\mathbf u_2=(\mathbf v-\mathbf u_2)-(\mathbf v-\mathbf u_1)$ lies in $U$ and in $U^\perp$, so it is zero (\cref{prop:complement-properties}\,(v)). This proves (i), and the formula for $\mathbf u^*$ in (iii); for an orthonormal basis the Gram matrix is $I$ and $c_j=\langle\mathbf b_j,\mathbf v\rangle$. (ii) For $\mathbf u\in U$, $\mathbf v-\mathbf u=(\mathbf v-\mathbf u^*)+(\mathbf u^*-\mathbf u)$, where the first part is orthogonal to $U$ and the second lies in $U$. Pythagoras' theorem gives the identity, and its right side exceeds $\|\mathbf v-\mathbf u^*\|^2$ unless $\mathbf u=\mathbf u^*$.
+\end{proof}
+
+The theorem converts a minimisation problem into a linear system. To find the closest point, one does not search: one imposes the $k$ conditions that the error be orthogonal to the $k$ basis vectors and solves the resulting $k\times k$ system. \Cref{fig:best-approximation} shows the geometry: the error $\mathbf v-\mathbf u^*$ is perpendicular to $U$, and for any other $\mathbf u\in U$ the three points $\mathbf v$, $\mathbf u^*$ and $\mathbf u$ form a right triangle whose hypotenuse is $\mathbf v-\mathbf u$. The space $V$ may be infinite-dimensional; only $U$ must be finite-dimensional, and the note in \cref{sec:orthogonal-complements} shows what can go wrong otherwise.
+
+\begin{figure}
+\sdfloat{%
+\begin{tikzpicture}[x={(1.25cm,0cm)}, y={(0.55cm,0.38cm)}, z={(0cm,1.25cm)}, font=\scriptsize]
+\fill[sdfill] (-0.6,-0.4,0) -- (3.6,-0.4,0) -- (3.6,3.4,0) -- (-0.6,3.4,0) -- cycle;
+\draw[line width=0.5pt] (-0.6,-0.4,0) -- (3.6,-0.4,0) -- (3.6,3.4,0) -- (-0.6,3.4,0) -- cycle;
+\node at (3.3,3.05,0) {$U$};
+\draw[line width=0.9pt, -{Latex[length=1.8mm]}] (0,0,0) -- (1.2,0,0) node[below] {$\mathbf b_1$};
+\draw[line width=0.9pt, -{Latex[length=1.8mm]}] (0,0,0) -- (0,1.3,0) node[left] {$\mathbf b_2$};
+\draw[line width=1.2pt, -{Latex[length=1.8mm]}] (0,0,0) -- (2.3,1.5,0);
+\draw[line width=0.7pt] (2.3,1.5,0) -- (2.3,1.5,1.8);
+\draw[line width=0.4pt] (2.3,1.5,0.22) -- (2.48,1.5,0.22) -- (2.48,1.5,0);
+\draw[dashed, line width=0.6pt] (2.3,1.5,1.8) -- (3.4,0.6,0);
+\draw[densely dotted, line width=0.6pt] (2.3,1.5,0) -- (3.4,0.6,0);
+\fill (2.3,1.5,1.8) circle (1.3pt) (2.3,1.5,0) circle (1.3pt) (3.4,0.6,0) circle (1.3pt);
+\node[above] at (2.3,1.5,1.8) {$\mathbf v$};
+\node[above left=-1pt] at (2.3,1.5,0) {$\mathbf u^*$};
+\node[below] at (3.4,0.6,0) {$\mathbf u$};
+\node[left] at (2.3,1.5,1.0) {$\mathbf v-\mathbf u^*$};
+\node[right] at (2.9,1.05,0.95) {$\mathbf v-\mathbf u$};
+\end{tikzpicture}}{Best approximation (\cref{thm:best-approximation}). The vector $\mathbf u^*$ of the subspace $U$ (shaded), here a plane spanned by $\mathbf b_1$ and $\mathbf b_2$, closest to $\mathbf v$ is the foot of the perpendicular: the error $\mathbf v-\mathbf u^*$ is orthogonal to $U$. For any other $\mathbf u\in U$, the error $\mathbf v-\mathbf u$ (dashed) is the hypotenuse of a right triangle with the legs $\mathbf v-\mathbf u^*$ and $\mathbf u^*-\mathbf u$ (dotted), and so it is longer.\label{fig:best-approximation}}
+\end{figure}
+
+\begin{definition}[Orthogonal projection]
+\label{def:orthogonal-projection}
+Let $U$ be a finite-dimensional subspace of an inner product space $V$. The map $P_U\colon V\to V$ that assigns to $\mathbf v$ the vector $\mathbf u^*$ of \cref{thm:best-approximation} is the \term{orthogonal projection} onto $U$, and $\mathbf v-P_U\mathbf v$ is the \term{residual}, or error, of the approximation. The number $\|\mathbf v-P_U\mathbf v\|$ is the \term{distance} of $\mathbf v$ from $U$.
+\end{definition}
+
+For $U=\operatorname{span}\{\mathbf u\}$ with $\mathbf u\ne\mathbf 0$, the Gram system has the single equation $\|\mathbf u\|^2c=\langle\mathbf u,\mathbf v\rangle$, and $P_U\mathbf v=\langle\mathbf u,\mathbf v\rangle\mathbf u/\|\mathbf u\|^2$, which is \cref{prop:projection-line}. The distance of a point $\mathbf y$ from the hyperplane $\langle\mathbf a,\mathbf x\rangle=0$ through the origin, which \cref{prop:hyperplane-distance} computed, is the length of the projection of $\mathbf y$ onto the normal line spanned by $\mathbf a$; the hyperplane is the complement of that line.
+
+\subsection{Properties of the Projection}
+
+\begin{proposition}[Properties of orthogonal projections]
+\label{prop:projection-properties}
+Let $U$ be a finite-dimensional subspace of an inner product space $V$, and $P=P_U$.
+\begin{enumerate}
+\item $P$ is linear, $P^2=P$, $\operatorname{im}P=U$ and $\ker P=U^\perp$.
+\item $V=U\oplus U^\perp$, and $\mathbf v=P\mathbf v+(\mathbf v-P\mathbf v)$ is the decomposition of $\mathbf v$.
+\item $\langle P\mathbf v,\mathbf w\rangle=\langle P\mathbf v,P\mathbf w\rangle=\langle\mathbf v,P\mathbf w\rangle$ for all $\mathbf v,\mathbf w\in V$.
+\item $\|\mathbf v\|^2=\|P\mathbf v\|^2+\|\mathbf v-P\mathbf v\|^2$; in particular $\|P\mathbf v\|\le\|\mathbf v\|$, with equality exactly for $\mathbf v\in U$.
+\item $\operatorname{id}-P$ maps every $\mathbf v$ to the unique vector of $U^\perp$ closest to $\mathbf v$; if $V$ is finite-dimensional, $\operatorname{id}-P=P_{U^\perp}$.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) For $\mathbf v,\mathbf w\in V$ and scalars $s,t$, the vector $sP\mathbf v+tP\mathbf w$ lies in $U$, and $(s\mathbf v+t\mathbf w)-(sP\mathbf v+tP\mathbf w)=s(\mathbf v-P\mathbf v)+t(\mathbf w-P\mathbf w)$ is orthogonal to $U$; by the uniqueness in \cref{thm:best-approximation}\,(i), $P(s\mathbf v+t\mathbf w)=sP\mathbf v+tP\mathbf w$. For $\mathbf u\in U$, $\mathbf u-\mathbf u=\mathbf 0\perp U$, so $P\mathbf u=\mathbf u$; hence $\operatorname{im}P=U$ and $P^2=P$. Finally $P\mathbf v=\mathbf 0$ if and only if $\mathbf v-\mathbf 0\perp U$. (ii) The first part lies in $U$, the second in $U^\perp$, and the sum is direct by \cref{prop:complement-properties}\,(v). (iii) Since $P\mathbf v\in U$ and $\mathbf w-P\mathbf w\perp U$, $\langle P\mathbf v,\mathbf w\rangle=\langle P\mathbf v,P\mathbf w\rangle+\langle P\mathbf v,\mathbf w-P\mathbf w\rangle=\langle P\mathbf v,P\mathbf w\rangle$, and in the same way $\langle\mathbf v,P\mathbf w\rangle=\langle P\mathbf v,P\mathbf w\rangle$. (iv) Pythagoras' theorem for the decomposition in (ii). (v) The vector $\mathbf w\coloneqq\mathbf v-P\mathbf v$ lies in $U^\perp$, and $\mathbf v-\mathbf w=P\mathbf v$ lies in $U$, so it is orthogonal to every vector of $U^\perp$. For any $\mathbf w'\in U^\perp$, $\mathbf v-\mathbf w'=(\mathbf v-\mathbf w)+(\mathbf w-\mathbf w')$ is a sum of orthogonal vectors, and Pythagoras' theorem shows that $\|\mathbf v-\mathbf w'\|>\|\mathbf v-\mathbf w\|$ unless $\mathbf w'=\mathbf w$. If $V$ is finite-dimensional, $U^\perp$ is finite-dimensional, and $\mathbf w=P_{U^\perp}\mathbf v$ by definition.
+\end{proof}
+
+Part (ii) gives the decomposition of \cref{thm:orthogonal-decomposition} again, now with the two parts identified, and without any assumption on the dimension of $V$. Part (i) says that $P_U$ is a projection in the sense of \cref{prop:projection}, the projection onto $U$ along $U^\perp$; so by \cref{prop:projection}\,(iv), for finite-dimensional $V$ its matrix in any basis has the trace $\dim U$. Part (iii) is the property that distinguishes orthogonal projections among all projections, as the next subsection shows.
+
+\subsection{Projection Matrices}
+
+In $\mathbb F^m$, the Gram matrix of the columns of a matrix $A$ is $A^{\mathsf H}A$, and the theorem becomes a formula. We first record the complex form of \cref{prop:gram-rank}.
+
+\begin{proposition}[The Gram matrix of a matrix]
+\label{prop:gram-rank-complex}
+For $A\in\mathbb F^{m\times n}$, $\mathcal N(A^{\mathsf H}A)=\mathcal N(A)$ and $\operatorname{rank}(A^{\mathsf H}A)=\operatorname{rank}A$. In particular $A^{\mathsf H}A$ is invertible if and only if the columns of $A$ are linearly independent.
+\end{proposition}
+
+\begin{proof}
+If $A^{\mathsf H}A\mathbf x=\mathbf 0$, then $\|A\mathbf x\|^2=\langle\mathbf x,A^{\mathsf H}A\mathbf x\rangle=0$, so $A\mathbf x=\mathbf 0$; the converse is clear. Both matrices have $n$ columns, and the rank--nullity theorem gives the equality of the ranks. The last statement is \cref{lem:gram-matrix} for the columns of $A$, or \cref{thm:invertible}.
+\end{proof}
+
+\begin{theorem}[Projection matrices]
+\label{thm:projection-matrix}
+Let $U$ be a subspace of $\mathbb F^m$.
+\begin{enumerate}
+\item If the columns of $A\in\mathbb F^{m\times k}$ form a basis of $U$, then
+\[
+P_U\mathbf v=A\mathbf c,\qquad A^{\mathsf H}A\,\mathbf c=A^{\mathsf H}\mathbf v,\qquad P_U=A(A^{\mathsf H}A)^{-1}A^{\mathsf H} .
+\]
+\item If the columns of $Q\in\mathbb F^{m\times k}$ form an orthonormal basis of $U$, then $P_U=QQ^{\mathsf H}=\sum_{j=1}^k\mathbf q_j\mathbf q_j^{\mathsf H}$.
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+(i) The Gram matrix of the columns $\mathbf a_j$ has the entries $\langle\mathbf a_i,\mathbf a_j\rangle=\mathbf a_i^{\mathsf H}\mathbf a_j$, which are the entries of $A^{\mathsf H}A$, and the right-hand sides $\langle\mathbf a_i,\mathbf v\rangle$ are the entries of $A^{\mathsf H}\mathbf v$. So \cref{thm:best-approximation}\,(iii) gives $P_U\mathbf v=A\mathbf c$ with $\mathbf c=(A^{\mathsf H}A)^{-1}A^{\mathsf H}\mathbf v$, the inverse existing by \cref{prop:gram-rank-complex}. (ii) Here $Q^{\mathsf H}Q=I$, and (i) gives $P_U=QQ^{\mathsf H}$, which is the sum of the outer products of the columns by the outer product reading of the product (\cref{thm:four-readings}\,(iv)).
+\end{proof}
+
+The equations $A^{\mathsf H}A\mathbf c=A^{\mathsf H}\mathbf v$ are the normal equations of \cref{sec:extrema-n}, now for an arbitrary number of basis vectors, and they say that the residual $\mathbf v-A\mathbf c$ is orthogonal to every column of $A$: $A^{\mathsf H}(\mathbf v-A\mathbf c)=\mathbf 0$. The vector $\mathbf p$ and the coefficients $\mathbf t^*$ of \cref{lem:distance-span} are $P_U\mathbf a$ and the solution of these equations, for $U=\mathcal C(B)$, and the squared distance computed there is $\|\mathbf a-P_U\mathbf a\|^2$. Part (ii) shows the advantage of an orthonormal basis once more: the projection is a sum of projections onto the $k$ orthogonal lines, each computed with one inner product, and no system has to be solved.
+
+For the plane $z=x+y$ of \cref{sec:orthogonal-complements}, with the basis $(1,0,1)$, $(0,1,1)$ as the columns of $A$, and $\mathbf v=(2,1,6)$,
+\[
+A^{\mathsf T}A=\begin{bmatrix}2&1\\1&2\end{bmatrix},\qquad A^{\mathsf T}\mathbf v=\begin{bmatrix}8\\7\end{bmatrix},\qquad\mathbf c=\begin{bmatrix}3\\2\end{bmatrix},\qquad P_U\mathbf v=3\begin{bmatrix}1\\0\\1\end{bmatrix}+2\begin{bmatrix}0\\1\\1\end{bmatrix}=\begin{bmatrix}3\\2\\5\end{bmatrix}.
+\]
+The residual $\mathbf v-P_U\mathbf v=(-1,-1,1)$ is a multiple of the normal vector $(1,1,-1)$, as it must be, and the distance of $\mathbf v$ from the plane is $\sqrt3$, in agreement with \cref{prop:hyperplane-distance}: $|2+1-6|/\sqrt3=\sqrt3$. The projection matrix is
+\[
+P_U=A(A^{\mathsf T}A)^{-1}A^{\mathsf T}=\frac13\begin{bmatrix}2&-1&1\\-1&2&1\\1&1&2\end{bmatrix}=I-\frac{\mathbf n\mathbf n^{\mathsf T}}{\|\mathbf n\|^2},\qquad\mathbf n=\begin{bmatrix}1\\1\\-1\end{bmatrix},
+\]
+the identity minus the projection onto the normal line, in accordance with \cref{prop:projection-properties}\,(v). It is symmetric, it satisfies $P_U^2=P_U$, as one checks by multiplying, and its trace is $2=\dim U$.
+
+Projections of functions are computed in the same way. In $C[-1,1]$ with the inner product $\int_{-1}^1fg$, the functions $1$ and $x$ are orthogonal, with $\|1\|^2=2$ and $\|x\|^2=2/3$. The polynomial of degree at most $1$ closest to $e^x$ is therefore
+\[
+p(x)=\frac{\langle1,e^x\rangle}{\|1\|^2}+\frac{\langle x,e^x\rangle}{\|x\|^2}\,x=\frac{e-e^{-1}}2+\frac{2e^{-1}}{2/3}\,x=\sinh1+\frac3e\,x ,
+\]
+that is, $p(x)=1.1752\ldots+1.1036\ldots x$,
+where $\int_{-1}^1xe^x\,dx=[(x-1)e^x]_{-1}^1=2/e$. Its distance from $e^x$ is $0.2295\ldots$, computed from $\|e^x\|^2-\|p\|^2$ by \cref{prop:projection-properties}\,(iv), while the Taylor polynomial $1+x$, which is the best linear approximation near $0$ (\cref{ch:differentiation}), has the distance $0.3481\ldots$. Which approximation is better depends on the norm in which the error is measured; the projection is the best in the norm of the inner product.
+
+\begin{theorem}[Orthogonal projections are the Hermitian idempotent matrices]
+\label{thm:projection-characterisation}
+For $P\in\mathbb F^{n\times n}$ the following are equivalent:
+\begin{enumerate}
+\item $P$ is the orthogonal projection onto some subspace $U$ of $\mathbb F^n$;
+\item $P^2=P$ and $P^{\mathsf H}=P$;
+\item $P^2=P$ and $\mathcal C(P)\perp\mathcal N(P)$.
+\end{enumerate}
+In this case $U=\mathcal C(P)$, and $\operatorname{tr}P=\operatorname{rank}P=\dim U$.
+\end{theorem}
+
+\begin{proof}
+(i)$\Rightarrow$(ii): $P^2=P$ by \cref{prop:projection-properties}\,(i). By (iii) of that proposition and \cref{prop:hermitian-inner-product}\,(v), $\langle\mathbf v,P^{\mathsf H}\mathbf w\rangle=\langle P\mathbf v,\mathbf w\rangle=\langle\mathbf v,P\mathbf w\rangle$ for all $\mathbf v,\mathbf w$, so $P^{\mathsf H}\mathbf w=P\mathbf w$ for every $\mathbf w$ (\cref{prop:inner-product-rules}\,(iv)), that is, $P^{\mathsf H}=P$. (ii)$\Rightarrow$(iii): for $\mathbf y\in\mathbb F^n$ and $\mathbf z\in\mathcal N(P)$, $\langle P\mathbf y,\mathbf z\rangle=\langle\mathbf y,P^{\mathsf H}\mathbf z\rangle=\langle\mathbf y,P\mathbf z\rangle=0$. (iii)$\Rightarrow$(i): let $U\coloneqq\mathcal C(P)$. For $\mathbf v\in\mathbb F^n$, $P\mathbf v\in U$, and $\mathbf v-P\mathbf v\in\mathcal N(P)$, because $P(\mathbf v-P\mathbf v)=P\mathbf v-P^2\mathbf v=\mathbf 0$; so $\mathbf v-P\mathbf v\perp U$, and $P\mathbf v=P_U\mathbf v$ by \cref{thm:best-approximation}\,(i). The last statement is \cref{prop:projection}\,(iv).
+\end{proof}
+
+For real matrices, (ii) says that the orthogonal projections are the symmetric idempotent matrices, which \cref{sec:special-matrices} anticipated. The oblique projection of that section, with the rows $(1,1)$ and $(0,0)$, is idempotent but not symmetric: its image is the $x_1$-axis and its kernel the line spanned by $(1,-1)$, which are not orthogonal. It maps $(0,1)$, a vector orthogonal to its image, to $(1,0)$, whereas the orthogonal projection onto the $x_1$-axis, $\operatorname{diag}(1,0)$, maps it to $\mathbf 0$. By \cref{prop:projection-properties}\,(iv), an orthogonal projection never lengthens a vector, $\|P\mathbf v\|\le\|\mathbf v\|$, whereas the oblique projection with the rows $(1,t)$ and $(0,0)$ maps $\mathbf e_2$ to $(t,0)$, as long as we please.
+
+\section{Gram--Schmidt and the QR Factorisation}
+\label{sec:gram-schmidt}
+
+\subsection{The Gram--Schmidt Process}
+
+Orthonormal bases make coordinates and projections cheap, and the best approximation theorem shows how to make one: subtract from each vector its projection onto the span of the vectors before it, and normalise what is left.
+
+\begin{theorem}[Gram--Schmidt process]
+\label{thm:gram-schmidt}
+Let $\mathbf a_1,\ldots,\mathbf a_k$ be linearly independent vectors of an inner product space, and define recursively, for $j=1,\ldots,k$,
+\[
+\mathbf v_j\coloneqq\mathbf a_j-\sum_{i=1}^{j-1}\langle\mathbf q_i,\mathbf a_j\rangle\,\mathbf q_i,\qquad\mathbf q_j\coloneqq\frac{\mathbf v_j}{\|\mathbf v_j\|} .
+\]
+Then $\mathbf v_j\ne\mathbf 0$ for every $j$, so that the definition makes sense, and with $U_j\coloneqq\operatorname{span}\{\mathbf a_1,\ldots,\mathbf a_j\}$:
+\begin{enumerate}
+\item $\mathbf q_1,\ldots,\mathbf q_k$ are orthonormal;
+\item $\operatorname{span}\{\mathbf q_1,\ldots,\mathbf q_j\}=U_j$ for $j=1,\ldots,k$;
+\item $\mathbf v_j=\mathbf a_j-P_{U_{j-1}}\mathbf a_j$ (with $U_0\coloneqq\{\mathbf 0\}$), so $\|\mathbf v_j\|$ is the distance of $\mathbf a_j$ from $U_{j-1}$.
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+By induction on $j$. For $j=1$, $\mathbf v_1=\mathbf a_1\ne\mathbf 0$, since the $\mathbf a_i$ are independent, and $\mathbf q_1=\mathbf a_1/\|\mathbf a_1\|$ is a unit vector spanning $U_1$. Let $j\ge2$, and suppose that $\mathbf q_1,\ldots,\mathbf q_{j-1}$ are orthonormal and span $U_{j-1}$. By \cref{thm:best-approximation}\,(iii), $\sum_{i<j}\langle\mathbf q_i,\mathbf a_j\rangle\mathbf q_i=P_{U_{j-1}}\mathbf a_j$, which is (iii) for $j$, and $\mathbf v_j\perp U_{j-1}$. If $\mathbf v_j$ were $\mathbf 0$, then $\mathbf a_j=P_{U_{j-1}}\mathbf a_j$ would lie in $U_{j-1}$, contradicting the independence of $\mathbf a_1,\ldots,\mathbf a_j$. So $\mathbf q_j$ is a unit vector orthogonal to $\mathbf q_1,\ldots,\mathbf q_{j-1}$, which gives (i) up to $j$. Finally, $\mathbf q_j$ is a combination of $\mathbf a_j$ and of vectors of $U_{j-1}$, so it lies in $U_j$, and $\mathbf a_j=\|\mathbf v_j\|\mathbf q_j+\sum_{i<j}\langle\mathbf q_i,\mathbf a_j\rangle\mathbf q_i$ lies in the span of $\mathbf q_1,\ldots,\mathbf q_j$; together with the induction hypothesis this gives (ii) for $j$.
+\end{proof}
+
+Part (iii) says that each step of the process is a best approximation: $\mathbf v_j$ is the part of $\mathbf a_j$ that the earlier vectors cannot explain, and its length is the height $h_j$ of $\mathbf a_j$ above the span of $\mathbf a_1,\ldots,\mathbf a_{j-1}$, the quantity that \cref{def:k-volume} used to define $k$-dimensional volume. If the vectors are dependent, the process detects it: the first $j$ with $\mathbf a_j\in U_{j-1}$ produces $\mathbf v_j=\mathbf 0$.
+
+For the vectors $\mathbf a_1=(1,2,2)$, $\mathbf a_2=(3,3,0)$ and $\mathbf a_3=(6,3,3)$ of $\mathbb R^3$, the process runs as follows. First $\|\mathbf a_1\|=3$ and $\mathbf q_1=(1,2,2)/3$. Next $\langle\mathbf q_1,\mathbf a_2\rangle=(3+6+0)/3=3$, so $\mathbf v_2=(3,3,0)-(1,2,2)=(2,1,-2)$, of length $3$, and $\mathbf q_2=(2,1,-2)/3$. Finally $\langle\mathbf q_1,\mathbf a_3\rangle=(6+6+6)/3=6$ and $\langle\mathbf q_2,\mathbf a_3\rangle=(12+3-6)/3=3$, so
+\[
+\mathbf v_3=\begin{bmatrix}6\\3\\3\end{bmatrix}-6\cdot\frac13\begin{bmatrix}1\\2\\2\end{bmatrix}-3\cdot\frac13\begin{bmatrix}2\\1\\-2\end{bmatrix}=\begin{bmatrix}2\\-2\\1\end{bmatrix},\qquad\mathbf q_3=\frac13\begin{bmatrix}2\\-2\\1\end{bmatrix}.
+\]
+The three vectors $\mathbf q_j$ are orthonormal, as one checks directly: $(2+2-4)/9=0$, $(2-4+2)/9=0$ and $(4-2-2)/9=0$.
+
+\begin{corollary}[Orthonormal bases]
+\label{cor:orthonormal-basis}
+Every finite-dimensional inner product space has an orthonormal basis, and every orthonormal family in it can be extended to an orthonormal basis.
+\end{corollary}
+
+\begin{proof}
+Apply the Gram--Schmidt process to a basis. For the second statement, extend the orthonormal family $\mathbf q_1,\ldots,\mathbf q_k$ to a basis $\mathbf q_1,\ldots,\mathbf q_k,\mathbf b_{k+1},\ldots,\mathbf b_n$ (\cref{thm:basis-extension}\,(ii)) and apply the process to it. The first $k$ vectors are left unchanged, since $\mathbf v_j=\mathbf q_j-\sum_{i<j}\langle\mathbf q_i,\mathbf q_j\rangle\mathbf q_i=\mathbf q_j$ has norm $1$.
+\end{proof}
+
+With \cref{thm:orthonormal-expansion}, the corollary says that every inner product space of dimension $n$ over $\mathbb F$ is isomorphic to $\mathbb F^n$ with its standard inner product by an isomorphism that preserves inner products: the coordinate map of an orthonormal basis. Inner product spaces of the same finite dimension are thus indistinguishable as far as their geometry is concerned. Normalised to length $1$, the Legendre polynomials of \cref{subsec:legendre} are an orthonormal basis of this kind for $\mathcal P_n$ with the inner product of $C[-1,1]$.
+
+\subsection{Two Algorithms}
+
+Written for the columns $\mathbf a_1,\ldots,\mathbf a_n$ of a matrix $A\in\mathbb F^{m\times n}$, the process becomes \cref{alg:cgs}, the \term{classical Gram--Schmidt} algorithm. It stores the inner products $r_{ij}\coloneqq\langle\mathbf q_i,\mathbf a_j\rangle$ and the lengths $r_{jj}\coloneqq\|\mathbf v_j\|$, which will form the matrix $R$ of the next subsection.
+
+\begin{algorithm}
+\begin{algorithmic}[1]
+\Require $A\in\mathbb F^{m\times n}$ with linearly independent columns $\mathbf a_1,\ldots,\mathbf a_n$
+\Ensure $Q\in\mathbb F^{m\times n}$ with orthonormal columns and upper triangular $R\in\mathbb F^{n\times n}$ with $A=QR$
+\Name{ClassicalGramSchmidt}{A}
+\For{$j=1,\ldots,n$}
+  \For{$i=1,\ldots,j-1$}
+    \State $r_{ij}\gets\mathbf q_i^{\mathsf H}\mathbf a_j$ \Comment{all coefficients from the original column}
+  \EndFor
+  \State $\mathbf v\gets\mathbf a_j-\sum_{i=1}^{j-1}r_{ij}\mathbf q_i$
+  \State $r_{jj}\gets\|\mathbf v\|$; $\mathbf q_j\gets\mathbf v/r_{jj}$
+\EndFor
+\State \Return $Q=(\mathbf q_1,\ldots,\mathbf q_n)$ and $R=(r_{ij})$, with $r_{ij}=0$ for $i>j$
+\end{algorithmic}
+\caption{The classical Gram--Schmidt algorithm (\cref{thm:gram-schmidt}). Column $j$ costs about $4m(j-1)$ operations, the whole algorithm about $2mn^2$.}
+\label{alg:cgs}
+\end{algorithm}
+
+A small change in the order of the operations gives the \term{modified Gram--Schmidt} algorithm, \cref{alg:mgs}: instead of computing all coefficients from the original column $\mathbf a_j$, it subtracts the components one at a time and computes each coefficient from the partially reduced vector.
+
+\begin{algorithm}
+\begin{algorithmic}[1]
+\Require $A\in\mathbb F^{m\times n}$ with linearly independent columns $\mathbf a_1,\ldots,\mathbf a_n$
+\Ensure $Q\in\mathbb F^{m\times n}$ with orthonormal columns and upper triangular $R\in\mathbb F^{n\times n}$ with $A=QR$
+\Name{ModifiedGramSchmidt}{A}
+\For{$j=1,\ldots,n$}
+  \State $\mathbf v\gets\mathbf a_j$
+  \For{$i=1,\ldots,j-1$}
+    \State $r_{ij}\gets\mathbf q_i^{\mathsf H}\mathbf v$; $\mathbf v\gets\mathbf v-r_{ij}\mathbf q_i$ \Comment{coefficient from the reduced vector}
+  \EndFor
+  \State $r_{jj}\gets\|\mathbf v\|$; $\mathbf q_j\gets\mathbf v/r_{jj}$
+\EndFor
+\State \Return $Q=(\mathbf q_1,\ldots,\mathbf q_n)$ and $R=(r_{ij})$, with $r_{ij}=0$ for $i>j$
+\end{algorithmic}
+\caption{The modified Gram--Schmidt algorithm. In exact arithmetic it computes the same $Q$ and $R$ as \cref{alg:cgs}, with the same number of operations; in floating-point arithmetic it keeps the columns of $Q$ much closer to orthogonal.}
+\label{alg:mgs}
+\end{algorithm}
+
+\begin{proposition}[The two algorithms in exact arithmetic]
+\label{prop:cgs-mgs}
+In exact arithmetic, \cref{alg:cgs,alg:mgs} compute the vectors $\mathbf q_j$ and the numbers $r_{ij}$ of \cref{thm:gram-schmidt}. For real $A$ each performs $(4m-1)n(n-1)/2$ operations in the loops over $i$, and $3mn$ further operations, apart from $n$ square roots, for the norms and the divisions; this is $2mn^2+O(mn)$.
+\end{proposition}
+
+\begin{proof}
+For \cref{alg:cgs} this is the definition. In \cref{alg:mgs}, suppose that before the step with index $i$ the vector is $\mathbf v=\mathbf a_j-\sum_{l<i}r_{lj}\mathbf q_l$ with $r_{lj}=\langle\mathbf q_l,\mathbf a_j\rangle$; this is true for $i=1$. Since $\mathbf q_i$ is orthogonal to the $\mathbf q_l$ with $l<i$, $\mathbf q_i^{\mathsf H}\mathbf v=\langle\mathbf q_i,\mathbf a_j\rangle$, so the step computes the same coefficient as \cref{alg:cgs} and subtracts the same multiple of $\mathbf q_i$. After the last step, $\mathbf v=\mathbf v_j$. For the count, column $j$ needs $j-1$ inner products of length $m$, with $2m-1$ operations each, and $j-1$ updates $\mathbf v-r\mathbf q$, with $2m$ each; summed over $j$ this gives $(4m-1)\sum_j(j-1)=(4m-1)n(n-1)/2$. The norm of $\mathbf v$ takes $2m-1$ operations and a square root, and the division $m$, which is $3mn-n$ for all columns.
+\end{proof}
+
+The algorithms differ in floating-point arithmetic, and the difference is not small. It shows already in a computation that can be followed by hand, for a matrix of the kind introduced by L\"auchli~\cite{lauchli1961} that is a standard test case for the two algorithms~\cite{bjorck1996}. Let $\varepsilon>0$ be so small that $1+\varepsilon^2$ rounds to $1$ (in binary64 arithmetic, $\varepsilon=10^{-8}$ will do), and let $A$ be the $4\times3$ matrix
+\[
+A=\begin{bmatrix}1&1&1\\\varepsilon&0&0\\0&\varepsilon&0\\0&0&\varepsilon\end{bmatrix},
+\]
+Its columns are independent, and in exact arithmetic the Gram--Schmidt process produces three orthonormal vectors. In floating-point arithmetic, $\|\mathbf a_1\|=(1+\varepsilon^2)^{1/2}$ rounds to $1$, so $\mathbf q_1=(1,\varepsilon,0,0)$. Then $\mathbf q_1^{\mathsf T}\mathbf a_2=1$ and $\mathbf v_2=\mathbf a_2-\mathbf q_1=(0,-\varepsilon,\varepsilon,0)$, so $\mathbf q_2=(0,-1,1,0)/\sqrt2$, still correct to working accuracy. In the third step the two algorithms part. The classical algorithm computes $\mathbf q_1^{\mathsf T}\mathbf a_3=1$ and $\mathbf q_2^{\mathsf T}\mathbf a_3=0$ from the original column and obtains $\mathbf v_3=(0,-\varepsilon,0,\varepsilon)$, so that
+\[
+\mathbf q_3=\frac1{\sqrt2}(0,-1,0,1),\qquad\mathbf q_2^{\mathsf T}\mathbf q_3=\frac12 :
+\]
+the angle between $\mathbf q_2$ and $\mathbf q_3$ is $60$ degrees instead of $90$. The modified algorithm first reduces $\mathbf a_3$ to $\mathbf v=(0,-\varepsilon,0,\varepsilon)$ as well, but then computes $\mathbf q_2^{\mathsf T}\mathbf v=\varepsilon/\sqrt2$ from this vector, not $0$ from $\mathbf a_3$, and subtracts $\varepsilon\mathbf q_2/\sqrt2$; the result $(0,-\varepsilon/2,-\varepsilon/2,\varepsilon)$ gives $\mathbf q_3=(0,-1,-1,2)/\sqrt6$, orthogonal to $\mathbf q_2$. In both algorithms, $\mathbf q_1$ is orthogonal to $\mathbf q_2$ and $\mathbf q_3$ only up to terms of order $\varepsilon$, a consequence of the rounding of $\|\mathbf a_1\|$. We ran both algorithms in binary64 arithmetic with $\varepsilon=10^{-8}$ and obtained exactly these vectors, with $\mathbf q_2^{\mathsf T}\mathbf q_3=0.4999999999999999$ for the classical and $1.1\times10^{-16}$ for the modified algorithm. The hand computation shows where the classical algorithm goes wrong. In exact arithmetic, $\mathbf q_2^{\mathsf T}\mathbf a_3=\mathbf q_2^{\mathsf T}(\mathbf a_3-r_{13}\mathbf q_1)$, because $\mathbf q_2\perp\mathbf q_1$. The computed vectors have $\mathbf q_2^{\mathsf T}\mathbf q_1=-\varepsilon/\sqrt2$ instead of $0$, and multiplied by the coefficient $r_{13}=1$ this deviation changes the coefficient of $\mathbf q_2$ by $\varepsilon/\sqrt2$, which is not small compared with the remainder $\mathbf v$, of length $\varepsilon\sqrt2$. The modified algorithm computes the coefficient from the remainder, from which the large component along $\mathbf q_1$ has already been removed. \Cref{sec:orthogonality-computation} measures the loss of orthogonality for less contrived matrices.
+
+\subsection{The QR Factorisation}
+
+\begin{theorem}[QR factorisation]
+\label{thm:qr}
+Let $A\in\mathbb F^{m\times n}$ have linearly independent columns. Then there are a matrix $Q\in\mathbb F^{m\times n}$ with orthonormal columns, $Q^{\mathsf H}Q=I_n$, and an upper triangular matrix $R\in\mathbb F^{n\times n}$ with positive real diagonal entries such that
+\[
+A=QR .
+\]
+$Q$ and $R$ are unique. The columns of $Q$ are the vectors $\mathbf q_j$ of the Gram--Schmidt process applied to the columns of $A$, and $R$ has the entries $r_{ij}=\langle\mathbf q_i,\mathbf a_j\rangle$ for $i<j$ and $r_{jj}=\|\mathbf v_j\|$.
+\end{theorem}
+
+\begin{proof}
+\emph{Existence.} With the notation of \cref{thm:gram-schmidt}, $\mathbf a_j=\mathbf v_j+\sum_{i<j}r_{ij}\mathbf q_i=\sum_{i\le j}r_{ij}\mathbf q_i$, which by the column reading of the product (\cref{thm:four-readings}\,(ii)) says that the $j$th column of $A$ is the $j$th column of $QR$.
+
+\emph{Uniqueness.} Let $A=Q_1R_1=Q_2R_2$ be two such factorisations. The triangular matrices $R_1,R_2$ have nonzero diagonal entries and are invertible, and $T\coloneqq R_2R_1^{-1}$ is upper triangular with the positive diagonal entries $(r_2)_{jj}/(r_1)_{jj}$ (\cref{thm:triangular}). From $Q_1=Q_2R_2R_1^{-1}=Q_2T$ and $Q_1^{\mathsf H}Q_1=Q_2^{\mathsf H}Q_2=I$ we get $T^{\mathsf H}T=T^{\mathsf H}Q_2^{\mathsf H}Q_2T=Q_1^{\mathsf H}Q_1=I$, so $T^{-1}=T^{\mathsf H}$. The left side is upper triangular, the right side lower triangular, so both are diagonal, and $T$ is a diagonal matrix with positive entries $t_{jj}$ satisfying $t_{jj}^{-1}=\bar t_{jj}=t_{jj}$. Hence $t_{jj}=1$, $T=I$, $R_1=R_2$ and $Q_1=Q_2$.
+\end{proof}
+
+The factorisation is the matrix form of the Gram--Schmidt process: the $j$th column of $A$ is a combination of the first $j$ columns of $Q$, which is what makes $R$ triangular. For the three vectors of the example above, $A=QR$ reads
+\begin{equation}
+\begin{bmatrix}1&3&6\\2&3&3\\2&0&3\end{bmatrix}=\frac13\begin{bmatrix}1&2&2\\2&1&-2\\2&-2&1\end{bmatrix}\begin{bmatrix}3&3&6\\0&3&3\\0&0&3\end{bmatrix},
+\label{eq:qr-example}
+\end{equation}
+and the first two columns give the QR factorisation of the $3\times2$ matrix with the columns $(1,2,2)$ and $(3,3,0)$, with $R$ the upper left $2\times2$ block. Without the requirement that the diagonal of $R$ be positive, the factorisation is unique only up to signs: replacing $\mathbf q_j$ by $-\mathbf q_j$ and the $j$th row of $R$ by its negative gives another one, and over $\mathbb C$ any factor of modulus $1$ may be used instead of $-1$. Computer programs, including the Householder method of \cref{sec:householder-qr}, often produce such a variant with some negative diagonal entries.
+
+Since $Q^{\mathsf H}Q=I$, the theorem gives $A^{\mathsf H}A=R^{\mathsf H}Q^{\mathsf H}QR=R^{\mathsf H}R$: the Gram matrix of the columns of $A$ is the product of a lower triangular matrix and its conjugate transpose. This is the Cholesky factorisation of the positive definite matrix $A^{\mathsf H}A$, which Chapter~20 obtains for every positive definite matrix and which gives another way of solving the normal equations.
+
+A matrix $Q$ with orthonormal columns is in general not square, and then $QQ^{\mathsf H}\ne I$: by \cref{thm:projection-matrix}\,(ii), $QQ^{\mathsf H}$ is the orthogonal projection onto $\mathcal C(Q)=\mathcal C(A)$. Completing $Q$ to a square matrix gives the full form of the factorisation.
+
+\begin{corollary}[Full QR factorisation]
+\label{cor:full-qr}
+Let $A\in\mathbb F^{m\times n}$ have linearly independent columns, and let $A=QR$ as in \cref{thm:qr}. There is a matrix $Q_2\in\mathbb F^{m\times(m-n)}$ such that $\hat Q\coloneqq(Q,Q_2)$ is unitary, and then
+\[
+A=\hat Q\begin{bmatrix}R\\0\end{bmatrix} .
+\]
+The columns of $Q_2$ form an orthonormal basis of $\mathcal C(A)^\perp=\mathcal N(A^{\mathsf H})$, and $Q_2Q_2^{\mathsf H}=I-QQ^{\mathsf H}$ is the orthogonal projection onto it.
+\end{corollary}
+
+\begin{proof}
+By \cref{cor:orthonormal-basis}, the orthonormal columns of $Q$ extend to an orthonormal basis of $\mathbb F^m$; the additional $m-n$ vectors are the columns of $Q_2$. The square matrix $\hat Q$ has orthonormal columns and is unitary (\cref{prop:hermitian-unitary}\,(ii)), and $\hat Q$ times the stacked matrix is $QR+Q_2\cdot0=A$. The columns of $Q_2$ are orthogonal to those of $Q$, hence to $\mathcal C(Q)=\mathcal C(A)$; they are $m-n$ orthonormal, hence independent, vectors in $\mathcal C(A)^\perp$, which has dimension $m-n$ by \cref{thm:orthogonal-decomposition}, so they form a basis, and $\mathcal C(A)^\perp=\mathcal N(A^{\mathsf H})$ by \cref{thm:four-subspaces-orthogonal}. The projection is $Q_2Q_2^{\mathsf H}$ by \cref{thm:projection-matrix}, and it equals $I-QQ^{\mathsf H}$ by \cref{prop:projection-properties}\,(v), or because $\hat Q\hat Q^{\mathsf H}=QQ^{\mathsf H}+Q_2Q_2^{\mathsf H}=I$.
+\end{proof}
+
+For the $3\times2$ matrix with the columns $(1,2,2)$ and $(3,3,0)$, the third column $\mathbf q_3=(2,-2,1)/3$ of \eqref{eq:qr-example} completes $Q$, and $(2,-2,1)$ spans the left null space: $(2,-2,1)$ is orthogonal to both columns. The full factorisation contains in one unitary matrix orthonormal bases of the column space and of the left null space, two of the four fundamental subspaces.
+
+\subsection{The Gram Determinant and Hadamard's Inequality}
+
+\Cref{ch:determinants} proved that the squared $k$-dimensional volume of the parallelepiped spanned by the columns of a real matrix $A$ is the Gram determinant $\det(A^{\mathsf T}A)$, by induction with heights and Schur complements, and derived Hadamard's inequality from it. The QR factorisation gives both at once, and for complex matrices as well.
+
+\begin{theorem}[Gram determinant and QR]
+\label{thm:gram-qr}
+Let $A\in\mathbb F^{m\times n}$ have linearly independent columns and the QR factorisation $A=QR$. Then
+\[
+\det(A^{\mathsf H}A)=\prod_{j=1}^nr_{jj}^2,\qquad r_{jj}=\operatorname{dist}\bigl(\mathbf a_j,\operatorname{span}\{\mathbf a_1,\ldots,\mathbf a_{j-1}\}\bigr).
+\]
+For real $A$, $r_{jj}$ is the height $h_j$ of \cref{def:k-volume}, and $\det(A^{\mathsf T}A)=\operatorname{vol}_n(\mathbf a_1,\ldots,\mathbf a_n)^2$. For square $A$, $|\det A|=r_{11}r_{22}\cdots r_{nn}$.
+\end{theorem}
+
+\begin{proof}
+$A^{\mathsf H}A=R^{\mathsf H}R$, and by the product rule, $\det R^{\mathsf H}=\overline{\det R}$ (\cref{prop:det-unitary}) and \cref{prop:det-triangular}, $\det(R^{\mathsf H}R)=|\det R|^2=\prod_jr_{jj}^2$. The value of $r_{jj}$ is \cref{thm:gram-schmidt}\,(iii), and in the real case the distance in \cref{def:k-volume} is the same distance. For square $A$, $Q$ is unitary, $|\det Q|=1$ by \cref{prop:det-unitary}, and $|\det A|=|\det Q||\det R|=\prod_jr_{jj}$.
+\end{proof}
+
+This is \cref{thm:gram-determinant} again, with the induction hidden in the Gram--Schmidt process: the height $h_j$, which \cref{lem:distance-span} computed as a Schur complement, is the length of the vector $\mathbf v_j$. For the matrix of \eqref{eq:qr-example}, $|\det A|=3\cdot3\cdot3=27$; the determinant itself is $-27$, so $\det Q=-1$. If the columns of $A$ are dependent, $\det(A^{\mathsf H}A)=0$ by \cref{prop:gram-rank-complex}, and the Gram--Schmidt process stops with a zero vector, so the formula remains true in the sense that some height is zero.
+
+\begin{theorem}[Hadamard's inequality for complex matrices]
+\label{thm:hadamard-complex}
+For $A\in\mathbb C^{n\times n}$ with the columns $\mathbf a_1,\ldots,\mathbf a_n$,
+\[
+|\det A|\le\|\mathbf a_1\|\,\|\mathbf a_2\|\cdots\|\mathbf a_n\| ,
+\]
+with equality if and only if some column is zero or the columns are pairwise orthogonal.
+\end{theorem}
+
+\begin{proof}
+If the columns are dependent, $\det A=0$ (\cref{thm:det-invertible}), and equality holds exactly when some $\|\mathbf a_j\|=0$. Otherwise let $A=QR$. By \cref{thm:gram-qr}, $|\det A|=\prod_jr_{jj}$, and since $\mathbf a_j=\sum_{i\le j}r_{ij}\mathbf q_i$ with orthonormal $\mathbf q_i$, \cref{thm:orthonormal-expansion}\,(iii) gives
+\[
+\|\mathbf a_j\|^2=\sum_{i=1}^j|r_{ij}|^2\ge r_{jj}^2 ,
+\]
+with equality if and only if $r_{ij}=0$ for all $i<j$. Multiplying gives the inequality. Equality in it requires equality for every $j$, that is, $R$ diagonal, so that $\mathbf a_j=r_{jj}\mathbf q_j$ and the columns are orthogonal. Conversely, if nonzero columns are pairwise orthogonal, then $\langle\mathbf q_i,\mathbf a_j\rangle=0$ for $i<j$, since each $\mathbf q_i$ is a multiple of $\mathbf a_i$, so $R$ is diagonal and equality holds.
+\end{proof}
+
+The inequality says that among all matrices with columns of given lengths, those with orthogonal columns have the largest determinant in absolute value: perpendicular edges span the largest parallelepiped. The complex matrix with the rows $(1,i)$ and $(i,1)$ has orthogonal columns, since $\bar1\cdot i+\bar i\cdot1=i-i=0$, and indeed $|\det A|=|1-i^2|=2=\sqrt2\cdot\sqrt2$. The matrix $F_n$ of the discrete Fourier transform has $n$ orthogonal columns of length $\sqrt n$ (\cref{prop:fourier-basis}), so $|\det F_n|=n^{n/2}$, the largest value possible for a matrix whose entries have modulus at most $1$.
+
+\subsection{Orthogonal Polynomials}
+\label{subsec:legendre}
+
+The Gram--Schmidt process works in any inner product space, and applied to the monomials $1,x,x^2,\ldots$ with the inner product $\langle p,q\rangle=\int_{-1}^1pq$ of $C[-1,1]$ it produces a sequence of polynomials of increasing degree, each orthogonal to all polynomials of lower degree. The computation is simplified by parity: $\langle x^i,x^j\rangle=\int_{-1}^1x^{i+j}\,dx$ is $2/(i+j+1)$ if $i+j$ is even and $0$ if it is odd. We omit the normalisation and keep the leading coefficient $1$, which changes each vector by a positive factor and does not affect orthogonality; with $p_0,\ldots,p_{j-1}$ already found, $p_j=x^j-\sum_{i<j}(\langle p_i,x^j\rangle/\|p_i\|^2)p_i$. Then
+\[
+\begin{aligned}
+p_0&=1, & \|p_0\|^2&=2,\\
+p_1&=x-\frac{\langle1,x\rangle}2=x, & \|p_1\|^2&=\tfrac23,\\
+p_2&=x^2-\frac{\langle1,x^2\rangle}2-\frac{\langle x,x^2\rangle}{2/3}\,x=x^2-\frac13, & \|p_2\|^2&=\tfrac25-\tfrac49+\tfrac29=\tfrac8{45},\\
+p_3&=x^3-\frac{\langle x,x^3\rangle}{2/3}\,x=x^3-\frac35x, & \|p_3\|^2&=\tfrac8{175},\\
+p_4&=x^4-\frac{\langle1,x^4\rangle}2-\frac{\langle p_2,x^4\rangle}{8/45}\,p_2=x^4-\frac67x^2+\frac3{35} ,
+\end{aligned}
+\]
+where the terms with odd functions vanish, $\langle x,x^3\rangle=2/5$, $\langle1,x^4\rangle=2/5$, and $\langle p_2,x^4\rangle=2/7-2/15=16/105$, so that the coefficient of $p_2$ in $p_4$ is $(16/105)(45/8)=6/7$. Scaled so that their value at $x=1$ is $1$, these are the \term{Legendre polynomials}
+\[
+P_0=1,\quad P_1=x,\quad P_2=\frac{3x^2-1}2,\quad P_3=\frac{5x^3-3x}2,\quad P_4=\frac{35x^4-30x^2+3}8,
+\]
+shown in \cref{fig:legendre}. They satisfy $\|P_k\|^2=2/(2k+1)$, as one checks for these five, and $P_0,\ldots,P_n$ is an orthogonal basis of $\mathcal P_n$.
+
+\begin{figure}
+\sdfloat{%
+\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.66\textwidth, height=0.42\textwidth, xmin=-1, xmax=1, ymin=-1.05, ymax=1.6,
+  xtick={-1,-0.5,0,0.5,1}, ytick={-1,-0.5,0,0.5,1}, xlabel={$x$}, sdlegendtop, legend style={at={(0.56,0.99)}, column sep=2pt}]
+\addplot[black, line width=0.7pt, domain=-1:1, samples=2] {1};
+\addlegendentry{$P_0$}
+\addplot[black, dashed, line width=0.7pt, domain=-1:1, samples=2] {x};
+\addlegendentry{$P_1$}
+\addplot[black, densely dotted, line width=0.8pt, domain=-1:1, samples=81] {(3*x^2-1)/2};
+\addlegendentry{$P_2$}
+\addplot[black, dashdotted, line width=0.7pt, domain=-1:1, samples=81] {(5*x^3-3*x)/2};
+\addlegendentry{$P_3$}
+\addplot[black!45, line width=0.9pt, domain=-1:1, samples=121] {(35*x^4-30*x^2+3)/8};
+\addlegendentry{$P_4$}
+\addplot[black, only marks, mark=*, mark size=1.5pt, forget plot] coordinates {(-0.57735,0) (0.57735,0)};
+\end{axis}
+\end{tikzpicture}}{The Legendre polynomials $P_0,\ldots,P_4$ on $[-1,1]$, obtained by the Gram--Schmidt process from $1,x,\ldots,x^4$ with the inner product $\int_{-1}^1pq$ and scaled to $P_k(1)=1$. $P_k$ has $k$ zeros in $(-1,1)$; the zeros $\pm1/\sqrt3$ of $P_2$ (dots) are the nodes of the two-point Gauss rule of \cref{sec:linear-maps}.\label{fig:legendre}}
+\end{figure}
+
+The zeros of $P_2$ are $\pm1/\sqrt3$, the two points at which the rule $\int_{-1}^1p\approx p(-1/\sqrt3)+p(1/\sqrt3)$ of \cref{sec:linear-maps} samples a polynomial, and this is no coincidence. A polynomial $p$ of degree at most $3$ can be divided by $P_2$ with remainder, $p=qP_2+r$ with $q,r\in\mathcal P_1$. Since $P_2$ is orthogonal to $\mathcal P_1$, $\int_{-1}^1qP_2=\langle q,P_2\rangle=0$, so $\int_{-1}^1p=\int_{-1}^1r$; and at the zeros of $P_2$, $p$ and $r$ agree. The two-point rule integrates every linear polynomial exactly, so it integrates $r$, and hence $p$, exactly. The same argument with the $k$ zeros of $P_k$ yields rules that integrate polynomials of degree up to $2k-1$ exactly from $k$ values, the Gauss rules of Volume~XI. The Legendre polynomials have many other properties, among them the recurrence $(k+1)P_{k+1}=(2k+1)xP_k-kP_{k-1}$, which one checks for the polynomials above; Szeg\H{o}~\cite{szego1975} is the classical reference.
+
+\begin{note}{Three-term recurrences}
+For every inner product of the form $\langle p,q\rangle=\int_a^bw(x)p(x)q(x)\,dx$ with a positive continuous weight $w$, the monic orthogonal polynomials satisfy a recurrence $p_{k+1}=(x-\alpha_k)p_k-\beta_kp_{k-1}$ with constants $\alpha_k,\beta_k$. The reason is that multiplication by $x$ can be moved from one argument to the other: $\langle xp,q\rangle=\langle p,xq\rangle$. The polynomial $xp_k-p_{k+1}$ has degree at most $k$, so it is a combination of $p_0,\ldots,p_k$, and its coefficient of $p_i$ is proportional to $\langle p_i,xp_k\rangle=\langle xp_i,p_k\rangle$, which vanishes for $i\le k-2$ because $xp_i$ then has degree less than $k$. So the Gram--Schmidt process, which in general subtracts projections onto all previous vectors, needs only two of them here, and $p_{k+1}$ costs a fixed amount of work. The same observation, for a symmetric matrix $A$ and the vectors $\mathbf b,A\mathbf b,A^2\mathbf b,\ldots$, is the Lanczos process of Volume~IX. Volume~XI uses the recurrences to compute orthogonal polynomials and the nodes of Gauss rules, and Chapter~27 studies three-term recurrences in general.
+\end{note}
+
+\section{Orthogonal and Unitary Matrices}
+\label{sec:unitary-matrices}
+
+\subsection{Matrices That Preserve Lengths}
+
+\Cref{thm:orthogonal} and \cref{prop:hermitian-unitary}\,(ii) characterised the orthogonal and the unitary matrices: a square matrix $Q$ satisfies $Q^{\mathsf H}Q=I$ if and only if its columns are orthonormal, if and only if it preserves inner products, if and only if it preserves lengths. Rectangular matrices with orthonormal columns, such as the factor $Q$ of the QR factorisation, share some of these properties.
+
+\begin{proposition}[Matrices with orthonormal columns]
+\label{prop:orthonormal-columns}
+Let $Q\in\mathbb F^{m\times n}$ have orthonormal columns, $Q^{\mathsf H}Q=I_n$.
+\begin{enumerate}
+\item $\langle Q\mathbf x,Q\mathbf y\rangle=\langle\mathbf x,\mathbf y\rangle$ and $\|Q\mathbf x\|=\|\mathbf x\|$ for all $\mathbf x,\mathbf y\in\mathbb F^n$, and $\|QA\|_{\mathrm F}=\|A\|_{\mathrm F}$ for every $A\in\mathbb F^{n\times p}$.
+\item $QQ^{\mathsf H}$ is the orthogonal projection onto $\mathcal C(Q)$; it is $I_m$ only if $m=n$.
+\item If $m=n$, then $Q$ is unitary, $Q^{-1}=Q^{\mathsf H}$, and $Q^{\mathsf H}$ is unitary as well.
+\item The unitary $n\times n$ matrices form a group under multiplication: $I$ is unitary, and products and inverses of unitary matrices are unitary. The same holds for the real orthogonal matrices, and for the real orthogonal matrices with determinant $1$.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) $\langle Q\mathbf x,Q\mathbf y\rangle=\mathbf x^{\mathsf H}Q^{\mathsf H}Q\mathbf y=\mathbf x^{\mathsf H}\mathbf y$, and the Frobenius norm is the sum of the squared lengths of the columns, each of which $Q$ preserves. (ii) is \cref{thm:projection-matrix}\,(ii), and the projection onto an $n$-dimensional subspace has rank $n$. (iii) is \cref{prop:hermitian-unitary}\,(ii) and \cref{thm:one-sided-square}. (iv) $(Q_1Q_2)^{\mathsf H}Q_1Q_2=Q_2^{\mathsf H}Q_1^{\mathsf H}Q_1Q_2=I$, and $Q^{-1}=Q^{\mathsf H}$ is unitary by (iii). For real matrices the same computation applies, and $\det(Q_1Q_2)=\det Q_1\det Q_2=1$ if both determinants are $1$.
+\end{proof}
+
+The three groups in (iv) are called the \term{unitary group} $\mathrm U(n)$, the \term{orthogonal group} $\mathrm O(n)$ and the \term{special orthogonal group} $\mathrm{SO}(n)$, whose elements are the rotations of \cref{sec:det-properties}. By \cref{prop:det-unitary}, $\det Q=\pm1$ for $Q\in\mathrm O(n)$ and $|\det Q|=1$ for $Q\in\mathrm U(n)$. Part (i) is the reason why orthogonal transformations are harmless in computation: an error $\mathbf e$ in a vector $\mathbf x$ becomes the error $Q\mathbf e$ of the same length in $Q\mathbf x$, so multiplying by $Q$ can neither magnify nor shrink errors. \Cref{sec:orthogonality-computation} returns to this point.
+
+\subsection{The Plane}
+
+In the plane, the orthogonal matrices are the rotations $R_\varphi$ and the reflections $S_\alpha$ of \cref{sec:matrices-linear-maps}, as observed after \cref{thm:orthogonal}. We record the statement together with the way rotations and reflections combine.
+
+\begin{proposition}[Orthogonal $2\times2$ matrices]
+\label{prop:orthogonal-plane}
+Every $Q\in\mathrm O(2)$ is either a rotation $R_\varphi$, if $\det Q=1$, or a reflection $S_\alpha$, if $\det Q=-1$. Moreover $S_\alpha S_\beta=R_{2(\alpha-\beta)}$: the product of the reflections in two lines through the origin is the rotation by twice the angle from the second line to the first. In particular every rotation is a product of two reflections.
+\end{proposition}
+
+\begin{proof}
+The first column of $Q$ is a unit vector, so by \cref{prop:circle-points} it is $(\cos\varphi,\sin\varphi)$ for some $\varphi$. The second column is a unit vector orthogonal to it; such a vector $(a,b)$ satisfies $a\cos\varphi+b\sin\varphi=0$ and $a^2+b^2=1$, which leaves $(a,b)=\pm(-\sin\varphi,\cos\varphi)$. The plus sign gives $R_\varphi$, with determinant $1$, and the minus sign gives $S_{\varphi/2}$, with determinant $-1$. The product formula follows by multiplying the matrices of \cref{sec:matrices-linear-maps} and using the addition formulas: the $(1,1)$ entry of $S_\alpha S_\beta$ is $\cos2\alpha\cos2\beta+\sin2\alpha\sin2\beta=\cos(2\alpha-2\beta)$, the $(2,1)$ entry is $\sin2\alpha\cos2\beta-\cos2\alpha\sin2\beta=\sin(2\alpha-2\beta)$, and the second column is computed in the same way. Finally $R_\varphi=S_{\varphi/2}S_0$.
+\end{proof}
+
+Geometrically, reflecting in a line at the angle $\beta$ and then in a line at the angle $\alpha$ turns every vector through $2(\alpha-\beta)$: a vector at the angle $\gamma$ goes to $2\beta-\gamma$ and then to $2\alpha-(2\beta-\gamma)=\gamma+2(\alpha-\beta)$. The reflections are thus the more basic transformations, and the rotations are built from them; \cref{thm:reflections-product} below extends this to every dimension.
+
+\subsection{Rotations in Space}
+
+A rotation of $\mathbb R^3$ turns space about an axis, which it leaves fixed. That such an axis exists can be proved with determinants alone.
+
+\begin{proposition}[Fixed vectors of orthogonal matrices]
+\label{prop:rotation-axis}
+Let $Q\in\mathrm O(n)$.
+\begin{enumerate}
+\item If $n$ is odd and $\det Q=1$, there is a unit vector $\mathbf x$ with $Q\mathbf x=\mathbf x$.
+\item If $\det Q=-1$, there is a unit vector $\mathbf x$ with $Q\mathbf x=-\mathbf x$.
+\item If $n=3$ and $\det Q=1$, there are an orthogonal matrix $U$ and an angle $\varphi$ with
+\[
+U^{\mathsf T}QU=\begin{bmatrix}1&0&0\\0&\cos\varphi&-\sin\varphi\\0&\sin\varphi&\cos\varphi\end{bmatrix},
+\]
+so $Q$ is the rotation by $\varphi$ about the axis spanned by the first column of $U$, and $\operatorname{tr}Q=1+2\cos\varphi$.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) Since $Q^{\mathsf T}Q=I$ and $\det Q^{\mathsf T}=\det Q=1$,
+\[
+\begin{aligned}
+\det(Q-I)&=\det(Q-QQ^{\mathsf T})=\det Q\,\det(I-Q^{\mathsf T})\\
+&=\det\bigl((I-Q)^{\mathsf T}\bigr)=\det(I-Q)=(-1)^n\det(Q-I),
+\end{aligned}
+\]
+by the product rule, \cref{thm:det-transpose} and $\det(-B)=(-1)^n\det B$. For odd $n$ this gives $\det(Q-I)=0$, so $Q-I$ is singular (\cref{thm:det-invertible}), and some $\mathbf x\ne\mathbf 0$, which we may normalise, has $(Q-I)\mathbf x=\mathbf 0$. (ii) In the same way, $\det(Q+I)=\det(Q+QQ^{\mathsf T})=\det Q\det(I+Q^{\mathsf T})=-\det(I+Q)$, so $\det(Q+I)=0$. (iii) Let $\mathbf x$ be a unit vector with $Q\mathbf x=\mathbf x$, by (i), and extend it to an orthonormal basis $\mathbf x,\mathbf u_2,\mathbf u_3$ of $\mathbb R^3$ (\cref{cor:orthonormal-basis}), the columns of $U$. The matrix $B\coloneqq U^{\mathsf T}QU$ is orthogonal, its first column is $U^{\mathsf T}Q\mathbf x=U^{\mathsf T}\mathbf x=\mathbf e_1$, and its first row is then $\mathbf e_1^{\mathsf T}$ as well, since its rows are orthonormal. So $B$ is block diagonal with the blocks $1$ and an orthogonal $2\times2$ matrix $B'$, and $\det B'=\det B=\det Q=1$. By \cref{prop:orthogonal-plane}, $B'=R_\varphi$ for some $\varphi$. The trace is a similarity invariant (\cref{prop:trace}\,(iv)), so $\operatorname{tr}Q=\operatorname{tr}B=1+2\cos\varphi$.
+\end{proof}
+
+The permutation matrix that maps $\mathbf e_1\mapsto\mathbf e_2\mapsto\mathbf e_3\mapsto\mathbf e_1$ is a rotation, since a cycle of length $3$ is even (\cref{prop:det-triangular}\,(ii) and \cref{thm:sign-multiplicative}). It fixes $(1,1,1)$, and its trace is $0$, so $\cos\varphi=-1/2$ and $\varphi=\pm2\pi/3$: it turns space through a third of a full turn about the diagonal of the unit cube, permuting the three coordinate axes. In even dimensions part (i) fails: the rotation $R_\varphi$ of the plane, with $\varphi\notin2\pi\mathbb Z$, fixes no nonzero vector. In the language of Chapter~19, (i) and (ii) say that $1$, respectively $-1$, is an eigenvalue of $Q$; that chapter shows that every eigenvalue of an orthogonal or unitary matrix has modulus $1$.
+
+\subsection{Householder Reflections}
+
+\Cref{prop:householder} introduced the reflections $H=I-2\mathbf u\mathbf u^{\mathsf T}$ with a real unit vector $\mathbf u$. In computation it is convenient not to normalise $\mathbf u$, and to allow complex vectors.
+
+\begin{definition}[Householder reflection]
+\label{def:householder}
+For $\mathbf u\in\mathbb F^m$, $\mathbf u\ne\mathbf 0$, the \term{Householder reflection} is
+\[
+H_{\mathbf u}\coloneqq I-\frac{2}{\mathbf u^{\mathsf H}\mathbf u}\,\mathbf u\mathbf u^{\mathsf H}\in\mathbb F^{m\times m} .
+\]
+\end{definition}
+
+\begin{proposition}[Properties of Householder reflections]
+\label{prop:householder-general}
+Let $\mathbf u\ne\mathbf 0$. Then $H_{\mathbf u}$ is Hermitian and unitary, $H_{\mathbf u}^2=I$, $H_{\mathbf u}\mathbf u=-\mathbf u$, $H_{\mathbf u}\mathbf x=\mathbf x$ for every $\mathbf x\perp\mathbf u$, $H_{t\mathbf u}=H_{\mathbf u}$ for every $t\ne0$, and $\det H_{\mathbf u}=-1$. Applying $H_{\mathbf u}$ to a vector, $H_{\mathbf u}\mathbf x=\mathbf x-\bigl(2\langle\mathbf u,\mathbf x\rangle/\|\mathbf u\|^2\bigr)\mathbf u$, costs about $6m$ operations for real vectors, or $4m$ if $2/\|\mathbf u\|^2$ is stored.
+\end{proposition}
+
+\begin{proof}
+With the unit vector $\hat{\mathbf u}\coloneqq\mathbf u/\|\mathbf u\|$, $H_{\mathbf u}=I-2\hat{\mathbf u}\hat{\mathbf u}^{\mathsf H}$, which does not change when $\mathbf u$ is replaced by $t\mathbf u$. It is Hermitian since $(\hat{\mathbf u}\hat{\mathbf u}^{\mathsf H})^{\mathsf H}=\hat{\mathbf u}\hat{\mathbf u}^{\mathsf H}$, and $H_{\mathbf u}^2=I-4\hat{\mathbf u}\hat{\mathbf u}^{\mathsf H}+4\hat{\mathbf u}(\hat{\mathbf u}^{\mathsf H}\hat{\mathbf u})\hat{\mathbf u}^{\mathsf H}=I$; so $H_{\mathbf u}^{\mathsf H}H_{\mathbf u}=H_{\mathbf u}^2=I$. The values on $\mathbf u$ and on $\mathbf u^\perp$ follow from $H_{\mathbf u}\mathbf x=\mathbf x-2\hat{\mathbf u}\langle\hat{\mathbf u},\mathbf x\rangle$. By Sylvester's determinant identity (\cref{thm:det-lemma}), $\det(I_m-2\hat{\mathbf u}\hat{\mathbf u}^{\mathsf H})=1-2\hat{\mathbf u}^{\mathsf H}\hat{\mathbf u}=-1$. The inner product, the multiplication of $\mathbf u$ by a number and the subtraction take $2m-1$, $m$ and $m$ operations, and computing $\|\mathbf u\|^2$ takes another $2m-1$.
+\end{proof}
+
+$H_{\mathbf u}$ is the reflection in the hyperplane $\mathbf u^\perp$, and $(I+H_{\mathbf u})/2=I-\hat{\mathbf u}\hat{\mathbf u}^{\mathsf H}$ is the orthogonal projection onto that hyperplane: the reflection of $\mathbf x$ is obtained by going from $\mathbf x$ to the hyperplane and then the same distance beyond it. The use of reflections in computation rests on the fact that a reflection can map any vector to a multiple of $\mathbf e_1$, and there is a choice in doing so.
+
+\begin{theorem}[Reflecting a vector onto an axis]
+\label{thm:householder-vector}
+Let $\mathbf x\in\mathbb F^m$, $\mathbf x\ne\mathbf 0$, and let $\sigma\coloneqq x_1/|x_1|$ if $x_1\ne0$ and $\sigma\coloneqq1$ if $x_1=0$; for real $\mathbf x$, $\sigma=\pm1$ is the sign of $x_1$. With
+\[
+\mathbf u\coloneqq\mathbf x+\sigma\|\mathbf x\|\,\mathbf e_1 ,
+\]
+$\mathbf u\ne\mathbf 0$, $\|\mathbf u\|^2=2\|\mathbf x\|\bigl(\|\mathbf x\|+|x_1|\bigr)$, and $H_{\mathbf u}\mathbf x=-\sigma\|\mathbf x\|\,\mathbf e_1$. The first component of $\mathbf u$ is $u_1=\sigma(|x_1|+\|\mathbf x\|)$, a sum of two nonnegative numbers.
+\end{theorem}
+
+\begin{proof}
+Since $\bar\sigma x_1=|x_1|$ and $|\sigma|=1$, $u_1=x_1+\sigma\|\mathbf x\|=\sigma(|x_1|+\|\mathbf x\|)\ne0$, so $\mathbf u\ne\mathbf 0$. Next, $\langle\mathbf u,\mathbf x\rangle=\|\mathbf x\|^2+\bar\sigma\|\mathbf x\|x_1=\|\mathbf x\|(\|\mathbf x\|+|x_1|)$, and
+\[
+\|\mathbf u\|^2=\|\mathbf x\|^2+2\|\mathbf x\|\operatorname{Re}(\bar x_1\sigma)+\|\mathbf x\|^2=2\|\mathbf x\|\bigl(\|\mathbf x\|+|x_1|\bigr),
+\]
+since $\bar x_1\sigma=|x_1|$. Hence $2\langle\mathbf u,\mathbf x\rangle/\|\mathbf u\|^2=1$, and $H_{\mathbf u}\mathbf x=\mathbf x-\mathbf u=-\sigma\|\mathbf x\|\mathbf e_1$.
+\end{proof}
+
+\begin{figure}
+\sdfloat{%
+\begin{tikzpicture}[scale=0.52, font=\scriptsize]
+\draw[black!35, line width=0.4pt] (5,0) arc[start angle=0, end angle=180, radius=5];
+\draw[line width=0.4pt, -{Latex[length=1.4mm]}] (-6,0) -- (6.3,0) node[below] {$x_1$};
+\draw[line width=0.4pt, -{Latex[length=1.4mm]}] (0,-0.5) -- (0,5.8) node[left] {$x_2$};
+\draw[dashed, line width=0.6pt] (-1.6,-0.8) -- (6,3);
+\draw[dashed, line width=0.6pt] (0.4,-0.8) -- (-2.6,5.2);
+\draw[line width=1pt, -{Latex[length=1.8mm]}] (0,0) -- (3,4);
+\draw[line width=1pt, -{Latex[length=1.8mm]}] (0,0) -- (5,0);
+\draw[line width=1pt, -{Latex[length=1.8mm]}] (0,0) -- (-5,0);
+\draw[densely dotted, line width=0.7pt, -{Latex[length=1.6mm]}] (5,0) -- (3,4);
+\draw[densely dotted, line width=0.7pt, -{Latex[length=1.6mm]}] (-5,0) -- (3,4) node[pos=0.3, above, sloped] {$\mathbf x+\|\mathbf x\|\mathbf e_1$};
+\node[above right] at (3,4) {$\mathbf x=(3,4)$};
+\node[below] at (5,-0.05) {$\|\mathbf x\|\mathbf e_1$};
+\node[below] at (-5,-0.05) {$-\|\mathbf x\|\mathbf e_1$};
+\node[left] at (4.55,0.55) {$\mathbf x-\|\mathbf x\|\mathbf e_1$};
+\node[right] at (6,3) {$(\mathbf x-\|\mathbf x\|\mathbf e_1)^\perp$};
+\node[left] at (-2.6,5.2) {$(\mathbf x+\|\mathbf x\|\mathbf e_1)^\perp$};
+\end{tikzpicture}}{The two reflections that map $\mathbf x=(3,4)$ onto the $x_1$-axis. Their mirror lines (dashed) are the bisectors of the angles between $\mathbf x$ and $\pm\|\mathbf x\|\mathbf e_1$, orthogonal to the dotted vectors $\mathbf u=\mathbf x\mp\|\mathbf x\|\mathbf e_1$. \Cref{thm:householder-vector} chooses $\mathbf u=\mathbf x+\operatorname{sign}(x_1)\|\mathbf x\|\mathbf e_1$, here $(8,4)$, and the target $-5\mathbf e_1$, the point of the axis farther from $\mathbf x$; the vector $\mathbf u$ is then long, and no cancellation occurs in forming it.\label{fig:householder-sign}}
+\end{figure}
+
+The other choice, $\mathbf u'=\mathbf x-\sigma\|\mathbf x\|\mathbf e_1$, maps $\mathbf x$ to $+\sigma\|\mathbf x\|\mathbf e_1$ by \cref{prop:householder}\,(iii) when $\mathbf x$ is not already a positive multiple of $\sigma\mathbf e_1$, and in exact arithmetic it would do just as well. \Cref{fig:householder-sign} shows the two choices for $\mathbf x=(3,4)$. In floating-point arithmetic they differ: the first component $u_1'=\sigma(|x_1|-\|\mathbf x\|)$ is a difference of two nearly equal numbers when $\mathbf x$ is close to the $x_1$-axis, and the cancellation of \cref{sec:conditioning} destroys its accuracy. We tried both choices in binary64 arithmetic for $\mathbf x=(1,10^{-8},10^{-8})$, whose norm $(1+2\cdot10^{-16})^{1/2}$ rounds to $1$. The choice of the theorem gave $\mathbf u=(2,10^{-8},10^{-8})$ and the computed $H_{\mathbf u}\mathbf x=(-1,0,0)$, correct to working accuracy. The other choice gave $\mathbf u'=(0,10^{-8},10^{-8})$, whose first component should be $1-(1+2\cdot10^{-16})^{1/2}\approx-10^{-16}$, and the computed $H_{\mathbf u'}\mathbf x=(1,-10^{-8},-10^{-8})$: the components that should be zero have the size $10^{-8}$, and the reflection is wrong in the eighth digit. If the target $+\|\mathbf x\|\mathbf e_1$ is wanted, the first component can be computed without cancellation from $x_1-\|\mathbf x\|=-(x_2^2+\cdots+x_m^2)/(x_1+\|\mathbf x\|)$ for $x_1>0$, a rearrangement used in practice~\cite[Sect.~5.1]{golub2013}.
+
+\subsection{Givens Rotations}
+
+A reflection introduces many zeros at once. To introduce a single zero, a rotation in one coordinate plane suffices. For indices $i<j$ and numbers $c,s$ with $c^2+s^2=1$, the \term{Givens rotation} $G=G(i,j,c,s)\in\mathbb R^{m\times m}$ is the identity matrix except in the rows and columns $i$ and $j$, where
+\[
+\begin{bmatrix}g_{ii}&g_{ij}\\g_{ji}&g_{jj}\end{bmatrix}=\begin{bmatrix}c&s\\-s&c\end{bmatrix}.
+\]
+It is the rotation $R_\varphi$ with $c=\cos\varphi$ and $s=-\sin\varphi$ in the plane of $\mathbf e_i$ and $\mathbf e_j$, orthogonal with determinant $1$. Applied to $\mathbf x$, it changes only two components, $(G\mathbf x)_i=cx_i+sx_j$ and $(G\mathbf x)_j=-sx_i+cx_j$, at the cost of six operations. If $(x_i,x_j)\ne(0,0)$, the choice
+\[
+r\coloneqq\sqrt{x_i^2+x_j^2},\qquad c\coloneqq\frac{x_i}r,\qquad s\coloneqq\frac{x_j}r
+\]
+gives $(G\mathbf x)_i=r$ and $(G\mathbf x)_j=0$. For $(x_i,x_j)=(3,4)$, $r=5$, $c=3/5$, $s=4/5$, and $(G\mathbf x)_i=(9+16)/5=5$, $(G\mathbf x)_j=(-12+12)/5=0$. The number $r$ is computed by a routine that avoids overflow in $x_i^2+x_j^2$, the function $\operatorname{hypot}$ of Volume~X. Rotations of this kind were used by Givens for the reduction of matrices to triangular form~\cite{givens1958}; they are the tool of choice when only a few entries must be removed, as in matrices that are already nearly triangular or sparse, and for updating a factorisation when a row is added.
+
+\subsection{Products of Reflections}
+
+\Cref{prop:orthogonal-plane} showed that the orthogonal transformations of the plane are reflections or products of two reflections. The same holds in every dimension, with $n$ in place of $2$.
+
+\begin{theorem}[Orthogonal matrices as products of reflections]
+\label{thm:reflections-product}
+Every $Q\in\mathrm O(n)$ is a product of at most $n$ Householder reflections, the identity being the empty product. The number of factors is even if $\det Q=1$ and odd if $\det Q=-1$. The matrix $-I_n$ is not a product of fewer than $n$ reflections.
+\end{theorem}
+
+\begin{proof}
+By induction on $n$. For $n=1$, $Q=\pm1$, and $-1=H_{\mathbf e_1}$. Let $n\ge2$. If $Q\mathbf e_1\ne\mathbf e_1$, the vectors $Q\mathbf e_1$ and $\mathbf e_1$ have the same length, and by \cref{prop:householder}\,(iii) there is a reflection $H_1$ with $H_1Q\mathbf e_1=\mathbf e_1$; if $Q\mathbf e_1=\mathbf e_1$, let $H_1\coloneqq I$. In both cases $B\coloneqq H_1Q$ is orthogonal with first column $\mathbf e_1$, and its first row is $\mathbf e_1^{\mathsf T}$, since its rows are orthonormal. So $B$ is block diagonal with the blocks $1$ and some $B'\in\mathrm O(n-1)$. By the induction hypothesis, $B'$ is a product of at most $n-1$ reflections $H_{\mathbf u'}$ of $\mathbb R^{n-1}$, and each of them is the lower right block of the reflection $H_{\mathbf u}$ of $\mathbb R^n$ with $\mathbf u=(0,\mathbf u')$, whose first row and column are those of $I$. So $B$ is a product of at most $n-1$ reflections, and $Q=H_1B$, since $H_1^{-1}=H_1$, of at most $n$. The parity follows from $\det H=-1$ and the product rule. Finally, if $Q=H_{\mathbf u_1}\cdots H_{\mathbf u_k}$, then every vector orthogonal to all $\mathbf u_i$ is fixed by every factor, hence by $Q$; these vectors form the null space of the $k\times n$ matrix with the rows $\mathbf u_i^{\mathsf T}$, of dimension at least $n-k$ (\cref{thm:four-dimensions}). The matrix $-I_n$ fixes only $\mathbf 0$, so $n-k\le0$.
+\end{proof}
+
+The theorem is the real, Euclidean case of the Cartan--Dieudonn\'e theorem, which holds for the orthogonal groups of all nondegenerate symmetric bilinear forms~\cite{artin1957geometric}. Its proof is an algorithm: it reflects the first column into place, then the second within the remaining coordinates, and so on, and this is Householder's method of the next section, applied to a matrix whose columns are already orthonormal. A rotation of space is a product of two reflections, in two planes through its axis that meet at half its angle; the permutation matrix of the cycle $\mathbf e_1\mapsto\mathbf e_2\mapsto\mathbf e_3\mapsto\mathbf e_1$, for example, is the reflection exchanging $\mathbf e_2$ and $\mathbf e_3$ followed by the one exchanging $\mathbf e_1$ and $\mathbf e_2$.
+
+\subsection{Distance-Preserving Maps}
+
+Orthogonal matrices preserve lengths and hence distances. Conversely, a map that preserves distances is, up to a translation, an orthogonal matrix; linearity does not have to be assumed.
+
+\begin{theorem}[Isometries of $\mathbb R^n$]
+\label{thm:isometries}
+Let $\mathbf f\colon\mathbb R^n\to\mathbb R^n$ satisfy $\|\mathbf f(\mathbf x)-\mathbf f(\mathbf y)\|=\|\mathbf x-\mathbf y\|$ for all $\mathbf x,\mathbf y$. Then there are an orthogonal $Q$ and a vector $\mathbf c$ with $\mathbf f(\mathbf x)=Q\mathbf x+\mathbf c$ for all $\mathbf x$; in particular, if $\mathbf f(\mathbf 0)=\mathbf 0$, then $\mathbf f$ is linear.
+\end{theorem}
+
+\begin{proof}
+Let $\mathbf c\coloneqq\mathbf f(\mathbf 0)$ and $\mathbf g(\mathbf x)\coloneqq\mathbf f(\mathbf x)-\mathbf c$. Then $\mathbf g$ preserves distances and $\mathbf g(\mathbf 0)=\mathbf 0$, so $\|\mathbf g(\mathbf x)\|=\|\mathbf g(\mathbf x)-\mathbf g(\mathbf 0)\|=\|\mathbf x\|$. By the polarisation identity in the form $2\langle\mathbf x,\mathbf y\rangle=\|\mathbf x\|^2+\|\mathbf y\|^2-\|\mathbf x-\mathbf y\|^2$,
+\[
+2\langle\mathbf g(\mathbf x),\mathbf g(\mathbf y)\rangle=\|\mathbf g(\mathbf x)\|^2+\|\mathbf g(\mathbf y)\|^2-\|\mathbf g(\mathbf x)-\mathbf g(\mathbf y)\|^2=\|\mathbf x\|^2+\|\mathbf y\|^2-\|\mathbf x-\mathbf y\|^2=2\langle\mathbf x,\mathbf y\rangle .
+\]
+So $\mathbf g$ preserves inner products. The vectors $\mathbf g(\mathbf e_1),\ldots,\mathbf g(\mathbf e_n)$ are therefore orthonormal, and the matrix $Q$ with these columns is orthogonal. The map $\mathbf h\coloneqq Q^{\mathsf T}\mathbf g$ preserves inner products as well, and $\mathbf h(\mathbf e_i)=Q^{\mathsf T}Q\mathbf e_i=\mathbf e_i$. For every $\mathbf x$ and $i$, $\langle\mathbf e_i,\mathbf h(\mathbf x)\rangle=\langle\mathbf h(\mathbf e_i),\mathbf h(\mathbf x)\rangle=\langle\mathbf e_i,\mathbf x\rangle$, so all components of $\mathbf h(\mathbf x)$ and $\mathbf x$ agree, and $\mathbf h(\mathbf x)=\mathbf x$. Hence $\mathbf g(\mathbf x)=Q\mathbf x$ and $\mathbf f(\mathbf x)=Q\mathbf x+\mathbf c$.
+\end{proof}
+
+The rigid motions of space are therefore the maps $\mathbf x\mapsto Q\mathbf x+\mathbf c$: a rotation or a rotation combined with a reflection, followed by a translation. The proof uses the inner product, through polarisation. For norms that do not come from inner products the conclusion survives in a weaker form: by a theorem of Mazur and Ulam~\cite{mazur1932}, every distance-preserving map of one real normed space onto another is affine, a linear map followed by a translation. For complex spaces the theorem fails as stated: conjugation $\mathbf x\mapsto\bar{\mathbf x}$ preserves distances in $\mathbb C^n$, fixes $\mathbf 0$, and is not complex linear.
+
+\section{Householder QR}
+\label{sec:householder-qr}
+
+\subsection{Triangularisation by Reflections}
+
+Gaussian elimination reduces a matrix to triangular form by subtracting multiples of rows, which is multiplication by lower triangular matrices from the left. Householder's method~\cite{householder1958} reduces it by reflections instead. The first reflection maps the first column to a multiple of $\mathbf e_1$, by \cref{thm:householder-vector}, and so introduces zeros below the diagonal in that column. The second reflection acts only on the rows $2,\ldots,m$ and maps the part of the second column below the diagonal to a multiple of $\mathbf e_1$ of the shorter space, without disturbing the zeros of the first column, and so on (\cref{fig:householder-pattern}). After $n$ steps the matrix is upper triangular, and since each step is an orthogonal transformation, no step can magnify the errors of the previous ones.
+
+\begin{figure}
+\newcommand\sdhhpanel[1]{\begin{tikzpicture}[x=0.46cm, y=0.46cm, font=\scriptsize]
+\ifnum#1<4\relax \fill[sdfill] (#1-0.5,-#1+0.5) rectangle (3.5,-5.5);\fi
+\foreach \i in {1,...,5} {\foreach \j in {1,...,3} {
+  \def\sdsym{$\times$}%
+  \ifnum\j<#1\relax \ifnum\i>\j\relax \def\sdsym{$0$}\fi\fi
+  \node at (\j,-\i) {\sdsym};}}
+\draw[line width=0.5pt] (0.75,-0.4) -- (0.5,-0.4) -- (0.5,-5.6) -- (0.75,-5.6);
+\draw[line width=0.5pt] (3.25,-0.4) -- (3.5,-0.4) -- (3.5,-5.6) -- (3.25,-5.6);
+\end{tikzpicture}}
+\centering
+\sdpanel{A}{\sdhhpanel{1}}\hspace{1.3cm}
+\sdpanel{B}{\sdhhpanel{2}}\hspace{1.3cm}
+\sdpanel{C}{\sdhhpanel{3}}\hspace{1.3cm}
+\sdpanel{D}{\sdhhpanel{4}}
+\caption{Householder's method for a $5\times3$ matrix. A cross marks an entry that is in general nonzero, and the shaded block is the part that the next reflection changes. (A) The matrix $A$. (B) $H_1A$: the reflection $H_1$ maps the first column to a multiple of $\mathbf e_1$. (C) $H_2H_1A$: $H_2$ acts on the rows $2$ to $5$ only and leaves the first row and the zeros of the first column alone. (D) $H_3H_2H_1A$, an upper triangular $3\times3$ matrix $R$ above a block of zeros.}
+\label{fig:householder-pattern}
+\end{figure}
+
+\Cref{alg:householder-qr} states the method for a real matrix. It overwrites $A$ with $R$ and keeps the reflections in the form of their vectors $\mathbf u_k$, which is all that is needed to apply them later; the orthogonal matrix itself is not formed. We write $A_{k:m,k:n}$ for the submatrix of $A$ in the rows $k,\ldots,m$ and the columns $k,\ldots,n$.
+
+\begin{algorithm}
+\begin{algorithmic}[1]
+\Require $A\in\mathbb R^{m\times n}$ with $m\ge n$
+\Ensure vectors $\mathbf u_k\in\mathbb R^{m-k+1}$ and numbers $\beta_k$ ($k=1,\ldots,n$); $A$ is overwritten by $H_n\cdots H_1A$, whose first $n$ rows form $R$ and whose other rows vanish
+\Name{HouseholderQR}{A}
+\For{$k=1,\ldots,n$}
+  \State $\mathbf x\gets A_{k:m,k}$ \Comment{the part of column $k$ on and below the diagonal}
+  \If{$\mathbf x=\mathbf 0$}
+    \State $\mathbf u_k\gets\mathbf 0$; $\beta_k\gets0$ \Comment{nothing to do: $H_k=I$}
+  \Else
+    \State $\mathbf u_k\gets\mathbf x+\operatorname{sign}(x_1)\|\mathbf x\|\mathbf e_1$; $\beta_k\gets2/\|\mathbf u_k\|^2$ \Comment{$\operatorname{sign}(0)\coloneqq1$}
+    \State $\mathbf w^{\mathsf T}\gets\mathbf u_k^{\mathsf T}A_{k:m,k:n}$
+    \State $A_{k:m,k:n}\gets A_{k:m,k:n}-\beta_k\mathbf u_k\mathbf w^{\mathsf T}$ \Comment{apply $I-\beta_k\mathbf u_k\mathbf u_k^{\mathsf T}$}
+  \EndIf
+\EndFor
+\State \Return $\mathbf u_1,\ldots,\mathbf u_n$, $\beta_1,\ldots,\beta_n$ and $A$
+\end{algorithmic}
+\caption{Householder QR factorisation (\cref{thm:householder-qr}). The $k$th reflection is $H_k=\operatorname{diag}(I_{k-1},I-\beta_k\mathbf u_k\mathbf u_k^{\mathsf T})$; the matrix $Q=H_1\cdots H_n$ is not formed. The cost is about $2mn^2-2n^3/3$ operations (\cref{prop:householder-cost}).}
+\label{alg:householder-qr}
+\end{algorithm}
+
+\begin{theorem}[QR factorisation by reflections]
+\label{thm:householder-qr}
+Let $A\in\mathbb F^{m\times n}$ with $m\ge n$. There are unitary matrices $H_1,\ldots,H_n$, each of them either $I_m$ or of the form $\operatorname{diag}(I_{k-1},H_{\mathbf u_k})$ with a Householder reflection $H_{\mathbf u_k}$ of $\mathbb F^{m-k+1}$, and an upper triangular $R\in\mathbb F^{n\times n}$ such that
+\[
+H_n\cdots H_1A=\begin{bmatrix}R\\0\end{bmatrix},\qquad A=\hat Q\begin{bmatrix}R\\0\end{bmatrix},\qquad\hat Q\coloneqq H_1H_2\cdots H_n\ \text{unitary}.
+\]
+In particular every such matrix, of any rank, has a factorisation $A=QR$ with $Q\in\mathbb F^{m\times n}$ having orthonormal columns, the first $n$ columns of $\hat Q$. If the columns of $A$ are independent, the diagonal entries of $R$ are nonzero, and with $D\coloneqq\operatorname{diag}(r_{jj}/|r_{jj}|)$ the factorisation $A=(QD)(D^{\mathsf H}R)$ is the one of \cref{thm:qr}.
+\end{theorem}
+
+\begin{proof}
+By induction we show that $A^{(k)}\coloneqq H_k\cdots H_1A$ has zeros below the diagonal in its first $k$ columns, for suitable $H_1,\ldots,H_k$. For $k=0$ there is nothing to show. Given $A^{(k-1)}$, let $\mathbf x\in\mathbb F^{m-k+1}$ be the part of its $k$th column in the rows $k,\ldots,m$. If $\mathbf x=\mathbf 0$, let $H_k\coloneqq I$. Otherwise \cref{thm:householder-vector} provides $\mathbf u_k$ with $H_{\mathbf u_k}\mathbf x=-\sigma\|\mathbf x\|\mathbf e_1$, and we let $H_k\coloneqq\operatorname{diag}(I_{k-1},H_{\mathbf u_k})$, which is unitary by \cref{prop:householder-general}. Multiplying by $H_k$ changes only the rows $k,\ldots,m$. In the first $k-1$ columns these rows of $A^{(k-1)}$ are zero, and they stay zero, since a linear map maps $\mathbf 0$ to $\mathbf 0$. In the $k$th column, the rows $k,\ldots,m$ become $-\sigma\|\mathbf x\|\mathbf e_1$, which is zero below the diagonal. After $n$ steps, $A^{(n)}$ is upper triangular in the sense that its upper $n\times n$ block $R$ is upper triangular and its last $m-n$ rows vanish. Each $H_k$ is Hermitian and satisfies $H_k^2=I$, so $A=H_1\cdots H_nA^{(n)}$, and $\hat Q$ is unitary as a product of unitary matrices (\cref{prop:orthonormal-columns}\,(iv)). Splitting $\hat Q=(Q,Q_2)$ after the $n$th column gives $A=QR+Q_2\cdot0=QR$. If the columns of $A$ are independent, then $R$ is invertible, since $\mathcal N(R)\subseteq\mathcal N(QR)=\{\mathbf 0\}$, so its diagonal entries are nonzero (\cref{thm:triangular}); $QD$ has orthonormal columns, $D^{\mathsf H}R$ is upper triangular with the positive diagonal entries $|r_{jj}|$, and $(QD)(D^{\mathsf H}R)=QR$ since $DD^{\mathsf H}=I$. By the uniqueness in \cref{thm:qr}, this is the factorisation obtained there.
+\end{proof}
+
+For the matrix with the columns $(1,2,2)$ and $(3,3,0)$ of \cref{sec:gram-schmidt}, the first step has $\mathbf x=(1,2,2)$, $\|\mathbf x\|=3$, $\mathbf u_1=(4,2,2)$ and $\|\mathbf u_1\|^2=24$, in accordance with \cref{thm:householder-vector}: $2\cdot3\cdot(3+1)=24$. The first column becomes $(-3,0,0)$, and the second, with $\mathbf u_1^{\mathsf T}\mathbf a_2=18$ and $2\cdot18/24=3/2$, becomes $(3,3,0)-3(4,2,2)/2=(-3,0,-3)$. The second step works on the vector $\mathbf x=(0,-3)$ of the rows $2$ and $3$, with $x_1=0$, so $\sigma=1$, $\mathbf u_2=(3,-3)$, and $\mathbf x$ is mapped to $(-3,0)$. Altogether
+\[
+H_2H_1\begin{bmatrix}1&3\\2&3\\2&0\end{bmatrix}=\begin{bmatrix}-3&-3\\0&-3\\0&0\end{bmatrix},
+\]
+so $R$ is the negative of the matrix found by the Gram--Schmidt process in \eqref{eq:qr-example}, and the first two columns of $\hat Q$ are $-\mathbf q_1$ and $-\mathbf q_2$; here $D=-I$. The third column of $\hat Q=H_1H_2$ is $H_1H_2\mathbf e_3=H_1\mathbf e_2=(-2,2,-1)/3=-\mathbf q_3$, a basis vector of the left null space, as \cref{cor:full-qr} predicts.
+
+\subsection{The Cost}
+
+\begin{proposition}[Cost of Householder QR]
+\label{prop:householder-cost}
+For real $A\in\mathbb R^{m\times n}$, $m\ge n$, \cref{alg:householder-qr} performs $2mn^2-2n^3/3+O(mn)$ operations and $n$ square roots. Applying $\hat Q^{\mathsf T}=H_n\cdots H_1$ or $\hat Q$ to a vector from the stored $\mathbf u_k$ and $\beta_k$ costs $4mn-2n^2+O(m)$ operations.
+\end{proposition}
+
+\begin{proof}
+In step $k$, with $p\coloneqq m-k+1$ rows and $q\coloneqq n-k+1$ columns in the active block, forming $\mathbf u_k$ and $\beta_k$ costs $O(p)$ operations, the product $\mathbf w^{\mathsf T}=\mathbf u_k^{\mathsf T}A_{k:m,k:n}$ costs $q(2p-1)$, and the update, a multiplication and a subtraction per entry once $\beta_k\mathbf u_k$ is formed, costs $2pq+p$. So step $k$ costs $4pq+O(p)$. With $j\coloneqq n-k+1$, so that $q=j$ and $p=m-n+j$,
+\[
+\sum_{j=1}^n4(m-n+j)j=2(m-n)n(n+1)+\frac23n(n+1)(2n+1)=2mn^2-\frac23n^3+O(mn),
+\]
+and the terms $O(p)$ add up to $O(mn)$. Applying $H_k$ to a vector costs $4p+O(1)$ operations, and $\sum_{k=1}^n4(m-k+1)=4mn-2n^2+2n$.
+\end{proof}
+
+For a square matrix the count is $4n^3/3$, twice the $2n^3/3$ of the LU factorisation (\cref{prop:elimination-cost}), and for $m\gg n$ it is $2mn^2$, the same as the Gram--Schmidt algorithms. If the matrix $Q$ with orthonormal columns is needed explicitly, it can be obtained by applying the reflections to the first $n$ columns of $I_m$ in the reverse order, $H_1(H_2(\cdots(H_n(\mathbf e_1,\ldots,\mathbf e_n))))$. Then $H_k$ changes only the columns $k,\ldots,n$ and the rows $k,\ldots,m$, because the columns before $k$ are still $\mathbf e_1,\ldots,\mathbf e_{k-1}$ at that moment and have zeros in the rows $k,\ldots,m$; so the work is that of the factorisation, about $2mn^2-2n^3/3$ operations, once more.
+
+A square system $A\mathbf x=\mathbf b$ with invertible $A$ can be solved with the QR factorisation as well: $QR\mathbf x=\mathbf b$ is equivalent to $R\mathbf x=Q^{\mathsf H}\mathbf b$, a triangular system. This costs twice as much as elimination, and elimination with partial pivoting is accurate enough for almost all matrices, so the QR factorisation is used for square systems mainly where its guarantees are needed (Volume~VIII). Its true domain is the least squares problem of \cref{sec:least-squares}.
+
+\subsection{Comparison of the Methods}
+
+\Cref{tab:qr-methods} compares the four ways of computing a QR factorisation that we have met. In exact arithmetic they all give the same factorisation up to the signs of the columns. In floating-point arithmetic they differ in how close the computed $Q$ is to having orthonormal columns, and the table states what the rounding error analyses in the literature prove about $\|Q^{\mathsf H}Q-I\|$; $\kappa(A)$ is the condition number $\kappa_2(A)$ of Chapter~21, the ratio of the longest to the shortest vector $A\mathbf x$ with $\|\mathbf x\|=1$, and $u$ is the unit roundoff.
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}{colspec={llll}, row{1}={font=\small\bfseries}}
+\toprule
+method & operations & $Q$ is given as & $\|Q^{\mathsf T}Q-I\|$ \\
+\midrule
+classical Gram--Schmidt & $2mn^2$ & $n$ columns & $u\kappa^2$, if $u\kappa^2<1$ \\
+modified Gram--Schmidt & $2mn^2$ & $n$ columns & $u\kappa$ \\
+Householder & $2mn^2-2n^3/3$ & $n$ vectors $\mathbf u_k$ & $u$ \\
+Givens & $3mn^2-n^3$ & $mn-n(n+1)/2$ rotations & $u$ \\
+\bottomrule
+\end{sdtable}}{Four methods for the QR factorisation of a real $m\times n$ matrix with independent columns: leading terms of the operation counts, the form in which $Q$ is delivered, and the order of magnitude of $\|Q^{\mathsf T}Q-I\|$ for the computed $Q$ proved in the literature~\cite{giraud2005numer,bjorck1967,higham2002accuracy}, up to factors that depend on $m$ and $n$ but not on $A$; $\kappa=\kappa_2(A)$ and $u$ is the unit roundoff.\label{tab:qr-methods}}
+\end{table}
+
+The count for Givens rotations follows as in \cref{prop:householder-cost}: the rotation that removes an entry of column $k$ changes two rows of the active block, $6(n-k+1)$ operations, and there are $m-k$ such entries, which gives $\sum_k6(m-k)(n-k+1)=3mn^2-n^3+O(mn)$. Givens rotations cost more for full matrices, but they touch only the entries they need, which pays off for matrices with many zeros. The Gram--Schmidt algorithms deliver $Q$ explicitly, which is what one needs to compute an orthonormal basis of a space spanned by given vectors; Householder's method delivers $Q$ implicitly, which is what one needs to solve least squares problems. The last column of the table is the subject of experiments in \cref{sec:orthogonality-computation}, and its proofs are the subject of Volume~VIII.
+
+\begin{note}{Reorthogonalisation: twice is enough}
+If an explicit orthonormal basis is needed and the classical Gram--Schmidt algorithm is preferred, for instance because its inner products $\mathbf q_i^{\mathsf H}\mathbf a_j$ can all be computed at once as one matrix product $Q^{\mathsf H}\mathbf a_j$, which parallel computers favour, the loss of orthogonality can be repaired by running the projection step a second time: after computing $\mathbf v$, compute its coefficients $\mathbf q_i^{\mathsf H}\mathbf v$ again and subtract once more. In exact arithmetic the second pass changes nothing. In floating-point arithmetic it restores orthogonality to the level of the unit roundoff, provided the matrix is not too close to having dependent columns, and a third pass is not needed; Giraud, Langou and Rozlo\v{z}n\'{\i}k proved this~\cite{giraud2005camwa}, and Parlett~\cite{parlett1998} attributes the phrase ``twice is enough'' to Kahan. The price is twice the work, $4mn^2$ operations. The experiment of \cref{tab:orthogonality-loss} includes this variant.
+\end{note}
+
+\section{Least Squares}
+\label{sec:least-squares}
+
+\subsection{The Problem and the Normal Equations}
+
+A system $A\mathbf x=\mathbf b$ with $A\in\mathbb F^{m\times n}$ and $m>n$ has more equations than unknowns, and for most right-hand sides it has no solution: $\mathcal C(A)$ has dimension at most $n<m$, and $\mathbf b$ is unlikely to lie in it. Such systems arise whenever a model with $n$ parameters is fitted to $m$ measurements, as in the straight line of \cref{sec:extrema-n}. The \term{least squares problem} asks instead for an $\mathbf x$ that makes the residual $\mathbf b-A\mathbf x$ as short as possible,
+\[
+\text{minimise }\|A\mathbf x-\mathbf b\|\quad\text{over }\mathbf x\in\mathbb F^n ,
+\]
+in the Euclidean norm; minimising the norm and minimising its square $\sum_i|(A\mathbf x-\mathbf b)_i|^2$, the sum of squares that gives the problem its name, are the same thing. Since $A\mathbf x$ runs through the column space, this is the best approximation of $\mathbf b$ by a vector of $\mathcal C(A)$, and the theorem of \cref{sec:orthogonal-projection} answers it completely.
+
+\begin{theorem}[Least squares solutions]
+\label{thm:least-squares}
+Let $A\in\mathbb F^{m\times n}$ and $\mathbf b\in\mathbb F^m$. For $\hat{\mathbf x}\in\mathbb F^n$ the following are equivalent:
+\begin{enumerate}
+\item $\|A\hat{\mathbf x}-\mathbf b\|\le\|A\mathbf x-\mathbf b\|$ for all $\mathbf x\in\mathbb F^n$;
+\item $A\hat{\mathbf x}=P\mathbf b$, where $P$ is the orthogonal projection onto $\mathcal C(A)$;
+\item the residual $\mathbf r\coloneqq\mathbf b-A\hat{\mathbf x}$ is orthogonal to $\mathcal C(A)$, that is, $A^{\mathsf H}\mathbf r=\mathbf 0$;
+\item $\hat{\mathbf x}$ solves the \term{normal equations} $A^{\mathsf H}A\hat{\mathbf x}=A^{\mathsf H}\mathbf b$.
+\end{enumerate}
+Such $\hat{\mathbf x}$, the \term{least squares solutions}, exist, and they form the flat $\hat{\mathbf x}+\mathcal N(A)$. All of them have the same residual $\mathbf r=\mathbf b-P\mathbf b$, the projection of $\mathbf b$ onto $\mathcal N(A^{\mathsf H})$, and $\|\mathbf r\|^2=\|\mathbf b\|^2-\|P\mathbf b\|^2$. The solution is unique if and only if the columns of $A$ are independent, and then $\hat{\mathbf x}=(A^{\mathsf H}A)^{-1}A^{\mathsf H}\mathbf b$.
+\end{theorem}
+
+\begin{proof}
+(i)$\Leftrightarrow$(ii): the vectors $A\mathbf x$ are the vectors of $\mathcal C(A)$, and by \cref{thm:best-approximation}, $P\mathbf b$ is the unique vector of $\mathcal C(A)$ closest to $\mathbf b$; so $\hat{\mathbf x}$ minimises the residual exactly when $A\hat{\mathbf x}=P\mathbf b$. (ii)$\Leftrightarrow$(iii): $A\hat{\mathbf x}$ lies in $\mathcal C(A)$, and by \cref{thm:best-approximation}\,(i) it equals $P\mathbf b$ if and only if $\mathbf b-A\hat{\mathbf x}\perp\mathcal C(A)$, that is, $\mathbf r\in\mathcal C(A)^\perp=\mathcal N(A^{\mathsf H})$ (\cref{thm:four-subspaces-orthogonal}). (iii)$\Leftrightarrow$(iv): $A^{\mathsf H}(\mathbf b-A\hat{\mathbf x})=A^{\mathsf H}\mathbf b-A^{\mathsf H}A\hat{\mathbf x}$. Since $P\mathbf b\in\mathcal C(A)$, some $\hat{\mathbf x}$ satisfies (ii), and $\mathbf x$ satisfies (ii) as well if and only if $A(\mathbf x-\hat{\mathbf x})=\mathbf 0$. The residual of every solution is $\mathbf b-P\mathbf b$, which is the projection of $\mathbf b$ onto $\mathcal C(A)^\perp=\mathcal N(A^{\mathsf H})$ by \cref{prop:projection-properties}\,(v), and its squared norm is $\|\mathbf b\|^2-\|P\mathbf b\|^2$ by (iv) of that proposition. The solution set is a single point exactly when $\mathcal N(A)=\{\mathbf 0\}$, and then $A^{\mathsf H}A$ is invertible by \cref{prop:gram-rank-complex}.
+\end{proof}
+
+The theorem settles what \cref{sec:extrema-n,ch:vector-spaces,ch:linear-systems} left open. The normal equations always have a solution, even when $A^{\mathsf H}A$ is singular, because $A^{\mathsf H}\mathbf b$ lies in $\mathcal C(A^{\mathsf H})=\mathcal C(A^{\mathsf H}A)$; their solutions are exactly the minimisers of $\|A\mathbf x-\mathbf b\|$; and the geometric content of the equations is that the residual is orthogonal to every column of $A$, as observed for the straight line in \cref{sec:extrema-n}. For a real matrix the theorem can also be reached by calculus: the function $f(\mathbf x)\coloneqq\|A\mathbf x-\mathbf b\|^2=\langle\mathbf x,A^{\mathsf T}A\mathbf x\rangle-2\langle A^{\mathsf T}\mathbf b,\mathbf x\rangle+\|\mathbf b\|^2$ has the gradient $2A^{\mathsf T}(A\mathbf x-\mathbf b)$ and the Hessian $2A^{\mathsf T}A$, which is positive semidefinite (\cref{prop:gram}). The normal equations say that the gradient vanishes, and by \cref{thm:convex-c2} every critical point of the convex function $f$ is a global minimum. This is how \cref{sec:extrema-n} found the line; the orthogonality argument gives more, namely the structure of the solution set and the geometric meaning of the minimum, and it applies to complex matrices without change.
+
+\subsection{Fitting Models}
+
+A model that depends linearly on its parameters $\beta_1,\ldots,\beta_n$, such as a polynomial $\beta_1+\beta_2t+\cdots+\beta_nt^{n-1}$ or any combination $\sum_j\beta_j\phi_j(t)$ of given functions $\phi_j$, is fitted to data $(t_1,y_1),\ldots,(t_m,y_m)$ by minimising $\sum_i(y_i-\sum_j\beta_j\phi_j(t_i))^2$. This is the least squares problem with the \term{design matrix} $X\in\mathbb R^{m\times n}$ of the entries $x_{ij}=\phi_j(t_i)$ and the right-hand side $\mathbf y$: the normal equations are $X^{\mathsf T}X\boldsymbol\beta=X^{\mathsf T}\mathbf y$, the matrix form of \eqref{eq:normal-equations} for general $X$. For the straight line, $X$ has the rows $(1,t_i)$.
+
+The Gram--Schmidt process gives the straight line a transparent form. For the six data points of \cref{fig:least-squares}, with $t_i=0,1,\ldots,5$, the first column of $X$ is $\mathbf 1=(1,\ldots,1)$, and the first step of the process removes from the second column $\mathbf t=(t_1,\ldots,t_6)$ its projection onto $\mathbf 1$, which is $\bar t\mathbf 1$ with the mean $\bar t=2.5$:
+\[
+\mathbf v_2=\mathbf t-\bar t\,\mathbf 1=(-2.5,-1.5,-0.5,0.5,1.5,2.5),\qquad\|\mathbf v_2\|^2=17.5 .
+\]
+In the orthogonal basis $\mathbf 1$, $\mathbf v_2$ of $\mathcal C(X)$ the projection of $\mathbf y$ is $\bar y\mathbf 1+(\langle\mathbf v_2,\mathbf y\rangle/\|\mathbf v_2\|^2)\mathbf v_2$, and with $\bar y=4.75$ and $\langle\mathbf v_2,\mathbf y\rangle=\sum_it_iy_i-\bar t\sum_iy_i=97.3-71.25=26.05$ the fitted line is $y=4.75+1.48857\ldots(t-2.5)$. Its slope $26.05/17.5=521/350$ and its intercept $4.75-2.5\cdot521/350=36/35$ are those found in \cref{sec:extrema-n}. The formula $b=\sum_i(t_i-\bar t)(y_i-\bar y)/\sum_i(t_i-\bar t)^2$ for the slope, which \cref{sec:extrema-n} obtained by elimination, is the coefficient of the orthogonal projection onto the centred vector $\mathbf t-\bar t\mathbf 1$. The residuals of \cref{fig:least-squares} are orthogonal to $\mathbf 1$ and to $\mathbf t$, and their squared norm is $243/875=0.27771\ldots$.
+
+\begin{figure}
+\sdpanel{A}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.47\textwidth, height=0.4\textwidth, xmin=-0.4, xmax=6.4, ymin=0, ymax=4,
+  xtick={0,1,2,3,4,5,6}, ytick={0,1,2,3,4}, xlabel={$t$}, ylabel={$y$}]
+\addplot[black, line width=0.8pt, domain=-0.4:6.4, samples=81] {311/140-373/280*x+73/280*x^2};
+\draw[black!55, line width=0.7pt] (axis cs:0,2.3) -- (axis cs:0,2.221429);
+\draw[black!55, line width=0.7pt] (axis cs:1,1.1) -- (axis cs:1,1.15);
+\draw[black!55, line width=0.7pt] (axis cs:2,0.4) -- (axis cs:2,0.6);
+\draw[black!55, line width=0.7pt] (axis cs:3,0.7) -- (axis cs:3,0.571429);
+\draw[black!55, line width=0.7pt] (axis cs:4,1.2) -- (axis cs:4,1.064286);
+\draw[black!55, line width=0.7pt] (axis cs:5,2.0) -- (axis cs:5,2.078571);
+\draw[black!55, line width=0.7pt] (axis cs:6,3.6) -- (axis cs:6,3.614286);
+\addplot[black, only marks, mark=*, mark size=1.5pt] coordinates {(0,2.3) (1,1.1) (2,0.4) (3,0.7) (4,1.2) (5,2.0) (6,3.6)};
+\end{axis}
+\end{tikzpicture}}\hfill
+\sdpanel{B}{\begin{tikzpicture}[x={(0.8cm,0cm)}, y={(0.42cm,0.32cm)}, z={(0cm,1.05cm)}, font=\scriptsize]
+\fill[sdfill] (-0.5,-0.4,0) -- (4.3,-0.4,0) -- (4.3,3.2,0) -- (-0.5,3.2,0) -- cycle;
+\draw[line width=0.5pt] (-0.5,-0.4,0) -- (4.3,-0.4,0) -- (4.3,3.2,0) -- (-0.5,3.2,0) -- cycle;
+\node at (3.3,2.75,0) {$\mathcal C(A)$};
+\draw[line width=0.9pt, -{Latex[length=1.8mm]}] (0,0,0) -- (1.3,0.2,0) node[below] {$\mathbf a_1$};
+\draw[line width=0.9pt, -{Latex[length=1.8mm]}] (0,0,0) -- (0.3,1.4,0) node[left] {$\mathbf a_2$};
+\draw[line width=1.2pt, -{Latex[length=1.8mm]}] (0,0,0) -- (2.3,1.5,0);
+\draw[line width=0.8pt, -{Latex[length=1.6mm]}] (2.3,1.5,0) -- (2.3,1.5,2.0);
+\draw[line width=0.4pt] (2.3,1.5,0.22) -- (2.48,1.5,0.22) -- (2.48,1.5,0);
+\fill (2.3,1.5,2.0) circle (1.3pt) (2.3,1.5,0) circle (1.3pt);
+\node[above] at (2.3,1.5,2.0) {$\mathbf b$};
+\node[below right=-1pt] at (2.3,1.5,0) {$A\hat{\mathbf x}=P\mathbf b$};
+\node[right] at (2.3,1.5,1.1) {$\mathbf r\in\mathcal N(A^{\mathsf H})$};
+\end{tikzpicture}}
+\caption{Two views of least squares. (A) The parabola $y=311/140-373t/280+73t^2/280$ fitted to seven data points, with the residuals (vertical segments), whose squares add up to the minimum $0.09$. (B) The same problem in $\mathbb R^m$: the vector $\mathbf b$ of the data, the column space $\mathcal C(A)$ of the design matrix (shaded, spanned by its columns), the fitted values $A\hat{\mathbf x}$, the orthogonal projection of $\mathbf b$, and the residual $\mathbf r=\mathbf b-A\hat{\mathbf x}$, which is orthogonal to $\mathcal C(A)$ and so lies in $\mathcal N(A^{\mathsf H})$. For the data of (A), $m=7$ and $\mathcal C(A)$ is three-dimensional; the picture can only suggest this.\label{fig:least-squares-views}}
+\end{figure}
+
+A polynomial of higher degree is fitted in the same way. The seven points $(t_i,y_i)$ with $t_i=0,1,\ldots,6$ and $y_i=2.3$, $1.1$, $0.4$, $0.7$, $1.2$, $2.0$, $3.6$ in \cref{fig:least-squares-views}A suggest a parabola. With the rows $(1,t_i,t_i^2)$ of $X$, the normal equations are
+\[
+\begin{bmatrix}7&21&91\\21&91&441\\91&441&2275\end{bmatrix}\begin{bmatrix}\beta_1\\\beta_2\\\beta_3\end{bmatrix}=\begin{bmatrix}11.3\\40.4\\207.8\end{bmatrix},
+\]
+whose entries are the sums $\sum_it_i^{j+k-2}$ and $\sum_it_i^{j-1}y_i$, and their solution is $\boldsymbol\beta=(311/140,-373/280,73/280)=(2.2214\ldots,-1.3321\ldots,0.2607\ldots)$. The residuals are $11/140$, $-1/20$, $-1/5$, $9/70$, $19/140$, $-11/140$ and $-1/70$; they are orthogonal to the three columns of $X$, as one checks in exact arithmetic, and their squared norm is $9/100$. \Cref{fig:least-squares-views}B shows the geometry of the same computation.
+
+\subsection{Solving by QR}
+
+The normal equations are a square system and can be solved by elimination, but forming $A^{\mathsf H}A$ is not a good idea in floating-point arithmetic, for a reason that we shall see in a moment. The QR factorisation avoids it.
+
+\begin{theorem}[Least squares by QR]
+\label{thm:least-squares-qr}
+Let $A\in\mathbb F^{m\times n}$ have independent columns, let $A=QR$ with $Q^{\mathsf H}Q=I$ and $R$ upper triangular, and let $\hat Q=(Q,Q_2)$ be unitary, as in \cref{cor:full-qr} or \cref{thm:householder-qr}. Then for every $\mathbf x\in\mathbb F^n$
+\[
+\|A\mathbf x-\mathbf b\|^2=\|R\mathbf x-Q^{\mathsf H}\mathbf b\|^2+\|Q_2^{\mathsf H}\mathbf b\|^2 .
+\]
+Consequently the least squares solution is the solution of the triangular system $R\hat{\mathbf x}=Q^{\mathsf H}\mathbf b$, and the smallest residual has the norm $\|Q_2^{\mathsf H}\mathbf b\|$.
+\end{theorem}
+
+\begin{proof}
+$\hat Q^{\mathsf H}$ is unitary, so it preserves norms (\cref{prop:orthonormal-columns}), and
+\[
+\|A\mathbf x-\mathbf b\|^2=\bigl\|\hat Q^{\mathsf H}(A\mathbf x-\mathbf b)\bigr\|^2=\left\|\begin{bmatrix}R\mathbf x\\\mathbf 0\end{bmatrix}-\begin{bmatrix}Q^{\mathsf H}\mathbf b\\Q_2^{\mathsf H}\mathbf b\end{bmatrix}\right\|^2=\|R\mathbf x-Q^{\mathsf H}\mathbf b\|^2+\|Q_2^{\mathsf H}\mathbf b\|^2 .
+\]
+The second term does not depend on $\mathbf x$, and the first vanishes exactly for $\mathbf x=R^{-1}Q^{\mathsf H}\mathbf b$, since $R$ is invertible (\cref{thm:householder-qr}).
+\end{proof}
+
+The theorem can also be read off the normal equations: with $A=QR$ in its reduced form, $A^{\mathsf H}A=R^{\mathsf H}R$ and $A^{\mathsf H}\mathbf b=R^{\mathsf H}Q^{\mathsf H}\mathbf b$, and cancelling the invertible factor $R^{\mathsf H}$ leaves $R\hat{\mathbf x}=Q^{\mathsf H}\mathbf b$. The point is that this route never forms $A^{\mathsf H}A$. In practice one computes the Householder factorisation by \cref{alg:householder-qr}, applies the same reflections to $\mathbf b$, which gives $\hat Q^{\mathsf H}\mathbf b$ in about $4mn$ operations (\cref{prop:householder-cost}), and solves $R\hat{\mathbf x}=Q^{\mathsf H}\mathbf b$ by back substitution (\cref{alg:back-substitution}); the last $m-n$ components of $\hat Q^{\mathsf H}\mathbf b$ have the norm of the residual. This method is due to Golub~\cite{golub1965}.
+
+For the matrix with the columns $(1,2,2)$ and $(3,3,0)$ and $\mathbf b=(6,3,3)$, the reflections of \cref{sec:householder-qr} give $H_1\mathbf b=\mathbf b-3(4,2,2)=(-6,-3,-3)$, since $\mathbf u_1^{\mathsf T}\mathbf b=36$ and $2\cdot36/24=3$, which $H_2$ leaves unchanged, since $\mathbf u_2=(3,-3)$ is orthogonal to $(-3,-3)$. So $Q^{\mathsf T}\mathbf b=(-6,-3)$ and $Q_2^{\mathsf T}\mathbf b=-3$, and $R\hat{\mathbf x}=Q^{\mathsf T}\mathbf b$ reads $-3x_1-3x_2=-6$, $-3x_2=-3$, so $\hat{\mathbf x}=(1,1)$, with the residual $\mathbf b-A\hat{\mathbf x}=(6,3,3)-(4,5,2)=(2,-2,1)$ of norm $3=|Q_2^{\mathsf T}\mathbf b|$. The normal equations give the same: $A^{\mathsf T}A$ has the rows $(9,9)$ and $(9,18)$, $A^{\mathsf T}\mathbf b=(18,27)$, and the solution is $(1,1)$.
+
+\subsection{Why Not the Normal Equations}
+
+The normal equations cost less than the QR factorisation: forming the symmetric matrix $A^{\mathsf T}A$ takes about $mn^2$ operations, and solving the system by the Cholesky factorisation of Chapter~20 about $n^3/3$ more, against $2mn^2-2n^3/3$ for Householder's method. Their weakness is accuracy. Consider the L\"auchli matrix with two columns,
+\[
+A=\begin{bmatrix}1&1\\\varepsilon&0\\0&\varepsilon\end{bmatrix},\qquad\mathbf b=\begin{bmatrix}2\\\varepsilon\\\varepsilon\end{bmatrix},\qquad A^{\mathsf T}A=\begin{bmatrix}1+\varepsilon^2&1\\1&1+\varepsilon^2\end{bmatrix},
+\]
+for which $A\mathbf x=\mathbf b$ is consistent, with the exact solution $\mathbf x=(1,1)$. For a unit vector $\mathbf x$, $\|A\mathbf x\|^2=(1+\varepsilon^2)+2x_1x_2$ lies between $\varepsilon^2$ and $2+\varepsilon^2$, since $|2x_1x_2|\le x_1^2+x_2^2=1$, with the extremes at $(1,-1)/\sqrt2$ and $(1,1)/\sqrt2$; so the condition number of $A$, the ratio of the longest to the shortest image of a unit vector, is $\kappa(A)=\sqrt{2+\varepsilon^2}/\varepsilon$. The same computation for $A^{\mathsf T}A$, whose images of unit vectors have squared lengths $(1+\varepsilon^2)^2+1+2(1+\varepsilon^2)\cdot2x_1x_2$ between $\varepsilon^4$ and $(2+\varepsilon^2)^2$, gives $\kappa(A^{\mathsf T}A)=(2+\varepsilon^2)/\varepsilon^2=\kappa(A)^2$. Forming the normal equations squares the condition number; Chapter~21 shows that this is true for every matrix with independent columns, in the norm $\|\cdot\|_2$.
+
+We solved this problem in binary64 arithmetic with the library routines of \cref{sec:systems-practice}. For $\varepsilon=10^{-4}$, the normal equations solved by \code{linalg.solve}, which uses $PA=LU$, gave a solution with the error $5.5\times10^{-10}$ in the $\infty$-norm, and solved by the Cholesky factorisation with \code{linalg.cholesky} and \code{linalg.cholesky\_solve} an error of $1.2\times10^{-9}$, while the QR factorisation from \code{linalg.qr}, which according to the source code of the library computes Householder's factorisation by the LAPACK routine \code{geqrf}, followed by back substitution, gave an error of $2.2\times10^{-16}$. For $\varepsilon=10^{-8}$, the number $1+\varepsilon^2$ rounds to $1$, the computed $A^{\mathsf T}A$ is the singular matrix with all entries $1$, and both \code{linalg.solve} and \code{linalg.cholesky} stopped with an error message; the information that distinguishes the two columns was lost in forming $A^{\mathsf T}A$, before any solving began. The QR factorisation, which works with $A$ itself, gave the solution $(0.9999999999999998,1.0000000000000002)$, with the diagonal entry $r_{22}=1.414\ldots\times10^{-8}$ that records the small angle between the columns. \Cref{sec:orthogonality-computation} repeats the comparison for polynomial fitting.
+
+\subsection{Rank-Deficient Problems and the Minimum Norm Solution}
+
+If the columns of $A$ are dependent, the least squares solutions form the flat $\hat{\mathbf x}+\mathcal N(A)$, and a natural choice among them is the shortest.
+
+\begin{proposition}[The minimum norm solution]
+\label{prop:minimum-norm}
+Let $A\in\mathbb F^{m\times n}$ and $\mathbf b\in\mathbb F^m$. Exactly one least squares solution $\mathbf x^+$ lies in $\mathcal C(A^{\mathsf H})$, and $\|\mathbf x^+\|<\|\mathbf x\|$ for every other least squares solution $\mathbf x$. If $\hat{\mathbf x}$ is any least squares solution, $\mathbf x^+$ is the orthogonal projection of $\hat{\mathbf x}$ onto $\mathcal C(A^{\mathsf H})$.
+\end{proposition}
+
+\begin{proof}
+By \cref{thm:four-subspaces-orthogonal}, $\mathcal C(A^{\mathsf H})=\mathcal N(A)^\perp$. Let $\mathbf x^+$ be the projection of $\hat{\mathbf x}$ onto $\mathcal C(A^{\mathsf H})$; then $\hat{\mathbf x}-\mathbf x^+\in\mathcal N(A)$, so $\mathbf x^+$ is a least squares solution. Every least squares solution is $\mathbf x=\mathbf x^++\mathbf z$ with $\mathbf z\in\mathcal N(A)$, orthogonal to $\mathbf x^+$, and Pythagoras' theorem gives $\|\mathbf x\|^2=\|\mathbf x^+\|^2+\|\mathbf z\|^2$, which exceeds $\|\mathbf x^+\|^2$ unless $\mathbf z=\mathbf 0$. If $\mathbf x$ lies in $\mathcal C(A^{\mathsf H})$ too, then $\mathbf z=\mathbf x-\mathbf x^+$ lies in $\mathcal C(A^{\mathsf H})\cap\mathcal N(A)=\{\mathbf 0\}$.
+\end{proof}
+
+For the $1\times2$ system $x_1+x_2=2$, every solution is a least squares solution, $\mathcal C(A^{\mathsf T})$ is spanned by $(1,1)$, and the minimum norm solution is $(1,1)$, the point of the line $x_1+x_2=2$ closest to the origin. The map $\mathbf b\mapsto\mathbf x^+$ is linear, and its matrix is the pseudoinverse $A^+$ of $A$, which Chapter~21 computes from the singular value decomposition; the formulas $(A^{\mathsf H}A)^{-1}A^{\mathsf H}$ and $A^{\mathsf H}(AA^{\mathsf H})^{-1}$ of \cref{prop:gram-rank} for matrices of full column and full row rank are special cases.
+
+\subsection{Weights and the Hat Matrix}
+
+When some measurements are more reliable than others, one minimises a weighted sum of squares $\sum_iw_i|(A\mathbf x-\mathbf b)_i|^2$ with positive weights $w_i$. This is the least squares problem in the weighted inner product $\langle\mathbf x,\mathbf y\rangle_W=\mathbf x^{\mathsf H}W\mathbf y$ of \cref{sec:inner-product-spaces}, and \cref{thm:best-approximation} with the Gram matrix $A^{\mathsf H}WA$ of the columns of $A$ in this inner product gives the weighted normal equations
+\[
+A^{\mathsf H}WA\,\hat{\mathbf x}=A^{\mathsf H}W\mathbf b .
+\]
+Equivalently, with $W^{1/2}\coloneqq\operatorname{diag}(\sqrt{w_i})$, it is the ordinary least squares problem for $W^{1/2}A$ and $W^{1/2}\mathbf b$, since $\sum_iw_i|(A\mathbf x-\mathbf b)_i|^2=\|W^{1/2}(A\mathbf x-\mathbf b)\|^2$, and it is solved by the QR factorisation of $W^{1/2}A$. Weights with general positive definite matrices $W$, which arise for correlated measurement errors, are treated in Chapter~20 and Volume~XV.
+
+In statistics the orthogonal projection onto the column space of the design matrix $X\in\mathbb R^{m\times n}$, with independent columns, carries the name \term{hat matrix}~\cite{hoaglin1978},
+\[
+H\coloneqq X(X^{\mathsf T}X)^{-1}X^{\mathsf T},
+\]
+because it maps the data $\mathbf y$ to the fitted values $\hat{\mathbf y}=X\hat{\boldsymbol\beta}=H\mathbf y$. By \cref{thm:projection-characterisation}, $H$ is symmetric and idempotent with $\operatorname{tr}H=n$, the number of parameters, and $I-H$, which maps $\mathbf y$ to the residual, is the orthogonal projection onto $\mathcal N(X^{\mathsf T})$, with the trace $m-n$. This number is the dimension of the space in which the residual is free to lie, and it is called the number of \term{degrees of freedom} of the residual; for the straight line through six points it is $4$, and for the parabola through seven points it is $4$ as well. Volume~XV builds the statistics of linear models on these facts, among them the estimate $\|\mathbf y-\hat{\mathbf y}\|^2/(m-n)$ of the variance of the measurement errors and the coefficient of determination.
+
+\section{Adjoints}
+\label{sec:adjoints}
+
+\subsection{Linear Functionals and the Riesz Representation}
+
+The rule $\langle A\mathbf x,\mathbf y\rangle=\langle\mathbf x,A^{\mathsf H}\mathbf y\rangle$ of \cref{prop:hermitian-inner-product}\,(v) was used throughout this chapter. It characterises the conjugate transpose by the inner product alone, without entries, and so it makes sense for linear maps between arbitrary inner product spaces. The construction rests on a description of all linear functionals.
+
+\begin{theorem}[Riesz representation]
+\label{thm:riesz}
+Let $V$ be a finite-dimensional inner product space. For every linear functional $\varphi\in V^*$ there is exactly one vector $\mathbf w\in V$ with
+\[
+\varphi(\mathbf v)=\langle\mathbf w,\mathbf v\rangle\qquad\text{for all }\mathbf v\in V .
+\]
+If $\mathbf q_1,\ldots,\mathbf q_n$ is an orthonormal basis, $\mathbf w=\sum_i\overline{\varphi(\mathbf q_i)}\,\mathbf q_i$. The map $\varphi\mapsto\mathbf w$ is bijective and conjugate linear, and linear if $V$ is real.
+\end{theorem}
+
+\begin{proof}
+Let $\mathbf q_1,\ldots,\mathbf q_n$ be an orthonormal basis (\cref{cor:orthonormal-basis}) and $\mathbf w\coloneqq\sum_i\overline{\varphi(\mathbf q_i)}\mathbf q_i$. By \cref{thm:orthonormal-expansion}\,(i) and the conjugate linearity in the first argument,
+\[
+\langle\mathbf w,\mathbf v\rangle=\sum_i\varphi(\mathbf q_i)\langle\mathbf q_i,\mathbf v\rangle=\varphi\Bigl(\sum_i\langle\mathbf q_i,\mathbf v\rangle\mathbf q_i\Bigr)=\varphi(\mathbf v).
+\]
+If $\mathbf w'$ represents $\varphi$ as well, then $\langle\mathbf w,\mathbf v\rangle=\langle\mathbf w',\mathbf v\rangle$ for all $\mathbf v$, and $\mathbf w=\mathbf w'$ by \cref{prop:inner-product-rules}\,(iv). Every $\mathbf w$ represents the functional $\langle\mathbf w,\cdot\rangle$, which is linear by the linearity in the second argument; so the map is bijective. It is conjugate linear because $\langle\bar s\mathbf w+\bar t\mathbf w',\cdot\rangle=s\langle\mathbf w,\cdot\rangle+t\langle\mathbf w',\cdot\rangle$.
+\end{proof}
+
+On $\mathbb F^n$ with the standard inner product, a functional is a row vector, $\varphi(\mathbf x)=\mathbf y^{\mathsf T}\mathbf x$, as \cref{sec:invariant-quotient-dual} observed, and its representing vector is $\mathbf w=\bar{\mathbf y}$, since $\langle\bar{\mathbf y},\mathbf x\rangle=\mathbf y^{\mathsf T}\mathbf x$. In $\mathcal P_2$ with the inner product $\int_{-1}^1pq$, the evaluation $\varphi(p)=p(1)$ is represented by the polynomial
+\[
+w=\sum_{k=0}^2\frac{P_k(1)}{\|P_k\|^2}\,P_k=\frac12+\frac32\,x+\frac52\cdot\frac{3x^2-1}2=\frac{15x^2+6x-3}4 ,
+\]
+built from the orthogonal basis of Legendre polynomials as in the theorem, with $\|P_k\|^2=2/(2k+1)$; one checks that $\int_{-1}^1w\,dx=1$, $\int_{-1}^1xw\,dx=1$ and $\int_{-1}^1x^2w\,dx=1$, which are the values of $p=1,x,x^2$ at $1$. The representing vector depends on the inner product, not only on the functional: with the inner product $\sum_kp(t_k)q(t_k)$ of \cref{sec:inner-product-spaces} at three points including $t_0=1$, the same functional is represented by the Lagrange polynomial that is $1$ at $t_0$ and $0$ at the other two points. In infinite-dimensional spaces the theorem needs completeness and continuity of the functional; the evaluation $f\mapsto f(1)$ on $C[-1,1]$ is represented by no continuous function (Volume~II).
+
+\subsection{The Adjoint of a Linear Map}
+
+\begin{theorem}[Adjoint]
+\label{thm:adjoint}
+Let $V$ and $W$ be finite-dimensional inner product spaces and $T\in\mathcal L(V,W)$. There is exactly one map $T^*\colon W\to V$ with
+\[
+\langle T\mathbf v,\mathbf w\rangle=\langle\mathbf v,T^*\mathbf w\rangle\qquad\text{for all }\mathbf v\in V,\ \mathbf w\in W,
+\]
+and it is linear. It is called the \term{adjoint} of $T$.
+\end{theorem}
+
+\begin{proof}
+Fix $\mathbf w\in W$. The map $\mathbf v\mapsto\langle\mathbf w,T\mathbf v\rangle$ is a linear functional on $V$, so by \cref{thm:riesz} there is exactly one vector, which we call $T^*\mathbf w$, with $\langle\mathbf w,T\mathbf v\rangle=\langle T^*\mathbf w,\mathbf v\rangle$ for all $\mathbf v$; conjugating both sides gives the defining identity, and the uniqueness of $T^*\mathbf w$ is that of the representing vector. For linearity, $\langle T^*(s\mathbf w+t\mathbf w'),\mathbf v\rangle=\langle s\mathbf w+t\mathbf w',T\mathbf v\rangle=\bar s\langle T^*\mathbf w,\mathbf v\rangle+\bar t\langle T^*\mathbf w',\mathbf v\rangle=\langle sT^*\mathbf w+tT^*\mathbf w',\mathbf v\rangle$ for all $\mathbf v$, and \cref{prop:inner-product-rules}\,(iv) gives $T^*(s\mathbf w+t\mathbf w')=sT^*\mathbf w+tT^*\mathbf w'$.
+\end{proof}
+
+For the map $\mathbf x\mapsto A\mathbf x$ from $\mathbb F^n$ to $\mathbb F^m$ with the standard inner products, the adjoint is $\mathbf y\mapsto A^{\mathsf H}\mathbf y$, by \cref{prop:hermitian-inner-product}\,(v) and uniqueness. The star is the notation of most texts on linear algebra and functional analysis; for matrices we keep $A^{\mathsf H}$, as explained in \cref{sec:complex-matrices}. In general bases, the matrix of the adjoint is the conjugate transpose only if the bases are orthonormal.
+
+\begin{proposition}[The matrix of the adjoint]
+\label{prop:adjoint-matrix}
+Let $\mathcal B$ and $\mathcal D$ be bases of $V$ and $W$, with the Gram matrices $G_{\mathcal B}=(\langle\mathbf b_i,\mathbf b_j\rangle)$ and $G_{\mathcal D}=(\langle\mathbf d_i,\mathbf d_j\rangle)$, let $T\in\mathcal L(V,W)$ and $A\coloneqq[T]_{\mathcal D\leftarrow\mathcal B}$. Then
+\[
+[T^*]_{\mathcal B\leftarrow\mathcal D}=G_{\mathcal B}^{-1}A^{\mathsf H}G_{\mathcal D} .
+\]
+In particular, if both bases are orthonormal, $[T^*]_{\mathcal B\leftarrow\mathcal D}=A^{\mathsf H}$.
+\end{proposition}
+
+\begin{proof}
+Let $C\coloneqq[T^*]_{\mathcal B\leftarrow\mathcal D}$, so that $T\mathbf b_j=\sum_ka_{kj}\mathbf d_k$ and $T^*\mathbf d_i=\sum_lc_{li}\mathbf b_l$ (\cref{def:matrix-of-map}). Then
+\[
+\langle T\mathbf b_j,\mathbf d_i\rangle=\sum_k\bar a_{kj}\langle\mathbf d_k,\mathbf d_i\rangle=(A^{\mathsf H}G_{\mathcal D})_{ji},\quad\langle\mathbf b_j,T^*\mathbf d_i\rangle=\sum_lc_{li}\langle\mathbf b_j,\mathbf b_l\rangle=(G_{\mathcal B}C)_{ji}.
+\]
+The two numbers are equal by the definition of the adjoint, so $G_{\mathcal B}C=A^{\mathsf H}G_{\mathcal D}$, and $G_{\mathcal B}$ is invertible by \cref{lem:gram-matrix}. For orthonormal bases both Gram matrices are $I$.
+\end{proof}
+
+A non-orthonormal basis can make the adjoint look very different from the transpose. On $\mathcal P_1$ with the inner product $\int_0^1pq$, the derivative $D(c_0+c_1x)=c_1$ has, in the basis $1,x$, the matrix $A$ with the rows $(0,1)$ and $(0,0)$, and the Gram matrix of the basis is the Hilbert matrix $H_2$ of \cref{sec:pivoting}. By the proposition,
+\[
+[D^*]=H_2^{-1}A^{\mathsf T}H_2=\begin{bmatrix}4&-6\\-6&12\end{bmatrix}\begin{bmatrix}0&0\\1&0\end{bmatrix}\begin{bmatrix}1&1/2\\1/2&1/3\end{bmatrix}=\begin{bmatrix}-6&-3\\12&6\end{bmatrix},
+\]
+so $D^*1=-6+12x$ and $D^*x=-3+6x$. One checks the defining identity on the basis: for example $\langle Dx,1\rangle=\int_0^11\,dx=1$ and $\langle x,D^*1\rangle=\int_0^1x(-6+12x)\,dx=-3+4=1$, and $\langle Dx,x\rangle=1/2=\int_0^1x(-3+6x)\,dx=\langle x,D^*x\rangle$. The adjoint of differentiation is not a differential operator here. For differentiable functions that vanish at the ends of the interval, integration by parts gives $\langle f',g\rangle=-\langle f,g'\rangle$, so that, formally, the adjoint of $D$ is $-D$; the boundary conditions are what makes this precise, and Volume~II develops it.
+
+\Cref{ch:linear-maps} defined the dual map $T'\colon W^*\to V^*$, $T'(\psi)=\psi\circ T$, and found that its matrix in the dual bases is the transpose. The adjoint is the dual map seen through the Riesz representation. If $\mathbf w\in W$ represents $\psi=\langle\mathbf w,\cdot\rangle$, then $T'(\psi)(\mathbf v)=\langle\mathbf w,T\mathbf v\rangle=\langle T^*\mathbf w,\mathbf v\rangle$, so $T'(\psi)$ is represented by $T^*\mathbf w$: identifying functionals with their representing vectors turns $T'$ into $T^*$. For real spaces this identification is a linear isomorphism $V^*\cong V$, and the dual map and the adjoint are the same map in two guises; with respect to orthonormal bases, whose dual bases correspond to the bases themselves, both have the transposed matrix, by \cref{prop:dual-map,prop:adjoint-matrix}. For complex spaces the identification is conjugate linear, which is why the conjugate transpose replaces the transpose.
+
+\begin{proposition}[Rules for adjoints]
+\label{prop:adjoint-rules}
+Let $U$, $V$, $W$ be finite-dimensional inner product spaces, $S,T\in\mathcal L(V,W)$, $R\in\mathcal L(W,U)$ and $c\in\mathbb F$.
+\begin{enumerate}
+\item $(S+T)^*=S^*+T^*$, $(cT)^*=\bar cT^*$, $(T^*)^*=T$, $(RT)^*=T^*R^*$ and $\operatorname{id}^*=\operatorname{id}$.
+\item If $T$ is invertible, so is $T^*$, and $(T^*)^{-1}=(T^{-1})^*$.
+\item $\ker T^*=(\operatorname{im}T)^\perp$ and $\operatorname{im}T^*=(\ker T)^\perp$; in particular $\operatorname{rank}T^*=\operatorname{rank}T$.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) Each identity follows from the uniqueness in \cref{thm:adjoint} by checking that the right side has the defining property; for instance $\langle RT\mathbf v,\mathbf u\rangle=\langle T\mathbf v,R^*\mathbf u\rangle=\langle\mathbf v,T^*R^*\mathbf u\rangle$, and $\langle T^*\mathbf w,\mathbf v\rangle=\overline{\langle\mathbf v,T^*\mathbf w\rangle}=\overline{\langle T\mathbf v,\mathbf w\rangle}=\langle\mathbf w,T\mathbf v\rangle$, which says that $T$ is the adjoint of $T^*$. (ii) Apply (i) to $TT^{-1}=\operatorname{id}$ and $T^{-1}T=\operatorname{id}$. (iii) $\mathbf w\in\ker T^*$ if and only if $\langle\mathbf v,T^*\mathbf w\rangle=0$ for all $\mathbf v$, that is, $\langle T\mathbf v,\mathbf w\rangle=0$ for all $\mathbf v$, which says $\mathbf w\perp\operatorname{im}T$. Applying this to $T^*$, whose adjoint is $T$, gives $\ker T=(\operatorname{im}T^*)^\perp$, and taking complements (\cref{thm:orthogonal-decomposition}) gives the second equation. By the rank--nullity theorem and \cref{thm:orthogonal-decomposition}, $\operatorname{rank}T^*=\dim V-\dim\ker T=\operatorname{rank}T$.
+\end{proof}
+
+Part (iii) is \cref{thm:four-subspaces-orthogonal} without matrices: the four fundamental subspaces of $A$ are the kernels and images of the map and of its adjoint, and they are orthogonal complements in pairs.
+
+\subsection{Self-Adjoint, Unitary and Normal Operators}
+
+The classes of matrices defined in \cref{def:hermitian-unitary} by the conjugate transpose have counterparts for operators, defined by the adjoint.
+
+\begin{definition}[Self-adjoint, unitary and normal operators]
+\label{def:operator-classes}
+An operator $T$ on a finite-dimensional inner product space $V$ is \term{self-adjoint} if $T^*=T$, \term{unitary} if $T^*T=\operatorname{id}$, and \term{normal} if $T^*T=TT^*$. A unitary operator on a real space is also called \term{orthogonal}.
+\end{definition}
+
+By \cref{prop:adjoint-matrix}, an operator is self-adjoint, unitary or normal if and only if its matrix with respect to an orthonormal basis is Hermitian, unitary or normal; in a basis that is not orthonormal the matrix need not show it. The characterisations proved for matrices carry over with the same proofs: $T$ is unitary if and only if it preserves inner products, $\langle T\mathbf u,T\mathbf v\rangle=\langle\mathbf u,\mathbf v\rangle$, if and only if it preserves norms, by polarisation (\cref{prop:parallelogram}), and then $T^*=T^{-1}$ by \cref{cor:injective-surjective}. Self-adjoint and unitary operators are normal. For a self-adjoint operator, $\langle\mathbf v,T\mathbf v\rangle=\langle T\mathbf v,\mathbf v\rangle=\overline{\langle\mathbf v,T\mathbf v\rangle}$ is real for every $\mathbf v$.
+
+\begin{proposition}[Orthogonal projections as operators]
+\label{prop:projection-self-adjoint}
+An operator $P$ on a finite-dimensional inner product space $V$ is the orthogonal projection onto a subspace if and only if $P^2=P$ and $P^*=P$. The subspace is then $\operatorname{im}P$.
+\end{proposition}
+
+\begin{proof}
+If $P=P_U$, then $P^2=P$ and $\langle P\mathbf v,\mathbf w\rangle=\langle\mathbf v,P\mathbf w\rangle$ for all $\mathbf v,\mathbf w$ by \cref{prop:projection-properties}, which says $P^*=P$. Conversely, if $P^2=P=P^*$, let $U\coloneqq\operatorname{im}P$. For every $\mathbf v$, $P\mathbf v\in U$ and $\mathbf v-P\mathbf v\in\ker P$, and $\ker P=\ker P^*=(\operatorname{im}P)^\perp$ by \cref{prop:adjoint-rules}\,(iii); so $\mathbf v-P\mathbf v\perp U$, and $P\mathbf v=P_U\mathbf v$ by \cref{thm:best-approximation}.
+\end{proof}
+
+Among all projections, which by \cref{prop:projection} correspond to the decompositions $V=U\oplus W$, the self-adjoint ones correspond to the decompositions with $W=U^\perp$. An example of a self-adjoint operator that is not a projection is the second derivative with a sign, $-D^2$, on a space of smooth functions on $[0,\pi]$ that vanish at both ends, such as the span of $\sin x,\ldots,\sin Nx$: integrating by parts twice, with the boundary terms vanishing, gives $\langle-f'',g\rangle=\langle f',g'\rangle=\langle f,-g''\rangle$. The central theorem about self-adjoint operators, that they have an orthonormal basis of vectors that they merely stretch, is the spectral theorem of Chapter~20; the normal operators are the subject of the same question over $\mathbb C$, which Chapter~22 answers.
+
+\section{Orthogonality in Computation: A First Look}
+\label{sec:orthogonality-computation}
+
+\subsection{The Loss of Orthogonality}
+
+\Cref{tab:qr-methods} stated what the rounding error analyses prove about the orthogonality of the computed $Q$. \Cref{tab:orthogonality-loss} shows what happens in practice for the Hilbert matrices $H_n$ of \cref{sec:pivoting}, with entries $1/(i+j-1)$ rounded to binary64 numbers, whose columns are nearly dependent and increasingly so as $n$ grows. We implemented the classical and the modified Gram--Schmidt algorithms (\cref{alg:cgs,alg:mgs}), and the classical algorithm with a second projection pass described in the note of \cref{sec:householder-qr}, as Python programs in binary64 arithmetic, and compared them with the routine \code{linalg.qr} of the stardust library, which computes Householder's factorisation; the machine and the version of the library are those described in \cref{sec:systems-practice}. For each computed $Q$ we evaluated $\|Q^{\mathsf T}Q-I\|_{\mathrm F}$ exactly in rational arithmetic from the binary64 entries of $Q$, so that the table shows the departure of the computed columns from orthonormality and no error of its evaluation. The condition number $\kappa_2(H_n)$ of the stored matrix, defined as in \cref{sec:householder-qr}, was computed with the arbitrary-precision ball arithmetic of the python-flint package to the digits shown.
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}{colspec={rlllll}, row{1}={font=\small\bfseries}}
+\toprule
+$n$ & $\kappa_2(H_n)$ & classical & modified & classical, twice & Householder \\
+\midrule
+$4$ & $1.6\times10^{4}$ & $5.1\times10^{-11}$ & $4.2\times10^{-13}$ & $1.9\times10^{-16}$ & $8.9\times10^{-16}$ \\
+$6$ & $1.5\times10^{7}$ & $7.6\times10^{-8}$ & $3.1\times10^{-10}$ & $4.6\times10^{-16}$ & $1.0\times10^{-15}$ \\
+$8$ & $1.5\times10^{10}$ & $1.4$ & $5.6\times10^{-7}$ & $4.1\times10^{-16}$ & $7.4\times10^{-16}$ \\
+$10$ & $1.6\times10^{13}$ & $3.5$ & $1.3\times10^{-4}$ & $4.5\times10^{-16}$ & $1.5\times10^{-15}$ \\
+$12$ & $1.7\times10^{16}$ & $5.5$ & $2.5\times10^{-1}$ & $6.4\times10^{-16}$ & $1.5\times10^{-15}$ \\
+\bottomrule
+\end{sdtable}}{The loss of orthogonality $\|Q^{\mathsf T}Q-I\|_{\mathrm F}$ of the factor $Q$ computed in binary64 arithmetic for the Hilbert matrices $H_n$ by the classical Gram--Schmidt algorithm, the modified algorithm, the classical algorithm with a second projection pass, and Householder's method (the library routine \code{linalg.qr}). The second column is the condition number of the stored matrix.\label{tab:orthogonality-loss}}
+\end{table}
+
+The classical algorithm loses orthogonality fastest. For $n=8$ its loss is of order $1$, so that the computed columns are far from orthogonal, and for $n=12$ it is $5.5$, close to the value $\sqrt{n(n-1)}\approx11.5$ that unit vectors pointing nearly in the same direction would give. The modified algorithm loses orthogonality as well, but more slowly; in every row its loss is below $u\kappa_2(H_n)$, with $u=2^{-53}\approx1.1\times10^{-16}$, the order that \cref{tab:qr-methods} predicts, and for $n=12$, where $u\kappa_2(H_{12})\approx1.9$, it too has lost all orthogonality. Householder's method gives columns orthonormal to within a few units of the roundoff for every $n$, independently of the condition number, and so does the classical algorithm with two projection passes, even for $n=12$. In this experiment the loss of the classical algorithm was much larger than $u\kappa_2(H_n)$ and below $u\kappa_2(H_n)^2$ where the latter is below $1$, that is, for $n=4$ and $n=6$.
+
+\subsection{Normal Equations and QR in Polynomial Fitting}
+
+The second experiment repeats the comparison of \cref{sec:least-squares} for a realistic problem: the least squares fit of a polynomial $\beta_0+\beta_1t+\cdots+\beta_dt^d$ in the monomial basis to the values $y_i=e^{t_i}$ at the $21$ points $t_i=i/20$, $i=0,\ldots,20$. The design matrix $A$ has the entries $t_i^j$, $j=0,\ldots,d$, computed and stored in binary64, and the data $y_i$ were rounded to binary64 as well. For these stored data we computed the exact least squares solution $\boldsymbol\beta^*$ in rational arithmetic, from the normal equations, and compared it with four computed solutions: the normal equations $A^{\mathsf T}A\boldsymbol\beta=A^{\mathsf T}\mathbf y$ formed in binary64 and solved by \code{linalg.solve} ($PA=LU$) or by \code{linalg.cholesky} and \code{linalg.cholesky\_solve}; Householder's QR factorisation by \code{linalg.qr} followed by the triangular solve \code{linalg.solve\_triangular}, as in \cref{thm:least-squares-qr}; and the library routine \code{linalg.lstsq}, which according to its source code uses the LAPACK routine \code{gelsd}, based on the singular value decomposition of Chapter~21. \Cref{tab:polyfit} shows the relative errors $\|\hat{\boldsymbol\beta}-\boldsymbol\beta^*\|/\|\boldsymbol\beta^*\|$ and the condition number $\kappa_2(A)$, computed as in the first experiment.
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}{colspec={rlllll}, row{1}={font=\small\bfseries}}
+\toprule
+$d$ & $\kappa_2(A)$ & normal eq., LU & normal eq., Cholesky & QR & \code{lstsq} \\
+\midrule
+$2$ & $2.1\times10^{1}$ & $3.9\times10^{-14}$ & $2.6\times10^{-14}$ & $9.3\times10^{-16}$ & $1.9\times10^{-15}$ \\
+$4$ & $5.9\times10^{2}$ & $7.7\times10^{-12}$ & $3.0\times10^{-12}$ & $1.7\times10^{-14}$ & $3.0\times10^{-14}$ \\
+$6$ & $1.8\times10^{4}$ & $1.1\times10^{-8}$ & $2.0\times10^{-9}$ & $2.2\times10^{-13}$ & $6.1\times10^{-14}$ \\
+$8$ & $6.2\times10^{5}$ & $6.6\times10^{-6}$ & $3.6\times10^{-6}$ & $7.8\times10^{-12}$ & $1.5\times10^{-11}$ \\
+$10$ & $2.3\times10^{7}$ & $1.6\times10^{-3}$ & $2.3\times10^{-3}$ & $2.9\times10^{-10}$ & $5.6\times10^{-10}$ \\
+$12$ & $1.0\times10^{9}$ & $9.6$ & $9.9\times10^{-2}$ & $7.1\times10^{-8}$ & $1.4\times10^{-8}$ \\
+$14$ & $5.2\times10^{10}$ & $4.7$ & $3.4\times10^{-1}$ & $2.1\times10^{-6}$ & $1.2\times10^{-6}$ \\
+\bottomrule
+\end{sdtable}}{Relative errors of the least squares fit of a polynomial of degree $d$ in the monomial basis to $e^t$ at $21$ equally spaced points of $[0,1]$, computed in binary64 arithmetic from the normal equations (solved by LU or by Cholesky), from Householder's QR factorisation, and by the library routine \code{lstsq}, measured against the exact least squares solution for the stored data. The second column is the condition number of the design matrix.\label{tab:polyfit}}
+\end{table}
+
+The condition number of the design matrix grows by a factor between $28$ and $52$ with each increase of the degree by $2$, the familiar ill-conditioning of the monomial basis that \cref{sec:pivoting} met in the Hilbert matrices. The errors of the QR solution grow in proportion, and in every row they are below $u\kappa_2(A)$. The errors of the normal equations grow about twice as fast on a logarithmic scale: they are below $u\kappa_2(A)^2$ in every row, but well above $u\kappa_2(A)$, and for $d=12$ and $d=14$ they leave at most one correct digit, while the QR solution still has five to seven. For $d\le10$ the errors of the normal equations solved by Cholesky exceed those of the QR solution by a factor that lies within a factor $4$ of $\kappa_2(A)$. The routine based on the singular value decomposition behaves like the QR solution. The perturbation theory of Volume~VIII explains these orders of magnitude, and it shows that for problems with large residuals the factor $\kappa_2(A)^2$ affects the QR solution as well. For polynomial fitting in particular, the better remedy is a better basis: with polynomials that are orthogonal with respect to the inner product $\sum_ip(t_i)q(t_i)$ of the data points, constructed as in \cref{subsec:legendre}, the design matrix has orthogonal columns, and the ill-conditioning of the monomials does not arise (Volume~XI).
+
+\subsection{Why Orthogonal Transformations Are Safe}
+
+The experiments illustrate a principle that runs through numerical linear algebra. If a vector $\mathbf x$ carries an error $\mathbf e$, then after multiplication by a matrix $Q$ with orthonormal columns the error is $Q\mathbf e$, and $\|Q\mathbf e\|=\|\mathbf e\|$ (\cref{prop:orthonormal-columns}); a sequence of such multiplications passes on the errors made at every step without magnifying them. A general matrix $M$ can magnify an error by the factor $\|M\|$, and its inverse by $\|M^{-1}\|$, so a sequence of non-orthogonal transformations, such as the elimination steps of \cref{ch:linear-systems}, can amplify errors by the product of such factors, which is why elimination needs pivoting. Householder's method applies only reflections to $A$, and the computed factors are those of a matrix close to $A$, a statement of backward stability that Volume~VIII proves. The Gram--Schmidt algorithms, by contrast, form $Q=AR^{-1}$ by triangular rather than orthogonal transformations of $A$, and the analyses quoted in \cref{tab:qr-methods} bound their loss of orthogonality only in terms of the condition number of $A$. The same principle explains why the QR algorithm for eigenvalues and the singular value decomposition, the subjects of later chapters and of Volume~VIII, are computed with reflections and rotations.
+
+\bigskip
+An inner product turns a vector space into a space with lengths, angles and right angles, and the Cauchy--Schwarz inequality, the triangle inequality, the parallelogram law and the polarisation identities hold in every such space. Coordinates in an orthonormal basis are inner products, and Parseval's identity and Bessel's inequality say that they measure lengths exactly; the discrete Fourier vectors and the trigonometric functions are the classical examples. In finite dimensions every subspace has an orthogonal complement of the complementary dimension, and the four fundamental subspaces of a matrix are two pairs of complements, $\mathcal N(A)=\mathcal C(A^{\mathsf H})^\perp$ and $\mathcal N(A^{\mathsf H})=\mathcal C(A)^\perp$. The closest point of a finite-dimensional subspace is characterised by the orthogonality of the error, which turns minimisation into the linear system of the normal equations; the orthogonal projections are the Hermitian idempotent matrices. The Gram--Schmidt process constructs orthonormal bases, the Legendre polynomials among them, and in matrix form it is the factorisation $A=QR$, which recovers the Gram determinant and proves Hadamard's inequality for complex matrices. Orthogonal and unitary matrices preserve lengths; in the plane they are rotations and reflections, every orthogonal matrix is a product of at most $n$ reflections, and every map that preserves distances is an orthogonal map followed by a translation. Householder reflections compute the QR factorisation of every matrix in about $2mn^2-2n^3/3$ operations, and the QR factorisation solves least squares problems without forming $A^{\mathsf H}A$, whose condition number is the square of that of $A$. The adjoint of a linear map, built on the Riesz representation of functionals, is the conjugate transpose in orthonormal bases. Chapter~19 begins the study of eigenvalues, and Chapter~20 shows that a self-adjoint operator has an orthonormal basis of eigenvectors.
+
+\chapternotes
+
+The inequality $|\sum a_ib_i|\le(\sum a_i^2)^{1/2}(\sum b_i^2)^{1/2}$ is in Cauchy's \emph{Cours d'analyse} of 1821~\cite{cauchy1821}; its form for integrals was found by Bunyakovsky and, independently, by Schwarz, and Steele~\cite{steele2004} tells the story and collects many proofs. The orthogonalisation process bears the names of Gram, who used it in 1883 in a study of series expansions by least squares~\cite{gram1883}, and of Schmidt, who stated it in the form used today in his work on integral equations of 1907~\cite{schmidt1907}; Leon, Bj\"orck and Gander trace its history back to Laplace and follow its numerical analysis to the present~\cite{leon2013}. Least squares itself was published by Legendre in 1805 and justified by Gauss in 1809~\cite{legendre1805,gauss1809,stigler1981}, as the notes of \cref{ch:several-variables} recall. The characterisation of inner product norms by the parallelogram law is due to Jordan and von Neumann~\cite{jordanvonneumann1935}, the theorem on isometries of normed spaces to Mazur and Ulam~\cite{mazur1932}, and the representation of functionals by inner products, in the space of square-integrable functions, to F.~Riesz and Fr\'echet, who published it in the same volume of the \emph{Comptes rendus} in 1907~\cite{riesz1907,frechet1907}. Artin~\cite{artin1957geometric} proves the Cartan--Dieudonn\'e theorem in the generality of symmetric bilinear forms. Householder introduced his reflections for the triangularisation of matrices in 1958~\cite{householder1958}, Givens his rotations in the same year~\cite{givens1958}, and Golub applied Householder's method to least squares problems in 1965~\cite{golub1965}; Bj\"orck analysed the modified Gram--Schmidt algorithm in 1967~\cite{bjorck1967}, the matrices of \cref{sec:gram-schmidt,sec:least-squares} are named after L\"auchli~\cite{lauchli1961}, and Giraud, Langou, Rozlo\v{z}n\'{\i}k and van den Eshof analysed the classical algorithm and its reorthogonalised form~\cite{giraud2005numer,giraud2005camwa}. The term hat matrix is discussed by Hoaglin and Welsch~\cite{hoaglin1978}, and Szeg\H{o}~\cite{szego1975} is the classical treatise on orthogonal polynomials.
+
+Axler~\cite[Chaps.~6 and~7]{axler2024} develops inner product spaces, orthogonal complements, the Riesz representation and adjoints from the axioms, with the inner product linear in the first argument, so that his formulas are the complex conjugates of ours; Halmos~\cite{halmos1958} and Hoffman and Kunze~\cite{hoffman1971} are the classical accounts. Strang~\cite{strang2016} presents the four fundamental subspaces, projections and least squares with many applications, and Meyer~\cite{meyer2000} the Gram--Schmidt process, the QR factorisation and orthogonal reduction. On the computational side, Trefethen and Bau~\cite{trefethen1997} give a concise and vivid introduction to projectors, the QR factorisation, Gram--Schmidt and Householder triangularisation and least squares, Golub and Van Loan~\cite[Chap.~5]{golub2013} treat orthogonalisation and least squares in depth, Higham~\cite{higham2002accuracy} analyses the rounding errors of the QR factorisation and of least squares solvers (his Chapters~19 and~20), and Bj\"orck's monograph~\cite{bjorck1996} is the standard reference for least squares problems. Horn and Johnson~\cite[Chap.~2]{horn2013} collect the properties of unitary matrices.
+
+\chapterreferences
