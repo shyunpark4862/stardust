@@ -59,7 +59,7 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
   <div class:list={['container', 'docs', toc.length === 0 && 'docs--wide']} data-area={area?.current.key}>
     <aside class="docs__side">
       <button class="side-toggle" type="button" aria-expanded="false" aria-controls="side-nav">
-        <span>메뉴</span>
+        <span>Menu</span>
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
           <path d="M3.5 5.25 7 8.75l3.5-3.5" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"></path>
         </svg>
@@ -73,7 +73,7 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
                 <span class="area__name">{area.current.name}</span>
               </a>
               <details class="area__switch">
-                <summary class="area__switch-btn" aria-label="다른 영역으로">
+                <summary class="area__switch-btn" aria-label="Other areas">
                   <svg width="14" height="14" viewBox="0 0 14 14" fill="none" aria-hidden="true">
                     <path d="M4 5.5 7 2.5l3 3M4 8.5l3 3 3-3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
                   </svg>
@@ -89,7 +89,7 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
                       ) : (
                         <span class="area__item area__item--off">
                           <span>{a.name}</span>
-                          <Badge>준비 중</Badge>
+                          <Badge>Soon</Badge>
                         </span>
                       )}
                     </li>
@@ -99,7 +99,7 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
             </div>
           </div>
         )}
-        <nav aria-label="문서 메뉴">
+        <nav aria-label="Docs">
           {
             groups.map((g) =>
               area ? (
@@ -153,7 +153,7 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
       <header class="page-head">
         {
           crumbs.length > 0 && (
-            <nav class="crumbs" aria-label="현재 위치">
+            <nav class="crumbs" aria-label="Breadcrumb">
               <ol>
                 {crumbs.map((c) => (
                   <li>{c.href ? <a href={url(c.href)}>{c.label}</a> : <span>{c.label}</span>}</li>
@@ -178,8 +178,8 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
         {
           sample && (
             <p class="page-head__sample">
-              <Badge tone="warn">샘플</Badge>
-              <span>레이아웃과 컴포넌트를 보여주기 위한 임시 페이지예요. 내용은 나중에 다시 써요.</span>
+              <Badge tone="warn">Sample</Badge>
+              <span>A placeholder page that shows the layout; its text will be rewritten.</span>
             </p>
           )
         }
@@ -190,8 +190,8 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
     <aside class="docs__toc">
       {
         toc.length > 0 && (
-          <nav class="toc" aria-label="이 페이지의 목차">
-            <p class="toc__title">이 페이지</p>
+          <nav class="toc" aria-label="On this page">
+            <p class="toc__title">On this page</p>
             <ul class="toc__list">
               {toc.map(({ h, sub }) => (
                 <li class="toc__item">
@@ -209,7 +209,7 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
               ))}
             </ul>
             <a class="toc__top" href="#">
-              맨 위로
+              Back to top
               <svg width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
                 <path d="M6 9.5v-7M3 5l3-3 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
               </svg>
@@ -219,7 +219,7 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
       }
     </aside>
   </div>
-  <a class="to-top" href="#" aria-label="맨 위로">
+  <a class="to-top" href="#" aria-label="Back to top">
     <svg width="16" height="16" viewBox="0 0 16 16" fill="none" aria-hidden="true">
       <path d="M8 13V3M3.5 7.5 8 3l4.5 4.5" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" />
     </svg>
@@ -238,8 +238,8 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
     const btn = document.createElement('button');
     btn.type = 'button';
     btn.className = 'code-copy';
-    btn.textContent = '복사';
-    btn.setAttribute('aria-label', '코드 복사');
+    btn.textContent = 'Copy';
+    btn.setAttribute('aria-label', 'Copy code');
     btn.addEventListener('click', async () => {
       const inputs = pre.querySelectorAll('.repl-in, .repl-more');
       const text = inputs.length
@@ -247,11 +247,11 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
         : (pre.textContent ?? '').replace(/\n$/, '');
       try {
         await navigator.clipboard.writeText(text);
-        btn.textContent = '복사됨';
+        btn.textContent = 'Copied';
       } catch {
-        btn.textContent = '복사 실패';
+        btn.textContent = 'Copy failed';
       }
-      setTimeout(() => (btn.textContent = '복사'), 1600);
+      setTimeout(() => (btn.textContent = 'Copy'), 1600);
     });
     wrap.append(btn);
   });
@@ -746,7 +746,7 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
     border-color: var(--accent-soft-line);
     color: var(--accent);
   }
-  /* Wide screens have "맨 위로" under the table of contents; the floating
+  /* Wide screens have "Back to top" under the table of contents; the floating
      button is for layouts where that column is hidden. */
   @media (min-width: 1121px) {
     .to-top {

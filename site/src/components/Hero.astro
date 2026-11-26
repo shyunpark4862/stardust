@@ -11,56 +11,29 @@ import Button from './Button.astro';
   </div>
 
   <div class="container hero__inner">
-    <p class="eyebrow hero__eyebrow">Array · Linear algebra · Sparse · DataFrame · Special · Stats · Tests · Regression · Optimize · Calculus · Random · Spatial · FFT · Interpolate · Graph · Plot</p>
+    <p class="eyebrow hero__eyebrow">Array · Linear algebra · Sparse · DataFrame · Special · Stats · Tests · Regression · Optimize · Calculus · Random · Spatial · FFT · Interpolate · Graph · Smooth · Plot</p>
     <h1 class="hero__title">
       <span class="hero__line">Numerics, rebuilt</span>
       <span class="hero__line hero__line--accent">down to the last bit.</span>
     </h1>
     <p class="hero__lead">
-      stardust는 배열과 선형대수부터 통계와 난수까지, 수치 계산의 기본기를 C++20으로 처음부터 다시 만든 Python 라이브러리예요. 모든 영역이 같은
-      규칙으로 움직이고, 같은 기계에서 같은 입력이면 몇 번을 돌려도 결과가 비트까지 같아요.
+      stardust is a Python library for numerical computing, from arrays and linear algebra to statistics, optimization
+      and plotting, with a core rebuilt from scratch in C++20. Every area follows the same rules, and the same input on
+      the same machine gives the same result down to the last bit.
     </p>
     <div class="hero__actions">
-      <Button href="/intro/" size="lg" arrow>소개 읽기</Button>
-      <Button href="/api/" size="lg" variant="secondary">API 살펴보기</Button>
+      <Button href="/api/" size="lg" arrow>Browse the API</Button>
+      <Button href="https://github.com/shyunpark4862/stardust" size="lg" variant="secondary">GitHub</Button>
     </div>
   </div>
-
-  <!-- The run's clock, shown while the merger backdrop is in use. It
-       changes many times a second, so it is kept from screen readers. -->
-  <div class="container hero__sim" aria-hidden="true">
-    <dl class="sim">
-      <div class="sim__item">
-        <dt>Elapsed</dt>
-        <dd><span data-sim-time>0.00</span><small>억 년</small></dd>
-      </div>
-      <div class="sim__item">
-        <dt>Pace</dt>
-        <dd><span data-sim-rate>0</span><small>만 년/초</small></dd>
-      </div>
-      <div class="sim__item sim__item--phase">
-        <dt>Phase</dt>
-        <dd data-sim-phase>Approach</dd>
-      </div>
-    </dl>
-  </div>
-
 </section>
 
 <script>
-  // Two backdrops: the galaxy (1) and two galaxies merging into it (2).
-  // "?sky=1" or "?sky=2" in the address picks one for comparison.
-  const SKY = 2;
-
+  // The backdrop: the finished galaxy, turning slowly.
   const host = document.querySelector<HTMLElement>('.hero');
   const canvas = document.querySelector<HTMLCanvasElement>('.hero__canvas');
   if (host && canvas) {
-    const asked = Number(new URLSearchParams(location.search).get('sky'));
-    if ((asked || SKY) === 2) {
-      import('../scripts/stardust-merge').then((m) => m.mountMerger(canvas, host));
-    } else {
-      import('../scripts/stardust').then((m) => m.mountStardust(canvas, host));
-    }
+    import('../scripts/stardust').then((m) => m.mountStardust(canvas, host));
   }
 </script>
 
@@ -92,19 +65,13 @@ import Button from './Button.astro';
       radial-gradient(90rem 50rem at 80% 110%, rgb(28 68 184 / 0.28), transparent 70%),
       linear-gradient(180deg, var(--night-950), var(--night-900) 60%, #07102a);
   }
-  /* The light around the core of the galaxy. While two galaxies are still
-     merging there is no core yet, and it waits. */
+  /* The light around the core of the galaxy. */
   .hero__core {
     position: absolute;
     inset: 0;
     background:
       radial-gradient(38rem 24rem at var(--core-x) var(--core-y), rgb(72 118 255 / 0.18), transparent 70%),
       radial-gradient(12rem 8rem at var(--core-x) var(--core-y), rgb(255 228 196 / 0.14), transparent 70%);
-    transition: opacity 5s var(--ease);
-  }
-  .hero[data-merging] .hero__core {
-    opacity: 0.25;
-    transition: none;
   }
   .hero__canvas {
     position: absolute;
@@ -162,67 +129,6 @@ import Button from './Button.astro';
     margin-top: var(--space-10);
   }
 
-  /* ---- Simulation readout ---- */
-  .hero__sim {
-    position: absolute;
-    inset: auto 0 0;
-    display: none;
-    justify-content: flex-end;
-    padding-block: var(--space-8);
-    pointer-events: none;
-  }
-  .hero[data-sim] .hero__sim {
-    display: flex;
-    transition:
-      opacity 1.6s var(--ease),
-      visibility 0s linear 1.6s;
-  }
-  /* The run has settled into the steady galaxy: the clock is no longer news. */
-  .hero[data-sim-done] .hero__sim {
-    opacity: 0;
-    visibility: hidden;
-  }
-  .sim {
-    display: flex;
-    gap: var(--space-8);
-    margin: 0;
-    font-family: var(--font-mono);
-    font-variant-numeric: tabular-nums;
-  }
-  .sim__item {
-    display: flex;
-    flex-direction: column;
-    gap: var(--space-1);
-  }
-  .sim dt {
-    font-size: var(--text-xs);
-    letter-spacing: var(--tracking-caps);
-    text-transform: uppercase;
-    color: var(--fg-subtle);
-  }
-  .sim dd {
-    margin: 0;
-    font-size: var(--text-base);
-    color: var(--fg);
-    white-space: nowrap;
-  }
-  .sim small {
-    margin-left: 0.2em;
-    font-family: var(--font-sans);
-    font-size: var(--text-sm);
-    color: var(--fg-muted);
-  }
-  /* Wide enough for the longest value, so the row does not shift. */
-  .sim__item:nth-child(1) dd {
-    min-width: 10ch;
-  }
-  .sim__item:nth-child(2) dd {
-    min-width: 13ch;
-  }
-  .sim__item--phase dd {
-    min-width: 16ch;
-  }
-
   /* ---- Entrance ---- */
   .hero__eyebrow,
   .hero__line,
@@ -267,16 +173,6 @@ import Button from './Button.astro';
     }
     .hero__veil {
       background: linear-gradient(180deg, rgb(4 8 22 / 0.7), rgb(4 8 22 / 0.2) 55%, rgb(4 8 22 / 0.5));
-    }
-    .hero__sim {
-      justify-content: flex-start;
-      padding-block: var(--space-5);
-    }
-    .sim {
-      gap: var(--space-5);
-    }
-    .sim__item--phase {
-      display: none;
     }
   }
   @media (prefers-reduced-motion: reduce) {

@@ -6,16 +6,16 @@
  */
 ---
 
-<button class="search-btn" type="button" aria-haspopup="dialog" aria-label="문서 검색 (⌘K)">
+<button class="search-btn" type="button" aria-haspopup="dialog" aria-label="Search the docs (⌘K)">
   <svg width="15" height="15" viewBox="0 0 14 14" fill="none" aria-hidden="true">
     <circle cx="6" cy="6" r="4.25" stroke="currentColor" stroke-width="1.5"></circle>
     <path d="m9.25 9.25 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path>
   </svg>
-  <span class="search-btn__label">검색</span>
+  <span class="search-btn__label">Search</span>
   <kbd class="search-btn__key">⌘K</kbd>
 </button>
 
-<dialog class="search" aria-label="문서 검색">
+<dialog class="search" aria-label="Search the docs">
   <div class="search__panel">
     <div class="search__field">
       <svg width="16" height="16" viewBox="0 0 14 14" fill="none" aria-hidden="true">
@@ -25,16 +25,16 @@
       <input
         class="search__input"
         type="search"
-        placeholder="함수 이름이나 주제로 찾기 (예: lstsq, 감마, groupby)"
-        aria-label="검색어"
+        placeholder="Search by name or topic (e.g. lstsq, gamma, groupby)"
+        aria-label="Search terms"
         aria-controls="search-results"
         autocomplete="off"
         spellcheck="false"
       />
       <kbd class="search__esc">esc</kbd>
     </div>
-    <ul class="search__results" id="search-results" role="listbox" aria-label="검색 결과"></ul>
-    <p class="search__hint">↑↓로 고르고 Enter로 열어요. API 문서와 구현 글을 함께 찾아요.</p>
+    <ul class="search__results" id="search-results" role="listbox" aria-label="Results"></ul>
+    <p class="search__hint">↑↓ to choose, Enter to open.</p>
   </div>
 </dialog>
 
@@ -47,7 +47,7 @@
     s: string; // summary
     h: string; // href from the site root
     a: string; // area key
-    p: string; // place: "API · 통계 · 연속 분포"
+    p: string; // place: "API · Statistics · Continuous distributions"
     m: number; // 1: title in the code font
   }
 
@@ -118,7 +118,7 @@
               </a></li>`,
           )
           .join('')
-      : '<li class="search__empty">맞는 문서가 없어요.</li>';
+      : '<li class="search__empty">No matching pages.</li>';
     sync();
   };
 

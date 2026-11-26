@@ -20,7 +20,8 @@
 
 /**
  * What a galaxy looks like, whichever way its particles are moved: the
- * spiral pattern, the jets and the colours.
+ * spiral pattern, the jets and the colours. Shared with the merger backdrop
+ * (stardust-merge.ts), so both draw the same galaxy.
  */
 export const GALAXY_GLSL = /* glsl */ `
 const float CAMERA = 3.4;

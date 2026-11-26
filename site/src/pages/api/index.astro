@@ -11,19 +11,19 @@ const count = (key: string) => pages.filter((p) => p.id.startsWith(`${key}/`)).l
 const sample = (key: string) => pages.filter((p) => p.id.startsWith(`${key}/`)).every((p) => p.data.sample);
 
 const groups: NavGroup[] = [
-  { title: 'API', items: [{ label: '전체 영역', href: '/api/' }] },
+  { title: 'API', items: [{ label: 'All areas', href: '/api/' }] },
   {
-    title: '영역',
+    title: 'Areas',
     items: areas
       .filter((a) => documented.includes(a.key))
-      .map((a) => ({ label: a.name, href: `/api/${a.key}/`, badge: sample(a.key) ? '샘플' : undefined })),
+      .map((a) => ({ label: a.name, href: `/api/${a.key}/`, badge: sample(a.key) ? 'Sample' : undefined })),
   },
 ];
 ---
 
 <Docs
   title="API"
-  description="영역별 API 문서예요. 영역을 고르면 그 영역의 기본 개념과 함수 목록으로 가요."
+  description="The API reference, by area. Pick an area to see its concepts and functions."
   section="api"
   crumbs={[]}
   groups={groups}
@@ -38,7 +38,7 @@ const groups: NavGroup[] = [
             title={a.name}
             meta={a.ns}
             area={a.key}
-            badge={!has ? '준비 중' : sample(a.key) ? '샘플' : `문서 ${count(a.key)}개`}
+            badge={!has ? 'Soon' : sample(a.key) ? 'Sample' : `${count(a.key)} pages`}
             badgeTone={has && !sample(a.key) ? 'accent' : 'neutral'}
           >
             {a.desc}

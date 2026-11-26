@@ -15,5 +15,5 @@ __pycache__/
 .DS_Store
 
 # Site working notes (kept here, not committed)
-/site/notes/
+/site-legacy/notes/
 /.claude/

@@ -11,7 +11,7 @@ interface Props {
 }
 const {
   title,
-  description = '배열과 선형대수부터 통계와 난수까지, 수치 계산의 기본기를 C++20으로 처음부터 다시 만든 Python 라이브러리',
+  description = 'A Python library for numerical computing, from arrays and linear algebra to statistics and plotting, with a core written from scratch in C++20.',
   overDark = false,
 } = Astro.props;
 const fullTitle = title ? `${title} · stardust` : 'stardust';
@@ -31,7 +31,7 @@ const fullTitle = title ? `${title} · stardust` : 'stardust';
     </script>
   </head>
   <body>
-    <a class="skip" href="#main">본문으로 건너뛰기</a>
+    <a class="skip" href="#main">Skip to content</a>
     <Header overDark={overDark} />
     <main id="main"><slot /></main>
     <Footer />

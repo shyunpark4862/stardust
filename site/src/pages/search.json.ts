@@ -1,10 +1,9 @@
 /**
- * The search index for the ⌘K palette: every API page and article, with its
+ * The search index for the ⌘K palette: every API page, with its
  * title, public names, summary and place. Built once with the site.
  */
 import { getCollection } from 'astro:content';
 import { areaOf, hrefOf, isSingle, splitId } from '../data/api';
-import { internalsAreaOf, internalsHref, splitInternalsId } from '../data/internals';
 import { plainText } from '../data/inline';
 
 export async function GET() {
@@ -20,19 +19,7 @@ export async function GET() {
       m: isSingle(e) ? 1 : 0,
     };
   });
-  const internals = (await getCollection('internals')).map((e) => {
-    const [area] = splitInternalsId(e);
-    return {
-      t: e.data.title,
-      n: [] as string[],
-      s: plainText(e.data.summary),
-      h: internalsHref(e),
-      a: area,
-      p: `구현 · ${internalsAreaOf(area).name} · ${e.data.group}`,
-      m: 0,
-    };
-  });
-  return new Response(JSON.stringify([...api, ...internals]), {
+  return new Response(JSON.stringify(api), {
     headers: { 'Content-Type': 'application/json; charset=utf-8' },
   });
 }

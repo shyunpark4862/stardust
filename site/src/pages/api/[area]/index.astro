@@ -16,7 +16,7 @@ const headings = groups.map((g) => ({ depth: 2, slug: groupId(g.title), text: g.
 
 <Docs
   title={info.name}
-  description={`${info.ns}의 문서 목록이에요. 이름을 누르면 그 페이지로 가요.`}
+  description={`Every page in ${info.ns}.`}
   section="api"
   crumbs={areaCrumbs(area).slice(0, 1)}
   groups={await areaSidebar(area)}

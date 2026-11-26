@@ -10,7 +10,7 @@ interface Link {
 interface Props {
   prev?: Link;
   next?: Link;
-  /** Accessible name of the navigation, e.g. "이전·다음 함수". */
+  /** Accessible name of the navigation, e.g. "Previous and next". */
   label: string;
 }
 const { prev, next, label } = Astro.props;
@@ -26,7 +26,7 @@ const { prev, next, label } = Astro.props;
           </svg>
         </span>
         <span class="pager__text">
-          <span class="pager__dir">이전</span>
+          <span class="pager__dir">Previous</span>
           <span class:list={['pager__name', prev.mono && 'pager__name--mono']}>{prev.title}</span>
         </span>
       </a>
@@ -38,7 +38,7 @@ const { prev, next, label } = Astro.props;
     next && (
       <a class="pager__link pager__link--next" href={url(next.href)} rel="next">
         <span class="pager__text">
-          <span class="pager__dir">다음</span>
+          <span class="pager__dir">Next</span>
           <span class:list={['pager__name', next.mono && 'pager__name--mono']}>{next.title}</span>
         </span>
         <span class="pager__arrow" aria-hidden="true">

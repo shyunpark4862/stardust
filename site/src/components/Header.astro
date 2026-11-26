@@ -15,7 +15,7 @@ const path = unbase(Astro.url.pathname);
 <header class="header" data-surface={overDark ? 'dark' : undefined} data-over-dark={overDark ? '' : undefined}>
   <div class="container header__inner">
     <Logo />
-    <nav class="header__nav" aria-label="주 메뉴">
+    <nav class="header__nav" aria-label="Main">
       <Search />
       {
         topNav.map((item) => (
