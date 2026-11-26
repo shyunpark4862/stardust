@@ -43,3 +43,14 @@
 ## 확인할 점
 - `sd.vecdot`과 `sd.linalg.vecdot`이 같은 것인지(같으면 한 쪽 페이지 + 별칭 표기).
 - dtype 이름 값(`sd.bool` 등)은 `dtypes` 페이지의 names에.
+
+## 공통 결정 (모든 작성·검증 브리프에 들어감)
+- 본보기: `src/content/api/linalg/solve.mdx`, `lstsq.mdx`, `src/content/areas/linalg.mdx`, 클래스는 `api/regression/TheilslopesResult.mdx`. 문체·frontmatter 꼴·예제 꼴을 이들과 맞춘다.
+- 그룹 이름(정확히 이대로): Array model / Creating arrays / Shape and axes / Joining and repeating / Data types / Arithmetic / Exponents and logarithms / Trigonometric and hyperbolic / Rounding / Comparison, logic and bits / Classification and selection / Complex numbers / Reductions / Cumulative / Skipping NaN / Statistics / Indexing and searching / Sorting and sets / Matrix products / Threads
+- 타입 표기: 입력은 `array` 또는 `array of shape (...)`, `array_like`는 쓰지 않음(실제로 파이썬 리스트·스칼라를 받는지는 돌려 보고 받으면 `array or scalar` 식으로 적음). 반환은 `ndarray` 또는 `ndarray of shape (...)`. dtype 이름은 백틱(`float64`). `int`, `bool`, `float`, `tuple of int`, `int or None`.
+- 용어: array(“tensor”, “matrix”는 2-D 문맥에서만), element-wise, axis/axes, shape, dtype, broadcast, view / copy, reduction, NaN, "0-D array". 차원은 "1-D", "2-D".
+- 여러 페이지가 공유하는 규칙은 한 곳에만 설명하고 링크: 브로드캐스팅 → `/api/array/broadcasting/`, dtype 승격 → `/api/array/dtypes/`, 뷰·복사 → `/api/array/views/`, 인덱싱 → `/api/array/indexing/`, `axis`·`keepdims`·`out=`·NaN 일반 규칙 → `/start/conventions/`. 함수 페이지에는 그 함수 고유의 내용만.
+- 묶음(family) 페이지: title은 짧은 영어 제목(예: "zeros, ones, full, empty"처럼 이름 나열), signatures에 전부, params는 공유 인자 한 번(fmcheck가 요구하는 꼴을 따름).
+- 비교 절 제목은 정확히 `## For NumPy, SciPy and R users`. array 영역은 NumPy와 R base만 해당. 차이는 고정 인터프리터의 numpy로 실제 확인한 것만.
+- 예제 배열 출력은 고정 빌드의 repr 그대로(`array([...], dtype=float64)`).
+- 아직 없는 페이지로의 링크·seeAlso는 이 문서의 slug 목록에 있는 것만 허용.
