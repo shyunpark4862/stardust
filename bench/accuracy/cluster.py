@@ -9,10 +9,14 @@ tests/cluster/refdata.py:
   hierarchy   CL1 (done): linkage's heights on hierarchy.npz in ULPs and in units of the contract
               (refdata.height_bound), and the trees against the exact primitive tree; comparators scipy's
               linkage and R's hclust, live
-  kmeans      CL2: the centres and inertia of the exact Lloyd fixed point from the same start (kmeans.npz),
-              the labels at the rounded centres, the fixed point's check; comparator scikit-learn's KMeans from
-              the same start
-  kmedoids    CL2: PAM's objectives and medoids (and the optimum of the small sets); comparator R's pam
+  kmeans      CL2 (done): the centres and inertia against the exact Lloyd fixed point from the same start
+              (kmeans.npz) in units of the contract (refdata.center_bound, inertia_bound), the labels that differ
+              from the exact ones where no step met a near tie; comparators scikit-learn's KMeans and R's kmeans
+              (algorithm 'Lloyd') from the same start, live
+  kmedoids    CL2 (done): PAM's objective against the exact BUILD and SWAP (refdata.pam_bound) and the medoids
+              that differ; comparator R's pam, live
+  fuzzy       CL2 (done): the memberships at given centres for m = 1.5, 2, 3 (refdata.membership_bound) and one
+              step's centres (fuzzy_centre_bound); no comparator (e1071 is not installed)
   density     CL3: DBSCAN's partition (the points near eps counted apart), HDBSCAN's core distances and minimum
               spanning tree; comparators scikit-learn's DBSCAN and HDBSCAN
   mixture     CL4: the log densities and responsibilities at given parameters (relative to max(1, |value|)) and
@@ -140,6 +144,207 @@ def _hierarchy_regions(lib):
     return out or None
 
 
+# ---- k-means (CL2) ---------------------------------------------------------------------------------------------------
+# kmeans from the references' start with tol 0 (until no label changes) on every set of kmeans.npz: the centres in
+# units of refdata.center_bound (and relative to max |x|), the inertia in units of inertia_bound, and the sets whose
+# labels differ from the exact fixed point although no step met a near tie ("labels_differ"). scikit-learn's KMeans
+# and R's kmeans (algorithm 'Lloyd') from the same start are the comparator columns (the expanded form of
+# scikit-learn loses the subnormal set: all its distances are 0).
+
+
+def _km_group(r, sid):
+    m = r.methods["lloyd_inertia"]
+    from tests.cluster import refdata as D
+
+    at = np.nonzero(m.index == D.group_of(r, sid))[0]
+    return (m.hi[at[0]] + m.lo[at[0]], {k: v[at[0]] for k, v in m.fields.items()}) if len(at) else None
+
+
+def _fit_kmeans(lib, X, init, w):
+    k = len(init)
+    if lib == "sd":
+        import stardust as sd
+
+        r = sd.cluster.kmeans(X, k, rng=sd.random.default_rng(0), init=init, tol=0.0, weights=w)
+        return np.asarray(r.labels), np.asarray(r.centers), r.inertia
+    if lib == "sklearn":
+        from sklearn.cluster import KMeans
+
+        r = KMeans(k, init=init, n_init=1, tol=0.0, max_iter=300).fit(X, sample_weight=w)
+        return r.labels_, r.cluster_centers_, float(r.inertia_)
+    if w is not None:
+        return None
+    from . import rsession
+
+    expr = (f"x <- matrix(xv, nrow = {X.shape[0]}); c0 <- matrix(cv, nrow = {k}); "
+            "km <- kmeans(x, c0, iter.max = 300, algorithm = 'Lloyd'); "
+            "c(km$cluster - 1, as.vector(t(km$centers)), km$tot.withinss)")  # fmt: skip
+    v = np.asarray(rsession.evaluate_named(expr, {"xv": np.ascontiguousarray(X.T).ravel(),
+                                                  "cv": np.ascontiguousarray(init.T).ravel()}))  # fmt: skip
+    n, p = X.shape
+    return v[:n].astype(int), v[n : n + k * p].reshape(k, p), float(v[-1])
+
+
+def _kmeans_regions(lib):
+    from tests.cluster import refdata as D
+    from tests.cluster import samples as S
+
+    r = D.ref("kmeans")
+    pts = {}
+    differ = []
+    for sid in r.group_inputs["set"].tolist():
+        g = _km_group(r, sid)
+        if g is None:
+            continue
+        I_ref, f = g
+        s = S.points(sid)
+        init = np.asarray(r.group_inputs["init"][D.group_of(r, sid)], float)[: s.k]
+        try:
+            out = _fit_kmeans(lib, s.X, init, s.w)
+        except Exception:  # noqa: BLE001 -- R's error on fewer distinct points than centres
+            continue
+        if out is None:
+            continue
+        lab, C, inertia = out
+        pos, idx = D.at(r, "lloyd_label", sid, 0)
+        ref_lab = np.empty(s.n, int)
+        ref_lab[idx] = r.methods["lloyd_label"].hi[pos].astype(int)
+        pos, idx = D.at(r, "lloyd_center", sid, 1)
+        cref = np.empty(len(idx))
+        cref[idx] = r.methods["lloyd_center"].hi[pos] + r.methods["lloyd_center"].lo[pos]
+        Cref = cref.reshape(s.k, s.p)
+        if not np.array_equal(S.first_seen(lab), S.first_seen(ref_lab)):
+            if f["path_gap"] > D.NEAR_TIE:
+                differ.append(sid)
+            continue
+        num = {}
+        for a, b in zip(ref_lab.tolist(), np.asarray(lab).tolist()):
+            num.setdefault(b, a)
+        Cm = np.array([Cref[num[j]] for j in range(s.k)]) if len(num) == s.k else None
+        if Cm is None:
+            continue
+        mx = float(np.max(np.abs(s.X)))
+        err = np.abs(np.asarray(C) - Cm).ravel()
+        cb = D.center_bound(s.n, mx)
+        e = pts.setdefault("centers", {"where": [], "contract": [], "rel": []})
+        for q, v in enumerate(err):
+            e["where"].append(f"{sid} #{q}")
+            e["contract"].append(v / cb if cb > 0 else (0.0 if v == 0 else np.inf))
+            e["rel"].append(v / mx if mx else 0.0)
+        ib = D.inertia_bound(s.n, s.p, I_ref)
+        e = pts.setdefault("inertia", {"where": [], "contract": [], "rel": []})
+        e["where"].append(sid)
+        ie = abs(inertia - I_ref)
+        e["contract"].append(ie / ib if ib > 0 else (0.0 if ie == 0 else np.inf))
+        e["rel"].append(ie / abs(I_ref) if I_ref else 0.0)
+    out = {
+        key: region(p["where"], rel=np.array(p["rel"]), contract=np.array(p["contract"]), bound=1.0)
+        for key, p in sorted(pts.items())
+    }
+    out["labels_differ"] = region(np.array(differ, dtype=object), rel=np.zeros(len(differ)))
+    return out
+
+
+# ---- k-medoids (CL2) -------------------------------------------------------------------------------------------------
+# kmedoids (PAM) on every set and k of kmedoids.npz: the objective after SWAP in units of refdata.pam_bound and
+# relative, and the sets whose medoids differ from the exact PAM's ("medoids_differ": exact ties of the objective,
+# the 1-D medians and the lattices, decide by the computed sums). R's pam is the comparator, live.
+
+
+def _pam(lib, X, k):
+    if lib == "sd":
+        import stardust as sd
+
+        r = sd.cluster.kmedoids(X, k)
+        return sorted(np.asarray(r.medoids).tolist()), r.objective
+    from . import rsession
+
+    expr = (
+        f"library(cluster); x <- matrix(xv, nrow = {X.shape[0]}); p <- pam(x, {k}); c(sort(p$id.med) - 1, p$objective)"
+    )
+    v = np.asarray(rsession.evaluate_named(expr, {"xv": np.ascontiguousarray(X.T).ravel()}))
+    return v[:k].astype(int).tolist(), float(v[k + 1])
+
+
+def _kmedoids_regions(lib):
+    from tests.cluster import refdata as D
+    from tests.cluster import samples as S
+
+    r = D.ref("kmedoids")
+    where, contract, rel, differ = [], [], [], []
+    for sid in r.group_inputs["set"].tolist():
+        pid, kk = sid.split("|")
+        k = int(kk[1:])
+        s = S.points(pid)
+        m = r.methods["pam_swap"]
+        at = np.nonzero(m.index == D.group_of(r, sid))[0]
+        ref = m.hi[at[0]] + m.lo[at[0]]
+        meds, obj = _pam(lib, s.X, k)
+        pos, _ = D.at(r, "pam", sid, 0)
+        if meds != sorted(r.methods["pam"].hi[pos].astype(int).tolist()):
+            differ.append(sid)
+        b = D.pam_bound(s.n, s.p, ref)
+        where.append(sid)
+        contract.append(abs(obj - ref) / b if b > 0 else (0.0 if obj == ref else np.inf))
+        rel.append(abs(obj - ref) / ref if ref else 0.0)
+    return {
+        "objective": region(np.array(where, dtype=object), rel=np.array(rel), contract=np.array(contract), bound=1.0),
+        "medoids_differ": region(np.array(differ, dtype=object), rel=np.zeros(len(differ))),
+    }
+
+
+# ---- fuzzy c-means (CL2) ----------------------------------------------------------------------------------------------
+# the memberships at the references' given centres (fuzzy.npz) for m = 2, 1.5, 3 in units of refdata.membership_bound
+# (absolute: a membership is in [0, 1]), and the centres one step on at m = 2 in units of fuzzy_centre_bound.
+
+
+def _fuzzy_regions():
+    import itertools
+
+    import stardust as sd
+    from tests.cluster import refdata as D
+    from tests.cluster import samples as S
+
+    r = D.ref("fuzzy")
+    pts = {}
+    for sid in r.group_inputs["set"].tolist():
+        c = np.asarray(r.group_inputs["centers"][D.group_of(r, sid)], float)
+        if not c.size or np.isnan(c).all():
+            continue
+        s = S.points(sid)
+        C = c.reshape(s.k, -1)
+        for name, m in (("u_m2", 2.0), ("u_m15", 1.5), ("u_m3", 3.0)):
+            pos, idx = D.at(r, name, sid, 0)
+            ref = np.full(s.n * s.k, np.nan)
+            ref[idx] = r.methods[name].hi[pos] + r.methods[name].lo[pos]
+            got = np.asarray(sd._core.cluster.fuzzy_memberships(sd.asarray(s.X), sd.asarray(C), m)).ravel()
+            b = D.membership_bound(s.p, s.k, m)
+            e = pts.setdefault(f"memberships/m={m:g}", {"where": [], "contract": [], "rel": []})
+            for q in np.nonzero(~np.isnan(ref))[0]:
+                e["where"].append(f"{sid} #{q}")
+                e["contract"].append(abs(got[q] - ref[q]) / b)
+                e["rel"].append(abs(got[q] - ref[q]))
+        if s.k > 6:
+            continue
+        res = sd.cluster.fuzzy_cmeans(s.X, s.k, rng=sd.random.default_rng(0), init=C, max_iter=1, tol=0.0)
+        pos, idx = D.at(r, "centre1", sid, 1)
+        cref = np.empty(len(idx))
+        cref[idx] = r.methods["centre1"].hi[pos] + r.methods["centre1"].lo[pos]
+        cref = cref.reshape(s.k, -1)
+        got = np.asarray(res.centers)
+        err = min(np.max(np.abs(got[list(q)] - cref)) for q in itertools.permutations(range(s.k)))
+        mx = float(np.max(np.abs(s.X)))
+        b = D.fuzzy_centre_bound(s.n, s.p, s.k, mx)
+        e = pts.setdefault("centres", {"where": [], "contract": [], "rel": []})
+        e["where"].append(sid)
+        e["contract"].append(err / b if b > 0 else 0.0)
+        e["rel"].append(err / mx if mx else 0.0)
+    return {
+        key: region(p["where"], rel=np.array(p["rel"]), contract=np.array(p["contract"]), bound=1.0)
+        for key, p in sorted(pts.items())
+    }
+
+
 def sweeps():
     return [
         Custom(
@@ -148,4 +353,7 @@ def sweeps():
             lambda: _hierarchy_regions("sd"),
             compare_libs(_hierarchy_regions, ("scipy", "R")),
         ),
+        Custom("cluster", "kmeans", lambda: _kmeans_regions("sd"), compare_libs(_kmeans_regions, ("sklearn", "R"))),
+        Custom("cluster", "kmedoids", lambda: _kmedoids_regions("sd"), compare_libs(_kmedoids_regions, ("R",))),
+        Custom("cluster", "fuzzy", _fuzzy_regions),
     ]

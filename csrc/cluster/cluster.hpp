@@ -6,6 +6,8 @@
 namespace sd::cluster {
 
 void bind_hierarchy(nanobind::module_& m);  // hierarchy.cpp: linkage, DIANA, cophenet, optimal leaf ordering
-void bind_prototype(nanobind::module_& m);  // milestone CL0's k-means measurements (prototype.cpp); CL2 removes it
+void bind_kmeans(nanobind::module_& m);     // kmeans.cpp: k-means, mini-batch and bisecting k-means
+void bind_kmedoids(nanobind::module_& m);   // kmedoids.cpp: PAM and CLARA
+void bind_fuzzy(nanobind::module_& m);      // fuzzy.cpp: fuzzy c-means
 
 }  // namespace sd::cluster

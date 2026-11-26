@@ -10,6 +10,10 @@ dendrogram's options, inconsistent, maxdists, maxinconsts, maxRstat, leaders, th
 cut and summary; the wrong calls (their errors are results); and cases of thousands of points that split into tasks
 at 3 and 10 threads (one worker below 1 GB).
 
+The partitions (CL2 milestone): kmeans, minibatch_kmeans, bisecting_kmeans, kmedoids (PAM and CLARA, three
+metrics and 'precomputed') and fuzzy_cmeans on those point sets and their options, the results' predict, transform
+and predict_proba, nan_policy, the wrong calls, and cases of tens of thousands of points.
+
 The plan for the rest (docs/design/cluster.md §7.5): every public function on the representatives of
 tests/cluster/samples.py times each option's values (init, n_init, max_iter, tol; eps, min_samples,
 min_cluster_size, cluster_selection_method; covariance_type, reg_covar; average_method, beta), the results' methods
@@ -217,6 +221,86 @@ def _tool_cases(L):
     yield "maxRstat error i", lambda: cl.maxRstat(a(bad), cl.inconsistent(a(bad)), 4)
 
 
+def _partition_cases(L):
+    """Milestone CL2: kmeans, minibatch_kmeans, bisecting_kmeans, kmedoids and fuzzy_cmeans on the hierarchy's
+    point sets and their options, the results' methods, NaN, the wrong calls and large cases."""
+    sd, np = L.sd, L.np
+    a = L.arr
+    cl = sd.cluster
+
+    def g(seed=0):
+        return sd.random.default_rng(seed)
+
+    sets = dict(_sets(L))
+    for name in ("blobs60", "overlap45", "p5_40", "lattice16", "lattice16_shuffled", "line7", "dups20", "hexagon7",
+                 "three", "collinear25", "narrow30", "shifted30", "huge30", "subnormal30"):  # fmt: skip
+        X = sets[name]
+        k = 2 if name in ("three", "line7") else 3
+        yield f"kmeans {name}", lambda X=X, k=k: cl.kmeans(a(X), k, rng=g())
+        yield f"kmeans {name} random n_init=4", lambda X=X, k=k: cl.kmeans(a(X), k, rng=g(1), init="random", n_init=4)
+        yield f"kmeans {name} init array tol=0", lambda X=X, k=k: cl.kmeans(a(X), k, rng=g(), init=a(X[:k]), tol=0.0)
+        yield f"minibatch_kmeans {name}", lambda X=X, k=k: cl.minibatch_kmeans(a(X), k, rng=g(2), batch_size=16)
+        yield f"bisecting_kmeans {name}", lambda X=X, k=k: cl.bisecting_kmeans(a(X), k, rng=g(3))
+        yield f"kmedoids {name}", lambda X=X, k=k: cl.kmedoids(a(X), k)
+        yield f"fuzzy_cmeans {name}", lambda X=X, k=k: cl.fuzzy_cmeans(a(X), k, rng=g(4))
+    X = sets["blobs60"]
+    Xe = np.array([[0.0, 0.0], [3.0, 3.0], [100.0, -50.0]])
+    r = cl.kmeans(a(X), 3, rng=g())
+    yield "KMeansResult predict", lambda: r.predict(a(Xe))
+    yield "KMeansResult transform", lambda: r.transform(a(Xe))
+    yield "KMeansResult error predict columns", lambda: r.predict(a(np.zeros((2, 3))))
+    w = np.linspace(0.0, 2.0, len(X))
+    yield "kmeans weights", lambda: cl.kmeans(a(X), 3, rng=g(), weights=a(w))
+    yield "kmeans k=1", lambda: cl.kmeans(a(X), 1, rng=g())
+    yield "kmeans max_iter=1", lambda: cl.kmeans(a(X), 3, rng=g(), max_iter=1)
+    yield "kmeans empty cluster", lambda: cl.kmeans(a(np.array([[0.0], [0.1], [10.0], [10.1]])), 3, rng=g(),
+                                                    init=a(np.array([[0.0], [10.0], [100.0]])))  # fmt: skip
+    yield "minibatch_kmeans options", lambda: cl.minibatch_kmeans(
+        a(X), 3, rng=g(), init="random", batch_size=8, max_iter=5, max_no_improvement=None, tol=1e-3,
+        init_size=10, reassignment_ratio=0.5, weights=a(w),
+    )  # fmt: skip
+    rb = cl.bisecting_kmeans(a(X), 4, rng=g(), strategy="largest_cluster", init="k-means++", n_init=2)
+    yield "bisecting_kmeans largest_cluster", lambda: rb
+    yield "BisectingKMeansResult predict", lambda: rb.predict(a(Xe))
+    for metric in ("euclidean", "cityblock", "chebyshev"):
+        yield f"kmedoids metric={metric}", lambda metric=metric: cl.kmedoids(a(X), 3, metric=metric)
+    y = sd.spatial.pdist(a(X))
+    yield "kmedoids precomputed", lambda: cl.kmedoids(y, 3, metric="precomputed")
+    yield "kmedoids max_iter=0", lambda: cl.kmedoids(a(X), 3, max_iter=0)
+    yield "kmedoids clara", lambda: cl.kmedoids(a(X), 3, method="clara", rng=g(5), samples=3, sample_size=20)
+    rm = cl.kmedoids(a(X), 3)
+    yield "KMedoidsResult predict", lambda: rm.predict(a(Xe))
+    for m in (1.5, 2.0, 3.0):
+        yield f"fuzzy_cmeans m={m}", lambda m=m: cl.fuzzy_cmeans(a(X), 3, rng=g(), m=m)
+    rf = cl.fuzzy_cmeans(a(X), 3, rng=g(), init=a(X[:3]), tol=1e-8)
+    yield "FuzzyCMeansResult predict_proba", lambda: rf.predict_proba(a(Xe))
+    yield "FuzzyCMeansResult predict", lambda: rf.predict(a(Xe))
+    Xn = X.copy()
+    Xn[[3, 17], 0] = NAN
+    for pol in ("raise", "omit"):
+        yield f"kmeans nan_policy={pol}", lambda pol=pol: cl.kmeans(a(Xn), 3, rng=g(), nan_policy=pol)
+        yield f"kmedoids nan_policy={pol}", lambda pol=pol: cl.kmedoids(a(Xn), 3, nan_policy=pol)
+        yield f"fuzzy_cmeans nan_policy={pol}", lambda pol=pol: cl.fuzzy_cmeans(a(Xn), 3, rng=g(), nan_policy=pol)
+    yield "kmeans error few distinct", lambda: cl.kmeans(a(np.zeros((5, 2))), 2, rng=g())
+    yield "kmeans error no rng", lambda: cl.kmeans(a(X), 2)
+    yield "kmeans error init", lambda: cl.kmeans(a(X), 2, rng=g(), init="kmeans++")
+    yield "kmeans error n_init", lambda: cl.kmeans(a(X), 2, rng=g(), init=a(X[:2]), n_init=2)
+    yield "kmedoids error rng with pam", lambda: cl.kmedoids(a(X), 2, rng=g())
+    yield "kmedoids error clara sample_size", lambda: cl.kmedoids(a(X), 2, method="clara", rng=g(), sample_size=2)
+    yield "fuzzy_cmeans error m", lambda: cl.fuzzy_cmeans(a(X), 2, rng=g(), m=1.0)
+    # large enough to split into tasks
+    rr = L.rng(7)
+    big = np.vstack([rr.normal(c, 1.0, (10000, 5)) for c in (0.0, 4.0, 8.0)])
+    yield "kmeans 30000", lambda: cl.kmeans(a(big), 8, rng=g())
+    yield "kmeans 30000 p=40 k=30", lambda: cl.kmeans(a(rr.standard_normal((20000, 40))), 30, rng=g())
+    yield "minibatch_kmeans 30000", lambda: cl.minibatch_kmeans(a(big), 8, rng=g())
+    yield "bisecting_kmeans 30000", lambda: cl.bisecting_kmeans(a(big), 8, rng=g())
+    yield "fuzzy_cmeans 30000", lambda: cl.fuzzy_cmeans(a(big), 4, rng=g())
+    yield "kmedoids 2000", lambda: cl.kmedoids(a(big[::15]), 5)
+    yield "kmedoids clara 30000", lambda: cl.kmedoids(a(big), 5, method="clara", rng=g())
+
+
 def cases(L):
     yield from _linkage_cases(L)
     yield from _tool_cases(L)
+    yield from _partition_cases(L)

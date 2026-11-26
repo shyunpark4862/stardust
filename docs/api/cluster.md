@@ -1,8 +1,8 @@
 # sd.cluster API
 
-> 상태: **확정** (2026-11-24; 설계 결정 CL1–CL58). CL1 마일스톤(계층, 2026-11-27)까지 마쳤다: §2의 이름이 공개됐고 나머지 이름은 CL2–CL6 마일스톤에서 생긴다(tests/cluster/test_api_surface.py가 이름마다의 마일스톤을 쥔다). 이름과 시그니처는 [docs/design/cluster.md](../design/cluster.md) §9의 답(13번만 (b), 나머지 (a))을 따른다. 시그니처는 scikit-learn 1.9.1(`sklearn.cluster`, `sklearn.mixture`, `sklearn.metrics`), scipy 1.18.1(`scipy.cluster.hierarchy`), R 4.6.2의 `stats`와 `cluster` 2.1.8.3의 이름과 뜻에 stardust의 규칙과 CL1–CL40의 결정을 입힌 것이다. 임시로 둔 값(`fuzzy_cmeans`의 `tol`, `kmedoids`의 `max_iter`, `affinity_propagation`의 `metric='precomputed'`의 이름, `gap_statistic`의 `select` 이름)은 해당 마일스톤에서 정한다(표시가 그 자리에 있다).
+> 상태: **확정** (2026-11-24; 설계 결정 CL1–CL66). CL2 마일스톤(분할, 2026-11-27)까지 마쳤다: §2·§3의 이름이 공개됐고 나머지 이름은 CL3–CL6 마일스톤에서 생긴다(tests/cluster/test_api_surface.py가 이름마다의 마일스톤을 쥔다). 이름과 시그니처는 [docs/design/cluster.md](../design/cluster.md) §9의 답(13번만 (b), 나머지 (a))을 따른다. 시그니처는 scikit-learn 1.9.1(`sklearn.cluster`, `sklearn.mixture`, `sklearn.metrics`), scipy 1.18.1(`scipy.cluster.hierarchy`), R 4.6.2의 `stats`와 `cluster` 2.1.8.3의 이름과 뜻에 stardust의 규칙과 CL1–CL40의 결정을 입힌 것이다. `fuzzy_cmeans`의 `tol`과 `kmedoids`의 `max_iter`는 CL2 마일스톤이 정했다(설계 문서 CL65·CL66). 남은 임시 값(`affinity_propagation`의 `metric='precomputed'`의 이름, `gap_statistic`의 `select` 이름)은 해당 마일스톤에서 정한다(표시가 그 자리에 있다).
 
-- 설계와 결정의 근거는 [docs/design/cluster.md](../design/cluster.md)(§1.1 CL1–CL40), 공통 규칙은 [API.md](../../API.md)다.
+- 설계와 결정의 근거는 [docs/design/cluster.md](../design/cluster.md)(§1.1 CL1–CL66), 공통 규칙은 [API.md](../../API.md)다.
 - 언어 표시가 없는 코드 블록은 `tests/cluster/test_api_surface.py`가 읽는다. 블록의 줄은 모듈의 함수(`name(...)`), 결과 클래스(`Name`), 결과의 메서드(`Name.method(...)`)다. 블록의 모듈 수준 이름이 마일스톤을 마칠 때마다 `sd.cluster.__all__`에 들어가 CL6 마일스톤에서 그 전부가 된다.
 - 절 끝의 "(§9의 n번)"은 그 줄을 정한 설계 문서의 질문이다(답은 §1.1의 CL4–CL40).
 
@@ -158,23 +158,23 @@ FuzzyCMeansResult.predict(X_new, /)
 FuzzyCMeansResult.predict_proba(X_new, /)
 FuzzyCMeansResult.summary()
 ```
-- **`kmeans`**: 목적은 관성 Σwᵢ‖xᵢ − c_{lᵢ}‖²이고 Lloyd 반복이다. 거리는 차의 제곱합이다(`[sklearn과 다름]`: sklearn은 전개식). `algorithm` 인자는 없다: 경계 가속(Hamerly, Elkan)을 모양에 따라 쓰고 결과는 같은 비트다.
-  - `init`: `'k-means++'`(sklearn의 탐욕 판, 단계마다 후보 2 + ⌊ln k⌋개), `'random'`(점 k개를 고른다), (k, p) 배열(그 중심에서 시작; `n_init`은 1이어야 한다).
+- **`kmeans`**: 목적은 관성 Σwᵢ‖xᵢ − c_{lᵢ}‖²이고 Lloyd 반복이다. 거리는 차의 제곱합(`sd.spatial.cdist(metric='sqeuclidean')`의 한 짝과 같은 비트)이다(`[sklearn과 다름]`: sklearn은 전개식). `algorithm` 인자는 없다: 경계 가속(Hamerly)과 전개식의 증명된 거르기를 모양에 따라 쓰고 결과는 같은 비트다(설계 문서 CL60, §4.2).
+  - `init`: `'k-means++'`(sklearn의 탐욕 판, 단계마다 후보 2 + ⌊ln k⌋개), `'random'`(무게에 비례해 점 k개를 비복원으로), (k, p) 배열(그 중심에서 시작; `n_init`은 1이어야 한다). 배열을 주어도 `rng`는 두 단어를 움직인다.
   - `n_init`: `'auto'`(sklearn과 같다: `'k-means++'`와 배열은 1, `'random'`은 10) 또는 1 이상의 int. 가장 좋은 시작은 (관성, 시작 번호)가 가장 작은 것이다.
-  - 멈춤: 라벨이 바뀌지 않거나 중심 이동의 제곱합이 `tol`·(축마다 분산의 평균) 이하. 멈춘 뒤 라벨을 마지막 중심으로 다시 매긴다(sklearn과 같다).
-  - 같은 거리의 중심은 번호가 작은 쪽이다(sklearn·scipy와 같다). 빈 군집은 가장 먼 점으로 옮긴다(sklearn과 같다).
-  - k는 1 이상, 서로 다른 점의 수 이하(`ValueError`)다.
-- **`minibatch_kmeans`**: sklearn `MiniBatchKMeans`의 갱신과 멈춤(`max_no_improvement`, `tol`)이고 결과는 `KMeansResult`다(`n_steps`가 더 있다).
-- **`bisecting_kmeans`**: sklearn `BisectingKMeans`다. `strategy`는 `'biggest_inertia'` 또는 `'largest_cluster'`(sklearn의 `bisecting_strategy`).
-- **`kmedoids`**: 목적은 가장 가까운 medoid까지 거리의 평균이다(R `pam`의 `objective`). `method='pam'`은 BUILD와 SWAP(R `pam(variant='original')`), `method='clara'`는 R `clara`의 표본 방법이다(`samples` 기본 5, `sample_size` 기본 min(n, 40 + 2k); `rng`가 꼭 있어야 한다). `max_iter`는 교환 수의 상한이다(R에는 상한이 없다; 기본 1000은 임시 값이고 CL2 마일스톤에서 정한다).
-- **`fuzzy_cmeans`**: Bezdek의 퍼지 c-평균(목적 Σuᵢⱼᵐ‖xᵢ − cⱼ‖², m > 1). 멈춤은 소속도 변화의 최대 노름 < `tol`이다. 기본 `tol=1e-05`는 임시 값이고 CL2 마일스톤에서 정한다.
+  - 멈춤: 라벨이 바뀌지 않거나 중심 이동의 제곱합이 `tol`·(축마다 분산의 평균) 이하. 멈춘 뒤 라벨을 마지막 중심으로 다시 매긴다(sklearn과 같다). `max_iter`에서 멈추면 `converged=False`다.
+  - 같은 거리의 중심은 맞춤 안의 번호(시작이 만든 차례)가 작은 쪽이다(sklearn·scipy와 같은 규칙; `predict`도 같아서 맞춘 점에 맞춤의 라벨을 준다). 빈 군집(무게 0)은 양의 무게 점 가운데 제 중심에서 가장 먼 점으로 옮긴다(sklearn의 규칙; 거리는 정확한 계산의 것이라 sklearn과 다른 점을 고를 수 있다).
+  - k는 1 이상, 서로 다른 점(무게가 있으면 양의 무게 점)의 수 이하(`ValueError`)다.
+- **`minibatch_kmeans`**: sklearn `MiniBatchKMeans`의 갱신과 멈춤(`max_no_improvement`, `tol`)이고 결과는 `KMeansResult`다(`n_steps`가 더 있고 `n_iter`는 ⌈n_steps·batch_size/n⌉). `n_init='auto'`는 `'random'`에서 3이다(sklearn과 같다). `init_size`(기본 3·batch_size, k보다 작으면 3k; n 이하로)가 k보다 작으면 `ValueError`다(sklearn은 경고하고 바꾼다). `max_no_improvement=None`은 그 멈춤을 끈다. `labels`와 `inertia`는 마지막 중심에서 모든 점의 것이다.
+- **`bisecting_kmeans`**: sklearn `BisectingKMeans`다. `strategy`는 `'biggest_inertia'` 또는 `'largest_cluster'`(sklearn의 `bisecting_strategy`), `init`은 `'random'`(기본) 또는 `'k-means++'`다. 나누기마다 `kmeans`(k = 2, `n_init`개 시작, 가장 좋은 것은 (관성, 번호))이고 `tol`은 전체 자료의 분산에 곱한다. 서로 다른 점이 둘보다 적은 군집은 나누지 않는다. `predict`는 sklearn처럼 트리를 내려간다(맞춘 점이 제 라벨로 가지 않을 수 있다).
+- **`kmedoids`**: 목적은 가장 가까운 medoid까지 거리의 평균이다(R `pam`의 `objective`). `method='pam'`은 BUILD와 SWAP(R `pam(variant='original')`; 변화가 음수인 가장 좋은 교환을 하고, 같으면 열쇠가 작은 medoid와 점), `method='clara'`는 R `clara`의 표본 방법이다(`samples` 기본 5, `sample_size` 기본 min(n, 40 + 2k), k < `sample_size` ≤ n; 첫 표본 다음부터 지금까지의 최선 medoid를 표본에 넣는다; 표본의 PAM은 R `clara(pamLike=TRUE)`의 것; `rng`가 꼭 있어야 한다). `max_iter`(기본 1000)는 교환 수의 상한이다(R에는 상한이 없다; 0이면 BUILD만). `metric`은 sd.spatial의 이름 또는 `'precomputed'`이고, 관측값의 `'euclidean'`·`'cityblock'`은 거리 행렬 없이 잰다(그 밖은 `sd.spatial.pdist`의 압축 꼴 행렬). 같은 목적의 선택은 열쇠(점의 사전순 차례)가 작은 쪽이다.
+- **`fuzzy_cmeans`**: Bezdek의 퍼지 c-평균(목적 Σuᵢⱼᵐ‖xᵢ − cⱼ‖², m > 1). `init`은 `'random'`(점 k개) 또는 (k, p) 배열이다. 멈춤은 소속도 변화의 최대 노름 < `tol`(기본 10⁻⁵; e1071 `cmeans`의 기본 멈춤과 같거나 늦게 멈춘다)이다. 중심 위의 점은 그 중심들에 똑같이 나눠 속한다. `labels`는 소속도가 가장 큰 군집이다.
 
 | 결과 | 필드와 메서드 |
 |---|---|
-| `KMeansResult` | 공통 필드, `centers`(k, p), `inertia`(= `objective`), `n_init`, `best_init`, `predict`, `transform`(중심까지의 유클리드 거리 (m, k)) |
-| `BisectingKMeansResult` | 위와 같고 `tree`(나눈 차례, Z 꼴) |
-| `KMedoidsResult` | 공통 필드, `medoids`(점의 색인 (k,)), `medoid_points`(k, p; 관측값만), `objective`(BUILD 뒤, SWAP 뒤의 둘), `n_swaps`, `method`, `predict`(가장 가까운 medoid; 관측값만) |
-| `FuzzyCMeansResult` | 공통 필드, `memberships`(n, k), `centers`, `m`, `partition_coefficient`, `predict`(가장 큰 소속도), `predict_proba`(소속도) |
+| `KMeansResult` | 공통 필드, `centers`(k, p), `inertia`(= `objective`), `cluster_inertia`(k,), `n_init`, `best_init`, `method`, `init`, `predict`, `transform`(중심까지의 유클리드 거리 (m, k), `sd.spatial.cdist`); `minibatch_kmeans`의 결과는 `n_steps`도 |
+| `BisectingKMeansResult` | 위와 같고 `tree`(잎이 군집 0 … k − 1인 연결 행렬 (k − 1, 4): 행마다 나누기 하나를 되돌린 병합, 높이는 나눈 군집의 관성을 위로 누적 최댓값, 넷째 열은 그 아래 잎의 수; `dendrogram(tree)`가 그린다), `strategy`, `best_init`은 나누기마다의 (k − 1,), `n_iter`는 모든 나누기의 합 |
+| `KMedoidsResult` | 공통 필드, `medoids`(입력 행의 색인 (k,)), `medoid_points`(k, p; 관측값만, 아니면 None), `objective`(SWAP 뒤의 평균 거리), `build_objective`(BUILD 뒤; CLARA는 고른 표본의 BUILD medoid로 모든 점을 잰 값), `n_swaps`, `converged`, `method`, `metric`, `predict`(가장 가까운 medoid, 같으면 열쇠가 작은 medoid; 관측값만) |
+| `FuzzyCMeansResult` | 공통 필드, `memberships`(nobs, k; 남은 행, 열 j가 라벨 j), `centers`, `m`, `objective`, `partition_coefficient`(Σuᵢⱼ²의 평균), `cluster_membership`(열의 합 (k,)), `n_iter`, `converged`, `predict`(가장 큰 소속도, 같으면 작은 라벨), `predict_proba`(소속도) |
 
 ## §4. 밀도 (§9의 25–28번)
 ```

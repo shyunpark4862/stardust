@@ -2,30 +2,43 @@
  "schema": 1,
  "area": "cluster",
  "runs": {
-  "20261127-000954-58694629+": {
-   "commit": "58694629",
+  "20261127-011132-bceeca6e+": {
+   "commit": "bceeca6e",
    "dirty": true,
    "changed": [
     "CMakeLists.txt",
     "bench/accuracy/cluster.py",
-    "bench/speed/cases/cluster.py",
     "csrc/bind/cluster_bind.cpp",
     "csrc/cluster/cluster.hpp",
+    "csrc/cluster/common.hpp",
     "csrc/cluster/prototype.cpp",
+    "site/src/components/ApiFields.astro",
+    "site/src/components/Footer.astro",
+    "site/src/components/Header.astro",
+    "site/src/components/RefCard.astro",
+    "site/src/components/docs/Related.astro",
+    "site/src/content.config.ts",
+    "site/src/data/api.ts",
+    "site/src/data/inline.ts",
+    "site/src/data/nav.ts",
+    "site/src/data/sections.ts",
+    "site/src/env.d.ts",
+    "site/src/layouts/Docs.astro",
+    "site/src/pages/api/[area]/[fn].astro",
+    "site/src/pages/api/[area]/index.astro",
+    "site/src/pages/api/index.astro",
+    "site/src/pages/search.json.ts",
     "src/stardust/cluster/__init__.py",
     "tests/cluster/data/prototype.json",
+    "tests/cluster/data/r.json",
     "tests/cluster/refdata.py",
     "tests/cluster/test_api_surface.py",
     "tests/golden/cases_cluster.py",
     "tests/golden/data/cluster.json",
-    "textbook/chapters/v1-23-first-order-equations.tex",
-    "textbook/pdf/vol1.pdf",
-    "textbook/plans/PROMISES.md",
-    "textbook/references.bib",
-    "textbook/vol1.tex",
-    "tools/cluster_probe.py"
+    "tools/cluster_probe.py",
+    "tools/cluster_ref.py"
    ],
-   "date": "2026-11-27T00:09:54",
+   "date": "2026-11-27T01:11:32",
    "machine": "arm64",
    "python": "3.15.0",
    "references": {
@@ -56,6 +69,51 @@
   }
  },
  "sweeps": [
+  {
+   "id": "cluster/fuzzy",
+   "area": "cluster",
+   "name": "fuzzy",
+   "points": 24784,
+   "regions": {
+    "centres": {
+     "points": 31,
+     "rel_max": 6.386346776690624e-16,
+     "contract": 0.06536715673582406,
+     "bound": 1.0,
+     "worst": [
+      "overlap/k3p2"
+     ]
+    },
+    "memberships/m=1.5": {
+     "points": 8251,
+     "rel_max": 2.7755575615628914e-16,
+     "contract": 0.046296296296296294,
+     "bound": 1.0,
+     "worst": [
+      "narrow/k3p2 #71"
+     ]
+    },
+    "memberships/m=2": {
+     "points": 8251,
+     "rel_max": 2.220446049250313e-16,
+     "contract": 0.0625,
+     "bound": 1.0,
+     "worst": [
+      "overlap/k3p2 #82"
+     ]
+    },
+    "memberships/m=3": {
+     "points": 8251,
+     "rel_max": 1.1102230246251565e-16,
+     "contract": 0.03125,
+     "bound": 1.0,
+     "worst": [
+      "blobs/k3p2 #3"
+     ]
+    }
+   },
+   "run": "20261127-011132-bceeca6e+"
+  },
   {
    "id": "cluster/hierarchy",
    "area": "cluster",
@@ -795,8 +853,155 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261127-000954-58694629+",
-   "comparators_run": "20261127-000954-58694629+"
+   "run": "20261127-011132-bceeca6e+",
+   "comparators_run": "20261127-011132-bceeca6e+"
+  },
+  {
+   "id": "cluster/kmeans",
+   "area": "cluster",
+   "name": "kmeans",
+   "points": 318,
+   "regions": {
+    "centers": {
+     "points": 286,
+     "rel_max": 3.72656940247422e-16,
+     "contract": 0.17095646026160782,
+     "bound": 1.0,
+     "worst": [
+      "blobs/k2p1 #1"
+     ]
+    },
+    "inertia": {
+     "points": 32,
+     "rel_max": 4.928374178840257e-16,
+     "contract": 0.2774428014420917,
+     "bound": 1.0,
+     "worst": [
+      "shifted/k3p2"
+     ]
+    },
+    "labels_differ": {
+     "points": 0,
+     "rel_max": null,
+     "contract": null,
+     "bound": null,
+     "worst": []
+    }
+   },
+   "comparators": {
+    "sklearn": {
+     "centers": {
+      "points": 274,
+      "rel_max": 2.4843796016494803e-16,
+      "contract": 0.11898764717445047,
+      "bound": 1.0,
+      "worst": [
+       "collinear/p2 #3"
+      ]
+     },
+     "inertia": {
+      "points": 30,
+      "rel_max": 1.684126145307716e-16,
+      "contract": 0.07511242925265839,
+      "bound": 1.0,
+      "worst": [
+       "overlap/k3p2"
+      ]
+     },
+     "labels_differ": {
+      "points": 1,
+      "rel_max": 0.0,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       "subnormal/k3p2"
+      ]
+     }
+    },
+    "R": {
+     "centers": {
+      "points": 276,
+      "rel_max": 2.980232030419645e-16,
+      "contract": 0.191739598023936,
+      "bound": 1.0,
+      "worst": [
+       "shifted/k3p2 #4"
+      ]
+     },
+     "inertia": {
+      "points": 30,
+      "rel_max": 5.060337646337231e-16,
+      "contract": 0.253219274871258,
+      "bound": 1.0,
+      "worst": [
+       "elongated/k2p2"
+      ]
+     },
+     "labels_differ": {
+      "points": 1,
+      "rel_max": 0.0,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       "subnormal/k3p2"
+      ]
+     }
+    }
+   },
+   "comparator_seconds": 60.0,
+   "run": "20261127-011132-bceeca6e+",
+   "comparators_run": "20261127-011132-bceeca6e+"
+  },
+  {
+   "id": "cluster/kmedoids",
+   "area": "cluster",
+   "name": "kmedoids",
+   "points": 71,
+   "regions": {
+    "objective": {
+     "points": 63,
+     "rel_max": 1.031079646235767e-15,
+     "contract": 0.3869641592147247,
+     "bound": 1.0,
+     "worst": [
+      "sizes/k3p2|k2"
+     ]
+    },
+    "medoids_differ": {
+     "points": 8,
+     "rel_max": 0.0,
+     "contract": null,
+     "bound": null,
+     "worst": [
+      "lattice/4x4|k2"
+     ]
+    }
+   },
+   "comparators": {
+    "R": {
+     "objective": {
+      "points": 63,
+      "rel_max": 1.0,
+      "contract": Infinity,
+      "bound": 1.0,
+      "worst": [
+       "subnormal/k3p2|k2"
+      ]
+     },
+     "medoids_differ": {
+      "points": 24,
+      "rel_max": 0.0,
+      "contract": null,
+      "bound": null,
+      "worst": [
+       "blobs/k2p1|k2"
+      ]
+     }
+    }
+   },
+   "comparator_seconds": 60.0,
+   "run": "20261127-011132-bceeca6e+",
+   "comparators_run": "20261127-011132-bceeca6e+"
   }
  ]
 }

@@ -13,6 +13,9 @@ computed with; and per method the reference hi + lo:
                index j p + d), lloyd_inertia (groups; fields n_iter, relocated, path_gap: the smallest gap of
                any step, 0 when a step met an exact tie); at the rounded centres
                (group input centers_f): label_f (kind 0, field gap), inertia_f; truth_mean (kind 2)
+    fuzzy      at the group input centers (given centres): u_m2, u_m15, u_m3 (kind 0, index i k + j: the
+               memberships for m = 2, 1.5, 3), centre1 (kind 1, index j p + d: the centres one step on at m = 2)
+               and over the groups objective0
     kmedoids   pam (kind 0: the medoids' input indices, sorted), optimum (kind 1, sets of <= 20 points);
                over the groups pam_build, pam_swap (field swaps), optimum_objective (field ties); group input k
     density    label (kind 0, DBSCAN at the group's eps and min_samples; fields core, near), core_distance (kind
@@ -26,9 +29,9 @@ computed with; and per method the reference hi + lo:
 tests/cluster/data holds the other libraries' records (tools/cluster_probe.py: scipy.json, sklearn.json, r.json)
 and the prototype measurements of milestone CL0 (prototype.json), each with its own "_provenance".
 
-The contracts (docs/design/cluster.md §4; the constants are the drafts milestone CL0 measured with the prototypes
-of csrc/cluster/prototype.cpp (tests/cluster/data/prototype.json; tests/cluster/test_reference_data.py holds them
-to these constants), and each milestone settles its own):
+The contracts (docs/design/cluster.md §4; the constants are the drafts milestone CL0 measured with its prototypes,
+prototype.cpp, which milestone CL2 removed (tests/cluster/data/prototype.json; tests/cluster/test_reference_data.py
+holds them to these constants), and each milestone settles its own):
 
     the discrete results   equal to the reference's choice where its gap is above the rounding (gap > NEAR_TIE);
                            at or below it either choice
@@ -42,6 +45,10 @@ to these constants), and each milestone settles its own):
                            linkage's height carried up from a child (CL51) is held to the child's bound
     k-means centres        |c - c*| <= C_CENTER gamma(ceil(log2 n) + 1) max |x|                         (§4.2)
     inertia                |I - I*| <= C_INERTIA gamma(p + ceil(log2 n)) I*                             (§4.2)
+    PAM's objective        |O - O*| <= C_PAM gamma(ceil(log2 n) + p + 2) O*                              (§4.3)
+    fuzzy memberships      |u - u*| <= 2 u (max(q, 1) (2p + 7) + k + 2), q = 1 / (m - 1)                  (§4.3)
+    fuzzy centres          |c - c*| <= 4 gamma(ceil(log2 n) + 2p + k + 8) max |x| (one step from given
+                           centres)                                                                    (§4.3)
 """
 
 from __future__ import annotations
@@ -56,7 +63,7 @@ from .. import reffile
 
 REF = pathlib.Path(__file__).parent / "ref"
 DATA = pathlib.Path(__file__).parent / "data"
-FAMILIES = ("density", "hierarchy", "kmeans", "kmedoids", "metrics", "mixture")
+FAMILIES = ("density", "fuzzy", "hierarchy", "kmeans", "kmedoids", "metrics", "mixture")
 U = 2.0**-53
 NEAR_TIE = 2.0**-40  # a choice whose runner-up is within this relative gap may go either way (§4)
 C_DIST = 1.0  # CL0's draft (the measured largest error); the contract is height_bound's
@@ -65,6 +72,7 @@ STEP_ROUNDINGS = {"average": 3, "weighted": 1, "centroid": 5, "median": 2, "ward
 SQUARED = ("centroid", "median", "ward")
 C_CENTER = 2.0
 C_INERTIA = 2.0
+C_PAM = 2.0
 
 
 def names() -> list[str]:
@@ -134,6 +142,18 @@ def center_bound(n, maxabs):
 
 def inertia_bound(n, p, value):
     return C_INERTIA * gamma(p + math.ceil(math.log2(max(n, 2)))) * abs(value)
+
+
+def pam_bound(n, p, value):
+    return C_PAM * gamma(math.ceil(math.log2(max(n, 2))) + p + 2) * abs(value)
+
+
+def membership_bound(p, k, m):
+    return 2 * U * (max(1.0 / (m - 1.0), 1.0) * (2 * p + 7) + k + 2)
+
+
+def fuzzy_centre_bound(n, p, k, maxabs):
+    return 4 * gamma(math.ceil(math.log2(max(n, 2))) + 2 * p + k + 8) * maxabs
 
 
 def tree_shape(Z, n, keys):

@@ -10,7 +10,9 @@ namespace sd {
 void bind_cluster(nb::module_& core) {
     nb::module_ m = core.def_submodule("cluster", "stardust cluster native core");
     cluster::bind_hierarchy(m);
-    cluster::bind_prototype(m);
+    cluster::bind_kmeans(m);
+    cluster::bind_kmedoids(m);
+    cluster::bind_fuzzy(m);
 }
 
 }  // namespace sd

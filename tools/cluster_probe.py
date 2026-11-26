@@ -4,23 +4,20 @@ build/logs/cluster_probe/<stamp>.log, and docs/design/cluster.md quotes them.
 
     .venv/bin/python tools/cluster_probe.py                  # every section
     .venv/bin/python tools/cluster_probe.py proto scipy r    # only these sections
-    .venv/bin/python tools/cluster_probe.py proto.mst        # one prototype measurement (the others' records kept)
+    .venv/bin/python tools/cluster_probe.py proto.kmeans     # one measurement (the others' records kept)
 
 Sections (positional; default all):
-  proto    the prototypes of csrc/cluster/prototype.cpp (_core.cluster._proto_*) against the references of
-           tests/cluster/ref (tools/cluster_ref.py must have run) -> prototype.json (milestone CL0's records
-           nnchain/* and heights of the hierarchy's prototypes, which milestone CL1 replaced, stay as they were):
-             distance  k-means' squared distances in the difference form (spatial's pair kernel) against the
-                       expanded form with Accelerate's dgemm (scikit-learn's): time at 1 and 10 threads, and the
-                       labels against the exact ones (the references' label_f, and sets shifted by 10^4 to 10^12)
-             bounds    Hamerly's bounds with the rounding margin c (p + 4) u, c = 0, 1, 4, 16: the same bits as
-                       Lloyd on every reference set, the distances skipped, the time on 10^5 points
+  proto    the measurements of the area's kernels -> prototype.json (milestone CL0's prototypes in prototype.cpp,
+           which milestone CL2 removed, are gone: their records distance/*, bounds/*, centers/*, nnchain/* and
+           heights stay as they were):
+             kmeans    (milestone CL2: csrc/cluster/kmeans.cpp) the assignment's difference form, its proven filter
+                       by the expanded form (decision CL49) and Accelerate's expanded form alone, at 1 and 10
+                       threads; whole fits by path (Lloyd, bounds, filtered) with the same bits; the key order's cost
              mst       (milestone CL1: the area's kernels, csrc/cluster/mst.cpp) Prim without a matrix, Boruvka
                        with each point's search of the KD tree and Boruvka by the dual tree: the same tree, and
                        the times by n and p (where Boruvka starts to win; decisions CL47, CL54)
              tree_heights  the Lance-Williams recurrence evaluated on the final tree (path-free), every
                        linkage, in ULPs of the exact heights, beside scipy's
-             centers   k-means centres summed in chunks of 4096 points against the exact means
   scipy    scipy 1.18.1's hierarchy and vq on the test data and at the edges the design departs from -> scipy.json
   sklearn  scikit-learn 1.9.1's KMeans, DBSCAN, HDBSCAN, OPTICS, GaussianMixture and indices -> sklearn.json
   r        R 4.6.2's stats (hclust, cutree, kmeans) and cluster 2.1.8.3 (pam, clara, fanny, agnes, diana,
@@ -159,198 +156,84 @@ def partition_same(a, b):
     return len(set(zip(a.tolist(), b.tolist()))) == len(set(a.tolist())) == len(set(b.tolist()))
 
 
-# ---------------------------------------------------------------- proto: distances
+# ---------------------------------------------------------------- proto: k-means (milestone CL2)
 
 
-def exact_labels(X, C):
-    """The nearest centre of every point by exact squared distance (the smaller centre on a tie), and the gaps."""
-    from fractions import Fraction
-
-    Cq = [[Fraction(v) for v in c] for c in C]
-    labs, gaps = [], []
-    for x in X:
-        xq = [Fraction(v) for v in x]
-        ds = [sum((a - b) ** 2 for a, b in zip(xq, c)) for c in Cq]
-        j = min(range(len(ds)), key=lambda t: (ds[t], t))
-        rest = sorted(ds[t] for t in range(len(ds)) if t != j)
-        labs.append(j)
-        gaps.append(float((rest[0] - ds[j]) / ds[j]) if rest and ds[j] > 0 else math.inf)
-    return np.array(labs), np.array(gaps)
-
-
-def proto_distance(log, rec):
-    C = P()
-    g = np.random.Generator(np.random.PCG64(20261124))
-    log("distance: k-means' squared distances, difference form (spatial's kernel) vs expanded (Accelerate dgemm)")
-    log(f"  load average {os.getloadavg()[0]:.1f}; ms, best of three; Accelerate's own threads in 'expanded'")
-    table = {}
-    for n, p, k in ((10**5, 2, 10), (10**5, 10, 10), (10**5, 10, 100), (10**5, 50, 10), (10**5, 50, 100),
-                    (10**5, 100, 100), (2 * 10**4, 300, 100)):  # fmt: skip
-        X = g.standard_normal((n, p))
-        Cn = X[g.choice(n, k, replace=False)].copy()
-        sX, sC = sda(X), sda(Cn)
-        t = {}
+def proto_kmeans(log, rec):
+    """Milestone CL2's measurements of k-means' kernels (csrc/cluster/kmeans.cpp) on Gaussian blobs of 10^5 points
+    (decision CL49 and the paths' thresholds): the assignment alone (kmeans_predict with path 1, the difference form
+    on spatial's tile kernel; path 2, the expanded form's proven filter with Accelerate's dgemm and the difference
+    form on the centres it keeps) against Accelerate's expanded form alone (_kmeans_assign_expanded, scikit-learn's
+    form, Accelerate's own threads), at 1 and 10 threads; then whole fits from the same start by path (1 Lloyd,
+    2 Lloyd filtered, 3 Hamerly's bounds, 4 bounds filtered), which must give the same bits; and the gather of the
+    rows in key order against one assignment."""
+    C = sd_core()
+    g = np.random.Generator(np.random.PCG64(2026))
+    n = 10**5
+    log("kmeans/assign: ms of one assignment of 10^5 points (1 / 10 threads); Accelerate's expanded form")
+    assign = {}
+    for p in (2, 10, 50, 100, 300):
+        for k in (10, 100):
+            cs = 4.0 * g.standard_normal((k, p))
+            X = cs[g.integers(0, k, n)] + g.standard_normal((n, p))
+            sX, sC = sda(X), sda(cs)
+            row = {}
+            for th in (1, 10):
+                threads(th)
+                for path, name in ((1, "diff"), (2, "filtered")):
+                    row[f"{name}_{th}"] = best(lambda: C.kmeans_predict(sX, sC, sC, 0, path))
+                row[f"expanded_{th}"] = best(lambda: C._kmeans_assign_expanded(sX, sC))
+            threads(10)
+            a = arr(C.kmeans_predict(sX, sC, sC, 0, 1)[0])
+            row["same_labels"] = bool(np.array_equal(a, arr(C.kmeans_predict(sX, sC, sC, 0, 2)[0])))
+            row["filtered_over_expanded_1"] = row["filtered_1"] / row["expanded_1"]
+            row["diff_over_expanded_1"] = row["diff_1"] / row["expanded_1"]
+            assign[f"p{p}k{k}"] = row
+            log(
+                f"  p={p:>3} k={k:>3}: "
+                + ", ".join(f"{q} {v:.2f}" for q, v in row.items() if q != "same_labels")
+                + f", same labels {row['same_labels']}"
+            )
+    rec["kmeans/assign"] = assign
+    log("kmeans/paths: ms of a fit from the data's first k rows (1 / 10 threads), tol 1e-4")
+    paths = {}
+    for p, k in ((2, 10), (10, 10), (10, 100), (50, 100), (100, 100), (2, 100), (50, 10)):
+        cs = 4.0 * g.standard_normal((k, p))
+        X = cs[g.integers(0, k, n)] + g.standard_normal((n, p))
+        sX, I = sda(X), sda(X[:k])
+        order = C.lex_order(sX)
+        row = {}
+        outs = []
         for th in (1, 10):
             threads(th)
-            t[f"diff_{th}"] = best(lambda: C._proto_assign(sX, sC, 0))
-            t[f"filtered_{th}"] = best(lambda: C._proto_assign(sX, sC, 3))
-        threads(1)
-        t["expanded"] = best(lambda: C._proto_assign(sX, sC, 1))
-        t["ratio_1"] = t["diff_1"] / t["expanded"]
-        t["ratio_10"] = t["diff_10"] / t["expanded"]
-        t["filtered_ratio_1"] = t["filtered_1"] / t["expanded"]
-        t["filtered_ratio_10"] = t["filtered_10"] / t["expanded"]
-        lab0 = arr(C._proto_assign(sX, sC, 0))
-        t["tile_equals_scalar"] = bool(np.array_equal(lab0, arr(C._proto_assign(sX, sC, 2))))
-        t["filtered_equals_diff"] = bool(np.array_equal(lab0, arr(C._proto_assign(sX, sC, 3))))
-        t["filtered_candidates_per_point"] = C._proto_candidates() / n
-        table[f"n{n}p{p}k{k}"] = t
-        log(
-            f"  n={n:>6} p={p:>3} k={k:>3}: diff {t['diff_1']:8.2f} (1) {t['diff_10']:7.2f} (10), expanded "
-            f"{t['expanded']:7.2f}, filtered {t['filtered_1']:7.2f} (1) {t['filtered_10']:7.2f} (10); "
-            f"/expanded: diff {t['ratio_1']:.2f} {t['ratio_10']:.2f}, filtered {t['filtered_ratio_1']:.2f} "
-            f"{t['filtered_ratio_10']:.2f}; candidates {t['filtered_candidates_per_point']:.2f}, same "
-            f"{t['tile_equals_scalar'] and t['filtered_equals_diff']}"
+            for path in (1, 2, 3, 4):
+                row[f"path{path}_{th}"] = best(lambda: C.kmeans(sX, order, None, k, 2, I, 1, 300, 1e-4, 1, 2, path), 1)
+                if th == 10:
+                    outs.append(C.kmeans(sX, order, None, k, 2, I, 1, 300, 1e-4, 1, 2, path))
+        threads(10)
+        row["n_iter"] = int(outs[0][1])
+        row["same_bits"] = all(
+            np.array_equal(arr(o[0][0]), arr(outs[0][0][0]))
+            and np.array_equal(arr(o[0][1]), arr(outs[0][0][1]))
+            and o[0][4] == outs[0][0][4]
+            for o in outs
         )
-    threads(10)
-    rec["distance/time"] = table
-    # accuracy: the labels at the references' rounded centres (label_f) and on shifted blobs
-    R = RD().ref("kmeans")
-    bad = {"diff": 0, "expanded": 0, "filtered": 0, "points": 0, "near": 0}
-    for sid in R.group_inputs["set"].tolist():
-        gi = RD().group_of(R, sid)
-        cf = R.group_inputs.get("centers_f")
-        if cf is None:
-            continue
-        Cf = cf[gi] if not isinstance(cf, list) else cf[gi]
-        if Cf is None or np.size(Cf) == 0 or np.isnan(np.asarray(Cf, float)).all():
-            continue
-        s = S().points(sid)
-        Cf = np.asarray(Cf, float).reshape(-1, s.p)
-        pos, idx = RD().at(R, "label_f", sid, 0)
-        m = R.methods["label_f"]
-        want = np.empty(s.n)
-        want[idx] = m.hi[pos]
-        gap = np.empty(s.n)
-        gap[idx] = m.fields["gap"][pos]
-        far = gap > RD().NEAR_TIE
-        for name, form in (("diff", 0), ("expanded", 1), ("filtered", 3)):
-            got = arr(C._proto_assign(sda(s.X), sda(Cf), form))
-            bad[name] += int(np.sum((got != want) & far))
-        bad["points"] += int(far.sum())
-        bad["near"] += int((~far).sum())
-    rec["distance/labels_at_reference_centres"] = bad
-    log(f"  labels at the references' centres (exact, gap > 2^-40): {bad}")
-    shifted = {}
-    for e in (4, 8, 12):
-        base = np.vstack([g.standard_normal((700, 2)) + c for c in ([0.0, 0.0], [3.0, 0.0], [0.0, 3.0])])
-        X = 10.0**e + base
-        Cn = 10.0**e + np.array([[0.0, 0.0], [3.0, 0.0], [0.0, 3.0]]) + 0.01 * g.standard_normal((3, 2))
-        want, gaps = exact_labels(X, Cn)
-        row = {"points": len(X)}
-        for name, form in (("diff", 0), ("expanded", 1), ("filtered", 3)):
-            got = arr(C._proto_assign(sda(X), sda(Cn), form))
-            row[name] = int(np.sum(got != want))
-        row["filtered_candidates_per_point"] = C._proto_candidates() / len(X)
-        from sklearn.cluster import KMeans
-
-        km = KMeans(3, init=Cn, n_init=1, max_iter=1)
-        km.fit(Cn)
-        km.cluster_centers_ = Cn
-        row["sklearn_predict"] = int(np.sum(km.predict(X) != want))
-        shifted[f"1e{e}"] = row
-    rec["distance/shifted_blobs"] = shifted
-    log(f"  shifted blobs (2100 points, 3 centres; wrong labels against the exact): {shifted}")
-
-
-# ---------------------------------------------------------------- proto: bounds
-
-
-def proto_bounds(log, rec):
-    C = P()
-    R = RD().ref("kmeans")
-    log("bounds: Hamerly with the rounding margin c (p + 4) u against Lloyd (same labels and centre bits?)")
-    summary = {c: {"sets": 0, "equal": 0, "skipped": 0.0, "work": 0.0} for c in (0, 1, 4, 16)}
-    for sid in R.group_inputs["set"].tolist():
-        gi = RD().group_of(R, sid)
-        init = R.group_inputs.get("init")
-        if init is None:
-            continue
-        I = init[gi]
-        if I is None or np.size(I) == 0 or np.isnan(np.asarray(I, float)).all():
-            continue
-        s = S().points(sid)
-        I = np.asarray(I, float).reshape(-1, s.p)
-        if s.w is not None:
-            continue
-        lab0, cen0, it0, nd0 = C._proto_kmeans(sda(s.X), sda(I), 300, 0, 1.0)
-        for c in summary:
-            lab, cen, it, nd = C._proto_kmeans(sda(s.X), sda(I), 300, 1, float(c))
-            eq = np.array_equal(arr(lab), arr(lab0)) and np.array_equal(arr(cen), arr(cen0)) and it == it0
-            summary[c]["sets"] += 1
-            summary[c]["equal"] += int(eq)
-            summary[c]["skipped"] += 1.0 - nd / nd0
-            summary[c]["work"] += 1.0
-    for v in summary.values():
-        v["skipped_mean"] = v.pop("skipped") / max(v.pop("work"), 1)
-    rec["bounds/reference_sets"] = summary
-    log(f"  reference sets: {summary}")
-    # near ties: a lattice and points a ulp off the bisectors
-    g = np.random.Generator(np.random.PCG64(7))
-    ties = {}
-    L = np.array([[i, j] for i in range(60) for j in range(60)], float)
-    cases = {
-        "lattice60": (L, L[[0, 59, 3540, 3599, 1830]]),
-        "bisector": (
-            np.column_stack([np.nextafter(np.zeros(4000), g.choice([-1.0, 1.0], 4000)), g.standard_normal(4000)]),
-            np.array([[-1.0, 0.0], [1.0, 0.0], [0.0, 5.0]]),
-        ),
-        "blobs_noise": (
-            np.vstack([g.standard_normal((3000, 3)) + c for c in np.eye(3) * 3])
-            * (1 + 1e-15 * g.standard_normal((9000, 1))),
-            np.eye(3) * 3 + 1e-3,
-        ),
+        paths[f"p{p}k{k}"] = row
+        log(
+            f"  p={p:>3} k={k:>3}: "
+            + ", ".join(f"{q} {v:.1f}" if isinstance(v, float) else f"{q} {v}" for q, v in row.items())
+        )
+    rec["kmeans/paths"] = paths
+    threads(1)
+    X = g.standard_normal((n, 10))
+    sX = sda(X)
+    order = C.lex_order(sX)
+    rec["kmeans/gather"] = {
+        "lex_order_ms": best(lambda: C.lex_order(sX)),
+        "one_iteration_ms": best(lambda: C.kmeans(sX, order, None, 10, 2, sda(X[:10]), 1, 1, 0.0, 1, 2, 1)),
     }
-    for name, (X, I) in cases.items():
-        lab0, cen0, it0, nd0 = C._proto_kmeans(sda(X), sda(I), 300, 0, 1.0)
-        row = {}
-        for c in (0, 1):
-            lab, cen, it, nd = C._proto_kmeans(sda(X), sda(I), 300, 1, float(c))
-            row[f"c{c}"] = {
-                "equal": bool(np.array_equal(arr(lab), arr(lab0)) and np.array_equal(arr(cen), arr(cen0))),
-                "labels_differ": int(np.sum(arr(lab) != arr(lab0))),
-                "skipped": 1.0 - nd / nd0,
-            }
-        ties[name] = row
-    rec["bounds/near_ties"] = ties
-    log(f"  near ties: {ties}")
-    # time on 10^5 points
-    tt = {}
-    g = np.random.Generator(np.random.PCG64(11))
-    for p, k in ((2, 10), (10, 10), (2, 100), (10, 100)):
-        centers = 4.0 * g.standard_normal((k, p))
-        X = np.repeat(centers, 10**5 // k, axis=0) + g.standard_normal((10**5, p))
-        X = X[g.permutation(len(X))]
-        I = X[:k].copy()
-        row = {}
-        for th in (1, 10):
-            threads(th)
-            r0 = C._proto_kmeans(sda(X), sda(I), 300, 0, 1.0)
-            r1 = C._proto_kmeans(sda(X), sda(I), 300, 1, 1.0)
-            row[f"lloyd_{th}"] = best(lambda: C._proto_kmeans(sda(X), sda(I), 300, 0, 1.0), 1)
-            row[f"hamerly_{th}"] = best(lambda: C._proto_kmeans(sda(X), sda(I), 300, 1, 1.0), 1)
-            row["equal"] = bool(np.array_equal(arr(r0[1]), arr(r1[1])) and np.array_equal(arr(r0[0]), arr(r1[0])))
-            row["iterations"] = int(r0[2])
-            row["skipped"] = 1.0 - r1[3] / r0[3]
-        tt[f"p{p}k{k}"] = row
-        log(
-            f"  n=1e5 p={p} k={k} ({row['iterations']} iterations): Lloyd {row['lloyd_1']:.0f} / "
-            f"{row['lloyd_10']:.0f} ms,"
-            f" Hamerly {row['hamerly_1']:.0f} / {row['hamerly_10']:.0f} ms (1 / 10 threads), skipped "
-            f"{row['skipped']:.2f}, same bits {row['equal']}"
-        )
     threads(10)
-    rec["bounds/time"] = tt
+    log(f"  key order and gather of 10^5 x 10 (1 thread): {rec['kmeans/gather']}")
 
 
 # ---------------------------------------------------------------- proto: MST
@@ -507,53 +390,17 @@ def proto_tree_heights(log, rec):
     rec["heights/tree_recurrence"] = out
 
 
-# ---------------------------------------------------------------- proto: centres
-
-
-def proto_centers(log, rec):
-    R = RD().ref("kmeans")
-    D = RD()
-    log("centers: the chunk sums (4096 points, then a pairwise tree) of the true labels' means against the exact")
-    worst, where = 0.0, None
-    for sid in R.group_inputs["set"].tolist():
-        s = S().points(sid)
-        if s.truth is None or s.w is not None:
-            continue
-        pos, idx = D.at(R, "truth_mean", sid, 2)
-        if not len(pos):
-            continue
-        m = R.methods["truth_mean"]
-        exact = np.empty(len(idx))
-        exact[idx] = m.hi[pos] + m.lo[pos]
-        k = int(s.truth.max()) + 1
-        got = np.zeros((k, s.p))
-        cnt = np.zeros(k)
-        for i in range(s.n):  # one chunk: a sequential sum in index order
-            j = s.truth[i]
-            if j >= 0:
-                got[j] += s.X[i]
-                cnt[j] += 1
-        got = (got / cnt[:, None]).ravel()
-        bound = D.gamma(math.ceil(math.log2(s.n)) + 1) * float(np.max(np.abs(s.X)))
-        r = float(np.max(np.abs(got - exact)) / bound) if bound > 0 else 0.0
-        if r > worst:
-            worst, where = r, sid
-    rec["centers/chunk_sums"] = {"worst": worst, "where": where}
-    log(f"  worst {worst:.3g} of gamma(ceil(log2 n) + 1) max|x| ({where})")
-
-
 PROTO = {
-    "distance": lambda: proto_distance,
-    "bounds": lambda: proto_bounds,
+    "kmeans": lambda: proto_kmeans,
     "mst": lambda: proto_mst,
     "tree_heights": lambda: proto_tree_heights,
-    "centers": lambda: proto_centers,
 }
 
 
 def proto(log, only=None):
     """Every prototype measurement, or only those named (proto.distance ...). The records of the sections not run
-    (and of milestone CL0's sections milestone CL1 retired: nnchain/*, heights) are kept."""
+    (and of milestone CL0's sections milestones CL1 and CL2 retired: nnchain/*, heights, distance/*, bounds/*,
+    centers/*) are kept."""
     rec = {}
     if (DATA / "prototype.json").exists():
         old = json.loads((DATA / "prototype.json").read_text())
@@ -576,7 +423,7 @@ def proto(log, only=None):
         "python-flint": flint.__version__,
         "machine": "Apple M4 Pro, macOS 26.6.2",
         "load_average": round(os.getloadavg()[0], 1),
-        "note": "the prototypes of csrc/cluster/prototype.cpp against tests/cluster/ref",
+        "note": "milestone CL0's prototypes (prototype.cpp, removed by milestone CL2) and the area's kernels",
     }
     log(write_records("prototype.json", meta, rec))
 
@@ -932,6 +779,28 @@ def r_records(log):
         s = S().points(base)
         rec[f"pam/{sid}"] = r_call(
             f"library(cluster); {XR}; p <- pam(x, {int(k[1:])}); c(sort(p$id.med) - 1, p$objective)", rmat(s.X)
+        )
+    # milestone CL2: stats::kmeans with Lloyd's algorithm from the kmeans references' starts (centres, cluster,
+    # tot.withinss and iter), and clara with one sample of every point and pam's swap (pamLike) against pam
+    KM = RD().ref("kmeans")
+    for sid in KM.group_inputs["set"].tolist():
+        g = RD().group_of(KM, sid)
+        init = np.asarray(KM.group_inputs["init"][g], float)
+        s = S().points(sid)
+        if s.w is not None or init.ndim != 2 or not np.isfinite(init).all():
+            continue
+        rec[f"kmeans_lloyd/{sid}"] = r_call(
+            f"{XR}; c0 <- matrix(cv, nrow = {init.shape[0]}); "
+            "km <- kmeans(x, c0, iter.max = 300, algorithm = 'Lloyd'); "
+            "c(km$cluster - 1, as.vector(t(km$centers)), km$tot.withinss, km$iter)",
+            {**rmat(s.X), "cv": np.ascontiguousarray(init.T).ravel()},
+        )
+    for sid in ("blobs/k3p2", "probe/300", "sizes/k3p2", "overlap/k3p2"):
+        s = S().points(sid)
+        rec[f"clara_pamlike/{sid}"] = r_call(
+            f"library(cluster); {XR}; cl <- clara(x, 3, samples = 1, sampsize = nrow(x), pamLike = TRUE); "
+            "p <- pam(x, 3); c(sort(cl$i.med) - 1, cl$objective, sort(p$id.med) - 1, p$objective[2])",
+            rmat(s.X),
         )
     Y = S().points("blobs/k3p2").X
     rec["cluster/clara"] = r_call(

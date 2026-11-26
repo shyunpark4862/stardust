@@ -38,6 +38,11 @@ lexicographic ranks, samples.lex_rank) and "gap" records how close the runner-up
                 index) per medoid (kind 0, index the medoid's number, hi the BUILD objective's... see below) and
                 over the groups pam_build and pam_swap (the mean distance after each phase, R's objective), and
                 for at most 20 points the best k-set of all (optimum; field ties = how many k-sets share it)
+    fuzzy       fuzzy c-means (decision CL27) at given centres (group input centers: midpoints of the k-means
+                starts and their neighbours, rounded): the memberships of every point (kind 0, index i k + j) for
+                m = 2 (u_m2) and m = 1.5 (u_m15) as exact rationals and m = 3 (u_m3, square roots in Arb); one
+                step at m = 2: the centres from the exact memberships (centre1, kind 1, index j p + d) and the
+                objective sum u^2 d^2 at the given centres (objective0, over the groups)
     density     DBSCAN at the group's eps and min_samples (exact: d^2 <= eps^2, the point itself counted;
                 weights summed): label (kind 0; the first-seen numbering, -1 noise; fields core, near =
                 some pair of the point within 2^-40 eps^2 of eps^2); HDBSCAN's pieces at min_samples 5:
@@ -461,6 +466,85 @@ def kmeans_task(pid):
 
 def kmeans_sets():
     return [i for i in S().point_ids() if S().points(i).k is not None and S().points(i).n >= S().points(i).k]
+
+
+# ---------------------------------------------------------------- fuzzy c-means
+
+
+def _fuzzy_centres(s):
+    """The given centres of a set (decision CL27's references): midpoints of the k start points of _init_centres
+    and their neighbours in that list, rounded to doubles (k = 1: the first point plus 0.25); None without a start."""
+    idx = _init_centres(s)
+    if idx is None:
+        return None
+    X0 = s.X[idx]
+    if s.k == 1:
+        return X0 + 0.25
+    return (X0 + s.X[np.roll(idx, 1)]) / 2.0
+
+
+def _memberships(Drow, q):
+    """A point's exact memberships for the exponent q = 1 / (m - 1) (an int: rationals), from its exact squared
+    distances; the centres it lies on share 1 equally."""
+    zeros = [j for j, d in enumerate(Drow) if d == 0]
+    if zeros:
+        return [fmpq(1, len(zeros)) if d == 0 else fmpq(0) for d in Drow]
+    mn = min(Drow)
+    r = [(mn / d) ** q for d in Drow]
+    t = sum(r, fmpq(0))
+    return [v / t for v in r]
+
+
+def fuzzy_task(pid):
+    s = S().points(pid)
+    n, p, k = s.n, s.p, s.k
+    C0 = _fuzzy_centres(s)
+    pts, gm, gin = {}, {}, {}
+    if C0 is not None:
+        gin["centers"] = C0
+        P, Cq = exact_points(s.X), exact_points(C0)
+        D = [[sqdist(x, c) for c in Cq] for x in P]
+        U2 = [_memberships(row, 1) for row in D]
+        U15 = [_memberships(row, 2) for row in D]
+        for i in range(n):
+            for j in range(k):
+                pts.setdefault((0, i * k + j), {})["u_m2"] = (*dd_of(U2[i][j]), {})
+                pts.setdefault((0, i * k + j), {})["u_m15"] = (*dd_of(U15[i][j]), {})
+            row = D[i]
+            if any(d == 0 for d in row):
+                U3 = _memberships(row, 1)  # the same shares for every m
+                for j in range(k):
+                    pts[(0, i * k + j)]["u_m3"] = (*dd_of(U3[j]), {})
+                continue
+            mn = min(row)
+            for j in range(k):
+
+                def u3(j=j, row=row, mn=mn):
+                    r = [arb_q(mn / d).sqrt() for d in row]
+                    return r[j] / sum(r[1:], r[0])
+
+                e = safe(u3)
+                if e is not None:
+                    pts[(0, i * k + j)]["u_m3"] = e
+        # one step at m = 2: the centres from the exact memberships U2, and the objective at (U2, C0)
+        for j in range(k):
+            wsum = sum((U2[i][j] ** 2 for i in range(n)), fmpq(0))
+            for d in range(p):
+                c = sum((U2[i][j] ** 2 * P[i][d] for i in range(n)), fmpq(0)) / wsum
+                pts.setdefault((1, j * p + d), {})["centre1"] = (*dd_of(c), {})
+        obj = sum((U2[i][j] ** 2 * D[i][j] for i in range(n) for j in range(k)), fmpq(0))
+        gm["objective0"] = (*dd_of(obj), {})
+    return {
+        "set": pid,
+        "digest": s.digest,
+        "ginputs": gin,
+        "points": [(kind, idx_, ms) for (kind, idx_), ms in sorted(pts.items())],
+        "gmethods": gm,
+    }
+
+
+def fuzzy_sets():
+    return [i for i in kmeans_sets() if S().points(i).n <= 300]
 
 
 # ---------------------------------------------------------------- k-medoids
@@ -984,6 +1068,7 @@ def _items(fam):
         "hierarchy": hierarchy_sets,
         "kmeans": kmeans_sets,
         "kmedoids": kmedoids_sets,
+        "fuzzy": fuzzy_sets,
         "density": density_items,
         "mixture": lambda: list(S().mixture_ids()),
         "metrics": metrics_items,
@@ -994,6 +1079,7 @@ TASKS = {
     "hierarchy": hierarchy_task,
     "kmeans": kmeans_task,
     "kmedoids": kmedoids_task,
+    "fuzzy": fuzzy_task,
     "density": density_task,
     "mixture": mixture_task,
     "metrics": metrics_task,
@@ -1002,6 +1088,7 @@ FAMILIES = tuple(TASKS)
 EXTRA = {
     "hierarchy": "exact rationals (fmpq); sums of square roots compared in Arb to 4096 bits",
     "kmeans": "exact rationals (fmpq)",
+    "fuzzy": "exact rationals (fmpq); m = 3's square roots in Arb",
     "density": "exact rationals (fmpq)",
     "mixture": "exact rationals (fmpq, fmpq_mat)",
     "metrics": "exact rationals (Fraction)",

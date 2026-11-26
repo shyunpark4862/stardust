@@ -228,6 +228,7 @@ def _kmeans_specs():
             "kmeans(x, x[1:10, ], iter.max = 300, algorithm = 'Lloyd')$tot.withinss",
             data=R_X,
             setup=R_MATRIX,
+            differs="R's Lloyd has no tol: it runs until no label changes (117 iterations here, sd's tol 1e-4 stops at 11)",
         ),
         RRef(
             "R",
@@ -256,6 +257,108 @@ def _kmeans_specs():
                 rtol=1e-9,
             ),
         )
+    ]
+
+
+def _partition_specs():
+    """minibatch_kmeans, bisecting_kmeans, kmedoids (PAM and CLARA) and fuzzy_cmeans (CL2): random starts on every
+    side, so the smoke run checks the size of the objective only loosely (or not at all)."""
+
+    def rng():
+        return __import__("stardust").random.default_rng(0)
+
+    loose = Check(sd=lambda r: float(r.inertia), ref=lambda label, r: float(r.inertia_), rtol=0.05)
+    return [
+        Spec(
+            "CL2",
+            "partition",
+            "minibatch_kmeans p=10 k=10",
+            ("minibatch_kmeans",),
+            count(10**5),
+            _blobs(10**5, 10, 10),
+            lambda d: lambda: _cl().minibatch_kmeans(d["sX"], 10, rng=rng()),
+            (
+                Ref(
+                    "sklearn",
+                    lambda d: (
+                        lambda: (
+                            __import__("sklearn.cluster", fromlist=["MiniBatchKMeans"])
+                            .MiniBatchKMeans(10, random_state=0)
+                            .fit(d["X"])
+                        )
+                    ),
+                    threads="follow",
+                ),
+            ),
+            check=loose,
+        ),
+        Spec(
+            "CL2",
+            "partition",
+            "bisecting_kmeans p=10 k=10",
+            ("bisecting_kmeans",),
+            count(10**5),
+            _blobs(10**5, 10, 10),
+            lambda d: lambda: _cl().bisecting_kmeans(d["sX"], 10, rng=rng()),
+            (
+                Ref(
+                    "sklearn",
+                    lambda d: (
+                        lambda: (
+                            __import__("sklearn.cluster", fromlist=["BisectingKMeans"])
+                            .BisectingKMeans(10, random_state=0)
+                            .fit(d["X"])
+                        )
+                    ),
+                    threads="follow",
+                ),
+            ),
+            check=Check(skip="random starts on both sides: bisections differ"),
+        ),
+        Spec(
+            "CL2",
+            "partition",
+            "kmedoids pam p=5 k=10",
+            ("kmedoids",),
+            count(2000),
+            _blobs(2000, 5, 10),
+            lambda d: lambda: _cl().kmedoids(d["sX"], 10),
+            (RRef("R", "pam(x, 10)$objective[2]", data=R_X, setup="library(cluster); " + R_MATRIX),),
+            check=Check(
+                sd=lambda r: float(r.objective), ref=lambda label, r: float(np.asarray(r).ravel()[0]), rtol=1e-9
+            ),
+        ),
+        Spec(
+            "CL2",
+            "partition",
+            "kmedoids clara p=5 k=10",
+            ("kmedoids",),
+            count(10**5),
+            _blobs(10**5, 5, 10),
+            lambda d: lambda: _cl().kmedoids(d["sX"], 10, method="clara", rng=rng()),
+            (
+                RRef(
+                    "R",
+                    "clara(x, 10)$objective",
+                    data=R_X,
+                    setup="library(cluster); " + R_MATRIX,
+                    differs="R's own sampler: other samples",
+                ),
+            ),  # fmt: skip
+            check=Check(
+                sd=lambda r: float(r.objective), ref=lambda label, r: float(np.asarray(r).ravel()[0]), rtol=0.05
+            ),
+        ),
+        Spec(
+            "CL2",
+            "partition",
+            "fuzzy_cmeans p=10 k=10",
+            ("fuzzy_cmeans",),
+            count(10**5),
+            _blobs(10**5, 10, 10),
+            lambda d: lambda: _cl().fuzzy_cmeans(d["sX"], 10, rng=rng(), init=d["sinit"]),
+            note="no comparator: e1071 is not installed and R's fanny minimizes another objective on n x n distances",
+        ),
     ]
 
 
@@ -366,7 +469,9 @@ def _metrics_specs():
     ]
 
 
-SPECS = _hierarchy_specs() + _kmeans_specs() + _density_specs() + _mixture_specs() + _metrics_specs()
+SPECS = (
+    _hierarchy_specs() + _kmeans_specs() + _partition_specs() + _density_specs() + _mixture_specs() + _metrics_specs()
+)
 
 
 def _public(names) -> bool:
@@ -396,7 +501,7 @@ def cases() -> list[Case]:
 
 TITLES = {
     "hierarchy": "계층 군집",
-    "partition": "분할 (`kmeans`)",
+    "partition": "분할 (`kmeans`, `minibatch_kmeans`, `bisecting_kmeans`, `kmedoids`, `fuzzy_cmeans`)",
     "density": "밀도 군집",
     "mixture": "가우스 혼합",
     "metrics": "지표",

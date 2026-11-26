@@ -12,6 +12,7 @@ Milestone CL0 made the common base of the results (_results.py) and the argument
 public names come with milestones CL1 to CL6 (CL1: the hierarchy, _hierarchy.py).
 """
 
+from ._fuzzy import FuzzyCMeansResult, fuzzy_cmeans
 from ._hierarchy import (
     CophenetResult,
     DendrogramResult,
@@ -36,6 +37,8 @@ from ._hierarchy import (
     num_obs_linkage,
     optimal_leaf_ordering,
 )
+from ._kmeans import BisectingKMeansResult, KMeansResult, bisecting_kmeans, kmeans, minibatch_kmeans
+from ._kmedoids import KMedoidsResult, kmedoids
 
 __all__ = [
     "linkage",
@@ -60,4 +63,13 @@ __all__ = [
     "is_valid_linkage",
     "num_obs_linkage",
     "is_isomorphic",
+    "kmeans",
+    "minibatch_kmeans",
+    "bisecting_kmeans",
+    "KMeansResult",
+    "BisectingKMeansResult",
+    "kmedoids",
+    "KMedoidsResult",
+    "fuzzy_cmeans",
+    "FuzzyCMeansResult",
 ]

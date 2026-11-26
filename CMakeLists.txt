@@ -148,7 +148,9 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/smooth/bandwidth.cpp
   csrc/cluster/hierarchy.cpp
   csrc/cluster/mst.cpp
-  csrc/cluster/prototype.cpp
+  csrc/cluster/kmeans.cpp
+  csrc/cluster/kmedoids.cpp
+  csrc/cluster/fuzzy.cpp
   csrc/special/reduce.cpp
   csrc/frame/column.cpp
   csrc/frame/convert.cpp
