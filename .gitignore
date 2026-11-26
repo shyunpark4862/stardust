@@ -17,3 +17,6 @@ __pycache__/
 # Site working notes (kept here, not committed)
 /site-legacy/notes/
 /.claude/
+
+# Library working notes: briefs and records of the library session (kept here, not committed)
+/notes/
