@@ -1,0 +1,134 @@
+---
+kind: function
+title: lu_solve
+names: [lu_solve]
+group: Linear systems
+order: 5
+signatures:
+  - "sd.linalg.lu_solve(l, u, perm, b, /, *, trans='N')"
+summary: Solve a linear system from the LU factorization of its matrix.
+params:
+  - name: l
+    type: array of shape (..., n, n)
+    kind: positional-only
+    desc: "Unit lower triangular factor `L` returned by [`lu`](/api/linalg/lu/), or a stack of them (see [matrices and stacks](/api/linalg/#matrices-and-stacks)). Only the part below the diagonal is read; the diagonal is taken to be all ones."
+  - name: u
+    type: array of shape (..., n, n)
+    kind: positional-only
+    desc: "Upper triangular factor `U` returned by `lu`. Only the diagonal and the part above it are read."
+  - name: perm
+    type: array of shape (..., n)
+    kind: positional-only
+    desc: "Row permutation `perm` returned by `lu`, of dtype `int64`: row `i` of `l @ u` is row `perm[i]` of the factored matrix. Each vector must be a permutation of `0, ..., n - 1`."
+  - name: b
+    type: array of shape (n,) or (..., n, k)
+    kind: positional-only
+    desc: "Right-hand side: one vector, or `k` vectors as columns (see [right-hand sides](/api/linalg/#right-hand-sides)). The leading axes of `l`, `u`, `perm` and `b` broadcast against each other."
+  - name: trans
+    type: str
+    kind: keyword-only
+    default: "'N'"
+    desc: "Which system to solve with the factored matrix `a`."
+    choices:
+      - [ "'N'", "`a @ x = b`" ]
+      - [ "'T'", "`a.mT @ x = b`, with the transpose of `a`" ]
+      - [ "'H'", "`sd.conj(a.mT) @ x = b`, with the conjugate transpose of `a`; the same as `'T'` for real factors" ]
+returns:
+  - type: ndarray of shape (..., n) or (..., n, k)
+    desc: "Solution `x`, with the shape of `b` after broadcasting. `float64`, or `complex128` when `l`, `u` or `b` is complex (see [result types](/api/linalg/#result-types))."
+raises:
+  - type: TypeError
+    desc: "If `perm` is not of dtype `int64`, if `l`, `u`, `perm` or `b` is not an `sd.ndarray`, or if `trans` is not a string."
+  - type: ValueError
+    desc: "If `l` or `u` has fewer than two dimensions or is not square, if the sizes of `l`, `u`, `perm` and `b` do not match, if the leading axes do not broadcast, if `trans` is not `'N'`, `'T'` or `'H'`, if `l`, `u` or `b` contains NaN or infinity in the part that is read, or if a vector in `perm` is not a permutation."
+  - type: LinAlgError
+    desc: "If `u` has an exact zero on its diagonal, that is, the factored matrix is singular. For a stack, the message gives the index of the first such matrix."
+seeAlso: [lu, solve, cholesky_solve, solve_triangular, inv]
+---
+
+`lu_solve` solves a square system `a @ x = b` when the LU factorization of `a` is already known. The three
+arguments `l`, `u` and `perm` are the three fields of the result of [`lu(a)`](/api/linalg/lu/), in the same
+order, so `lu_solve(*sd.linalg.lu(a), b)` solves the system. The factors are described under
+[factor format](/api/linalg/lu/#factor-format) on that page.
+
+Factoring is the expensive part of [`solve`](/api/linalg/solve/). With the factors kept, each further right-hand side
+needs only two triangular solves, so `lu_solve` suits right-hand sides that become known one at a time.
+Right-hand sides that are all known at once can go to `solve` together, as the columns of `b`. With `trans`, the
+same factors also solve the system with the transpose of `a`.
+
+## Examples
+
+Factor a matrix once, then solve for two right-hand sides:
+
+```python
+>>> import stardust as sd
+>>> a = sd.asarray([[2.0, 4.0, 2.0], [4.0, 4.0, 0.0], [1.0, 1.0, 1.0]])
+>>> l, u, perm = sd.linalg.lu(a)
+>>> perm
+array([1, 0, 2], dtype=int64)
+>>> sd.linalg.lu_solve(l, u, perm, sd.asarray([16.0, 12.0, 6.0]))
+array([1.0, 2.0, 3.0], dtype=float64)
+>>> sd.linalg.lu_solve(l, u, perm, sd.asarray([4.0, 4.0, 1.0]))
+array([0.0, 1.0, 0.0], dtype=float64)
+```
+
+The result of `lu` unpacks into the first three arguments. The solution equals that of `solve`:
+
+```python
+>>> f = sd.linalg.lu(a)
+>>> b = sd.asarray([16.0, 12.0, 6.0])
+>>> bool(sd.all(sd.linalg.lu_solve(*f, b) == sd.linalg.solve(a, b)))
+True
+```
+
+The same factors solve the transposed system:
+
+```python
+>>> x = sd.linalg.lu_solve(*f, sd.asarray([0.0, 2.0, 4.0]), trans="T")
+>>> x
+array([ 1.0, -1.0,  2.0], dtype=float64)
+>>> a.mT @ x
+array([0.0, 2.0, 4.0], dtype=float64)
+```
+
+`lu` factors a singular matrix without an error; `lu_solve` then raises `LinAlgError`. A permutation that is not of
+dtype `int64` raises `TypeError`:
+
+```python
+>>> fs = sd.linalg.lu(sd.asarray([[1.0, 2.0], [2.0, 4.0]]))
+>>> sd.linalg.lu_solve(*fs, sd.asarray([1.0, 2.0]))
+Traceback (most recent call last):
+    ...
+stardust.linalg.LinAlgError: lu_solve(): singular matrix
+>>> sd.linalg.lu_solve(l, u, perm.astype(sd.float64), b)
+Traceback (most recent call last):
+    ...
+TypeError: lu_solve(): 'perm' must be an int64 array, not float64
+```
+
+<Reference />
+
+## Notes
+
+The factors describe the matrix $A$ with $A_{\mathrm{perm}[i], j} = (L U)_{ij}$, where $L$ is unit lower triangular
+and $U$ is upper triangular. For `trans="N"` the function solves $L y = b'$ with $b'_i = b_{\mathrm{perm}[i]}$, then
+$U x = y$. For `trans="T"` it solves $U^T z = b$ and $L^T w = z$ and sets $x_{\mathrm{perm}[i]} = w_i$; `trans="H"`
+uses the conjugate transposes $U^H$ and $L^H$ instead.
+
+The function does not check that the arguments came from `lu`. Any `l` and `u` of the right shapes and any
+permutation `perm` define a matrix $A$ as above, and the system with that matrix is solved. Elements outside the
+triangles that are read are ignored, and may also be NaN.
+
+For the factors that `lu` returns, `lu_solve(*sd.linalg.lu(a), b)` equals `solve(a, b)` bit for bit, except when `a`
+is real and `b` is complex; the two then agree only up to rounding.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalent is `scipy.linalg.lu_solve`. NumPy has no LU solver.
+
+- `scipy.linalg.lu_solve((lu, piv), b)` takes the output of `scipy.linalg.lu_factor`: both factors packed into one
+  matrix and pivot indices that record row swaps. Here the factors are separate arrays, and `perm` is the
+  permutation itself.
+- `trans` is `'N'`, `'T'` or `'H'`. SciPy uses the integers `0`, `1` and `2`.
+- An exact zero on the diagonal of `u` raises `LinAlgError`. `scipy.linalg.lu_solve` returns NaN or infinity
+  without an error.

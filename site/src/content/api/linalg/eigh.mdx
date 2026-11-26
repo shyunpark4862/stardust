@@ -1,0 +1,161 @@
+---
+kind: function
+title: eigh, eigvalsh
+names: [eigh, eigvalsh]
+group: Eigenvalues
+order: 1
+signatures:
+  - "sd.linalg.eigh(a, b=None, /)"
+  - "sd.linalg.eigvalsh(a, b=None, /)"
+summary: Compute the eigenvalues and eigenvectors, or the eigenvalues only, of a symmetric or Hermitian matrix.
+params:
+  - name: a
+    type: array of shape (..., n, n)
+    kind: positional-only
+    desc: "Symmetric matrix (Hermitian when complex), of any dtype, or a stack of them (see [matrices and stacks](/api/linalg/#matrices-and-stacks)). Only the lower triangle and the diagonal are read; the imaginary part of the diagonal is ignored."
+  - name: b
+    type: array of shape (..., n, n) or None
+    kind: positional-only
+    default: None
+    desc: "Right-hand matrix of the generalized problem, of any dtype, or a stack of them. If given, `a @ v` equals `b @ v` times the eigenvalue. Must be symmetric positive-definite (Hermitian positive-definite when complex), with the size of `a`. Only the lower triangle and the diagonal are read; the imaginary part of the diagonal is ignored. Leading axes broadcast against those of `a`."
+returns:
+  - name: eigenvalues
+    type: ndarray of shape (..., n)
+    desc: "The eigenvalues of each matrix in ascending order, repeated according to multiplicity. Always `float64`. The whole result of `eigvalsh`, and the first field of the result of `eigh`."
+  - name: eigenvectors
+    type: ndarray of shape (..., n, n)
+    desc: "`eigh` only. Column `i` is the eigenvector of `eigenvalues[..., i]`. Without `b` the columns are orthonormal; with `b` they are normalized so that `sd.conj(v.mT) @ b @ v` is the identity. `float64`, or `complex128` when `a` or `b` is complex (see [result types](/api/linalg/#result-types))."
+raises:
+  - type: TypeError
+    desc: "If `a` or `b` is not an `sd.ndarray`."
+  - type: ValueError
+    desc: "If `a` or `b` has fewer than two dimensions or is not square, if `a` and `b` differ in size, if the leading axes do not broadcast, or if the lower triangle of `a` or `b` contains NaN or infinity."
+  - type: LinAlgError
+    desc: "If `b` is not positive definite to working precision (a pivot of its Cholesky factorization is zero or negative), or if the eigenvalue computation does not converge. For a stack, the message gives the index of the first matrix that failed."
+seeAlso: [eig, svd, cholesky, schur]
+---
+
+`eigh` computes the eigenvalues $\lambda$ and the eigenvectors $v$ with $A v = \lambda v$ for a symmetric matrix (equal
+to its transpose) or a Hermitian matrix (equal to its conjugate transpose). The eigenvalues of such a matrix are real,
+and its eigenvectors can be chosen orthonormal. `eigvalsh` computes the eigenvalues only.
+
+`eigh` returns a named tuple `EighResult(eigenvalues, eigenvectors)`. Its fields are read by name or by position, and
+its arrays are read-only (see [named tuples](/api/linalg/#named-tuples)). `eigvalsh` returns the eigenvalues as one writable
+array. The eigenvalues are in ascending order, the most negative first, and column `i` of `eigenvectors` belongs to
+`eigenvalues[..., i]`.
+
+Both functions read only the lower triangle of `a`, diagonal included, and never read or check the upper triangle. A
+matrix that is not symmetric is therefore treated as the symmetric matrix with the same lower triangle. Complex input is
+always treated as Hermitian, and the imaginary parts of the diagonal are ignored. For general square matrices,
+[`eig`](/api/linalg/eig/) applies.
+
+With a second matrix `b`, the functions solve the generalized problem $A v = \lambda B v$. `b` must be symmetric or
+Hermitian and positive definite.
+
+## Examples
+
+Eigenvalues and eigenvectors of a symmetric 2-by-2 matrix. The second column of `v` is stretched by the second
+eigenvalue, 3:
+
+```python
+>>> import stardust as sd
+>>> a = sd.asarray([[2.0, 1.0], [1.0, 2.0]])
+>>> w, v = sd.linalg.eigh(a)
+>>> w
+array([1.0, 3.0], dtype=float64)
+>>> v
+array([[-0.7071067811865475,  0.7071067811865475],
+       [ 0.7071067811865475,  0.7071067811865475]], dtype=float64)
+>>> a @ v[:, 1]
+array([2.1213203435596424, 2.1213203435596424], dtype=float64)
+```
+
+The eigenvectors are orthonormal, and they rebuild the matrix up to rounding. `v * w` scales column `i` of `v` by
+`w[i]`:
+
+```python
+>>> float(sd.max(sd.abs((v * w) @ v.mT - a))) < 1e-14
+True
+>>> float(sd.max(sd.abs(v.mT @ v - sd.eye(2)))) < 1e-14
+True
+```
+
+Only the lower triangle is read. A Hermitian matrix has real eigenvalues:
+
+```python
+>>> sd.linalg.eigvalsh(sd.asarray([[1.0, 2.0], [2.0, 1.0]]))
+array([-1.0,  3.0], dtype=float64)
+>>> sd.linalg.eigvalsh(sd.asarray([[1.0, 99.0], [2.0, 1.0]]))
+array([-1.0,  3.0], dtype=float64)
+>>> sd.linalg.eigvalsh(sd.asarray([[2.0, 1j], [-1j, 2.0]]))
+array([1.0, 3.0], dtype=float64)
+```
+
+The generalized problem with a positive definite `b`. The eigenvectors are normalized so that `v.mT @ b @ v` is the
+identity:
+
+```python
+>>> b = sd.asarray([[3.0, 1.0], [1.0, 3.0]])
+>>> r = sd.linalg.eigh(a, b)
+>>> r.eigenvalues
+array([ 0.5, 0.75], dtype=float64)
+>>> V = r.eigenvectors
+>>> float(sd.max(sd.abs(a @ V - (b @ V) * r.eigenvalues))) < 1e-14
+True
+>>> float(sd.max(sd.abs(V.mT @ b @ V - sd.eye(2)))) < 1e-14
+True
+```
+
+A stack of matrices gives one row of eigenvalues per matrix. A `b` that is not positive definite raises
+`LinAlgError`:
+
+```python
+>>> stack = sd.stack([a, sd.asarray([[4.0, 0.0], [0.0, -1.0]])])
+>>> sd.linalg.eigvalsh(stack)
+array([[ 1.0,  3.0],
+       [-1.0,  4.0]], dtype=float64)
+>>> sd.linalg.eigh(a, sd.asarray([[1.0, 2.0], [2.0, 1.0]]))
+Traceback (most recent call last):
+    ...
+stardust.linalg.LinAlgError: eigh(): matrix is not positive definite
+```
+
+<Reference />
+
+## Notes
+
+For a Hermitian $n \times n$ matrix $A$, the result satisfies
+
+$$
+A = V \operatorname{diag}(\lambda) V^H, \qquad V^H V = I,
+$$
+
+where $V$ is `eigenvectors` and $\lambda_1 \le \dots \le \lambda_n$ are `eigenvalues`. With `b`, the result solves
+$A V = B V \operatorname{diag}(\lambda)$ with $V^H B V = I$, so that $V^H A V = \operatorname{diag}(\lambda)$. The
+generalized problem is reduced to a standard one with the Cholesky factorization of $B$; this is why $B$ must be
+positive definite (see [`cholesky`](/api/linalg/cholesky/) for when the factorization fails). A `b` that is singular
+in exact arithmetic can pass after rounding; the eigenvalues then include huge values, of the order of the reciprocal
+of the rounding error, with no warning.
+
+Each eigenvector is determined only up to its sign (for complex input, up to a factor of absolute value 1). When an
+eigenvalue is repeated, any orthonormal basis of its eigenspace is a valid set of eigenvectors. The function fixes
+neither choice. It makes the same one on every run with the same number of threads (see
+[determinism and threads](/start/conventions/#determinism-and-threads)), but code should not rely on a particular sign
+or basis. Compare eigenvectors through properties such as $A v - \lambda v$ instead.
+
+An empty matrix ($n = 0$) gives empty results. `eigvalsh`
+does not compute the eigenvectors, and its eigenvalues can differ from those of `eigh` in the last digits.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.linalg.eigh`, `scipy.linalg.eigh` (which also solves the generalized problem) and
+R's `eigen(a, symmetric = TRUE)`.
+
+- The lower triangle is always read, as by default in `numpy.linalg.eigh`, `scipy.linalg.eigh` and R's `eigen`; there
+  is no `UPLO=` or `lower=` option to read the upper one.
+- `b` is the second positional argument, as in `scipy.linalg.eigh(a, b)`; it cannot be passed by keyword. The
+  eigenvectors are normalized the same way: `sd.conj(v.mT) @ b @ v` is the identity.
+- NaN or infinity in the lower triangle raises `ValueError`. `numpy.linalg.eigh` returns NaN instead;
+  `scipy.linalg.eigh` raises `ValueError` by default, as here.
+- There are no options for a subset of the eigenvalues or for the algorithm.
+- R's `eigen` returns the eigenvalues in decreasing order; `eigh` and `eigvalsh` return them in ascending order.

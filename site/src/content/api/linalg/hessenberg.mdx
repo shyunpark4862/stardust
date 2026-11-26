@@ -1,0 +1,119 @@
+---
+kind: function
+title: hessenberg
+names: [hessenberg]
+group: Factorizations
+order: 6
+signatures:
+  - "sd.linalg.hessenberg(x, /)"
+summary: Reduce a square matrix to upper Hessenberg form by an orthogonal or unitary similarity transformation.
+params:
+  - name: x
+    type: array of shape (..., n, n)
+    kind: positional-only
+    desc: "Square matrix to reduce, of any dtype, or a stack of them (see [matrices and stacks](/api/linalg/#matrices-and-stacks))."
+returns:
+  - name: H
+    type: ndarray of shape (..., n, n)
+    desc: "Upper Hessenberg matrix: the elements below the first subdiagonal are exactly zero. `float64`, or `complex128` when `x` is complex (see [result types](/api/linalg/#result-types))."
+  - name: Q
+    type: ndarray of shape (..., n, n)
+    desc: "Orthogonal (for complex `x`, unitary) matrix with `x = Q @ H @ sd.conj(Q.mT)` up to rounding. Its first row and first column are those of the identity matrix. Same dtype as `H`."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`."
+  - type: ValueError
+    desc: "If `x` has fewer than two dimensions or is not square, or if `x` contains NaN or infinity."
+seeAlso: [schur, eig, qr, eigh]
+---
+
+`hessenberg` writes a square matrix as $A = Q H Q^H$, where $Q$ is orthogonal or unitary and $H$ is upper Hessenberg:
+zero below the first subdiagonal. Because $H$ is similar to $A$, it has the same eigenvalues. The reduction is a
+finite computation, without iteration, and is the usual first step of eigenvalue algorithms such as the one behind
+[`schur`](/api/linalg/schur/).
+
+The result is a named tuple `HessenbergResult(H, Q)`. Its fields are read by name or by position, and its arrays are
+read-only (see [named tuples](/api/linalg/#named-tuples)). `Q` is always computed.
+
+## Examples
+
+A 3-by-3 matrix. `H` has a zero below the subdiagonal, and the first row and column of `Q` are those of the identity:
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([[2.0, 1.0, 1.0], [3.0, 1.0, 2.0], [4.0, 2.0, 1.0]])
+>>> H, Q = sd.linalg.hessenberg(x)
+>>> H
+array([[                 2.0,  -1.4000000000000004, -0.20000000000000018],
+       [                -5.0,   2.9200000000000004,                 0.56],
+       [                 0.0,   0.5600000000000003,  -0.9199999999999999]], dtype=float64)
+>>> Q
+array([[                1.0,                 0.0,                 0.0],
+       [                0.0, -0.6000000000000001,                -0.8],
+       [                0.0,                -0.8,                 0.6]], dtype=float64)
+>>> float(sd.max(sd.abs(Q @ H @ Q.mT - x))) < 1e-14
+True
+```
+
+`H` has the eigenvalues of `x`:
+
+```python
+>>> sd.linalg.eigvals(H)
+array([ (-0.9999999999999998+0j), (-0.19258240356725245+0j),
+          (5.192582403567251+0j)], dtype=complex128)
+>>> sd.linalg.eigvals(x)
+array([ (-0.9999999999999998+0j), (-0.19258240356725245+0j),
+          (5.192582403567251+0j)], dtype=complex128)
+```
+
+A symmetric matrix gives a symmetric tridiagonal `H`, up to rounding above the superdiagonal:
+
+```python
+>>> s = sd.asarray([[4.0, 1.0, 2.0], [1.0, 3.0, 0.0], [2.0, 0.0, 1.0]])
+>>> sd.linalg.hessenberg(s).H
+array([[                   4.0,      -2.23606797749979,
+        1.1634414064635898e-16],
+       [     -2.23606797749979,     1.3999999999999995,
+             0.799999999999999],
+       [                   0.0,     0.7999999999999992,
+            2.5999999999999988]], dtype=float64)
+```
+
+A real 2-by-2 matrix is already in Hessenberg form; it comes back unchanged, with `Q` the identity. Integer input gives
+`float64` results:
+
+```python
+>>> sd.linalg.hessenberg(sd.asarray([[1, 2], [3, 4]]))
+HessenbergResult(H=array([[1.0, 2.0],
+       [3.0, 4.0]], dtype=float64), Q=array([[1.0, 0.0],
+       [0.0, 1.0]], dtype=float64))
+```
+
+<Reference />
+
+## Notes
+
+An $n \times n$ matrix $H$ is upper Hessenberg when $h_{ij} = 0$ for $i \gt j + 1$. The function computes
+$A = Q H Q^H$ with a $Q$ whose first row and column are those of the identity, so that $h_{11} = a_{11}$ exactly. The
+elements of `H` below the first subdiagonal are set to exactly zero; the other elements carry the rounding of the
+computation.
+
+For complex input, the subdiagonal of `H` is real. A complex 2-by-2 matrix whose subdiagonal element is not real
+is therefore not returned unchanged: `Q` is then a diagonal matrix with entries of absolute value 1.
+
+For a symmetric or Hermitian $A$, $H$ is tridiagonal in exact arithmetic. The computed `H` has elements of the size of
+the rounding error above the superdiagonal, and the function does not set them to zero.
+
+The signs of the columns of `Q` beyond the first (for complex input, their phases), and the matching signs in `H`, are
+not fixed by the decomposition. The function makes the same choice on every run with the same number of threads (see
+[determinism and threads](/start/conventions/#determinism-and-threads)). An empty matrix ($n = 0$) gives empty results.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalent is `scipy.linalg.hessenberg`. NumPy and base R have no Hessenberg reduction.
+
+- `Q` is always returned: the result is the named tuple `(H, Q)`. `scipy.linalg.hessenberg` returns only `H` unless
+  `calc_q=True` is given.
+- A complex 2-by-2 matrix comes back with a real subdiagonal; `scipy.linalg.hessenberg` returns every matrix of size 2
+  or less unchanged.
+- NaN or infinity raises `ValueError`, as in `scipy.linalg.hessenberg` by default.

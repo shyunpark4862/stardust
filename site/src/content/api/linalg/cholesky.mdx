@@ -1,0 +1,156 @@
+---
+kind: function
+title: cholesky
+names: [cholesky]
+group: Factorizations
+order: 2
+signatures:
+  - "sd.linalg.cholesky(x, /, *, upper=False)"
+summary: Compute the Cholesky factorization of a symmetric or Hermitian positive-definite matrix.
+params:
+  - name: x
+    type: array of shape (..., n, n)
+    kind: positional-only
+    desc: "Symmetric positive-definite matrix (Hermitian positive-definite when complex), of any dtype, or a stack of them (see [matrices and stacks](/api/linalg/#matrices-and-stacks)). Only the lower triangle and the diagonal are read, whatever the value of `upper`; the imaginary part of the diagonal is ignored."
+  - name: upper
+    type: bool
+    kind: keyword-only
+    default: "False"
+    desc: "If `True`, return the upper triangular factor `U` with `x == U.mT @ U` (`sd.conj(U.mT) @ U` when complex). If `False`, return the lower triangular factor `L` with `x == L @ L.mT` (`L @ sd.conj(L.mT)` when complex)."
+returns:
+  - type: ndarray of shape (..., n, n)
+    desc: "Cholesky factor: `L`, or `U` if `upper` is `True`. The other triangle holds exact zeros, and the diagonal is real and positive. `float64`, or `complex128` when `x` is complex (see [result types](/api/linalg/#result-types)). The array is writable."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`, or if `upper` is not `True` or `False`."
+  - type: ValueError
+    desc: "If `x` has fewer than two dimensions or is not square, or if its lower triangle contains NaN or infinity."
+  - type: LinAlgError
+    desc: "If a matrix in `x` is not positive definite to working precision: a pivot of its factorization is zero or negative. For a stack, the message gives the index of the first such matrix."
+seeAlso: [cholesky_solve, ldl, eigh, lu, solve]
+---
+
+`cholesky` writes a positive-definite matrix as the product of a lower triangular matrix `L` and its conjugate
+transpose: `x == L @ L.mT` for real input, `x == L @ sd.conj(L.mT)` for complex input. The factor `L` with a positive
+diagonal is unique. With `upper=True` the function returns the upper triangular factor `U`, the conjugate transpose of
+`L`, instead.
+
+The factor is the input of [`cholesky_solve`](/api/linalg/cholesky_solve/), which solves `x @ y = b` using the
+structure of `x`. Since the factorization exists exactly when the matrix is positive definite, `cholesky`
+also serves as a test for positive definiteness: it raises `LinAlgError` otherwise. For symmetric
+matrices that are not positive definite, [`ldl`](/api/linalg/ldl/) gives a factorization that always exists.
+
+Only the lower triangle of `x` is read, also when `upper` is `True` (see [symmetric and Hermitian input](/api/linalg/#symmetric-and-hermitian-input)). The
+function does not check that `x` is symmetric.
+
+## Examples
+
+Factor a symmetric positive-definite matrix, and multiply the factor by its transpose to recover the matrix:
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([[4.0, 2.0, -2.0], [2.0, 10.0, 2.0], [-2.0, 2.0, 6.0]])
+>>> L = sd.linalg.cholesky(x)
+>>> L
+array([[ 2.0,  0.0,  0.0],
+       [ 1.0,  3.0,  0.0],
+       [-1.0,  1.0,  2.0]], dtype=float64)
+>>> L @ L.mT
+array([[ 4.0,  2.0, -2.0],
+       [ 2.0, 10.0,  2.0],
+       [-2.0,  2.0,  6.0]], dtype=float64)
+```
+
+The upper factor is the transpose of the lower one:
+
+```python
+>>> U = sd.linalg.cholesky(x, upper=True)
+>>> U
+array([[ 2.0,  1.0, -1.0],
+       [ 0.0,  3.0,  1.0],
+       [ 0.0,  0.0,  2.0]], dtype=float64)
+>>> bool(sd.all(U == L.mT))
+True
+```
+
+The upper triangle of the input is never read. A matrix that stores only its lower triangle, with anything above the
+diagonal, gives the same factor:
+
+```python
+>>> lower_only = sd.asarray([[4.0, 0.0, sd.nan], [2.0, 10.0, 0.0], [-2.0, 2.0, 6.0]])
+>>> sd.linalg.cholesky(lower_only)
+array([[ 2.0,  0.0,  0.0],
+       [ 1.0,  3.0,  0.0],
+       [-1.0,  1.0,  2.0]], dtype=float64)
+```
+
+A Hermitian matrix. The factor is complex with a real diagonal:
+
+```python
+>>> h = sd.asarray([[4.0 + 0j, 2 + 2j], [2 - 2j, 6.0]])
+>>> Lh = sd.linalg.cholesky(h)
+>>> Lh
+array([[(2+0j),     0j],
+       [(1-1j), (2+0j)]], dtype=complex128)
+>>> Lh @ sd.conj(Lh.mT)
+array([[(4+0j), (2+2j)],
+       [(2-2j), (6+0j)]], dtype=complex128)
+```
+
+A symmetric matrix with a negative eigenvalue, and a singular one, are not positive definite. In a stack, the message
+names the failing matrix:
+
+```python
+>>> sd.linalg.cholesky(sd.asarray([[1.0, 2.0], [2.0, 1.0]]))
+Traceback (most recent call last):
+    ...
+stardust.linalg.LinAlgError: cholesky(): matrix is not positive definite
+>>> sd.linalg.cholesky(sd.stack([sd.eye(2), sd.ones((2, 2))]))
+Traceback (most recent call last):
+    ...
+stardust.linalg.LinAlgError: cholesky(): matrix is not positive definite (at batch index (1,))
+```
+
+<Reference />
+
+## Notes
+
+### Factor format
+
+For a Hermitian positive-definite $n \times n$ matrix $A$, the factorization is
+
+$$
+A = L L^H = U^H U, \qquad U = L^H,
+$$
+
+where $L$ is lower triangular with a real, positive diagonal. The returned array holds the whole $n \times n$
+matrix, with exact zeros in the triangle that is not part of the factor. `cholesky(x, upper=True)` is the conjugate
+transpose of `cholesky(x)`, bit for bit.
+
+[`cholesky_solve(l, b, upper=...)`](/api/linalg/cholesky_solve/) takes this factor with the same value of `upper` that
+produced it, and reads only that triangle of it.
+
+### Positive definiteness
+
+A Hermitian matrix $A$ is positive definite when $z^H A z \gt 0$ for every nonzero vector $z$, or equivalently when all
+its eigenvalues are positive. The matrix tested is the Hermitian matrix defined by the lower triangle of `x` and the
+real part of its diagonal. The factorization fails, and `cholesky` raises `LinAlgError`, when a diagonal entry that
+must be square-rooted is zero or negative. In exact arithmetic this happens exactly when the matrix has a zero or
+negative eigenvalue, so positive semidefinite matrices are rejected. After rounding, a matrix whose smallest
+eigenvalue is zero or tiny compared with the largest can pass or fail: a semidefinite matrix computed as `b @ b.mT`
+from a `b` with fewer columns than rows is sometimes factored without an error.
+
+The factor of a positive-definite matrix exists without pivoting, so `cholesky` returns no permutation. A matrix
+with `n` equal to 0 gives an empty factor.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.linalg.cholesky`, `scipy.linalg.cholesky` and R's `chol`.
+
+- The default is the lower factor, as in NumPy. `scipy.linalg.cholesky` returns the upper factor by default
+  (`lower=False`), and so does R's `chol`.
+- With `upper=True` the lower triangle is still the one read. `numpy.linalg.cholesky(a, upper=True)` and the default
+  `scipy.linalg.cholesky` read the upper triangle, and R's `chol` reads the upper triangle too.
+- NaN or infinity in the lower triangle raises `ValueError`. `numpy.linalg.cholesky` raises `LinAlgError` for NaN,
+  and returns an infinite factor for an infinite diagonal entry.
+- `upper` accepts only `True` or `False`; NumPy also accepts other values, such as `1`, by their truth value.

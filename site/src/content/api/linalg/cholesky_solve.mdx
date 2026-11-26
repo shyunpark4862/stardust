@@ -1,0 +1,120 @@
+---
+kind: function
+title: cholesky_solve
+names: [cholesky_solve]
+group: Linear systems
+order: 6
+signatures:
+  - "sd.linalg.cholesky_solve(l, b, /, *, upper=False)"
+summary: Solve a linear system from the Cholesky factorization of its matrix.
+params:
+  - name: l
+    type: array of shape (..., n, n)
+    kind: positional-only
+    desc: "Cholesky factor returned by [`cholesky`](/api/linalg/cholesky/), or a stack of them (see [matrices and stacks](/api/linalg/#matrices-and-stacks)): lower triangular, or upper triangular when `upper` is `True`. Only that triangle is read."
+  - name: b
+    type: array of shape (n,) or (..., n, k)
+    kind: positional-only
+    desc: "Right-hand side: one vector, or `k` vectors as columns (see [right-hand sides](/api/linalg/#right-hand-sides)). Leading axes broadcast against those of `l`."
+  - name: upper
+    type: bool
+    kind: keyword-only
+    default: "False"
+    desc: "If `True`, `l` is the upper triangular factor `U` of `a = sd.conj(U.mT) @ U`. If `False`, `l` is the lower triangular factor `L` of `a = L @ sd.conj(L.mT)`. Must match the `upper` passed to `cholesky`."
+returns:
+  - type: ndarray of shape (..., n) or (..., n, k)
+    desc: "Solution `x`, with the shape of `b` after broadcasting. `float64`, or `complex128` when `l` or `b` is complex (see [result types](/api/linalg/#result-types))."
+raises:
+  - type: TypeError
+    desc: "If `l` or `b` is not an `sd.ndarray`, or if `upper` is not `True` or `False`."
+  - type: ValueError
+    desc: "If `l` has fewer than two dimensions or is not square, if the sizes of `l` and `b` do not match, if the leading axes do not broadcast, or if the triangle of `l` that is read or `b` contains NaN or infinity."
+  - type: LinAlgError
+    desc: "If `l` has an exact zero on its diagonal. For a stack, the message gives the index of the first such matrix."
+seeAlso: [cholesky, solve, lu_solve, solve_triangular]
+---
+
+`cholesky_solve` solves `a @ x = b` for a symmetric (or, if complex, Hermitian) positive definite matrix `a`, given
+its Cholesky factor from [`cholesky`](/api/linalg/cholesky/). The factor is described under
+[factor format](/api/linalg/cholesky/#factor-format) on that page, and when it exists under
+[positive definiteness](/api/linalg/cholesky/#positive-definiteness).
+
+For such a matrix the Cholesky factorization takes less work than the LU factorization used by
+[`solve`](/api/linalg/solve/), and the factor can be kept to solve for further right-hand sides with two triangular
+solves each.
+
+`upper` must agree with the factor. The function reads only the triangle that `upper` selects, so a lower factor
+passed with `upper=True` gives a wrong solution without an error.
+
+## Examples
+
+Factor a positive definite matrix, then solve:
+
+```python
+>>> import stardust as sd
+>>> a = sd.asarray([[4.0, 2.0], [2.0, 5.0]])
+>>> c = sd.linalg.cholesky(a)
+>>> c
+array([[2.0, 0.0],
+       [1.0, 2.0]], dtype=float64)
+>>> x = sd.linalg.cholesky_solve(c, sd.asarray([10.0, 13.0]))
+>>> x
+array([1.5, 2.0], dtype=float64)
+>>> a @ x
+array([10.0, 13.0], dtype=float64)
+```
+
+The upper factor works the same way when `upper=True` is given to both functions:
+
+```python
+>>> cu = sd.linalg.cholesky(a, upper=True)
+>>> sd.linalg.cholesky_solve(cu, sd.asarray([10.0, 13.0]), upper=True)
+array([1.5, 2.0], dtype=float64)
+```
+
+With the identity matrix as `b`, each column of the result solves for one column, so the result is the inverse of the
+matrix:
+
+```python
+>>> s = sd.asarray([[4.0, 2.0, 2.0], [2.0, 5.0, 3.0], [2.0, 3.0, 6.0]])
+>>> sd.linalg.cholesky_solve(sd.linalg.cholesky(s), sd.eye(3))
+array([[0.328125, -0.09375,  -0.0625],
+       [-0.09375,   0.3125,   -0.125],
+       [ -0.0625,   -0.125,     0.25]], dtype=float64)
+```
+
+A lower factor passed with `upper=True` is read as its diagonal only, and the result is wrong. A zero on the
+diagonal raises `LinAlgError`:
+
+```python
+>>> sd.linalg.cholesky_solve(c, sd.asarray([10.0, 13.0]), upper=True)
+array([ 2.5, 3.25], dtype=float64)
+>>> sd.linalg.cholesky_solve(sd.zeros((2, 2)), sd.asarray([10.0, 13.0]))
+Traceback (most recent call last):
+    ...
+stardust.linalg.LinAlgError: cholesky_solve(): singular matrix
+```
+
+<Reference />
+
+## Notes
+
+For `upper=False` the matrix is $A = L L^H$ and the function solves $L y = b$, then $L^H x = y$. For `upper=True` it
+is $A = U^H U$, and the function solves $U^H y = b$, then $U x = y$. For real factors, $L^H$ and $U^H$ are the
+transposes.
+
+The function does not check that `l` came from `cholesky`. Any triangular `l` with a nonzero diagonal defines the
+matrix $L L^H$ (or $U^H U$), and the system with that matrix is solved. The triangle that is not read is ignored and
+may also be NaN.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `scipy.linalg.cho_solve` and, in R, `backsolve(r, forwardsolve(t(r), b))` with
+`r <- chol(a)`. NumPy has no Cholesky solver.
+
+- `scipy.linalg.cho_solve((c, lower), b)` takes the factor and a flag in one tuple. Here the flag is the
+  keyword-only `upper`, and its default `False` matches the lower factor that `cholesky` returns by default.
+  `scipy.linalg.cho_factor` and R's `chol` return the upper factor by default.
+- An exact zero on the diagonal of `l` raises `LinAlgError`. `scipy.linalg.cho_solve` returns NaN or infinity
+  without an error.
+- R's `chol2inv(r)` computes the inverse from the upper factor; `cholesky_solve(l, sd.eye(n))` gives it here.

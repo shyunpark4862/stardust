@@ -1,0 +1,127 @@
+---
+kind: function
+title: pinv
+names: [pinv]
+group: Linear systems
+order: 4
+signatures:
+  - "sd.linalg.pinv(x, /, *, rtol=None)"
+summary: Compute the Moore–Penrose pseudo-inverse of a matrix.
+params:
+  - name: x
+    type: array of shape (..., m, n)
+    kind: positional-only
+    desc: "Matrix, of any dtype, or a stack of matrices (see [matrices and stacks](/api/linalg/#matrices-and-stacks)). Need not be square or of full rank."
+  - name: rtol
+    type: float or None
+    kind: keyword-only
+    default: None
+    desc: "Relative cutoff for small singular values. Singular values at or below `rtol` times the largest singular value are treated as zero. `None` means `max(m, n)` times the machine epsilon of `float64`. Must be finite and nonnegative; a value of 1 or more makes every singular value zero."
+returns:
+  - type: ndarray of shape (..., n, m)
+    desc: "Pseudo-inverse of each matrix, with the last two axes of `x` swapped. `float64`, or `complex128` when `x` is complex (see [result types](/api/linalg/#result-types))."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`, if `rtol` is a `bool`, or if `rtol` is not `None`, an `int` or a `float`."
+  - type: ValueError
+    desc: "If `x` has fewer than two dimensions, if `x` contains NaN or infinity, or if `rtol` is negative or not finite."
+  - type: OverflowError
+    desc: "If `rtol` is an `int` too large to convert to a `float`."
+  - type: LinAlgError
+    desc: "If the singular value decomposition does not converge. For a stack, the message gives the index of the first matrix that failed."
+seeAlso: [inv, lstsq, svd, matrix_rank, solve]
+---
+
+`pinv` computes the pseudo-inverse of a matrix, which extends the inverse to matrices that are not square or not of
+full rank. For an `m`-by-`n` matrix `x` the result has shape `(n, m)`. For a square, nonsingular matrix it equals
+[`inv(x)`](/api/linalg/inv/) up to rounding; unlike `inv`, it raises no error for a singular matrix.
+
+For a right-hand side `b`, `pinv(x) @ b` is the least-squares solution of `x @ y = b` with the smallest norm, the
+solution [`lstsq`](/api/linalg/lstsq/) returns. `lstsq` computes it directly and is the better choice for solving;
+`pinv` serves when the matrix itself is needed.
+
+Singular values that are tiny compared with the largest one are mostly rounding noise, and inverting them would give
+huge entries. `rtol` sets which ones count as zero; the same cutoff decides the rank in `lstsq` and
+[`matrix_rank`](/api/linalg/matrix_rank/).
+
+## Examples
+
+A 3-by-2 matrix has a 2-by-3 pseudo-inverse. Multiplied from the left, it gives the identity:
+
+```python
+>>> import stardust as sd
+>>> t = sd.asarray([[1.0, 0.0], [0.0, 2.0], [0.0, 0.0]])
+>>> p = sd.linalg.pinv(t)
+>>> p
+array([[1.0, 0.0, 0.0],
+       [0.0, 0.5, 0.0]], dtype=float64)
+>>> p @ t
+array([[1.0, 0.0],
+       [0.0, 1.0]], dtype=float64)
+```
+
+A matrix of rank 1, whose second column is twice the first. Its pseudo-inverse is $1/70$ times the transpose:
+
+```python
+>>> d = sd.asarray([[1.0, 2.0], [2.0, 4.0], [3.0, 6.0]])
+>>> sd.linalg.pinv(d) * 70
+array([[1.0, 2.0, 3.0],
+       [2.0, 4.0, 6.0]], dtype=float64)
+```
+
+`rtol` decides whether a small singular value is inverted or treated as zero:
+
+```python
+>>> s = sd.asarray([[1.0, 0.0], [0.0, 1e-10]])
+>>> sd.linalg.pinv(s)
+array([[          1.0,           0.0],
+       [          0.0, 10000000000.0]], dtype=float64)
+>>> sd.linalg.pinv(s, rtol=1e-8)
+array([[1.0, 0.0],
+       [0.0, 0.0]], dtype=float64)
+```
+
+With `rtol` of 1 or more, every singular value counts as zero and the result is a zero matrix. NaN in `x` raises
+`ValueError`:
+
+```python
+>>> sd.linalg.pinv(s, rtol=1)
+array([[0.0, 0.0],
+       [0.0, 0.0]], dtype=float64)
+>>> sd.linalg.pinv(sd.asarray([[1.0, float("nan")], [0.0, 1.0]]))
+Traceback (most recent call last):
+    ...
+ValueError: pinv(): 'x' contains NaN or infinity
+```
+
+<Reference />
+
+## Notes
+
+The pseudo-inverse $A^{+}$ of an $m \times n$ matrix $A$ is the unique $n \times m$ matrix with
+
+$$
+A A^{+} A = A, \quad A^{+} A A^{+} = A^{+}, \quad (A A^{+})^H = A A^{+}, \quad (A^{+} A)^H = A^{+} A .
+$$
+
+With the singular value decomposition $A = U \Sigma V^H$, the function computes $A^{+} = V \Sigma^{+} U^H$, where
+$\Sigma^{+}$ inverts the singular values above the cutoff $\mathrm{rtol} \cdot \sigma_{\max}$ and sets the others to
+zero. The number of singular values kept is usually `matrix_rank(x, rtol=rtol)`; the two compute the singular values
+separately and can disagree when a singular value lies very close to the cutoff.
+
+A kept singular value whose reciprocal exceeds the `float64` range gives infinite entries; entries that are exactly
+zero stay zero. With `rtol=0`, the pseudo-inverse of `sd.asarray([[1.0, 0.0], [0.0, 5e-324]])` is
+`[[1.0, 0.0], [0.0, inf]]`.
+
+A matrix with no rows or no columns, and a zero matrix, have a zero pseudo-inverse of shape `(n, m)`.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.linalg.pinv`, `scipy.linalg.pinv` and `MASS::ginv` in R.
+
+- The default cutoff is `max(m, n)` times the machine epsilon, as in `scipy.linalg.pinv`. `numpy.linalg.pinv` treats
+  singular values at or below `1e-15` times the largest as zero by default, so the two can differ for singular values
+  near the cutoff. `MASS::ginv` uses a much larger default, `sqrt(.Machine$double.eps)`.
+- The cutoff is `rtol=` and is keyword-only. There is no absolute tolerance (`atol=` in SciPy) and no `hermitian=`
+  option (NumPy).
+- NaN or infinity in `x` raises `ValueError`. `numpy.linalg.pinv` raises `LinAlgError` ("SVD did not converge").

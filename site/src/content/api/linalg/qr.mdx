@@ -1,0 +1,174 @@
+---
+kind: function
+title: qr, qr_pivoted
+names: [qr, qr_pivoted]
+group: Factorizations
+order: 3
+signatures:
+  - "sd.linalg.qr(x, /, *, mode='reduced')"
+  - "sd.linalg.qr_pivoted(x, /, *, mode='reduced')"
+summary: Compute the QR factorization of a matrix, without or with column pivoting.
+params:
+  - name: x
+    type: array of shape (..., m, n)
+    kind: positional-only
+    desc: "Matrix to factor, of any dtype, or a stack of them (see [matrices and stacks](/api/linalg/#matrices-and-stacks)). Need not be square or of full rank."
+  - name: mode
+    type: str
+    kind: keyword-only
+    default: "'reduced'"
+    desc: "Shape of the factors, with `k = min(m, n)`:"
+    choices:
+      - [ "'reduced'", "`Q` of shape `(..., m, k)` and `R` of shape `(..., k, n)`." ]
+      - [ "'complete'", "`Q` of shape `(..., m, m)` and `R` of shape `(..., m, n)`; the last `m - k` rows of `R` are zero." ]
+returns:
+  - name: Q
+    type: ndarray of shape (..., m, k) or (..., m, m)
+    desc: "Factor with orthonormal columns: `Q.mT @ Q` is the identity up to rounding (`sd.conj(Q.mT) @ Q` when complex). `float64`, or `complex128` when `x` is complex (see [result types](/api/linalg/#result-types))."
+  - name: R
+    type: ndarray of shape (..., k, n) or (..., m, n)
+    desc: "Upper triangular factor, with exact zeros below the diagonal and a real diagonal. Same dtype as `Q`. For `qr_pivoted`, the absolute values on the diagonal do not increase."
+  - name: perm
+    type: ndarray of shape (..., n)
+    desc: "`qr_pivoted` only. Column permutation, a reordering of `0, ..., n - 1`: column `j` of `Q @ R` is column `perm[j]` of `x`, so `x[:, perm]` equals `Q @ R` up to rounding. Always `int64`."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`, or if `mode` is not a string."
+  - type: ValueError
+    desc: "If `x` has fewer than two dimensions, if `x` contains NaN or infinity, or if `mode` is not `'reduced'` or `'complete'`."
+seeAlso: [lstsq, svd, matrix_rank, solve_triangular, lu, cholesky]
+---
+
+`qr` writes a matrix as the product of a matrix `Q` with orthonormal columns and an upper triangular matrix `R`:
+`x == Q @ R`. `qr_pivoted` first reorders the columns of `x` so that the absolute values on the diagonal of `R` do not
+increase: `x[:, perm] == Q @ R`. The pivoted form reveals the numerical rank of a matrix and which of its columns are
+close to linearly dependent.
+
+The results are named tuples, `QRResult(Q, R)` from `qr` and `QRPivotedResult(Q, R, perm)` from `qr_pivoted`. Their
+fields are read by name or by position, and their arrays are read-only (see [named tuples](/api/linalg/#named-tuples)).
+
+Both functions accept matrices of any shape and rank. With the default `mode="reduced"`, `Q` has `min(m, n)` columns;
+with `mode="complete"`, `Q` is a square unitary matrix and `R` has the shape of `x`.
+
+## Examples
+
+Factor a 3-by-2 matrix. The product `Q @ R` and the inner products of the columns of `Q` agree with `x` and with the
+identity up to rounding:
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([[1.0, 3.0], [2.0, 0.0], [2.0, 3.0]])
+>>> Q, R = sd.linalg.qr(x)
+>>> Q.shape, R.shape
+((3, 2), (2, 2))
+>>> R
+array([[               -3.0, -2.9999999999999996],
+       [                0.0,                 3.0]], dtype=float64)
+>>> sd.max(sd.abs(Q @ R - x))
+6.661338147750939e-16
+>>> sd.max(sd.abs(Q.mT @ Q - sd.eye(2)))
+1.1102230246251565e-16
+```
+
+The signs on the diagonal of `R` are not normalized. Flipping the signs of matching columns of `Q` and rows of `R`
+gives the factorization with a positive diagonal:
+
+```python
+>>> s = sd.sign(sd.linalg.diagonal(R))
+>>> R * s[:, None]
+array([[               3.0, 2.9999999999999996],
+       [               0.0,                3.0]], dtype=float64)
+>>> sd.max(sd.abs((Q * s) @ (R * s[:, None]) - x))
+6.661338147750939e-16
+```
+
+With `mode="complete"`, `Q` is 3-by-3 and `R` gets a row of zeros:
+
+```python
+>>> Qc, Rc = sd.linalg.qr(x, mode="complete")
+>>> Qc.shape
+(3, 3)
+>>> Rc
+array([[               -3.0, -2.9999999999999996],
+       [                0.0,                 3.0],
+       [                0.0,                 0.0]], dtype=float64)
+```
+
+A matrix of rank 2: its second column is twice the first. `qr_pivoted` moves the column of largest norm to the
+front, and the zero at the end of the diagonal of `R` shows the rank:
+
+```python
+>>> d = sd.asarray([[1.0, 2.0, 0.0], [1.0, 2.0, 1.0], [1.0, 2.0, 0.0], [1.0, 2.0, 1.0]])
+>>> Q, R, perm = sd.linalg.qr_pivoted(d)
+>>> perm
+array([1, 2, 0], dtype=int64)
+>>> R
+array([[-4.0, -1.0, -2.0],
+       [ 0.0, -1.0,  0.0],
+       [ 0.0,  0.0,  0.0]], dtype=float64)
+>>> d[:, perm]
+array([[2.0, 0.0, 1.0],
+       [2.0, 1.0, 1.0],
+       [2.0, 0.0, 1.0],
+       [2.0, 1.0, 1.0]], dtype=float64)
+>>> sd.max(sd.abs(Q @ R - d[:, perm]))
+0.0
+```
+
+<Reference />
+
+## Notes
+
+### Factor format
+
+For an $m \times n$ matrix $A$ and $k = \min(m, n)$, `qr` computes
+
+$$
+A = Q R,
+$$
+
+where $Q$ is $m \times k$ with $Q^H Q = I$ and $R$ is $k \times n$ upper triangular (`mode="reduced"`). With
+`mode="complete"`, $Q$ is $m \times m$ and unitary and $R$ is $m \times n$; the extra $m - k$ columns of $Q$ complete
+an orthonormal basis and the extra rows of $R$ are zero. For $m \le n$ both modes give the same shapes. `qr_pivoted`
+computes $A P = Q R$, where $P$ is the permutation matrix with ones at positions `(perm[j], j)`, so that $A P$ is
+`x[:, perm]`. For a stack, the relation holds for each matrix with its own row of `perm`.
+
+### Signs and uniqueness
+
+The diagonal of $R$ is real, also for complex input, but its entries can be negative; the signs are not normalized. When $A$ has full column rank, the
+reduced factorization whose $R$ has a positive diagonal is unique, and the computed factors differ from it only in
+the signs of matching columns of $Q$ and rows of $R$. When $A$ is rank deficient, and for the extra columns of the
+complete $Q$, the factors are not unique.
+
+### Column pivoting
+
+At each step, `qr_pivoted` moves to the front the remaining column with the largest norm after the components along
+the columns already chosen are removed. The absolute values of the diagonal of $R$ therefore do not increase. A
+matrix of numerical rank $r$ has $r$ diagonal entries that are large compared with the rest, and the columns
+`x[:, perm[:r]]` are then usually a well-conditioned choice of $r$ independent columns. The rank is better decided by
+the singular values ([`matrix_rank`](/api/linalg/matrix_rank/), [`svd`](/api/linalg/svd/)); the pivoted QR is cheaper
+and usually gives the same answer.
+
+### Least squares
+
+For a tall matrix of full column rank, the least-squares solution of `x @ y = b` is the solution
+of the triangular system `R @ y = Q.mT @ b` (with `sd.conj(Q.mT)` for complex input), which
+[`solve_triangular`](/api/linalg/solve_triangular/) solves. [`lstsq`](/api/linalg/lstsq/) handles every shape and
+rank.
+
+For matrices with no rows or no columns, `Q` and `R` are
+empty arrays of the shapes above, except that `mode="complete"` gives an identity `Q`.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.linalg.qr`, `scipy.linalg.qr` and R's `qr`.
+
+- `mode` takes only `'reduced'` and `'complete'`, with the default `'reduced'` as in `numpy.linalg.qr`. NumPy's
+  `'r'` and `'raw'` modes do not exist; `qr(x).R` gives `R` alone.
+- `scipy.linalg.qr` defaults to `mode="full"`, which is `'complete'` here; SciPy's `'economic'` is `'reduced'`.
+- Column pivoting is a separate function. `qr_pivoted(x).perm` is the permutation `P` that
+  `scipy.linalg.qr(a, pivoting=True)` returns, with the same meaning, `x[:, perm] == Q @ R`.
+- The signs on the diagonal of `R` are not normalized, as in NumPy and SciPy.
+- R's `qr` returns a compact object; `qr.Q` and `qr.R` extract the factors. By default it moves only columns it
+  judges linearly dependent to the end, so its `pivot` can differ from `perm`. With `LAPACK = TRUE` it pivots as
+  `qr_pivoted` does, with 1-based indices.

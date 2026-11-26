@@ -1,0 +1,122 @@
+---
+kind: function
+title: solve_triangular
+names: [solve_triangular]
+group: Linear systems
+order: 7
+signatures:
+  - "sd.linalg.solve_triangular(a, b, /, *, upper, unit_diagonal=False)"
+summary: Solve a linear system whose matrix is triangular.
+params:
+  - name: a
+    type: array of shape (..., n, n)
+    kind: positional-only
+    desc: "Triangular coefficient matrix, of any dtype, or a stack of them (see [matrices and stacks](/api/linalg/#matrices-and-stacks)). Only the triangle that `upper` selects is read."
+  - name: b
+    type: array of shape (n,) or (..., n, k)
+    kind: positional-only
+    desc: "Right-hand side: one vector, or `k` vectors as columns (see [right-hand sides](/api/linalg/#right-hand-sides)). Leading axes broadcast against those of `a`."
+  - name: upper
+    type: bool
+    kind: keyword-only
+    desc: "If `True`, `a` is upper triangular: the diagonal and the elements above it are read. If `False`, `a` is lower triangular. There is no default."
+  - name: unit_diagonal
+    type: bool
+    kind: keyword-only
+    default: "False"
+    desc: "If `True`, the diagonal of `a` is taken to be all ones and is not read."
+returns:
+  - type: ndarray of shape (..., n) or (..., n, k)
+    desc: "Solution `x`, with the shape of `b` after broadcasting. `float64`, or `complex128` when `a` or `b` is complex (see [result types](/api/linalg/#result-types))."
+raises:
+  - type: TypeError
+    desc: "If `a` or `b` is not an `sd.ndarray`, if `upper` is missing, or if `upper` or `unit_diagonal` is not `True` or `False`."
+  - type: ValueError
+    desc: "If `a` has fewer than two dimensions or is not square, if the sizes of `a` and `b` do not match, if the leading axes do not broadcast, or if the triangle of `a` that is read or `b` contains NaN or infinity."
+  - type: LinAlgError
+    desc: "If `unit_diagonal` is `False` and `a` has an exact zero on its diagonal. For a stack, the message gives the index of the first such matrix."
+seeAlso: [solve, lu_solve, cholesky_solve, lu, cholesky, qr]
+---
+
+`solve_triangular` solves `a @ x = b` when `a` is upper or lower triangular, by back or forward substitution. No
+factorization is needed, so it takes much less work than [`solve`](/api/linalg/solve/). Triangular systems arise from
+the factorizations [`lu`](/api/linalg/lu/), [`cholesky`](/api/linalg/cholesky/) and [`qr`](/api/linalg/qr/).
+
+The function reads only one triangle of `a`, the one `upper` selects, and ignores the other. `upper` has no default
+because the wrong choice gives a wrong solution without an error. With `unit_diagonal=True` the diagonal is not read
+either, as for the unit lower triangular factor of `lu`.
+
+## Examples
+
+An upper triangular system:
+
+```python
+>>> import stardust as sd
+>>> u = sd.asarray([[2.0, 1.0, 1.0], [0.0, 4.0, 2.0], [0.0, 0.0, 5.0]])
+>>> x = sd.linalg.solve_triangular(u, sd.asarray([7.0, 14.0, 15.0]), upper=True)
+>>> x
+array([1.0, 2.0, 3.0], dtype=float64)
+>>> u @ x
+array([ 7.0, 14.0, 15.0], dtype=float64)
+```
+
+Elements outside the selected triangle are not read, whatever their values. A full matrix gives the solution for its
+upper triangle:
+
+```python
+>>> full = sd.asarray([[2.0, 1.0, 1.0], [8.0, 4.0, 2.0], [9.0, float("nan"), 5.0]])
+>>> sd.linalg.solve_triangular(full, sd.asarray([7.0, 14.0, 15.0]), upper=True)
+array([1.0, 2.0, 3.0], dtype=float64)
+```
+
+With `unit_diagonal=True`, the diagonal counts as ones, even where it holds other values:
+
+```python
+>>> lw = sd.asarray([[7.0, 0.0, 0.0], [2.0, 0.0, 0.0], [3.0, 4.0, 9.0]])
+>>> sd.linalg.solve_triangular(lw, sd.asarray([1.0, 4.0, 12.0]), upper=False, unit_diagonal=True)
+array([1.0, 2.0, 1.0], dtype=float64)
+```
+
+The same matrix with its own diagonal has a zero on it and raises `LinAlgError`. Leaving out `upper` raises
+`TypeError`:
+
+```python
+>>> sd.linalg.solve_triangular(lw, sd.asarray([1.0, 4.0, 12.0]), upper=False)
+Traceback (most recent call last):
+    ...
+stardust.linalg.LinAlgError: solve_triangular(): singular matrix
+>>> sd.linalg.solve_triangular(u, sd.asarray([7.0, 14.0, 15.0]))
+Traceback (most recent call last):
+    ...
+TypeError: solve_triangular(): incompatible function arguments. The following argument types are supported:
+    ...
+```
+
+<Reference />
+
+## Notes
+
+For an upper triangular $U$ the function solves $U x = b$ by back substitution, from the last unknown to the first:
+
+$$
+x_i = \frac{1}{U_{ii}} \Big( b_i - \sum_{j \gt i} U_{ij} x_j \Big) .
+$$
+
+A lower triangular matrix is solved by forward substitution, from the first unknown to the last. A triangular matrix
+is singular exactly when its diagonal holds a zero, so only an exact zero on the diagonal raises `LinAlgError`; a tiny
+diagonal element gives large or infinite entries in `x` without an error.
+
+There is no option for the transposed system. The transpose `a.mT` of an upper triangular matrix is lower
+triangular, so `solve_triangular(a.mT, b, upper=False)` solves `a.mT @ x = b`.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `scipy.linalg.solve_triangular` and R's `backsolve` and `forwardsolve`. NumPy has no
+triangular solver.
+
+- `upper` is required and keyword-only. `scipy.linalg.solve_triangular` has `lower=False`, so it assumes an upper
+  triangular matrix when nothing is given.
+- There is no `trans=` option; pass `a.mT` with the other value of `upper`.
+- NaN or infinity raises `ValueError` only in the triangle that is read. `scipy.linalg.solve_triangular` checks the
+  whole matrix and raises `ValueError` for NaN in the triangle it ignores.
+- A zero on the diagonal raises `LinAlgError`, as in `scipy.linalg.solve_triangular`; R's `backsolve` also stops.

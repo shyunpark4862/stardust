@@ -1,0 +1,163 @@
+---
+kind: function
+title: lu
+names: [lu]
+group: Factorizations
+order: 1
+signatures:
+  - "sd.linalg.lu(x, /)"
+summary: Compute the LU factorization of a matrix with partial pivoting.
+params:
+  - name: x
+    type: array of shape (..., m, n)
+    kind: positional-only
+    desc: "Matrix to factor, of any dtype, or a stack of them (see [matrices and stacks](/api/linalg/#matrices-and-stacks)). Need not be square, nonsingular or of full rank."
+returns:
+  - name: L
+    type: ndarray of shape (..., m, k)
+    desc: "Unit lower triangular factor, with `k = min(m, n)`: ones on the diagonal and exact zeros above it. `float64`, or `complex128` when `x` is complex (see [result types](/api/linalg/#result-types))."
+  - name: U
+    type: ndarray of shape (..., k, n)
+    desc: "Upper triangular factor, with exact zeros below the diagonal. Same dtype as `L`. For a square matrix, an exact zero on its diagonal marks a singular matrix."
+  - name: perm
+    type: ndarray of shape (..., m)
+    desc: "Row permutation, a reordering of `0, ..., m - 1`: row `i` of `L @ U` is row `perm[i]` of `x`, so `x[perm]` equals `L @ U` up to rounding. Always `int64`."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`."
+  - type: ValueError
+    desc: "If `x` has fewer than two dimensions, or if `x` contains NaN or infinity."
+seeAlso: [lu_solve, solve, det, cholesky, ldl, qr]
+---
+
+`lu` writes a matrix, with its rows reordered, as the product of a unit lower triangular matrix `L` and an upper
+triangular matrix `U`: `x[perm] == L @ U`. The row order comes from partial pivoting, which keeps the factorization
+numerically stable.
+
+The result is a named tuple `LUResult(L, U, perm)`. Its fields are read by name or by position, and its arrays are
+read-only (see [named tuples](/api/linalg/#named-tuples)). The factors of a square matrix are the input of
+[`lu_solve`](/api/linalg/lu_solve/), which then solves `x @ y = b` for further right-hand sides without factoring `x`
+again.
+
+The matrix need not be square. A singular or rank-deficient matrix is factored without an error; for a singular
+square matrix, `U` can have an exact zero on its diagonal.
+
+## Examples
+
+Factor a 3-by-3 matrix. Row 0 of `L @ U` is row 2 of `x`, row 1 is row 0, and row 2 is row 1:
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([[-1.0, -2.0, 6.0], [-1.0, 1.0, -1.0], [-2.0, 4.0, 4.0]])
+>>> L, U, perm = sd.linalg.lu(x)
+>>> L
+array([[ 1.0,  0.0,  0.0],
+       [ 0.5,  1.0,  0.0],
+       [ 0.5, 0.25,  1.0]], dtype=float64)
+>>> U
+array([[-2.0,  4.0,  4.0],
+       [ 0.0, -4.0,  4.0],
+       [ 0.0,  0.0, -4.0]], dtype=float64)
+>>> perm
+array([2, 0, 1], dtype=int64)
+>>> L @ U
+array([[-2.0,  4.0,  4.0],
+       [-1.0, -2.0,  6.0],
+       [-1.0,  1.0, -1.0]], dtype=float64)
+>>> x[perm]
+array([[-2.0,  4.0,  4.0],
+       [-1.0, -2.0,  6.0],
+       [-1.0,  1.0, -1.0]], dtype=float64)
+```
+
+The same factorization with a permutation matrix `P`, so that `P @ x == L @ U`, and with the inverse permutation,
+which rebuilds `x` itself:
+
+```python
+>>> P = sd.eye(3)[perm]
+>>> P
+array([[0.0, 0.0, 1.0],
+       [1.0, 0.0, 0.0],
+       [0.0, 1.0, 0.0]], dtype=float64)
+>>> L[sd.argsort(perm)] @ U
+array([[-1.0, -2.0,  6.0],
+       [-1.0,  1.0, -1.0],
+       [-2.0,  4.0,  4.0]], dtype=float64)
+```
+
+A matrix that is not square, and a singular matrix. A 2-by-3 matrix has a 2-by-2 `L` and a 2-by-3 `U`; the singular
+matrix has a zero on the diagonal of `U`:
+
+```python
+>>> w = sd.asarray([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+>>> r = sd.linalg.lu(w)
+>>> r.L
+array([[ 1.0,  0.0],
+       [0.25,  1.0]], dtype=float64)
+>>> r.U
+array([[ 4.0,  5.0,  6.0],
+       [ 0.0, 0.75,  1.5]], dtype=float64)
+>>> sd.linalg.lu(sd.asarray([[1.0, 2.0], [2.0, 4.0]])).U
+array([[2.0, 4.0],
+       [0.0, 0.0]], dtype=float64)
+```
+
+A stack of two matrices. Each matrix has its own row of `perm`, and `take_along_axis` applies each one to its matrix:
+
+```python
+>>> s = sd.asarray([[[2.0, 1.0], [4.0, 4.0]], [[1.0, 3.0], [2.0, 2.0]]])
+>>> rs = sd.linalg.lu(s)
+>>> rs.perm
+array([[1, 0],
+       [1, 0]], dtype=int64)
+>>> bool(sd.all(sd.take_along_axis(s, rs.perm[..., None], axis=-2) == rs.L @ rs.U))
+True
+```
+
+<Reference />
+
+## Notes
+
+### Factor format
+
+For an $m \times n$ matrix $A$ and $k = \min(m, n)$, the factorization is
+
+$$
+P A = L U,
+$$
+
+where $P$ is the $m \times m$ permutation matrix with ones at positions `(i, perm[i])`, $L$ is $m \times k$ with ones
+on its diagonal and zeros above it, and $U$ is $k \times n$ with zeros below its diagonal. In code, `P` is
+`sd.eye(m)[perm]`, and `x == L[sd.argsort(perm)] @ U` up to rounding.
+
+The zeros above the diagonal of `L` and below the diagonal of `U`, and the ones on the diagonal of `L`, are stored
+explicitly. `perm` is a vector of row indices, not a permutation matrix and not a list of row swaps. For a square
+matrix the three fields are exactly the arguments `lu_solve(l, u, perm, b)` expects, so `lu_solve(*lu(x), b)` solves
+`x @ y = b`. For a stack, `L`, `U` and `perm` have the stack axes of `x`, and the relation holds for each matrix with
+its own row of `perm`.
+
+### Pivoting
+
+At step $j$, partial pivoting brings the row with the entry of largest magnitude in column $j$ (on or below the
+diagonal) to position $j$. For real input every entry of `L` therefore lies in $[-1, 1]$. For complex input the
+magnitude is measured as $\lvert \mathrm{Re}\, z \rvert + \lvert \mathrm{Im}\, z \rvert$, so entries of `L` can exceed 1
+in absolute value, up to $\sqrt{2}$.
+
+The factorization does not test for singularity. A matrix that is singular in exact arithmetic usually gives a small
+nonzero diagonal entry of `U` after rounding, not an exact zero. [`cond`](/api/linalg/cond/) measures how close a
+matrix is to singular. The determinant of a square matrix is the product of the diagonal of `U` times the sign of the
+permutation $\pm 1$; [`det`](/api/linalg/det/) computes it from this factorization.
+
+For empty matrices (`m` or `n`
+equal to 0), the factors are empty arrays of the shapes above, and `perm` is `0, ..., m - 1`.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalent is `scipy.linalg.lu`. NumPy has no LU function.
+
+- `scipy.linalg.lu(a)` returns `(P, L, U)` with a permutation matrix and `a = P @ L @ U`. `lu` returns `(L, U, perm)`,
+  with a vector of row indices last.
+- With `p_indices=True`, SciPy's `p` satisfies `a = L[p] @ U`, the inverse of `perm` here: `perm` equals
+  `argsort(p)`.
+- There is no `permute_l=` option; `L[sd.argsort(perm)]` gives the permuted lower factor.
+- NaN or infinity in `x` always raises `ValueError`; there is no `check_finite=` option.

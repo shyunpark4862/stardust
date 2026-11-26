@@ -1,0 +1,132 @@
+---
+kind: function
+title: schur
+names: [schur]
+group: Factorizations
+order: 5
+signatures:
+  - "sd.linalg.schur(x, /)"
+summary: Compute the Schur decomposition of a square matrix.
+params:
+  - name: x
+    type: array of shape (..., n, n)
+    kind: positional-only
+    desc: "Square matrix to decompose, of any dtype, or a stack of them (see [matrices and stacks](/api/linalg/#matrices-and-stacks)). Its dtype selects the form of `T`: `bool`, `int64` and `float64` input gives the real Schur form, `complex128` input the complex Schur form."
+returns:
+  - name: T
+    type: ndarray of shape (..., n, n)
+    desc: "Schur form. For real `x`: quasi-upper triangular, with 1-by-1 and 2-by-2 blocks on the diagonal. For complex `x`: upper triangular, with the eigenvalues of `x` on the diagonal. The eigenvalues are not sorted. `float64`, or `complex128` when `x` is complex (see [result types](/api/linalg/#result-types))."
+  - name: Z
+    type: ndarray of shape (..., n, n)
+    desc: "Orthogonal (for complex `x`, unitary) matrix with `x = Z @ T @ sd.conj(Z.mT)` up to rounding. Same dtype as `T`."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`."
+  - type: ValueError
+    desc: "If `x` has fewer than two dimensions or is not square, or if `x` contains NaN or infinity."
+  - type: LinAlgError
+    desc: "If the eigenvalue computation does not converge. For a stack, the message gives the index of the first matrix that failed."
+seeAlso: [eig, hessenberg, eigh, solve_sylvester]
+---
+
+`schur` writes a square matrix as $A = Z T Z^H$ with $Z$ orthogonal or unitary and $T$ (quasi-)upper triangular. The
+eigenvalues of $A$ can be read from the diagonal of $T$. The decomposition exists for every square matrix, including
+defective ones, for which [`eig`](/api/linalg/eig/) gives no usable set of eigenvectors; the columns of $Z$ are always
+orthonormal.
+
+The result is a named tuple `SchurResult(T, Z)`. Its fields are read by name or by position, and its arrays are
+read-only (see [named tuples](/api/linalg/#named-tuples)). `Z` is always computed.
+
+The dtype of `x` decides the form of `T`. A real matrix (`bool`, `int64` or `float64`) gives the real Schur form: `T`
+and `Z` are real, and each pair of complex conjugate eigenvalues occupies a 2-by-2 block on the diagonal of `T`. A
+`complex128` matrix gives the complex Schur form: `T` is upper triangular and holds every eigenvalue on its diagonal.
+For the complex form of a real matrix, convert it first with `x.astype(sd.complex128)`.
+
+## Examples
+
+A real matrix with real eigenvalues gives an upper triangular `T`. Its diagonal holds the eigenvalues in no particular
+order:
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([[4.0, 1.0], [2.0, 3.0]])
+>>> T, Z = sd.linalg.schur(x)
+>>> T
+array([[ 5.0, -1.0],
+       [ 0.0,  2.0]], dtype=float64)
+>>> Z
+array([[ 0.7071067811865475, -0.7071067811865475],
+       [ 0.7071067811865475,  0.7071067811865475]], dtype=float64)
+>>> Z @ T @ Z.mT
+array([[ 3.999999999999999, 0.9999999999999998],
+       [1.9999999999999996, 2.9999999999999996]], dtype=float64)
+>>> sd.linalg.eigvals(x)
+array([(2+0j), (5+0j)], dtype=complex128)
+```
+
+Complex eigenvalues of a real matrix stay in a 2-by-2 block. The block has equal diagonal entries $a$ and off-diagonal
+entries $b$, $c$ of opposite sign; its eigenvalues are $a \pm \sqrt{-b c}\, i$, here $2 \pm 2i$:
+
+```python
+>>> y = sd.asarray([[1.0, -5.0], [1.0, 3.0]])
+>>> sd.linalg.schur(y).T
+array([[               2.0, -5.236067977499789],
+       [0.7639320225002102,                2.0]], dtype=float64)
+>>> sd.linalg.eigvals(y)
+array([(2-2j), (2+2j)], dtype=complex128)
+```
+
+The complex Schur form of the same matrix is triangular, with the eigenvalues on the diagonal:
+
+```python
+>>> Tc, Zc = sd.linalg.schur(y.astype(sd.complex128))
+>>> sd.linalg.diagonal(Tc)
+array([ (2.000000000000001-2.0000000000000004j),
+       (1.9999999999999998+2.0000000000000004j)], dtype=complex128)
+>>> Tc[1, 0]
+0j
+>>> float(sd.max(sd.abs(Zc @ Tc @ sd.conj(Zc.mT) - y))) < 1e-14
+True
+```
+
+The matrix must be square:
+
+```python
+>>> sd.linalg.schur(sd.asarray([[1.0, 2.0, 3.0]]))
+Traceback (most recent call last):
+    ...
+ValueError: schur(): 'x' must be square in its last two dimensions, got 1x3
+```
+
+<Reference />
+
+## Notes
+
+For a real $n \times n$ matrix $A$, the real Schur form is $A = Z T Z^T$ with $Z$ orthogonal and $T$ block upper
+triangular. The elements of `T` below the first subdiagonal are exactly zero, and a subdiagonal element is nonzero only
+inside a 2-by-2 block. Each such block has the standard form
+
+$$
+\begin{pmatrix} a & b \\ c & a \end{pmatrix}, \qquad b c \lt 0,
+$$
+
+with eigenvalues $a \pm \sqrt{-bc}\, i$. For a complex matrix, $A = Z T Z^H$ with $Z$ unitary and $T$ upper
+triangular; the elements below the diagonal are exactly zero.
+
+The diagonal of `T` is not sorted, and its eigenvalues can differ from those of `eig` in the last digits. In the
+complex Schur form of a real matrix, a real eigenvalue can carry a tiny imaginary part from rounding. `Z` is not unique:
+its columns can change sign (or, for complex input, phase) together with the corresponding rows and columns of `T`.
+The function makes the same choice on every run with the same number of threads (see
+[determinism and threads](/start/conventions/#determinism-and-threads)), but code should not rely on a particular sign.
+
+An empty matrix ($n = 0$) gives empty results.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalent is `scipy.linalg.schur`. NumPy and base R have no Schur decomposition.
+
+- There is no `output=` option: the dtype of `x` selects the real or the complex form. Pass `x.astype(sd.complex128)`
+  where SciPy takes `output="complex"`.
+- There is no `sort=` option; the eigenvalues appear on the diagonal of `T` in the order the algorithm finds them.
+- The result is a named tuple `(T, Z)`; `scipy.linalg.schur` returns a plain tuple `(T, Z)`.
+- NaN or infinity raises `ValueError`, as in `scipy.linalg.schur` by default.

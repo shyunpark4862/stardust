@@ -16,33 +16,59 @@ groups:
 
 ## Concepts
 
-**Matrices and stacks.** The last two axes of an array form a matrix; any leading axes index a stack (also called a
-batch) of matrices. Shapes are written `(..., m, n)`, where `...` stands for zero or more leading axes. Every function
-treats each matrix of a stack independently and returns the results stacked in the same order. When a function takes
-several arrays, their leading axes broadcast against each other: an `a` of shape `(2, 1, 3, 3)` and a `b` of shape
-`(4, 3, 2)` give a solution of shape `(2, 4, 3, 2)`. Arguments that are vectors use the last axis only.
+### Matrices and stacks
 
-**Right-hand sides.** Functions that solve $A x = b$ read `b` by its number of dimensions. A 1-D `b` of shape `(m,)` is
-one right-hand side, shared by every matrix in the stack, and the solution has shape `(..., n)`. A `b` with two or more
-dimensions, `(..., m, k)`, holds `k` right-hand sides as columns, and the solution has shape `(..., n, k)`.
+The last two axes of an array form a matrix; any leading axes index a stack (also called a batch) of matrices. Shapes
+are written `(..., m, n)`, where `...` stands for zero or more leading axes. Every function treats each matrix of a
+stack independently and returns the results stacked in the same order. When a function takes several arrays, their
+leading axes broadcast against each other: an `a` of shape `(2, 1, 3, 3)` and a `b` of shape `(4, 3, 2)` give a
+solution of shape `(2, 4, 3, 2)`. Arguments that are vectors use the last axis only.
 
-**Result types.** Computations run in `float64`, or in `complex128` when any array argument is complex. Integer and
-boolean inputs are converted to `float64`, so their results are floating point as well. A result that would be a
-single number for a single matrix, such as `det` or `matrix_rank`, is a Python scalar; for a stack it is an array, even
-when the stack holds one matrix. Functions with several results return a named tuple whose fields are read by name or
-by position. The arrays inside such a tuple are read-only; call `.copy()` on a field to get a writable array.
+### Right-hand sides
 
-**Finite values.** Functions that factor a matrix (solvers, factorizations, eigenvalues, `det`, `cond`, `expm` and
-others) check their input first and raise `ValueError` if it contains NaN or infinity. Functions that only multiply or
-add, such as `vecdot`, `outer` and `trace`, propagate NaN and infinity instead.
+Functions that solve $A x = b$ read `b` by its number of dimensions. A 1-D `b` of shape `(m,)` is one right-hand side,
+shared by every matrix in the stack, and the solution has shape `(..., n)`. A `b` with two or more dimensions,
+`(..., m, k)`, holds `k` right-hand sides as columns, and the solution has shape `(..., n, k)`.
 
-**Singular matrices.** A matrix is treated as singular only when its factorization produces an exact zero pivot.
-Solvers and `inv` then raise `LinAlgError`, a subclass of `ValueError`. A matrix that is singular in exact arithmetic but
-not after rounding gives a result with large errors and no warning; `cond` measures how close a matrix is to singular.
-For a stack, the message names the position of the first matrix that failed.
+### Result types
 
-**Symmetric and Hermitian input.** Functions for symmetric or Hermitian matrices (`cholesky`, `eigh`, `eigvalsh`,
-`ldl`) read only the lower triangle. The upper triangle is never read or checked.
+Computations run in `float64`, or in `complex128` when any array argument is complex. Integer and boolean inputs are
+converted to `float64` first, so the values computed from them are floating point as well. `eig` and `eigvals` always
+return complex results. Counts and indices, such as `matrix_rank` and the permutation of `lu`, are integers. Only
+`diagonal` and `block_diag`, which copy elements without computing, keep the dtype of their input. A result that
+would be a single number for a single matrix, such as `det` or `matrix_rank`, is a Python scalar; for a stack it is
+an array, even when the stack holds one matrix.
+
+### Named tuples
+
+Functions with several results return a named tuple, such as `LUResult(L, U, perm)`, whose fields are read by name or
+by position. The arrays inside such a tuple are read-only; call `.copy()` on a field to get a writable array. Functions
+with a single array result, such as `inv` and `eigvals`, return a writable array.
+
+### Finite values
+
+Functions that factor a matrix (solvers, factorizations, eigenvalues, `det`, `cond`, `expm` and others) raise
+`ValueError` if the part of an argument they read contains NaN or infinity. Functions that only multiply or add, such
+as `vecdot`, `outer` and `trace`, propagate NaN and infinity instead.
+
+### Singular matrices
+
+A matrix is treated as singular only when its factorization produces an exact zero pivot. Solvers and `inv` then raise
+`LinAlgError`, a subclass of `ValueError`. A matrix that is singular in exact arithmetic but not after rounding gives a
+result with large errors and no warning; `cond` measures how close a matrix is to singular.
+
+### Errors in a stack
+
+The matrices of a stack are processed in order. For each one, a matrix argument is checked for NaN and infinity
+before it is used, and the right-hand side `b` is checked last, after the test for a singular matrix: a singular `a`
+raises `LinAlgError` even when `b` contains NaN. In a stack, the first matrix that fails determines the exception,
+whatever the failure (NaN or infinity, a singular or not positive-definite matrix, no convergence), and the message
+ends with its index, as in `(at batch index (1,))`. The same matrix is reported for any number of threads.
+
+### Symmetric and Hermitian input
+
+Functions for symmetric or Hermitian matrices (`cholesky`, `eigh`, `eigvalsh`, `ldl`) read only the lower triangle and
+ignore the imaginary part of the diagonal. The upper triangle is never read or checked.
 
 <FunctionTables />
 

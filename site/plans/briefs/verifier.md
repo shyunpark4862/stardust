@@ -28,3 +28,5 @@ Issues in pages that are not assigned to you: do not edit; list them in site/not
 
 Report in Korean, ≤ 25 lines: pages checked, number and kinds of corrections (with the 5 most significant),
 remaining doubts, cross-page issues recorded, anomalies recorded.
+
+Scratch files: other agents share the scratchpad directory. Create your own uniquely named subfolder there first (e.g. `<scratchpad>/<area>-<your-topic>-<random>`), keep every script and temp file inside it, and run Python with `-I` so files in the current directory cannot shadow standard modules. Never write scripts into site/.

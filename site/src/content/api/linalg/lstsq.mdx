@@ -11,11 +11,11 @@ params:
   - name: a
     type: array of shape (..., m, n)
     kind: positional-only
-    desc: Coefficient matrix, or a stack of coefficient matrices. Need not be square or of full rank.
+    desc: "Coefficient matrix, of any dtype, or a stack of them (see [matrices and stacks](/api/linalg/#matrices-and-stacks)). Need not be square or of full rank."
   - name: b
     type: array of shape (m,) or (..., m, k)
     kind: positional-only
-    desc: "Right-hand side. A 1-D array is one right-hand side, shared by every matrix in `a`; an array with two or more dimensions holds `k` right-hand sides as columns. Leading axes broadcast against those of `a`."
+    desc: "Right-hand side: one vector, or `k` vectors as columns (see [right-hand sides](/api/linalg/#right-hand-sides)). Leading axes broadcast against those of `a`."
   - name: rtol
     type: float or None
     kind: keyword-only
@@ -24,21 +24,23 @@ params:
 returns:
   - name: solution
     type: ndarray of shape (..., n) or (..., n, k)
-    desc: "Least-squares solution with the smallest norm. `float64`, or `complex128` when `a` or `b` is complex."
+    desc: "Least-squares solution with the smallest norm. `float64`, or `complex128` when `a` or `b` is complex (see [result types](/api/linalg/#result-types))."
   - name: rank
-    type: int or int64 array of shape (...)
-    desc: "Effective rank of `a`: the number of singular values above the cutoff. A Python `int` for a single matrix."
+    type: int or ndarray of shape (...)
+    desc: "Effective rank of `a`: the number of singular values above the cutoff. A Python `int` for a single matrix, an `int64` array for a stack."
   - name: singular_values
-    type: float64 array of shape (..., min(m, n))
-    desc: Singular values of `a`, in decreasing order.
+    type: ndarray of shape (..., min(m, n))
+    desc: "Singular values of `a`, in decreasing order. Always `float64`. For `rtol` of at least the machine epsilon, including the default, they can differ from those of [`svdvals`](/api/linalg/svd/) in the last digit."
 raises:
   - type: TypeError
-    desc: "If `a` or `b` is not an `sd.ndarray`, or if `rtol` is not `None`, an `int` or a `float`."
+    desc: "If `a` or `b` is not an `sd.ndarray`, if `rtol` is a `bool`, or if `rtol` is not `None`, an `int` or a `float`."
   - type: ValueError
     desc: "If `a` has fewer than two dimensions, if the number of rows of `a` and `b` differ, if the leading axes do not broadcast, if `a` or `b` contains NaN or infinity, or if `rtol` is negative or not finite."
+  - type: OverflowError
+    desc: "If `rtol` is an `int` too large to convert to a `float`."
   - type: LinAlgError
-    desc: If the singular value decomposition does not converge.
-seeAlso: [solve]
+    desc: "If the singular value decomposition does not converge. For a stack, the message gives the index of the first matrix that failed."
+seeAlso: [solve, pinv, matrix_rank, svd, qr]
 ---
 
 `lstsq` finds the `x` that minimizes the sum of squared residuals of `a @ x - b`. It applies when the system has more
@@ -47,8 +49,9 @@ equations than unknowns and no exact solution exists, typically when fitting a m
 smallest norm.
 
 The result is a named tuple `LstsqResult(solution, rank, singular_values)`. Its fields are read by name or by
-position, and its arrays are read-only. For a square, nonsingular system, [`solve`](/api/linalg/solve/) gives the same
-solution.
+position, and its arrays are read-only (see [named tuples](/api/linalg/#named-tuples)). For a square, nonsingular system,
+[`solve`](/api/linalg/solve/) gives the same solution up to rounding. The same solution is `pinv(a) @ b` in exact
+arithmetic (see [`pinv`](/api/linalg/pinv/)).
 
 ## Examples
 
@@ -113,7 +116,9 @@ x = V \Sigma^{+} U^H b,
 $$
 
 where $\Sigma^{+}$ inverts the singular values above the cutoff $\mathrm{rtol} \cdot \sigma_{\max}$ and sets the
-others to zero. The number of singular values kept is `rank`, which always equals `matrix_rank(a, rtol=rtol)`.
+others to zero. The number of singular values kept is `rank`. For `rtol` below the machine epsilon, including 0,
+`rank` always equals [`matrix_rank(a, rtol=rtol)`](/api/linalg/matrix_rank/). For larger `rtol` the two compute the
+singular values separately and can disagree when a singular value lies very close to the cutoff.
 
 The residuals $\lVert A x - b \rVert_2^2$ are not returned; compute them from `a @ solution - b`.
 
@@ -125,4 +130,6 @@ The nearest equivalents are `numpy.linalg.lstsq` and R's `qr.solve(a, b)`.
   residuals second.
 - The cutoff is `rtol=` and is keyword-only; NumPy names it `rcond=`.
 - With `rtol` of 1 or more, every singular value counts as zero: `rank` is 0 and `solution` is zero.
+  `numpy.linalg.lstsq` with `rcond=1` ignores the cutoff instead and reports rank 2 for `[[1, 0], [0, 0.5]]`.
 - `a` and `b` must be `sd.ndarray`, and NaN or infinity raises `ValueError`.
+- R's `qr.solve` stops with an error for a rank-deficient `a`. `lstsq` returns the minimum-norm solution.

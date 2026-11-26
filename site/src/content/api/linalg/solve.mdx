@@ -11,14 +11,14 @@ params:
   - name: a
     type: array of shape (..., n, n)
     kind: positional-only
-    desc: Coefficient matrix, or a stack of coefficient matrices. Each matrix must be square and nonsingular.
+    desc: "Coefficient matrix, of any dtype, or a stack of them (see [matrices and stacks](/api/linalg/#matrices-and-stacks)). Each matrix must be square and nonsingular."
   - name: b
     type: array of shape (n,) or (..., n, k)
     kind: positional-only
-    desc: "Right-hand side. A 1-D array is one right-hand side, shared by every matrix in `a`; an array with two or more dimensions holds `k` right-hand sides as columns. Leading axes broadcast against those of `a`."
+    desc: "Right-hand side: one vector, or `k` vectors as columns (see [right-hand sides](/api/linalg/#right-hand-sides)). Leading axes broadcast against those of `a`."
 returns:
   - type: ndarray of shape (..., n) or (..., n, k)
-    desc: "Solution `x`, with the shape of `b` after broadcasting. `float64`, or `complex128` when `a` or `b` is complex."
+    desc: "Solution `x`, with the shape of `b` after broadcasting. `float64`, or `complex128` when `a` or `b` is complex (see [result types](/api/linalg/#result-types))."
 raises:
   - type: TypeError
     desc: "If `a` or `b` is not an `sd.ndarray`."
@@ -26,17 +26,19 @@ raises:
     desc: "If `a` has fewer than two dimensions or is not square, if the sizes of `a` and `b` do not match, if the leading axes do not broadcast, or if `a` or `b` contains NaN or infinity."
   - type: LinAlgError
     desc: "If a matrix in `a` is singular (its LU factorization has an exact zero pivot). For a stack, the message gives the index of the first such matrix."
-seeAlso: [lstsq]
+seeAlso: [lstsq, inv, lu_solve, cholesky_solve, solve_triangular, lu, cond, solve_banded]
 ---
 
-`solve` computes the exact solution of a square system of linear equations. Row `i` of `a` holds the coefficients of
+`solve` computes the solution of a square system of linear equations. Row `i` of `a` holds the coefficients of
 equation `i`, and the matching entry of `b` is its right-hand side. The result `x` satisfies `a @ x == b` up to
 rounding.
 
 The function treats every matrix as general and factors it with LU decomposition. For matrices with known structure,
-`solve_triangular`, `cholesky_solve` and `solve_banded` use that structure. Systems with more equations than unknowns,
-or with a singular matrix, have no unique solution; [`lstsq`](/api/linalg/lstsq/) returns the least-squares solution
-instead.
+[`solve_triangular`](/api/linalg/solve_triangular/), [`cholesky_solve`](/api/linalg/cholesky_solve/) and
+[`solve_banded`](/api/linalg/solve_banded/) use that structure. To solve with the same matrix again later, factor it
+once with [`lu`](/api/linalg/lu/) and pass the factors to [`lu_solve`](/api/linalg/lu_solve/). Systems with more
+equations than unknowns, or with a singular matrix, have no unique solution; [`lstsq`](/api/linalg/lstsq/) returns
+the least-squares solution instead.
 
 ## Examples
 
@@ -94,11 +96,13 @@ The function computes the LU factorization with partial pivoting, $P A = L U$, w
 is unit lower triangular and $U$ is upper triangular, and then solves the two triangular systems $L y = P b$ and
 $U x = y$.
 
-A matrix counts as singular only when a pivot is exactly zero. A matrix that is singular in exact arithmetic often
-produces small nonzero pivots after rounding; `solve` then returns a solution with large errors and raises no error.
-The error of the computed solution grows with the condition number of `a`, which `cond` computes.
+A matrix counts as singular only when a pivot is exactly zero (see [singular matrices](/api/linalg/#singular-matrices)). A
+matrix that is singular in exact arithmetic often produces small nonzero pivots after rounding; `solve` then returns a
+solution with large errors and raises no error. The error of the computed solution grows with the condition number of
+`a`, which [`cond`](/api/linalg/cond/) computes.
 
-Integer and boolean inputs are converted to `float64` before the factorization. The result is a new, writable array.
+`solve(a, b)` equals `lu_solve(*lu(a), b)` bit for bit, except when `a` is real and `b` is complex; the two then
+agree only up to rounding. `inv(a)` equals `solve(a, sd.eye(n))` bit for bit. The result is a new, writable array.
 
 ## For NumPy, SciPy and R users
 
@@ -107,6 +111,7 @@ The nearest equivalents are `numpy.linalg.solve`, `scipy.linalg.solve` and R's `
 - `a` and `b` must be `sd.ndarray`; lists raise `TypeError`.
 - NaN or infinity in `a` or `b` raises `ValueError`. `numpy.linalg.solve` returns NaN; `scipy.linalg.solve` raises
   `ValueError` by default, as here.
-- There is no `assume_a=` option: the factorization is always the general LU.
+- There is no `assume_a=` option: the factorization is always the general LU. Triangular and positive definite
+  matrices have their own functions, `solve_triangular` and `cholesky_solve`.
 - R's `solve` also stops when the reciprocal condition number is below `tol`. `solve` raises only for an exact zero
   pivot.

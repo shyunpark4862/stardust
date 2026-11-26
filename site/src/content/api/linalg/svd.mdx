@@ -1,0 +1,154 @@
+---
+kind: function
+title: svd, svdvals
+names: [svd, svdvals]
+group: Factorizations
+order: 7
+signatures:
+  - "sd.linalg.svd(x, /, *, mode='reduced')"
+  - "sd.linalg.svdvals(x, /)"
+summary: Compute the singular value decomposition of a matrix, or its singular values only.
+params:
+  - name: x
+    type: array of shape (..., m, n)
+    kind: positional-only
+    desc: "Matrix to decompose, of any dtype, or a stack of them (see [matrices and stacks](/api/linalg/#matrices-and-stacks)). Need not be square or of full rank."
+  - name: mode
+    type: str
+    kind: keyword-only
+    default: "'reduced'"
+    desc: "`svd` only. Shape of `U` and `Vh`, with `k = min(m, n)`:"
+    choices:
+      - [ "'reduced'", "`U` of shape `(..., m, k)` and `Vh` of shape `(..., k, n)`." ]
+      - [ "'complete'", "`U` of shape `(..., m, m)` and `Vh` of shape `(..., n, n)`, both square orthogonal (or unitary) matrices." ]
+returns:
+  - name: U
+    type: ndarray of shape (..., m, k) or (..., m, m)
+    desc: "`svd` only. Left singular vectors, as orthonormal columns. `float64`, or `complex128` when `x` is complex (see [result types](/api/linalg/#result-types))."
+  - name: S
+    type: ndarray of shape (..., k)
+    desc: "The `k = min(m, n)` singular values of each matrix, nonnegative and in decreasing order. Always `float64`. The whole result of `svdvals`."
+  - name: Vh
+    type: ndarray of shape (..., k, n) or (..., n, n)
+    desc: "`svd` only. Right singular vectors, conjugate-transposed: row `i` belongs to `S[..., i]`. Same dtype as `U`."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`, or if `mode` is not a string."
+  - type: ValueError
+    desc: "If `x` has fewer than two dimensions, if `x` contains NaN or infinity, or if `mode` is not `'reduced'` or `'complete'`."
+  - type: LinAlgError
+    desc: "If the singular value decomposition does not converge. For a stack, the message gives the index of the first matrix that failed."
+seeAlso: [qr, eigh, lstsq, pinv, matrix_rank, cond]
+---
+
+`svd` writes a matrix of any shape as $A = U \Sigma V^H$, where the columns of $U$ and of $V$ are orthonormal and
+$\Sigma$ is diagonal with the singular values, nonnegative and in decreasing order. The singular values measure how
+much the matrix stretches space along each pair of directions: the largest is the matrix 2-norm, the number of nonzero
+ones is the rank, and the ratio of the largest to the smallest is the condition number in the 2-norm. `svdvals`
+computes the singular values only.
+
+`svd` returns a named tuple `SVDResult(U, S, Vh)`. Its fields are read by name or by position, and its arrays are
+read-only (see [named tuples](/api/linalg/#named-tuples)). `S` holds the diagonal of $\Sigma$ as a vector, and `Vh` is $V^H$, so
+that `x` equals `(U * S) @ Vh` up to rounding in the default mode. `svdvals` returns the singular values as one writable
+array.
+
+With `mode="reduced"` (the default), `U` and `Vh` hold only the $k = \min(m, n)$ singular vectors that belong to a
+singular value. With `mode="complete"`, they are completed to square orthogonal or unitary matrices. The extra columns
+of `U` (or rows of `Vh`) complete an orthonormal basis and multiply no singular value; the reconstruction uses only
+the first $k$ of them.
+
+## Examples
+
+The decomposition of a 2-by-2 matrix and its reconstruction. `U * S` scales column `i` of `U` by `S[i]`:
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([[3.0, 0.0], [4.0, 5.0]])
+>>> U, S, Vh = sd.linalg.svd(x)
+>>> S
+array([  6.70820393249937, 2.2360679774997894], dtype=float64)
+>>> U
+array([[ -0.316227766016838, -0.9486832980505135],
+       [-0.9486832980505135,  0.3162277660168379]], dtype=float64)
+>>> Vh
+array([[-0.7071067811865475, -0.7071067811865475],
+       [-0.7071067811865475,  0.7071067811865475]], dtype=float64)
+>>> (U * S) @ Vh
+array([[    2.9999999999999996, 1.3380796711988474e-15],
+       [     3.999999999999999,      4.999999999999999]], dtype=float64)
+```
+
+A 3-by-2 matrix has two singular values. The mode decides the shapes of `U` and `Vh`:
+
+```python
+>>> y = sd.asarray([[1.0, 2.0], [3.0, 4.0], [5.0, 6.0]])
+>>> r = sd.linalg.svd(y)
+>>> r.U.shape, r.S.shape, r.Vh.shape
+((3, 2), (2,), (2, 2))
+>>> c = sd.linalg.svd(y, mode="complete")
+>>> c.U.shape, c.S.shape, c.Vh.shape
+((3, 3), (2,), (2, 2))
+>>> float(sd.max(sd.abs(c.U.mT @ c.U - sd.eye(3)))) < 1e-14
+True
+```
+
+Singular values only. For a matrix of rank 1, the second singular value is zero up to rounding, and a stack gives one
+row per matrix:
+
+```python
+>>> sd.linalg.svdvals(y)
+array([  9.52551809156511, 0.5143005806586446], dtype=float64)
+>>> sd.linalg.svdvals(sd.asarray([[1.0, 2.0], [2.0, 4.0]]))
+array([                   5.0, 1.8144368136220992e-16], dtype=float64)
+>>> sd.linalg.svdvals(sd.stack([x, sd.eye(2)]))
+array([[  6.70820393249937, 2.2360679774997894],
+       [               1.0,                1.0]], dtype=float64)
+```
+
+`mode` takes only the two names:
+
+```python
+>>> sd.linalg.svd(y, mode="full")
+Traceback (most recent call last):
+    ...
+ValueError: svd(): 'mode' must be 'reduced' or 'complete', not 'full'
+```
+
+<Reference />
+
+## Notes
+
+For an $m \times n$ matrix $A$ and $k = \min(m, n)$, the reduced decomposition is
+
+$$
+A = U \operatorname{diag}(\sigma_1, \dots, \sigma_k) V^H, \qquad \sigma_1 \ge \sigma_2 \ge \dots \ge \sigma_k \ge 0,
+$$
+
+with $U$ of size $m \times k$ and $V$ of size $n \times k$, both with orthonormal columns. Column $i$ of $U$ and column
+$i$ of $V$ (row $i$ of `Vh`, conjugated) are the left and right singular vectors of $\sigma_i$:
+$A v_i = \sigma_i u_i$. The squares $\sigma_i^2$ are the eigenvalues of $A^H A$.
+
+Each pair of singular vectors is determined only up to a common sign (for complex input, a common factor of absolute
+value 1): $u_i$ and $v_i$ can be negated together. When singular values are repeated or zero, the corresponding
+vectors are not unique beyond that. The function fixes neither choice, but makes the same one on every run with the
+same number of threads (see [determinism and threads](/start/conventions/#determinism-and-threads)).
+
+A singular value that is zero in exact arithmetic usually comes out as a small positive number of the order of the
+rounding error times $\sigma_1$. [`matrix_rank`](/api/linalg/matrix_rank/) counts the singular values above a
+relative cutoff. `matrix_rank`, `cond` with `ord` 2 or -2, and `matrix_norm` with `ord` 2, -2 or
+`'nuc'` use the values of `svdvals`. `svdvals` does not compute the singular vectors, and its values can differ from `S` of `svd` in the last digits.
+
+When $k = 0$, `S` is empty; with `mode="complete"`, `U`
+and `Vh` are then identity matrices.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.linalg.svd`, `scipy.linalg.svd`, `numpy.linalg.svdvals` and R's `svd(x)`.
+
+- The default is the reduced decomposition. `numpy.linalg.svd` and `scipy.linalg.svd` default to
+  `full_matrices=True`, which corresponds to `mode="complete"`; `full_matrices=False` corresponds to the default here.
+- The result has the fields `U`, `S`, `Vh`, as in NumPy; `scipy.linalg.svd` returns a plain tuple. R's `svd` returns
+  `d`, `u` and `v`, where `v` is $V$, not its conjugate transpose.
+- There is no `compute_uv=` option; `svdvals` returns the singular values alone.
+- NaN or infinity raises `ValueError`, as in `scipy.linalg.svd` by default. `numpy.linalg.svd` raises `LinAlgError`
+  ("SVD did not converge") for it.

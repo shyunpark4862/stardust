@@ -1,0 +1,170 @@
+---
+kind: function
+title: ldl
+names: [ldl]
+group: Factorizations
+order: 4
+signatures:
+  - "sd.linalg.ldl(x, /)"
+summary: Compute the pivoted LDL factorization of a symmetric or Hermitian matrix.
+params:
+  - name: x
+    type: array of shape (..., n, n)
+    kind: positional-only
+    desc: "Symmetric matrix (Hermitian when complex), of any dtype, or a stack of them (see [matrices and stacks](/api/linalg/#matrices-and-stacks)). Need not be positive definite or nonsingular. Only the lower triangle and the diagonal are read; the imaginary part of the diagonal is ignored."
+returns:
+  - name: L
+    type: ndarray of shape (..., n, n)
+    desc: "Unit lower triangular factor: ones on the diagonal and exact zeros above it. `float64`, or `complex128` when `x` is complex (see [result types](/api/linalg/#result-types))."
+  - name: D
+    type: ndarray of shape (..., n, n)
+    desc: "Block diagonal factor made of 1-by-1 and 2-by-2 blocks, returned as a full matrix with exact zeros outside the blocks. Symmetric (Hermitian when complex), with a real diagonal. Same dtype as `L`."
+  - name: perm
+    type: ndarray of shape (..., n)
+    desc: "Symmetric permutation, a reordering of `0, ..., n - 1` applied to rows and columns alike: `x[perm][:, perm]` equals `L @ D @ L.mT` (`L @ D @ sd.conj(L.mT)` when complex) up to rounding, with `x` the symmetric matrix its lower triangle defines. Always `int64`."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`."
+  - type: ValueError
+    desc: "If `x` has fewer than two dimensions or is not square, or if its lower triangle contains NaN or infinity."
+seeAlso: [cholesky, eigh, lu, solve, solve_triangular]
+---
+
+`ldl` factors a symmetric matrix as `L @ D @ L.mT`, where `L` is unit lower triangular and `D` is block diagonal,
+after reordering its rows and columns by the same permutation: `x[perm][:, perm] == L @ D @ L.mT`. For complex input
+the matrix is taken as Hermitian, and `L.mT` becomes `sd.conj(L.mT)`.
+
+Unlike [`cholesky`](/api/linalg/cholesky/), `ldl` does not require a positive-definite matrix: every symmetric matrix
+has this factorization, including indefinite and singular ones. A negative or zero eigenvalue of `x` shows up in `D`,
+whose blocks are 1-by-1 or 2-by-2. `D` has as many positive, negative and zero eigenvalues as `x`, so the
+factorization also counts them.
+
+The result is a named tuple `LDLResult(L, D, perm)`. Its fields are read by name or by position, and its arrays are
+read-only (see [named tuples](/api/linalg/#named-tuples)). Only the lower triangle of `x` is read; the function does not check
+that `x` is symmetric.
+
+## Examples
+
+An indefinite symmetric matrix: `D` has a negative entry, and `cholesky` rejects the matrix. Here no reordering is
+needed, and `L @ D @ L.mT` gives back `x`:
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([[4.0, 2.0, -2.0], [2.0, -1.0, 1.0], [-2.0, 1.0, 3.0]])
+>>> L, D, perm = sd.linalg.ldl(x)
+>>> L
+array([[ 1.0,  0.0,  0.0],
+       [ 0.5,  1.0,  0.0],
+       [-0.5, -1.0,  1.0]], dtype=float64)
+>>> D
+array([[ 4.0,  0.0,  0.0],
+       [ 0.0, -2.0,  0.0],
+       [ 0.0,  0.0,  4.0]], dtype=float64)
+>>> perm
+array([0, 1, 2], dtype=int64)
+>>> L @ D @ L.mT
+array([[ 4.0,  2.0, -2.0],
+       [ 2.0, -1.0,  1.0],
+       [-2.0,  1.0,  3.0]], dtype=float64)
+>>> sd.linalg.cholesky(x)
+Traceback (most recent call last):
+    ...
+stardust.linalg.LinAlgError: cholesky(): matrix is not positive definite
+```
+
+A matrix whose rows and columns are reordered. `perm` moves the large diagonal entry 16 to the front; the factors
+reproduce `x[perm][:, perm]`, and the inverse permutation `argsort(perm)` gives back `x`:
+
+```python
+>>> y = sd.asarray([[2.0, 4.0, 0.0], [4.0, 16.0, 4.0], [0.0, 4.0, -2.0]])
+>>> L, D, perm = sd.linalg.ldl(y)
+>>> perm
+array([1, 0, 2], dtype=int64)
+>>> y[perm][:, perm]
+array([[16.0,  4.0,  4.0],
+       [ 4.0,  2.0,  0.0],
+       [ 4.0,  0.0, -2.0]], dtype=float64)
+>>> L @ D @ L.mT
+array([[16.0,  4.0,  4.0],
+       [ 4.0,  2.0,  0.0],
+       [ 4.0,  0.0, -2.0]], dtype=float64)
+>>> q = sd.argsort(perm)
+>>> (L @ D @ L.mT)[q][:, q]
+array([[ 2.0,  4.0,  0.0],
+       [ 4.0, 16.0,  4.0],
+       [ 0.0,  4.0, -2.0]], dtype=float64)
+```
+
+A matrix with zeros on its diagonal has no usable 1-by-1 pivot at the start, and `D` gets a 2-by-2 block. `D` and
+`z` have the same number of negative eigenvalues, two, and of positive eigenvalues, one:
+
+```python
+>>> z = sd.asarray([[0.0, 2.0, 1.0], [2.0, 0.0, 3.0], [1.0, 3.0, 0.0]])
+>>> r = sd.linalg.ldl(z)
+>>> r.D
+array([[ 0.0,  2.0,  0.0],
+       [ 2.0,  0.0,  0.0],
+       [ 0.0,  0.0, -3.0]], dtype=float64)
+>>> r.L
+array([[1.0, 0.0, 0.0],
+       [0.0, 1.0, 0.0],
+       [1.5, 0.5, 1.0]], dtype=float64)
+>>> sd.linalg.eigvalsh(r.D)
+array([-3.0, -2.0,  2.0], dtype=float64)
+>>> sd.linalg.eigvalsh(z)
+array([-3.2019117766787075, -0.9111788076462434,   4.113090584324953], dtype=float64)
+```
+
+A singular matrix is factored without an error. `D` has a zero on its diagonal:
+
+```python
+>>> sd.linalg.ldl(sd.asarray([[1.0, 2.0], [2.0, 4.0]])).D
+array([[4.0, 0.0],
+       [0.0, 0.0]], dtype=float64)
+```
+
+<Reference />
+
+## Notes
+
+### Factor format
+
+For a symmetric or Hermitian $n \times n$ matrix $A$, the factorization is
+
+$$
+P A P^T = L D L^H,
+$$
+
+where $P$ is the permutation matrix `sd.eye(n)[perm]`, $L$ is unit lower triangular and $D$ is block diagonal with
+blocks of size 1 and 2. In code, `P @ x @ P.mT` is `x[perm][:, perm]`. A 2-by-2 block occupies rows and columns $j$
+and $j + 1$ of `D`: its off-diagonal entries are `D[j + 1, j]` and `D[j, j + 1]` (the complex conjugate of the first),
+and `L[j + 1, j]` is zero. A block is 2-by-2 exactly when `D[j + 1, j]` is nonzero. The diagonal of `D` is real, also
+for complex input. For a stack, the relation holds for each matrix with its own row of `perm`.
+
+### Pivoting
+
+The pivots are chosen by the Bunch–Kaufman strategy. At each step it takes a diagonal entry as a 1-by-1 pivot when
+that entry is large enough compared with the rest of its column, and otherwise a 2-by-2 block, swapping rows and
+columns symmetrically so that the factorization stays stable and `D` stays symmetric. Each 2-by-2 block has one
+positive and one negative eigenvalue, so a positive-definite matrix gives only 1-by-1 blocks, all positive; its rows
+and columns can still be reordered.
+
+By Sylvester's law of inertia, `x` and `D` have the same numbers of positive, negative and zero eigenvalues. The
+eigenvalues of `D` are its 1-by-1 entries and one positive and one negative value per 2-by-2 block, so the signs of
+the eigenvalues of `x` can be read from `D` without computing them.
+
+The factorization does not test for singularity, and a zero block in `D` is not an error. A matrix that is singular
+in exact arithmetic usually gives a small nonzero 1-by-1 block after rounding, not an exact zero; the signs of such
+blocks are then not reliable. Complex symmetric
+matrices that are not Hermitian are not supported: complex input is always read as Hermitian.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalent is `scipy.linalg.ldl`. NumPy has no LDL function.
+
+- `scipy.linalg.ldl` returns `(lu, d, perm)`, where `lu` is triangular only after its rows are reordered by `perm`.
+  `L` here is `lu[perm]`, already triangular; `D` and `perm` agree with SciPy's.
+- Only the lower triangle is read. SciPy's `lower=False` reads the upper triangle instead.
+- There is no `hermitian=` option: complex input is Hermitian. SciPy's `hermitian=False` factors complex symmetric
+  matrices.
+- Only the lower triangle is checked for NaN and infinity; `scipy.linalg.ldl` checks every entry by default.

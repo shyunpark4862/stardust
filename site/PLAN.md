@@ -8,12 +8,12 @@ common(Install·Conventions 첫판은 템플릿 작업과 함께) → array → 
 ## 마일스톤
 | 그룹 | 마일스톤 | 내용 | 상태 |
 |---|---|---|---|
-| common | C1 Install and Conventions | 설치, 공통 규칙 페이지 | 진행 |
-| array | A1 Array model and creation | 개요, ndarray, dtype·상수·인덱싱·브로드캐스팅·뷰, 만들기, 모양, 잇기, dtype 도구 | 예정 |
-| array | A2 Element-wise functions | 산술, 지수·로그, 삼각·쌍곡, 반올림, 비교·논리·비트, 판별, where, 복소수 | 예정 |
-| array | A3 Reductions and statistics | 집계, 누적, NaN 건너뛰는 집계, 분위수·중앙값, 공분산, bincount·histogram | 예정 |
-| array | A4 Indexing, sorting and products | take·nonzero·searchsorted·interp·diff, 정렬·고유값, 행렬곱, 스레드 | 예정 |
-| linalg | L1 Systems, factorizations and eigenvalues | 선형 시스템, 분해, 고유값 (16쪽) | 예정 |
+| common | C1 Install and Conventions | 설치, 공통 규칙 페이지 | 완료 |
+| array | A1 Array model and creation | 개요, ndarray, dtype·상수·인덱싱·브로드캐스팅·뷰, 만들기, 모양, 잇기, dtype 도구 | 완료 |
+| array | A2 Element-wise functions | 산술, 지수·로그, 삼각·쌍곡, 반올림, 비교·논리·비트, 판별, where, 복소수 | 완료 |
+| array | A3 Reductions and statistics | 집계, 누적, NaN 건너뛰는 집계, 분위수·중앙값, 공분산, bincount·histogram | 완료 |
+| array | A4 Indexing, sorting and products | take·nonzero·searchsorted·interp·diff, 정렬·고유값, 행렬곱, 스레드 | 완료 |
+| linalg | L1 Systems, factorizations and eigenvalues | 선형 시스템, 분해, 고유값 (16쪽) | 진행 |
 | linalg | L2 Norms, products, structured matrices and matrix functions | 노름·지표, 곱, 특수 구조, expm, 에러, 개요 점검 (19쪽) | 예정 |
 | common | C2 A short tour | 여러 영역을 잇는 짧은 둘러보기 | 예정 |
 | common | C3 Home and index polish | 첫 페이지 다듬기, 색인·검색 점검 | 예정 |

@@ -27,3 +27,5 @@ exist yet but are in the outline's slug list are fine).
 
 Report in Korean, ≤ 20 lines: pages written, check results, judgment calls, any slug/group you changed or needs
 changing, facts that sibling pages should know (e.g. a rule you documented that they should link to), anomalies.
+
+Scratch files: other agents share the scratchpad directory. Create your own uniquely named subfolder there first (e.g. `<scratchpad>/<area>-<your-topic>-<random>`), keep every script and temp file inside it, and run Python with `-I` so files in the current directory cannot shadow standard modules. Never write scripts into site/.

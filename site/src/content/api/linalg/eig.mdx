@@ -1,0 +1,143 @@
+---
+kind: function
+title: eig, eigvals
+names: [eig, eigvals]
+group: Eigenvalues
+order: 2
+signatures:
+  - "sd.linalg.eig(x, /)"
+  - "sd.linalg.eigvals(x, /)"
+summary: Compute the eigenvalues and eigenvectors, or the eigenvalues only, of a general square matrix.
+params:
+  - name: x
+    type: array of shape (..., n, n)
+    kind: positional-only
+    desc: "Square matrix, of any dtype, or a stack of them (see [matrices and stacks](/api/linalg/#matrices-and-stacks)). Need not be symmetric."
+returns:
+  - name: eigenvalues
+    type: ndarray of shape (..., n)
+    desc: "The eigenvalues of each matrix, repeated according to multiplicity, sorted by real part and then by imaginary part. Always `complex128`, also for real `x`. The whole result of `eigvals`, and the first field of the result of `eig`."
+  - name: eigenvectors
+    type: ndarray of shape (..., n, n)
+    desc: "`eig` only. Column `i` is the eigenvector of `eigenvalues[..., i]`, with 2-norm 1. Always `complex128`."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`."
+  - type: ValueError
+    desc: "If `x` has fewer than two dimensions or is not square, or if `x` contains NaN or infinity."
+  - type: LinAlgError
+    desc: "If the eigenvalue computation does not converge. For a stack, the message gives the index of the first matrix that failed."
+seeAlso: [eigh, schur, hessenberg, svd]
+---
+
+`eig` computes the eigenvalues $\lambda$ and the eigenvectors $v$ with $A v = \lambda v$ for any square matrix.
+`eigvals` computes the eigenvalues only. The eigenvalues of a real matrix that is not symmetric can be complex, so both
+functions always return `complex128` arrays. For real input, a real eigenvalue has an imaginary part of exactly zero;
+for complex input, it can carry a tiny imaginary part from rounding. For symmetric or
+Hermitian matrices, [`eigh`](/api/linalg/eigh/) uses the symmetry and returns real eigenvalues and orthonormal
+eigenvectors.
+
+`eig` returns a named tuple `EigResult(eigenvalues, eigenvectors)`. Its fields are read by name or by position, and its
+arrays are read-only (see [named tuples](/api/linalg/#named-tuples)). `eigvals` returns the eigenvalues as one writable array.
+Column `i` of `eigenvectors` belongs to `eigenvalues[..., i]`.
+
+The eigenvalues are sorted by real part, and eigenvalues with equal real parts by imaginary part. The eigenvectors are
+reordered with them. For a real matrix, complex eigenvalues come in conjugate pairs $a \pm b i$; the one with the
+negative imaginary part comes first, and the eigenvectors of a pair are complex conjugates of each other.
+
+## Examples
+
+Eigenvalues and eigenvectors of a 2-by-2 matrix. The result satisfies `x @ v == v * w` up to rounding, where `v * w`
+scales column `i` of `v` by `w[i]`, and the eigenvectors rebuild `x`:
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([[4.0, 1.0], [2.0, 3.0]])
+>>> w, v = sd.linalg.eig(x)
+>>> w
+array([(2+0j), (5+0j)], dtype=complex128)
+>>> v
+array([[(-0.4472135954999579+0j),  (0.7071067811865475+0j)],
+       [ (0.8944271909999159+0j),  (0.7071067811865475+0j)]], dtype=complex128)
+>>> float(sd.max(sd.abs(x @ v - v * w))) < 1e-14
+True
+>>> float(sd.max(sd.abs((v * w) @ sd.linalg.inv(v) - x))) < 1e-14
+True
+```
+
+A rotation by 90 degrees has no real eigenvalues. The conjugate pair is ordered with the negative imaginary part
+first:
+
+```python
+>>> rot = sd.asarray([[0.0, -1.0], [1.0, 0.0]])
+>>> sd.linalg.eigvals(rot)
+array([-1j,  1j], dtype=complex128)
+>>> sd.linalg.eig(rot).eigenvectors
+array([[(0.7071067811865475-0j), (0.7071067811865475+0j)],
+       [    0.7071067811865475j,    -0.7071067811865475j]], dtype=complex128)
+```
+
+The eigenvalues of a triangular matrix are its diagonal elements, returned in sorted order. Integer input gives a
+`complex128` result as well:
+
+```python
+>>> sd.linalg.eigvals(sd.asarray([[3.0, 1.0, 0.0], [0.0, 1.0, 0.0], [0.0, 0.0, 2.0]]))
+array([(1+0j), (2+0j), (3+0j)], dtype=complex128)
+>>> sd.linalg.eigvals(sd.asarray([[2, 0], [0, 1]]))
+array([(1+0j), (2+0j)], dtype=complex128)
+```
+
+A defective matrix has fewer independent eigenvectors than its size. `eig` raises no error: it returns two columns
+that are parallel up to rounding, and the matrix of eigenvectors is numerically singular:
+
+```python
+>>> d = sd.asarray([[1.0, 1.0], [0.0, 1.0]])
+>>> w, v = sd.linalg.eig(d)
+>>> w
+array([(1+0j), (1+0j)], dtype=complex128)
+>>> v
+array([[                    (1+0j),                    (-1+0j)],
+       [                        0j, (2.220446049250313e-16+0j)]], dtype=complex128)
+>>> sd.linalg.cond(v) > 1e15
+True
+```
+
+<Reference />
+
+## Notes
+
+When $A$ has $n$ linearly independent eigenvectors, the result satisfies
+
+$$
+A = V \operatorname{diag}(\lambda) V^{-1},
+$$
+
+where $V$ is `eigenvectors` and $\lambda$ is `eigenvalues`. A defective matrix, one with an eigenvalue whose
+eigenspace has a smaller dimension than its multiplicity, has no such decomposition. `eig` still returns $n$ columns,
+but some are equal or nearly equal and $V$ cannot be inverted accurately. Close to a defective matrix, the eigenvectors
+are sensitive to small changes in $A$. The Schur decomposition ([`schur`](/api/linalg/schur/)) exists for every square
+matrix and uses an orthonormal basis instead.
+
+Each eigenvector has 2-norm 1, and a component of largest absolute value is real. This leaves the sign of each
+eigenvector free; for a repeated eigenvalue, the eigenvectors are not unique beyond that. The function makes the same
+choice on every run with the same number of threads (see
+[determinism and threads](/start/conventions/#determinism-and-threads)), but code should not rely on a particular sign
+or basis.
+
+The eigenvalues are sorted by real part and then by imaginary part; eigenvalues that compare equal keep the order in
+which they were computed. `-0.0` and `0.0` compare equal.
+An empty matrix ($n = 0$) gives empty results. `eigvals` does not compute the eigenvectors, and its eigenvalues can
+differ from those of `eig` in the last digits.
+
+## For NumPy, SciPy and R users
+
+The nearest equivalents are `numpy.linalg.eig`, `scipy.linalg.eig` and R's `eigen(x)`.
+
+- The eigenvalues are sorted by real part, then by imaginary part. `numpy.linalg.eig` leaves the order unspecified
+  (for the first example it returns 5 before 2); R's `eigen` sorts a matrix that is not
+  symmetric by decreasing absolute value.
+- There is no generalized problem $A v = \lambda B v$ for general matrices and there are no left eigenvectors;
+  `scipy.linalg.eig` offers both. [`eigh`](/api/linalg/eigh/) solves the generalized problem for symmetric `a` and
+  positive definite `b`.
+- NaN or infinity raises `ValueError`. `numpy.linalg.eig` raises `LinAlgError` for it.
+- The vectors are normalized as in NumPy: 2-norm 1 with a real component of largest absolute value.
