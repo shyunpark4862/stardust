@@ -1,0 +1,84 @@
+---
+/** Small diagrams that sit above each strength on the landing page. */
+interface Props {
+  name: 'rules' | 'bits' | 'reference' | 'hardware';
+}
+const { name } = Astro.props;
+const bits = [1, 0, 1, 1, 0, 0, 1, 0];
+---
+
+<svg class="glyph" width="64" height="40" viewBox="0 0 64 40" fill="none" aria-hidden="true">
+  {
+    name === 'rules' &&
+      [8, 20, 32].map((y) => (
+        <g>
+          <circle class="g-strong" cx="5" cy={y} r="3" />
+          <rect class="g-soft" x="14" y={y - 1.5} width="30" height="3" rx="1.5" />
+          <rect class="g-mid" x="50" y={y - 3} width="6" height="6" rx="1.5" />
+        </g>
+      ))
+  }
+  {
+    name === 'bits' && (
+      <g>
+        {[4, 28].map((y) =>
+          bits.map((b, i) => <rect class={b ? 'g-strong' : 'g-soft'} x={i * 8} y={y} width="6" height="8" rx="1.5" />),
+        )}
+        <path class="g-line" d="M27 18.5h8M27 21.5h8" />
+      </g>
+    )
+  }
+  {
+    name === 'reference' && (
+      <g>
+        <circle class="g-ring" cx="12" cy="20" r="10.5" />
+        <path class="g-line g-line--strong" d="m7.5 20.5 3 3 6-7" />
+        <rect class="g-strong" x="32" y="9" width="28" height="3" rx="1.5" />
+        <rect class="g-soft" x="32" y="18.5" width="22" height="3" rx="1.5" />
+        <rect class="g-soft" x="32" y="28" width="26" height="3" rx="1.5" />
+      </g>
+    )
+  }
+  {
+    name === 'hardware' && (
+      <g>
+        <path class="g-line" d="M14 4v6M22 4v6M30 4v6M14 30v6M22 30v6M30 30v6M4 12h6M4 20h6M4 28h6M34 12h6M34 20h6M34 28h6" />
+        <rect class="g-ring" x="10" y="10" width="24" height="20" rx="3" />
+        <rect class="g-strong" x="17" y="15.5" width="10" height="9" rx="1.5" />
+        <rect class="g-soft" x="48" y="9" width="12" height="3" rx="1.5" />
+        <rect class="g-mid" x="48" y="18.5" width="12" height="3" rx="1.5" />
+        <rect class="g-soft" x="48" y="28" width="12" height="3" rx="1.5" />
+      </g>
+    )
+  }
+</svg>
+
+<style>
+  .glyph {
+    overflow: visible;
+  }
+  .g-strong {
+    fill: var(--blue-600);
+  }
+  .g-mid {
+    fill: var(--blue-400);
+  }
+  .g-soft {
+    fill: var(--blue-200);
+  }
+  .g-ring {
+    fill: var(--blue-50);
+    stroke: var(--blue-300);
+    stroke-width: 1.5;
+  }
+  .g-line {
+    stroke: var(--blue-300);
+    stroke-width: 1.5;
+    stroke-linecap: round;
+    stroke-linejoin: round;
+  }
+  .g-line--strong {
+    stroke: var(--blue-600);
+    stroke-width: 2;
+  }
+</style>

@@ -1,0 +1,476 @@
+---
+import { Code } from 'astro:components';
+import Base from '../layouts/Base.astro';
+import Hero from '../components/Hero.astro';
+import Section from '../components/Section.astro';
+import LinkCard from '../components/LinkCard.astro';
+import Button from '../components/Button.astro';
+import Glyph from '../components/Glyph.astro';
+import AreaArt from '../components/AreaArt.astro';
+import { getCollection } from 'astro:content';
+import { areas } from '../data/nav';
+import { documentedAreas } from '../data/api';
+
+const documented = await documentedAreas();
+
+// The trust strip: how much there is, and that every example ran. An example
+// is one `>>> ` line, the unit the example checker counts.
+const apiPages = await getCollection('api');
+const articles = await getCollection('internals');
+const examples = [...apiPages, ...articles].reduce(
+  (n, e) => n + ((e.body ?? '').match(/^[ \t]*>>> /gm)?.length ?? 0),
+  0,
+);
+const facts = [
+  { value: apiPages.length, label: 'API 문서' },
+  { value: articles.length, label: '구현 글' },
+  { value: examples, label: '실행해서 맞춰 본 예제' },
+  { value: areas.length, label: '영역, 하나의 규칙' },
+];
+
+const strengths = [
+  {
+    glyph: 'rules',
+    title: '어디서나 같은 규칙',
+    body: '같은 개념은 어느 영역에서든 같은 이름, 같은 시그니처, 같은 동작이에요. 배열에서 익힌 옵션과 에러 메시지가 선형대수와 데이터프레임에서도 그대로 통해요.',
+  },
+  {
+    glyph: 'bits',
+    title: '비트까지 같은 결과',
+    body: '같은 기계에서 같은 스레드 수로 같은 입력을 넣으면 몇 번을 돌려도 결과가 마지막 비트까지 같아요. 공개 함수의 결과는 비트까지 기록해 두고 지켜요. 지금은 스레드 수를 바꿔도 결과가 같지만, 그것까지 약속하지는 않아요.',
+  },
+  {
+    glyph: 'reference',
+    title: '정답지와의 대조',
+    body: 'numpy, scipy, pandas를 정답지로 삼아 dtype, 기본값, NaN 처리 같은 동작을 맞추고, 일부러 다르게 만든 곳은 이유와 함께 적었어요. 값의 정확도는 Arb로 만든 참값에 대고 재요.',
+  },
+  {
+    glyph: 'hardware',
+    title: '하드웨어에 맞춘 코어',
+    body: '계산 코어는 C++20이에요. Apple Silicon의 NEON과 Accelerate(BLAS, LAPACK, vForce)를 쓰고, 스레드풀은 직접 만들었어요.',
+  },
+] as const;
+
+// Counted in Korean for the section title ("일곱 영역"); the list itself
+// comes from the area table, so a new area updates both.
+const countWord = ['영', '한', '두', '세', '네', '다섯', '여섯', '일곱', '여덟', '아홉', '열'][areas.length] ?? String(areas.length);
+
+const layers = [
+  { name: 'Python API', role: '사용자가 만나는 면', items: areas.map((a) => a.ns) },
+  { name: '바인딩', role: '확장 모듈 하나', items: ['nanobind', 'stardust._core'] },
+  { name: 'C++20 코어', role: '계산이 일어나는 곳', items: ['커널', '연산', '스레드풀'] },
+  { name: '하드웨어', role: 'Apple Silicon', items: ['NEON', 'BLAS', 'LAPACK', 'vForce'] },
+];
+
+const sample = `import stardust as sd
+
+df = sd.frame.DataFrame({
+    "x1": [1.0, 2.0, 3.0, 4.0],
+    "x2": [0.0, 1.0, 0.0, 1.0],
+    "y":  [1.0, 3.0, 3.0, 5.0],
+})
+
+# 컬럼을 배열로 꺼내 선형대수에 넘겨요
+y = df["y"].to_array()             # 복사 없는 읽기 전용 뷰
+X = df[["x1", "x2"]].to_array()
+
+beta = sd.linalg.lstsq(X, y).solution
+[round(b, 12) for b in beta.tolist()]   # [1.0, 1.0]`;
+---
+
+<Base overDark>
+  <Hero />
+
+  <Section
+    id="strengths"
+    eyebrow="Why stardust"
+    title="다시 만들었기에 지킬 수 있는 것"
+    lead="처음부터 직접 만들면 모든 층을 원하는 대로 정할 수 있어요. stardust는 그 자유로 네 가지를 골랐어요."
+  >
+    <ol class="strengths">
+      {
+        strengths.map((s, i) => (
+          <li class="strength" data-reveal style={`--reveal-i:${i}`}>
+            <div class="strength__top">
+              <span class="strength__no">{String(i + 1).padStart(2, '0')}</span>
+              <Glyph name={s.glyph} />
+            </div>
+            <h3 class="strength__title">{s.title}</h3>
+            <p class="strength__body">{s.body}</p>
+          </li>
+        ))
+      }
+    </ol>
+  </Section>
+
+  <Section
+    id="areas"
+    tone="subtle"
+    eyebrow="Composition"
+    title={`${countWord} 영역, 하나의 라이브러리`}
+    lead="import stardust as sd 한 줄이면 돼요. 영역은 이름공간으로 나뉘지만 규칙은 함께 써요."
+  >
+    <ul class="facts" data-reveal>
+      {
+        facts.map((f) => (
+          <li class="fact">
+            <span class="fact__value">{f.value.toLocaleString('ko-KR')}</span>
+            <span class="fact__label">{f.label}</span>
+          </li>
+        ))
+      }
+    </ul>
+
+    <div class="areas">
+      {
+        areas.map((a, i) => (
+          <div class:list={['areas__cell', `areas__cell--${a.key}`]} data-reveal style={`--reveal-i:${i % 3}`}>
+            <LinkCard
+              href={documented.includes(a.key) ? `/api/${a.key}/` : undefined}
+              title={a.name}
+              meta={a.ns}
+              area={a.key}
+              badge={a.status === 'done' ? '구현 완료' : '구현 중'}
+              badgeTone={a.status === 'done' ? 'ok' : 'neutral'}
+            >
+              <AreaArt slot="art" area={a.key} />
+              {a.desc}
+            </LinkCard>
+          </div>
+        ))
+      }
+    </div>
+
+    <div class="stack" data-reveal>
+      <p class="stack__caption">층 구조</p>
+      <ol class="stack__list">
+        {
+          layers.map((l, i) => (
+            <li class="stack__layer" style={`--depth:${i}`}>
+              <div class="stack__label">
+                <span class="stack__name">{l.name}</span>
+                <span class="stack__role">{l.role}</span>
+              </div>
+              <ul class="stack__items">
+                {l.items.map((item) => (
+                  <li class="stack__chip">{item}</li>
+                ))}
+              </ul>
+            </li>
+          ))
+        }
+      </ol>
+    </div>
+  </Section>
+
+  <Section
+    id="example"
+    tone="dark"
+    split
+    eyebrow="Across areas"
+    title="영역을 넘어, 복사 없이"
+    lead="NA가 없는 숫자 컬럼은 복사 없이 읽기 전용 배열 뷰가 돼요. 그 배열을 선형대수 함수에 바로 넘길 수 있어요."
+  >
+    <figure class="code-card" data-reveal>
+      <figcaption class="code-card__bar">
+        <span class="code-card__dots" aria-hidden="true"><i></i><i></i><i></i></span>
+        <span class="code-card__file">least_squares.py</span>
+      </figcaption>
+      <Code code={sample} lang="python" theme="github-dark-default" />
+    </figure>
+  </Section>
+
+  <section class="cta">
+    <div class="container cta__inner" data-reveal>
+      <h2 class="cta__title">문서에서 더 자세히</h2>
+      <p class="cta__lead">영역별 API와 내부 구현을 문서에 담았어요.</p>
+      <div class="cta__actions">
+        <Button href="/api/" size="lg" arrow>API 레퍼런스</Button>
+        <Button href="/internals/" size="lg" variant="secondary">구현 살펴보기</Button>
+      </div>
+    </div>
+  </section>
+</Base>
+
+<style>
+  /* The first light section picks up the last of the hero's blue. */
+  :global(#strengths) {
+    background: linear-gradient(180deg, var(--blue-100), var(--blue-50) 7rem, var(--bg) 26rem);
+  }
+
+  /* ---- Strengths ---- */
+  .strengths {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    gap: var(--space-10);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .strength {
+    padding-top: var(--space-6);
+    border-top: 1px solid var(--line-strong);
+  }
+  .strength__top {
+    display: flex;
+    align-items: flex-start;
+    justify-content: space-between;
+  }
+  .strength__no {
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    color: var(--accent);
+  }
+  .strength__title {
+    margin-top: var(--space-8);
+    font-size: var(--text-xl);
+    line-height: var(--leading-snug);
+  }
+  .strength__body {
+    margin-top: var(--space-3);
+    font-size: var(--text-base);
+    line-height: 1.75;
+    color: var(--fg-muted);
+  }
+
+  /* ---- Facts strip ---- */
+  .facts {
+    display: grid;
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    margin: 0 0 var(--space-10);
+    padding: 0;
+    list-style: none;
+    border-block: 1px solid var(--line);
+  }
+  .fact {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+    padding: var(--space-5) var(--space-6);
+  }
+  .fact + .fact {
+    border-left: 1px solid var(--line);
+  }
+  .fact__value {
+    font-size: var(--text-3xl);
+    font-weight: 650;
+    letter-spacing: var(--tracking-display);
+    font-variant-numeric: tabular-nums;
+    color: var(--fg);
+  }
+  .fact__label {
+    font-size: var(--text-sm);
+    color: var(--fg-muted);
+  }
+
+  /* ---- Areas ---- */
+  .areas {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: var(--space-5);
+  }
+  .areas > div {
+    display: grid;
+  }
+  /* Twelve cards fill four rows of the three-column grid, none wide. */
+
+  /* ---- Layer stack ---- */
+  .stack {
+    margin-top: var(--space-16);
+  }
+  .stack__caption {
+    font-size: var(--text-sm);
+    font-weight: 650;
+    color: var(--fg-subtle);
+  }
+  /* Four slabs, lightest at the top (what you call) and darkest at the
+     bottom (what runs). Each slab is inset a little more than the one above. */
+  .stack__list {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-5);
+    margin: var(--space-4) 0 0;
+    padding: 0;
+    list-style: none;
+  }
+  .stack__layer {
+    position: relative;
+    display: grid;
+    grid-template-columns: 220px 1fr;
+    align-items: center;
+    gap: var(--space-6);
+    margin-inline: calc(var(--depth) * var(--space-6));
+    padding: var(--space-5) var(--space-6);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    background: var(--bg);
+  }
+  .stack__layer:nth-child(2) {
+    border-color: var(--blue-200);
+    background: var(--blue-50);
+  }
+  .stack__layer:nth-child(3) {
+    border-color: var(--blue-300);
+    background: var(--blue-100);
+  }
+  .stack__layer:nth-child(4) {
+    --fg: #eef3ff;
+    --fg-muted: #a9b6d3;
+    border-color: var(--night-700);
+    background: var(--night-800);
+  }
+  /* Connector to the layer below. */
+  .stack__layer:not(:last-child)::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    width: 1px;
+    height: var(--space-5);
+    background: var(--line-strong);
+  }
+  .stack__label {
+    display: flex;
+    flex-direction: column;
+    gap: var(--space-1);
+  }
+  .stack__name {
+    font-size: var(--text-md);
+    font-weight: 650;
+    line-height: var(--leading-snug);
+    color: var(--fg);
+  }
+  .stack__role {
+    font-size: var(--text-sm);
+    line-height: var(--leading-snug);
+    color: var(--fg-muted);
+  }
+  .stack__items {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2);
+    margin: 0;
+    padding: 0;
+    list-style: none;
+  }
+  .stack__chip {
+    display: inline-flex;
+    align-items: center;
+    height: 28px;
+    padding-inline: var(--space-3);
+    border: 1px solid rgb(37 88 224 / 0.16);
+    border-radius: var(--radius-sm);
+    background: rgb(255 255 255 / 0.7);
+    font-family: var(--font-mono);
+    font-size: var(--text-sm);
+    color: var(--blue-800);
+  }
+  .stack__layer:nth-child(4) .stack__chip {
+    border-color: rgb(190 210 255 / 0.18);
+    background: rgb(255 255 255 / 0.06);
+    color: var(--blue-200);
+  }
+
+  /* ---- Code card ---- */
+  .code-card {
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    background: var(--night-800);
+    box-shadow: 0 24px 64px -24px rgb(0 0 0 / 0.6);
+    overflow: hidden;
+  }
+  .code-card__bar {
+    display: flex;
+    align-items: center;
+    gap: var(--space-4);
+    height: 44px;
+    padding-inline: var(--space-5);
+    border-bottom: 1px solid var(--line);
+  }
+  .code-card__dots {
+    display: flex;
+    gap: 6px;
+  }
+  .code-card__dots i {
+    width: 9px;
+    height: 9px;
+    border-radius: 50%;
+    background: var(--line-strong);
+  }
+  .code-card__file {
+    font-family: var(--font-mono);
+    font-size: var(--text-xs);
+    color: var(--fg-subtle);
+  }
+  .code-card :global(pre) {
+    margin: 0;
+    padding: var(--space-6);
+    background: transparent !important;
+    font-size: var(--text-sm);
+    line-height: 1.75;
+    overflow-x: auto;
+  }
+
+  /* ---- Closing call to action ---- */
+  .cta {
+    padding-block: var(--space-32);
+  }
+  .cta__inner {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+  }
+  .cta__title {
+    font-size: clamp(var(--text-2xl), 3.4vw, var(--text-3xl));
+    letter-spacing: var(--tracking-display);
+  }
+  .cta__lead {
+    margin-top: var(--space-4);
+    font-size: var(--text-lg);
+    color: var(--fg-muted);
+  }
+  .cta__actions {
+    display: flex;
+    flex-wrap: wrap;
+    justify-content: center;
+    gap: var(--space-3);
+    margin-top: var(--space-10);
+  }
+
+  @media (max-width: 1000px) {
+    .strengths {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .areas {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .facts {
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+    .fact:nth-child(3) {
+      border-left: 0;
+    }
+    .fact:nth-child(n + 3) {
+      border-top: 1px solid var(--line);
+    }
+  }
+  @media (max-width: 640px) {
+    .strengths,
+    .areas {
+      grid-template-columns: minmax(0, 1fr);
+    }
+    .strength__title {
+      margin-top: var(--space-4);
+    }
+    .stack__layer {
+      grid-template-columns: 1fr;
+      gap: var(--space-3);
+      margin-inline: calc(var(--depth) * var(--space-2));
+      padding: var(--space-4) var(--space-5);
+    }
+    .cta {
+      padding-block: var(--space-20);
+    }
+  }
+</style>

@@ -1,0 +1,242 @@
+---
+import { getCollection, render } from 'astro:content';
+import Docs from '../../../layouts/Docs.astro';
+import Badge from '../../../components/Badge.astro';
+import { areaCrumbs, areaNav, areaSidebar, groupsOf, hrefOf, isSingle, splitId } from '../../../data/api';
+import RefCard from '../../../components/RefCard.astro';
+import Related from '../../../components/docs/Related.astro';
+import Pager from '../../../components/docs/Pager.astro';
+import { paramIds, printableReturn, signatureHtml } from '../../../lib/signature';
+
+export async function getStaticPaths() {
+  const entries = await getCollection('api');
+  return entries.map((entry) => {
+    const [area, fn] = splitId(entry);
+    return { params: { area, fn }, props: { entry } };
+  });
+}
+
+const { entry } = Astro.props;
+const { area } = Astro.params;
+const { data } = entry;
+const { Content, headings: rawHeadings, remarkPluginFrontmatter } = await render(entry);
+// Headings with math carry their text and TeX pieces for the table of contents.
+const headingParts = remarkPluginFrontmatter.headingParts ?? {};
+const bodyHeadings = rawHeadings.map((h) => ({ ...h, parts: headingParts[h.slug] }));
+
+// Neighbours inside the area, in sidebar order.
+const ordered = (await groupsOf(area)).flatMap((g) => g.entries);
+const at = ordered.findIndex((e) => e.id === entry.id);
+const prev = ordered[at - 1];
+const next = ordered[at + 1];
+const related = data.seeAlso
+  .map((slug) => ordered.find((e) => splitId(e)[1] === slug))
+  .filter((e) => e !== undefined);
+const link = (e: (typeof ordered)[number]) => ({ href: hrefOf(e), title: e.data.title, mono: isSingle(e) });
+
+// The reference card (arguments, return value, errors) is placed by the page
+// body with <Reference />, right after its first section; RefCard reads the
+// data from here.
+Astro.locals.apiEntry = data;
+const hasCard = data.params.length > 0 || data.returns !== undefined || data.raises.length > 0;
+const fixed = hasCard
+  ? [
+      { depth: 2, slug: 'reference', text: '인자와 반환값' },
+      ...[
+        data.params.length > 0 && '인자',
+        data.returns && '반환',
+        data.raises.length > 0 && '에러',
+      ]
+        .filter((t): t is string => Boolean(t))
+        .map((text) => ({ depth: 3, slug: text, text })),
+    ]
+  : [];
+// Signatures wrap over several lines when long; argument names link to their
+// rows in the reference card. A one-name return type follows an arrow.
+const ids = paramIds(data.params);
+const ret = printableReturn(data.returns?.type);
+const sigHtml = data.signatures.map((s) => signatureHtml(s, ids, ret)).join('\n');
+// Phones get a narrower wrap so the signature fits without scrolling.
+const sigHtmlNarrow = data.signatures.map((s) => signatureHtml(s, ids, ret, 34)).join('\n');
+const errorNames = [...new Set(data.raises.map((r) => r.type))];
+
+const [first, ...rest] = bodyHeadings.filter((h) => h.depth <= 3);
+const firstH2 = rest.findIndex((h) => h.depth === 2);
+const headings = [
+  ...(first ? [first] : []),
+  ...(firstH2 === -1 ? rest : rest.slice(0, firstH2)),
+  ...fixed,
+  ...(firstH2 === -1 ? [] : rest.slice(firstH2)),
+  ...(related.length > 0 ? [{ depth: 2, slug: '함께-보기', text: '함께 보기' }] : []),
+];
+---
+
+<Docs
+  title={data.title}
+  description={data.summary}
+  section="api"
+  crumbs={areaCrumbs(area, data.group)}
+  monoTitle={isSingle(entry)}
+  groups={await areaSidebar(area)}
+  area={await areaNav(area)}
+  headings={headings}
+  sample={data.sample}
+>
+  {
+    data.signatures.length > 0 && (
+      <div class="sig" slot="head">
+        <div class="sig__top">
+          <pre class="sig__code"><code class="sig__wide" set:html={sigHtml} /><code class="sig__narrow" set:html={sigHtmlNarrow} /></pre>
+          {data.tag && <Badge tone="accent">{data.tag}</Badge>}
+        </div>
+        {hasCard && (
+          <ul class="sig__facts" aria-label="요약">
+            {data.returns && (
+              <li>
+                <a href="#반환">
+                  <span class="sig__fact-k">반환</span>
+                  <code>{data.returns.type}</code>
+                </a>
+              </li>
+            )}
+            {errorNames.length > 0 && (
+              <li>
+                <a href="#에러">
+                  <span class="sig__fact-k">에러</span>
+                  {errorNames.map((n) => <code>{n}</code>)}
+                </a>
+              </li>
+            )}
+            {related.length > 0 && (
+              <li>
+                <a href="#함께-보기">
+                  <span class="sig__fact-k">함께 보기</span>
+                  {related.slice(0, 3).map((e) => <code>{e.data.title}</code>)}
+                  {related.length > 3 && <span class="sig__fact-more">외 {related.length - 3}</span>}
+                </a>
+              </li>
+            )}
+          </ul>
+        )}
+      </div>
+    )
+  }
+
+  <Content components={{ Reference: RefCard }} />
+
+  <Related items={related.map((e) => ({ ...link(e), summary: e.data.summary, tag: e.data.group }))} />
+  <Pager label="이전·다음 함수" prev={prev && link(prev)} next={next && link(next)} />
+</Docs>
+
+<style>
+  /* ---- Signature ---- */
+  /* The signature belongs to the page head: it sits under the lead, above
+     the rule that separates the head from the body. */
+  .sig {
+    margin-top: var(--space-6);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-md);
+    background: var(--bg-subtle);
+  }
+  .sig__top {
+    display: flex;
+    align-items: flex-start;
+    gap: var(--space-4);
+    padding: var(--space-4) var(--space-5);
+  }
+  .sig__code {
+    flex: 1;
+    min-width: 0;
+    padding: 0;
+    border: 0;
+    border-radius: 0;
+    background: none !important;
+    font-size: var(--text-base);
+    line-height: 1.75;
+    color: var(--slate-700);
+    overflow-x: auto;
+  }
+  .sig__narrow {
+    display: none;
+  }
+  .sig__code :global(.sig__name) {
+    font-weight: 650;
+    color: var(--fg);
+  }
+  .sig__code :global(.sig__arg) {
+    color: var(--blue-700);
+    text-decoration: none;
+  }
+  .sig__code :global(a.sig__arg:hover) {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .sig__code :global(.sig__mark) {
+    color: var(--slate-400);
+  }
+  .sig__code :global(.sig__ret) {
+    color: var(--blue-800);
+    font-weight: 600;
+  }
+
+  /* One row of facts under the signature: what comes back, what can go
+     wrong, where to look next. Each jumps to its part of the page. */
+  .sig__facts {
+    display: flex;
+    flex-wrap: wrap;
+    gap: var(--space-2) var(--space-5);
+    margin: 0;
+    padding: var(--space-3) var(--space-5);
+    border-top: 1px solid var(--line);
+    list-style: none;
+    font-size: var(--text-sm);
+  }
+  .sig__facts li {
+    margin: 0;
+  }
+  .sig__facts a {
+    display: inline-flex;
+    flex-wrap: wrap;
+    align-items: baseline;
+    gap: var(--space-1) var(--space-2);
+    color: inherit;
+    text-decoration: none;
+  }
+  .sig__fact-k {
+    font-weight: 600;
+    color: var(--fg-subtle);
+  }
+  .sig__facts code {
+    font-size: 0.95em;
+    color: var(--blue-800);
+  }
+  .sig__facts a:hover code {
+    text-decoration: underline;
+    text-underline-offset: 3px;
+  }
+  .sig__fact-more {
+    color: var(--fg-subtle);
+  }
+
+  @media (max-width: 640px) {
+    .sig__top {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: var(--space-3);
+      padding: var(--space-4);
+    }
+    .sig__code {
+      width: 100%;
+      font-size: var(--text-sm);
+    }
+    .sig__wide {
+      display: none;
+    }
+    .sig__narrow {
+      display: inline;
+    }
+    .sig__facts {
+      padding-inline: var(--space-4);
+    }
+  }
+</style>

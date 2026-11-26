@@ -1,0 +1,356 @@
+/*
+ * Long-form document typography. Applied to the <article class="prose"> that
+ * wraps MDX content, so authors write plain Markdown and get consistent rhythm.
+ */
+.prose {
+  font-size: var(--text-md);
+  line-height: var(--leading-body);
+  color: var(--slate-700);
+}
+
+.prose > * + * {
+  margin-top: var(--space-5);
+}
+
+.prose h2 {
+  margin-top: var(--space-16);
+  padding-top: var(--space-8);
+  border-top: 1px solid var(--line);
+  font-size: 1.5rem; /* 24 */
+  color: var(--fg);
+}
+
+.prose > :first-child {
+  margin-top: 0;
+  padding-top: 0;
+  border-top: 0;
+}
+
+.prose h3 {
+  margin-top: var(--space-10);
+  font-size: 1.1875rem; /* 19 */
+  color: var(--fg);
+}
+
+.prose h4 {
+  margin-top: var(--space-8);
+  font-size: var(--text-md);
+  color: var(--fg);
+}
+
+/* Direct children only: headings inside components (an API entry's name next
+   to its badge) lay out their own neighbours. */
+.prose > h2 + *,
+.prose > h3 + *,
+.prose > h4 + * {
+  margin-top: var(--space-4);
+}
+
+.prose :is(h2, h3, h4) a {
+  color: inherit;
+}
+
+.prose strong {
+  font-weight: 650;
+  color: var(--fg);
+}
+
+.prose a:not([class]) {
+  color: var(--accent);
+  text-decoration: underline;
+  text-decoration-color: var(--accent-soft-line);
+  text-decoration-thickness: 1px;
+  text-underline-offset: 3px;
+  transition: text-decoration-color var(--dur-fast) var(--ease);
+}
+
+.prose a:not([class]):hover {
+  text-decoration-color: currentColor;
+}
+
+.prose ul,
+.prose ol {
+  padding-left: var(--space-6);
+}
+
+.prose li + li {
+  margin-top: var(--space-2);
+}
+
+.prose li > ul,
+.prose li > ol {
+  margin-top: var(--space-2);
+}
+
+.prose li::marker {
+  color: var(--slate-400);
+}
+
+/* Inline code */
+/* Inline code: a soft tint without a frame, so a sentence with several
+   names in it still reads as a sentence. */
+.prose :not(pre) > code {
+  padding: 0.12em 0.36em;
+  border-radius: 5px;
+  background: var(--slate-100);
+  font-size: 0.86em;
+  color: var(--blue-800);
+  white-space: nowrap;
+}
+
+/* Fenced code (Shiki output) */
+.prose pre {
+  padding: var(--space-4) var(--space-5);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-md);
+  background: var(--bg-subtle) !important;
+  font-size: var(--text-code);
+  line-height: 1.7;
+  overflow-x: auto;
+  tab-size: 4;
+}
+
+.prose pre code {
+  font-size: inherit;
+}
+
+/* Tables */
+.prose table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: var(--text-base);
+  line-height: var(--leading-snug);
+}
+
+/* Wide tables scroll on their own, wherever they sit (also inside lists). */
+.prose table {
+  display: block;
+  max-width: 100%;
+  overflow-x: auto;
+}
+
+.prose th {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--line-strong);
+  font-size: var(--text-sm);
+  font-weight: 600;
+  color: var(--fg-subtle);
+  text-align: left;
+  white-space: nowrap;
+}
+
+.prose td {
+  padding: var(--space-3) var(--space-4);
+  border-bottom: 1px solid var(--line);
+  vertical-align: top;
+}
+
+.prose th:first-child,
+.prose td:first-child {
+  padding-left: 0;
+}
+
+/* A quotation is body text set apart, not a headline: same size and weight,
+   one step quieter, with a rule exactly as tall as the text. */
+.prose blockquote {
+  position: relative;
+  margin-inline: 0;
+  padding-left: var(--space-5);
+  color: var(--fg-muted);
+}
+
+.prose blockquote::before {
+  content: '';
+  position: absolute;
+  inset: 0.35em auto 0.35em 0;
+  width: 3px;
+  border-radius: var(--radius-full);
+  background: var(--slate-300);
+}
+
+.prose blockquote > * + * {
+  margin-top: var(--space-3);
+}
+
+.prose hr {
+  margin-block: var(--space-12);
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+
+/* Interactive-session examples: prompts are decoration, output is quieter. */
+.prose pre.repl .repl-in::before,
+.prose pre.repl .repl-more::before {
+  color: var(--slate-400);
+  user-select: none;
+}
+
+.prose pre.repl .repl-in::before {
+  content: '>>> ';
+}
+
+.prose pre.repl .repl-more::before {
+  content: '... ';
+}
+
+.prose pre.repl .repl-out,
+.prose pre.repl .repl-out span {
+  color: var(--slate-500) !important;
+}
+
+/* Output wraps instead of hiding past the right edge: long error messages
+   stay readable. What one types keeps its lines and scrolls if it must. */
+.prose pre.repl .repl-out {
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+/* Columns (summary tables, aligned arrays) keep their lines and scroll.
+   A step smaller type fits the usual 80-column report in the text column. */
+.prose pre.repl-table {
+  font-size: 0.78125rem; /* 12.5 */
+}
+.prose pre.repl-table .repl-out:not(.repl-msg) {
+  white-space: pre;
+  overflow-wrap: normal;
+}
+
+/* Figures keep their own rhythm inside prose. */
+.prose figure {
+  margin-inline: 0;
+}
+
+/* Code inside a heading is part of the title, not a chip. */
+.prose :is(h2, h3, h4) code {
+  padding: 0;
+  border: 0;
+  background: none;
+  font-size: 0.92em;
+  font-weight: 600;
+  color: inherit;
+}
+
+/* Narrow screens: long inline code may break instead of pushing the page wider. */
+@media (max-width: 640px) {
+  .prose :not(pre) > code {
+    white-space: normal;
+    overflow-wrap: anywhere;
+    -webkit-box-decoration-break: clone;
+    box-decoration-break: clone;
+  }
+}
+
+/* Math: MathJax SVG (STIX Two), drawn at build time. The SVG is sized in
+   ex of the surrounding text, so font-size scales it. At 100% its digits
+   are as tall as the body's; the serif's heavier strokes need no boost. */
+.prose .math mjx-container {
+  font-size: 100%;
+}
+/* The site's reset makes every svg a block; a formula's pieces sit in the
+   line like letters. */
+mjx-container[jax='SVG'] > svg {
+  display: inline;
+  /* Its own size, always: the reset's max-width would shrink a wide formula
+     to an unreadable size instead of letting the fit script decide. */
+  max-width: none;
+}
+/* A point where inline math may break (see toHast in src/lib/mathjax.mjs):
+   a zero-width space with the formula's own space as a margin. The sizes are
+   MathJax's: 1–5 are 2/18 to 6/18 em. */
+.math mjx-container[jax='SVG'] mjx-break {
+  font-family: inherit !important;
+  letter-spacing: 0 !important;
+  clip-path: none;
+}
+.math mjx-break[size='1'] { margin-right: 0.111em; }
+.math mjx-break[size='2'] { margin-right: 0.167em; }
+.math mjx-break[size='3'] { margin-right: 0.222em; }
+.math mjx-break[size='4'] { margin-right: 0.278em; }
+.math mjx-break[size='5'] { margin-right: 0.333em; }
+/* Text the math font has no glyph for (Korean in \text{...}) is an SVG
+   <text>; it is set in the body font. */
+mjx-container text {
+  font-family: var(--font-sans);
+}
+/* A display formula that is wider than the column is first scaled down to
+   fit (--math-fit, set by the script in Docs.astro); one that would get too
+   small keeps a readable size and scrolls on its own instead of the page. */
+.prose .math-display {
+  margin-block: var(--space-6);
+  padding-block: var(--space-2);
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: thin;
+  scrollbar-color: var(--line-strong) transparent;
+}
+.prose .math-display mjx-container {
+  margin: 0;
+  padding: 0;
+  font-size: calc(106% * var(--math-fit, 1));
+}
+.prose .math-display.is-scrolling mjx-container {
+  /* Left-aligned, so the start of the formula is what shows. */
+  text-align: left;
+  justify-content: left;
+}
+.prose .math-display.is-scrolling {
+  padding-bottom: var(--space-3);
+}
+/* Formulas inside a table cell or a list stay closer to the text. */
+.prose li > .math-display,
+.prose td .math-display {
+  margin-block: var(--space-4);
+}
+
+/* Cells that list several lines (<br />) need room for inline code chips. */
+.prose td:has(br) {
+  line-height: 2;
+}
+
+/* A first column of short labels with a note under them stays narrow. */
+.prose td:first-child:has(br) {
+  min-width: 9.5rem;
+  line-height: var(--leading-snug);
+  color: var(--fg-subtle);
+  font-size: var(--text-sm);
+}
+
+.prose td:first-child:has(br) strong {
+  display: inline-block;
+  margin-bottom: var(--space-1);
+  font-size: var(--text-base);
+}
+
+/* Copy button: quiet until the block is hovered or the button focused. */
+.prose .code-wrap {
+  position: relative;
+}
+.prose .code-copy {
+  position: absolute;
+  top: var(--space-2);
+  right: var(--space-2);
+  padding: 2px var(--space-2);
+  border: 1px solid var(--line);
+  border-radius: var(--radius-sm);
+  background: var(--bg);
+  font-family: inherit;
+  font-size: var(--text-xs);
+  line-height: 1.6;
+  color: var(--fg-subtle);
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 120ms var(--ease);
+}
+.prose .code-wrap:hover .code-copy,
+.prose .code-copy:focus-visible {
+  opacity: 1;
+}
+.prose .code-copy:hover {
+  color: var(--fg);
+  border-color: var(--line-strong);
+}
+@media (hover: none) {
+  .prose .code-copy {
+    opacity: 1;
+  }
+}

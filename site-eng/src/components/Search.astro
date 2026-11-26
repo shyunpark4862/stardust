@@ -1,0 +1,369 @@
+---
+/**
+ * Site search: a button in the header and a palette over the page (⌘K or
+ * Ctrl+K). The index (/search.json) loads on first open; matching runs in
+ * the browser over titles, public names, summaries and places.
+ */
+---
+
+<button class="search-btn" type="button" aria-haspopup="dialog" aria-label="문서 검색 (⌘K)">
+  <svg width="15" height="15" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+    <circle cx="6" cy="6" r="4.25" stroke="currentColor" stroke-width="1.5"></circle>
+    <path d="m9.25 9.25 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path>
+  </svg>
+  <span class="search-btn__label">검색</span>
+  <kbd class="search-btn__key">⌘K</kbd>
+</button>
+
+<dialog class="search" aria-label="문서 검색">
+  <div class="search__panel">
+    <div class="search__field">
+      <svg width="16" height="16" viewBox="0 0 14 14" fill="none" aria-hidden="true">
+        <circle cx="6" cy="6" r="4.25" stroke="currentColor" stroke-width="1.5"></circle>
+        <path d="m9.25 9.25 3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"></path>
+      </svg>
+      <input
+        class="search__input"
+        type="search"
+        placeholder="함수 이름이나 주제로 찾기 (예: lstsq, 감마, groupby)"
+        aria-label="검색어"
+        aria-controls="search-results"
+        autocomplete="off"
+        spellcheck="false"
+      />
+      <kbd class="search__esc">esc</kbd>
+    </div>
+    <ul class="search__results" id="search-results" role="listbox" aria-label="검색 결과"></ul>
+    <p class="search__hint">↑↓로 고르고 Enter로 열어요. API 문서와 구현 글을 함께 찾아요.</p>
+  </div>
+</dialog>
+
+<script>
+  import { url } from '../lib/url';
+
+  interface Item {
+    t: string; // title
+    n: string[]; // public names
+    s: string; // summary
+    h: string; // href from the site root
+    a: string; // area key
+    p: string; // place: "API · 통계 · 연속 분포"
+    m: number; // 1: title in the code font
+  }
+
+  const dialog = document.querySelector<HTMLDialogElement>('.search')!;
+  const input = dialog.querySelector<HTMLInputElement>('.search__input')!;
+  const list = dialog.querySelector<HTMLUListElement>('.search__results')!;
+  let items: Item[] | null = null;
+  // The area of the page being read: its pages come first in the results.
+  const here = document.querySelector<HTMLElement>('.docs[data-area]')?.dataset.area;
+  let shown: Item[] = [];
+  let active = 0;
+
+  const load = async () => {
+    if (items) return;
+    try {
+      items = await (await fetch(url('/search.json'))).json();
+    } catch {
+      items = [];
+    }
+  };
+
+  // Higher is better; 0 drops the page. Names and titles outweigh summaries,
+  // and every word of the query must appear somewhere.
+  const score = (it: Item, q: string, words: string[]) => {
+    const title = it.t.toLowerCase();
+    const names = it.n.map((n) => n.toLowerCase());
+    const short = names.map((n) => n.split('.').pop()!);
+    const hay = `${title} ${names.join(' ')} ${it.p.toLowerCase()} ${it.s.toLowerCase()}`;
+    if (!words.every((w) => hay.includes(w))) return 0;
+    let s = 1;
+    if (title === q || names.includes(q) || short.includes(q)) s += 100;
+    else if (title.startsWith(q) || short.some((n) => n.startsWith(q))) s += 60;
+    else if (title.includes(q) || names.some((n) => n.includes(q))) s += 35;
+    for (const w of words) {
+      if (title.includes(w)) s += 8;
+      if (it.p.toLowerCase().includes(w)) s += 3;
+      if (it.s.toLowerCase().includes(w)) s += 1;
+    }
+    if (it.h.startsWith('/api/')) s += 2;
+    if (here && it.a === here) s += 12;
+    return s;
+  };
+
+  const escape = (t: string) => t.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+  const render = () => {
+    const q = input.value.trim().toLowerCase();
+    if (!q || !items) {
+      shown = [];
+      list.innerHTML = '';
+      return;
+    }
+    const words = q.split(/\s+/);
+    shown = items
+      .map((it) => [it, score(it, q, words)] as const)
+      .filter(([, s]) => s > 0)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 30)
+      .map(([it]) => it);
+    active = 0;
+    list.innerHTML = shown.length
+      ? shown
+          .map(
+            (it, i) => `<li role="option" id="search-opt-${i}" aria-selected="${i === 0}" data-area="${it.a}">
+              <a class="search__item" href="${url(it.h)}" tabindex="-1">
+                <span class="search__top"><i class="search__dot" aria-hidden="true"></i><span class="search__title${it.m ? ' search__title--mono' : ''}">${escape(it.t)}</span><span class="search__place">${escape(it.p)}</span></span>
+                <span class="search__sum">${escape(it.s)}</span>
+              </a></li>`,
+          )
+          .join('')
+      : '<li class="search__empty">맞는 문서가 없어요.</li>';
+    sync();
+  };
+
+  const sync = () => {
+    list.querySelectorAll<HTMLLIElement>('[role="option"]').forEach((li, i) => {
+      li.setAttribute('aria-selected', String(i === active));
+      if (i === active) li.scrollIntoView({ block: 'nearest' });
+    });
+    input.setAttribute('aria-activedescendant', shown.length ? `search-opt-${active}` : '');
+  };
+
+  const open = async () => {
+    if (!dialog.open) dialog.showModal();
+    input.select();
+    await load();
+    render();
+  };
+
+  document.querySelectorAll('.search-btn').forEach((b) => b.addEventListener('click', open));
+  addEventListener('keydown', (e) => {
+    if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === 'k') {
+      e.preventDefault();
+      if (dialog.open) dialog.close();
+      else open();
+      return;
+    }
+    // "/" opens it too, unless one is typing somewhere.
+    const t = e.target as HTMLElement;
+    if (e.key === '/' && !dialog.open && !/^(INPUT|TEXTAREA|SELECT)$/.test(t.tagName) && !t.isContentEditable) {
+      e.preventDefault();
+      open();
+    }
+  });
+  input.addEventListener('input', render);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'ArrowDown' || e.key === 'ArrowUp') {
+      e.preventDefault();
+      if (!shown.length) return;
+      active = (active + (e.key === 'ArrowDown' ? 1 : shown.length - 1)) % shown.length;
+      sync();
+    } else if (e.key === 'Enter' && shown[active]) {
+      e.preventDefault();
+      location.href = url(shown[active].h);
+    }
+  });
+  list.addEventListener('mousemove', (e) => {
+    const li = (e.target as HTMLElement).closest<HTMLLIElement>('[role="option"]');
+    const i = li ? [...list.children].indexOf(li) : -1;
+    if (i >= 0 && i !== active) {
+      active = i;
+      sync();
+    }
+  });
+  // A click on the backdrop (outside the panel) closes the palette.
+  dialog.addEventListener('click', (e) => {
+    if (e.target === dialog) dialog.close();
+  });
+</script>
+
+<!-- Global: the result rows are built in the browser, outside Astro's
+     scoped styles. Every class starts with "search". -->
+<style is:global>
+  .search-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: var(--space-2);
+    height: 34px;
+    margin-right: var(--space-2);
+    padding: 0 var(--space-2) 0 var(--space-3);
+    border: 1px solid var(--line);
+    border-radius: var(--radius-sm);
+    background: var(--bg-subtle);
+    font: inherit;
+    font-size: var(--text-sm);
+    color: var(--fg-subtle);
+    cursor: pointer;
+    transition:
+      color var(--dur-fast) var(--ease),
+      border-color var(--dur-fast) var(--ease);
+  }
+  .search-btn:hover {
+    color: var(--fg);
+    border-color: var(--line-strong);
+  }
+  .search-btn__label {
+    min-width: 5.5em;
+    text-align: left;
+  }
+  .search-btn__key,
+  .search__esc {
+    padding: 1px 6px;
+    border: 1px solid var(--line);
+    border-radius: 4px;
+    font-family: var(--font-sans);
+    font-size: var(--text-xs);
+    color: var(--fg-subtle);
+  }
+  @media (max-width: 800px) {
+    .search-btn {
+      width: 44px;
+      height: 44px;
+      justify-content: center;
+      margin-right: 0;
+      padding: 0;
+      border: 0;
+      background: none;
+    }
+    .search-btn__label,
+    .search-btn__key {
+      display: none;
+    }
+  }
+
+  /* The palette sits in the header, which is a dark surface over the hero;
+     it always uses the light surface. */
+  .search {
+    --bg: #ffffff;
+    --bg-subtle: var(--slate-50);
+    --fg: var(--slate-900);
+    --fg-muted: var(--slate-600);
+    --fg-subtle: var(--slate-500);
+    --line: var(--slate-200);
+    --line-strong: var(--slate-300);
+    --accent: var(--blue-600);
+    --area: var(--blue-600);
+    --area-soft: var(--blue-50);
+    width: min(680px, calc(100vw - 2 * var(--gutter)));
+    max-height: none;
+    margin: 12vh auto auto;
+    padding: 0;
+    border: 1px solid var(--line);
+    border-radius: var(--radius-lg);
+    background: var(--bg);
+    color: var(--slate-700);
+    box-shadow: 0 24px 64px -16px rgb(4 8 22 / 0.35);
+  }
+  .search::backdrop {
+    background: rgb(4 8 22 / 0.42);
+    backdrop-filter: blur(3px);
+  }
+  .search__field {
+    display: flex;
+    align-items: center;
+    gap: var(--space-3);
+    padding: 0 var(--space-5);
+    border-bottom: 1px solid var(--line);
+    color: var(--fg-subtle);
+  }
+  .search__input {
+    flex: 1;
+    min-width: 0;
+    height: 56px;
+    border: 0;
+    outline: none;
+    background: none;
+    font: inherit;
+    font-size: var(--text-md);
+    color: var(--fg);
+  }
+  .search__input::-webkit-search-cancel-button {
+    display: none;
+  }
+  .search__results {
+    max-height: min(56vh, 520px);
+    margin: 0;
+    padding: var(--space-2);
+    overflow-y: auto;
+    list-style: none;
+  }
+  .search__results:empty {
+    display: none;
+  }
+  .search__results li {
+    margin: 0;
+  }
+  .search__item {
+    display: block;
+    padding: var(--space-3);
+    border-radius: var(--radius-md);
+    color: inherit;
+    text-decoration: none;
+  }
+  [aria-selected='true'] > .search__item {
+    background: var(--area-soft);
+  }
+  .search__top {
+    display: flex;
+    align-items: baseline;
+    gap: var(--space-2);
+  }
+  .search__dot {
+    flex: none;
+    width: 7px;
+    height: 7px;
+    border-radius: var(--radius-full);
+    background: var(--area);
+    transform: translateY(-1px);
+  }
+  .search__title {
+    font-weight: 600;
+    color: var(--fg);
+  }
+  .search__title--mono {
+    font-family: var(--font-mono);
+    font-size: var(--text-base);
+  }
+  [aria-selected='true'] .search__title {
+    color: var(--area);
+  }
+  .search__place {
+    margin-left: auto;
+    flex: none;
+    font-size: var(--text-xs);
+    color: var(--fg-subtle);
+  }
+  .search__sum {
+    display: -webkit-box;
+    margin-top: var(--space-1);
+    padding-left: calc(7px + var(--space-2));
+    overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 1;
+    font-size: var(--text-sm);
+    line-height: 1.6;
+    color: var(--fg-muted);
+  }
+  .search__empty {
+    padding: var(--space-6) var(--space-3);
+    font-size: var(--text-sm);
+    color: var(--fg-subtle);
+    text-align: center;
+  }
+  .search__hint {
+    margin: 0;
+    padding: var(--space-3) var(--space-5);
+    border-top: 1px solid var(--line);
+    font-size: var(--text-xs);
+    color: var(--fg-subtle);
+  }
+  @media (max-width: 640px) {
+    .search {
+      margin-top: var(--space-4);
+    }
+    .search__place {
+      display: none;
+    }
+  }
+</style>

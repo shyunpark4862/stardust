@@ -1,0 +1,77 @@
+---
+interface Props {
+  id?: string;
+  eyebrow?: string;
+  title: string;
+  lead?: string;
+  tone?: 'default' | 'subtle' | 'dark';
+  /** Put the heading and the body side by side on wide screens. */
+  split?: boolean;
+}
+const { id, eyebrow, title, lead, tone = 'default', split = false } = Astro.props;
+---
+
+<section id={id} class:list={['section', `section--${tone}`]} data-surface={tone === 'dark' ? 'dark' : undefined}>
+  <div class:list={['container', split && 'section__split']}>
+    <header class="section__head" data-reveal>
+      {eyebrow && <p class="eyebrow">{eyebrow}</p>}
+      <h2 class="section__title">{title}</h2>
+      {lead && <p class="section__lead">{lead}</p>}
+    </header>
+    <div class="section__body"><slot /></div>
+  </div>
+</section>
+
+<style>
+  .section {
+    padding-block: var(--space-32);
+    background: var(--bg);
+    /* Land flush under the header (cancels the extra reading offset that
+       document headings get from scroll-padding). */
+    scroll-margin-top: calc(var(--space-6) * -1);
+  }
+  .section--subtle {
+    border-block: 1px solid var(--line);
+    background: var(--bg-subtle);
+  }
+  .section--dark {
+    background: var(--night-900);
+  }
+  .section__head {
+    max-width: 40rem;
+  }
+  .section__title {
+    margin-top: var(--space-4);
+    font-size: clamp(var(--text-2xl), 3.4vw, var(--text-3xl));
+    letter-spacing: var(--tracking-display);
+    line-height: 1.25;
+  }
+  .section__lead {
+    margin-top: var(--space-4);
+    font-size: var(--text-lg);
+    line-height: 1.7;
+    color: var(--fg-muted);
+  }
+  .section__body {
+    margin-top: var(--space-16);
+  }
+  @media (min-width: 1001px) {
+    .section__split {
+      display: grid;
+      grid-template-columns: minmax(0, 5fr) minmax(0, 7fr);
+      gap: var(--space-16);
+      align-items: center;
+    }
+    .section__split .section__body {
+      margin-top: 0;
+    }
+  }
+  @media (max-width: 800px) {
+    .section {
+      padding-block: var(--space-20);
+    }
+    .section__body {
+      margin-top: var(--space-10);
+    }
+  }
+</style>

@@ -1,0 +1,321 @@
+---
+/**
+ * A small line drawing for an area card on the landing page: what the area
+ * works with, in the area's colour. Decorative only.
+ */
+interface Props {
+  area: string;
+}
+const { area } = Astro.props;
+
+// Bell curve and gamma-like curve, sampled once at build time.
+const pts = (f: (x: number) => number, x0: number, x1: number, n = 48) =>
+  Array.from({ length: n + 1 }, (_, i) => {
+    const x = x0 + ((x1 - x0) * i) / n;
+    return [x, f(x)] as const;
+  });
+const path = (p: readonly (readonly [number, number])[]) =>
+  p.map(([x, y], i) => `${i ? 'L' : 'M'}${x.toFixed(1)} ${y.toFixed(1)}`).join(' ');
+const bell = pts((x) => 56 - 44 * Math.exp(-(((x - 80) / 18) ** 2)), 20, 140);
+const gamma = pts((x) => {
+  const t = (x - 16) / 22;
+  return 58 - 46 * (t > 0 ? t * Math.exp(1 - t) : 0);
+}, 16, 150);
+// Fixed pseudo-random points so every build draws the same picture.
+const rand = (seed: number) => () => ((seed = (seed * 16807) % 2147483647) - 1) / 2147483646;
+const r1 = rand(7);
+const dots = Array.from({ length: 34 }, () => [16 + r1() * 136, 8 + r1() * 50, 0.35 + r1() * 0.65]);
+// A banded matrix with a few stray entries: only the stored cells are drawn.
+const r3 = rand(11);
+const sparseCells = Array.from({ length: 5 }, (_, r) =>
+  Array.from({ length: 10 }, (_, c) => [r, c] as const).filter(([rr, c]) => Math.abs(c - 2 * rr - 0.5) < 1.6 || r3() < 0.06),
+)
+  .flat()
+  .map(([r, c]) => [r, c, Math.abs(c - 2 * r - 0.5) < 1.6 ? 0.75 : 0.35] as const);
+// A heavy-tailed null density for the test card.
+const tdist = pts((x) => 56 - 44 / (1 + ((x - 72) / 16) ** 2) ** 1.5, 16, 150);
+// A smooth curve with the trapezoid panels of a quadrature rule under it.
+const waveF = (x: number) => 34 - 14 * Math.sin((x - 16) / 22) - 5 * Math.cos((x - 16) / 9);
+const wave = pts(waveF, 16, 156);
+const quadPanels = Array.from({ length: 7 }, (_, i) => {
+  const x0 = 16 + i * 20;
+  return [x0, x0 + 20, waveF(x0), waveF(x0 + 20)] as const;
+});
+// A curve, the point where it is differentiated, its tangent and the step samples.
+const slopeF = (x: number) => 52 - 0.0018 * (x - 16) ** 2 - 6 * Math.sin((x - 16) / 18);
+const slope = pts(slopeF, 16, 156);
+const tanAt = 112;
+const tanY = slopeF(tanAt);
+const tanK = (slopeF(tanAt + 0.01) - slopeF(tanAt - 0.01)) / 0.02;
+// Two branches of a curve with a pole between them, as a function plot draws it:
+// the line stops at the pole and the axes carry ticks.
+const poleX = 96;
+const branchF = (x: number) => 32 - 9 / ((x - poleX) / 18);
+const branchL = pts(branchF, 30, poleX - 3, 40).filter(([, y]) => y > 4 && y < 56);
+const branchR = pts(branchF, poleX + 3, 156, 40).filter(([, y]) => y > 4 && y < 56);
+// Points, a query point, the radius around it and the neighbours inside it.
+const r4 = rand(19);
+const nnPts = Array.from({ length: 30 }, () => [18 + r4() * 134, 8 + r4() * 50] as const);
+const nnQ = [86, 33] as const;
+const nnR = 19;
+// A two-tone signal over its spectrum: two tall lines among small ones.
+const sigF = (x: number) => 20 - 7 * Math.sin((x - 16) / 7) - 5 * Math.sin((x - 16) / 2.6);
+const sig = pts(sigF, 16, 156, 96);
+const spec = Array.from({ length: 24 }, (_, k) => [19 + k * 5.9, k === 3 ? 20 : k === 8 ? 14 : 1.5 + ((k * 7) % 5) * 0.5] as const);
+// Data points and the smooth curve through them (Catmull-Rom, drawn as Beziers).
+const knots = [[18, 44], [42, 22], [66, 36], [90, 12], [114, 30], [138, 48], [156, 26]] as const;
+const spline = knots
+  .map((p, i) => {
+    if (i === 0) return `M${p[0]} ${p[1]}`;
+    const p0 = knots[Math.max(i - 2, 0)], p1 = knots[i - 1], p3 = knots[Math.min(i + 1, knots.length - 1)];
+    return `C${(p1[0] + (p[0] - p0[0]) / 6).toFixed(1)} ${(p1[1] + (p[1] - p0[1]) / 6).toFixed(1)} ${(p[0] - (p3[0] - p1[0]) / 6).toFixed(1)} ${(p[1] - (p3[1] - p1[1]) / 6).toFixed(1)} ${p[0]} ${p[1]}`;
+  })
+  .join('');
+// A small graph and the shortest path through it.
+const gNodes = [[20, 34], [48, 12], [50, 52], [82, 30], [112, 12], [114, 52], [150, 32]] as const;
+const gEdges = [[0, 1], [0, 2], [1, 3], [2, 3], [1, 4], [3, 4], [3, 5], [2, 5], [4, 6], [5, 6]] as const;
+const gPath = [[0, 1], [1, 3], [3, 5], [5, 6]] as const;
+const nnHits = nnPts.filter(([x, y]) => Math.hypot(x - nnQ[0], y - nnQ[1]) <= nnR);
+// Noisy points around a smooth trend, the curve a smoother draws through them and
+// the window of one local fit (its weights as a faint bump under the curve).
+const smoothF = (x: number) => 34 - 13 * Math.sin((x - 16) / 24) - 4 * Math.cos((x - 16) / 11);
+const smoothCurve = pts(smoothF, 16, 156);
+const r5 = rand(23);
+const smoothPts = Array.from({ length: 28 }, (_, i) => {
+  const x = 18 + i * 5 + r5() * 2.5;
+  return [x, smoothF(x) + (r5() - 0.5) * 18] as const;
+});
+const winAt = 98;
+const winW = 22;
+const winBump = pts((x) => 60 - 14 * Math.max(0, 1 - Math.abs((x - winAt) / winW) ** 3) ** 3, winAt - winW, winAt + winW, 32);
+const r2 = rand(3);
+const scatter = Array.from({ length: 16 }, (_, i) => {
+  const x = 20 + i * 8 + r2() * 4;
+  return [x, 54 - (x - 20) * 0.3 + (r2() - 0.5) * 14];
+});
+---
+
+<svg class="art" viewBox="0 0 168 64" preserveAspectRatio="xMinYMid meet" aria-hidden="true">
+  {
+    area === 'array' &&
+      [0, 1, 2].map((r) =>
+        [0, 1, 2, 3, 4, 5].map((c) => (
+          <rect x={16 + c * 22} y={6 + r * 19} width="17" height="15" rx="3" fill="var(--area)" opacity={0.12 + ((r * 6 + c) % 7) * 0.11} />
+        )),
+      )
+  }
+  {
+    area === 'linalg' && (
+      <g fill="none" stroke="var(--area)" stroke-width="1.6" stroke-linecap="round">
+        <path d="M22 6h-6v52h6M98 6h6v52h-6" />
+        {[0, 1, 2, 3].map((i) =>
+          [0, 1, 2, 3].map((j) => (
+            <circle cx={30 + j * 20} cy={13 + i * 13} r={i === j ? 4 : j > i ? 2.4 : 1.4} fill="var(--area)" stroke="none" opacity={i === j ? 1 : j > i ? 0.5 : 0.25} />
+          )),
+        )}
+        <path d="M118 32h18m-6-6 6 6-6 6" />
+        <path d="M148 10v44" opacity="0.4" />
+      </g>
+    )
+  }
+  {
+    area === 'sparse' && (
+      <g>
+        <rect x="16" y="6" width="104" height="52" rx="3" fill="none" stroke="var(--line-strong)" stroke-width="1" />
+        {sparseCells.map(([r, c, o]) => (
+          <rect x={19 + c * 10} y={9 + r * 10} width="7" height="7" rx="1.5" fill="var(--area)" opacity={o} />
+        ))}
+        <path d="M128 32h12m-5-5 5 5-5 5" fill="none" stroke="var(--area)" stroke-width="1.6" stroke-linecap="round" />
+        {[0, 1, 2].map((i) => (
+          <rect x="146" y={14 + i * 13} width="8" height="8" rx="1.5" fill="var(--area)" opacity={0.85 - i * 0.2} />
+        ))}
+      </g>
+    )
+  }
+  {
+    area === 'htest' && (
+      <g>
+        <path d={`M110 ${tdist.find(([x]) => x >= 110)![1].toFixed(1)} ${path(tdist.filter(([x]) => x >= 110)).replace(/^M/, 'L')} L150 56 L110 56 Z`} fill="var(--area)" opacity="0.22" />
+        <path d={path(tdist)} fill="none" stroke="var(--area)" stroke-width="2" stroke-linecap="round" />
+        <path d="M16 56H152" stroke="var(--line-strong)" stroke-width="1" />
+        <path d="M122 60V20" stroke="var(--area)" stroke-width="1.6" stroke-linecap="round" stroke-dasharray="3 3" />
+        <circle cx="122" cy="20" r="3" fill="var(--area)" />
+      </g>
+    )
+  }
+  {
+    area === 'frame' && (
+      <g>
+        <rect x="16" y="6" width="136" height="12" rx="3" fill="var(--area)" opacity="0.85" />
+        {[0, 1, 2].map((r) => (
+          <g>
+            {[0, 1, 2, 3].map((c) => (
+              <rect x={16 + c * 35} y={24 + r * 13} width={c === 0 ? 22 : 30} height="8" rx="2" fill="var(--area)" opacity={r === 1 && c === 2 ? 0.08 : 0.22} />
+            ))}
+          </g>
+        ))}
+        <text x="92" y="44" font-size="7" font-family="var(--font-mono)" fill="var(--area)">NA</text>
+      </g>
+    )
+  }
+  {
+    area === 'special' && (
+      <g fill="none" stroke-linecap="round">
+        <path d="M16 58H156M16 58V6" stroke="var(--line-strong)" stroke-width="1" />
+        <path d={path(gamma)} stroke="var(--area)" stroke-width="2" />
+        <path d={path(gamma.map(([x, y]) => [x, 58 - (58 - y) * 0.55]))} stroke="var(--area)" stroke-width="1.4" opacity="0.45" />
+      </g>
+    )
+  }
+  {
+    area === 'stats' && (
+      <g>
+        <path d={`${path(bell.filter(([x]) => x <= 92))} L92 56 L20 56 Z`} fill="var(--area)" opacity="0.16" />
+        <path d={path(bell)} fill="none" stroke="var(--area)" stroke-width="2" stroke-linecap="round" />
+        <path d="M16 56H148" stroke="var(--line-strong)" stroke-width="1" />
+      </g>
+    )
+  }
+  {
+    area === 'regression' && (
+      <g>
+        {scatter.map(([x, y]) => (
+          <circle cx={x} cy={y} r="2.6" fill="var(--area)" opacity="0.45" />
+        ))}
+        <path d="M16 56L156 14" stroke="var(--area)" stroke-width="2" stroke-linecap="round" />
+      </g>
+    )
+  }
+  {
+    area === 'optimize' && (
+      <g>
+        {[0.35, 0.65, 1].map((k) => (
+          <ellipse cx="104" cy="34" rx={52 * k} ry={24 * k} fill="none" stroke="var(--area)" stroke-width="1" opacity={0.25 + 0.2 * (1 - k)} transform="rotate(-12 104 34)" />
+        ))}
+        <path d="M30 52L58 22L80 46L94 27L101 37L104 34" fill="none" stroke="var(--area)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" />
+        {[[30, 52], [58, 22], [80, 46], [94, 27], [101, 37]].map(([x, y]) => (
+          <circle cx={x} cy={y} r="2.4" fill="var(--area)" opacity="0.55" />
+        ))}
+        <circle cx="104" cy="34" r="3.6" fill="var(--area)" />
+      </g>
+    )
+  }
+  {
+    area === 'integrate' && (
+      <g>
+        {quadPanels.map(([x0, x1, y0, y1]) => (
+          <path d={`M${x0} 56L${x0} ${y0.toFixed(1)}L${x1} ${y1.toFixed(1)}L${x1} 56Z`} fill="var(--area)" opacity="0.18" stroke="var(--area)" stroke-width="0.8" stroke-opacity="0.45" />
+        ))}
+        <path d={path(wave)} fill="none" stroke="var(--area)" stroke-width="2" stroke-linecap="round" />
+        <path d="M16 56H156" stroke="var(--line-strong)" stroke-width="1" />
+      </g>
+    )
+  }
+  {
+    area === 'differentiate' && (
+      <g>
+        <path d={path(slope)} fill="none" stroke="var(--area)" stroke-width="2" stroke-linecap="round" />
+        <path d={`M${tanAt - 30} ${(tanY - 30 * tanK).toFixed(1)}L${tanAt + 30} ${(tanY + 30 * tanK).toFixed(1)}`} stroke="var(--area)" stroke-width="1.4" stroke-dasharray="4 3" opacity="0.7" />
+        {[-12, -6, 6, 12].map((h) => (
+          <circle cx={tanAt + h} cy={slopeF(tanAt + h)} r="1.8" fill="var(--area)" opacity="0.45" />
+        ))}
+        <circle cx={tanAt} cy={tanY} r="3.4" fill="var(--area)" />
+      </g>
+    )
+  }
+  {
+    area === 'spatial' && (
+      <g>
+        {nnPts.map(([x, y]) => (
+          <circle cx={x} cy={y} r="2" fill="var(--area)" opacity="0.35" />
+        ))}
+        <circle cx={nnQ[0]} cy={nnQ[1]} r={nnR} fill="var(--area)" opacity="0.08" stroke="var(--area)" stroke-width="1" stroke-dasharray="3 3" />
+        {nnHits.map(([x, y]) => (
+          <path d={`M${nnQ[0]} ${nnQ[1]}L${x} ${y}`} stroke="var(--area)" stroke-width="1.2" opacity="0.7" />
+        ))}
+        {nnHits.map(([x, y]) => (
+          <circle cx={x} cy={y} r="2.6" fill="var(--area)" />
+        ))}
+        <circle cx={nnQ[0]} cy={nnQ[1]} r="3.6" fill="none" stroke="var(--area)" stroke-width="1.8" />
+      </g>
+    )
+  }
+  {
+    area === 'fft' && (
+      <g fill="none">
+        <path d={path(sig)} stroke="var(--area)" stroke-width="1.6" opacity="0.55" />
+        <path d="M16 58H158" stroke="var(--line-strong)" stroke-width="1" />
+        {spec.map(([x, h]) => (
+          <path d={`M${x} 58V${58 - h}`} stroke="var(--area)" stroke-width="2.4" stroke-linecap="round" />
+        ))}
+      </g>
+    )
+  }
+  {
+    area === 'interpolate' && (
+      <g>
+        <path d={knots.map((p, i) => `${i ? 'L' : 'M'}${p[0]} ${p[1]}`).join('')} fill="none" stroke="var(--area)" stroke-width="1" stroke-dasharray="3 3" opacity="0.45" />
+        <path d={spline} fill="none" stroke="var(--area)" stroke-width="2" stroke-linecap="round" />
+        {knots.map(([x, y]) => (
+          <circle cx={x} cy={y} r="3" fill="var(--bg)" stroke="var(--area)" stroke-width="1.6" />
+        ))}
+      </g>
+    )
+  }
+  {
+    area === 'smooth' && (
+      <g>
+        <path d={`${path(winBump)}Z`} fill="var(--area)" opacity="0.1" />
+        {smoothPts.map(([x, y]) => (
+          <circle cx={x} cy={y} r="1.9" fill="var(--area)" opacity={Math.abs(x - winAt) < winW ? 0.7 : 0.3} />
+        ))}
+        <path d={path(smoothCurve)} fill="none" stroke="var(--area)" stroke-width="2" stroke-linecap="round" />
+        <circle cx={winAt} cy={smoothF(winAt)} r="3.2" fill="var(--bg)" stroke="var(--area)" stroke-width="1.6" />
+      </g>
+    )
+  }
+  {
+    area === 'graph' && (
+      <g>
+        {gEdges.map(([a, b]) => (
+          <path d={`M${gNodes[a][0]} ${gNodes[a][1]}L${gNodes[b][0]} ${gNodes[b][1]}`} stroke="var(--area)" stroke-width="1" opacity="0.35" />
+        ))}
+        {gPath.map(([a, b]) => (
+          <path d={`M${gNodes[a][0]} ${gNodes[a][1]}L${gNodes[b][0]} ${gNodes[b][1]}`} stroke="var(--area)" stroke-width="2.2" stroke-linecap="round" />
+        ))}
+        {gNodes.map(([x, y]) => (
+          <circle cx={x} cy={y} r="3.4" fill="var(--bg)" stroke="var(--area)" stroke-width="1.6" />
+        ))}
+      </g>
+    )
+  }
+  {
+    area === 'plot' && (
+      <g fill="none" stroke-linecap="round">
+        <path d="M22 58H158M22 58V6" stroke="var(--line-strong)" stroke-width="1" />
+        {[46, 70, 94, 118, 142].map((x) => (
+          <path d={`M${x} 58v3`} stroke="var(--line-strong)" stroke-width="1" />
+        ))}
+        {[14, 30, 46].map((y) => (
+          <path d={`M22 ${y}h-3`} stroke="var(--line-strong)" stroke-width="1" />
+        ))}
+        <path d={`M${poleX} 6V58`} stroke="var(--area)" stroke-width="1" stroke-dasharray="3 3" opacity="0.5" />
+        <path d={path(branchL)} stroke="var(--area)" stroke-width="2" />
+        <path d={path(branchR)} stroke="var(--area)" stroke-width="2" />
+      </g>
+    )
+  }
+  {
+    area === 'random' &&
+      dots.map(([x, y, o]) => <circle cx={x} cy={y} r={1 + o * 1.8} fill="var(--area)" opacity={o * 0.8} />)
+  }
+</svg>
+
+<style>
+  .art {
+    display: block;
+    width: 100%;
+    height: 64px;
+    margin-bottom: var(--space-5);
+  }
+</style>

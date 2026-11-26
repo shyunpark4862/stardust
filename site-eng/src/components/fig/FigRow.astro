@@ -1,0 +1,23 @@
+---
+/**
+ * One row inside a <Fig column>: for figures that show two separate results
+ * of the same input, one per row, instead of a chain that reads as a → b → c.
+ */
+---
+
+<div class="fig-row"><slot /></div>
+
+<style>
+  .fig-row {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    justify-content: center;
+    gap: var(--space-5) var(--space-4);
+  }
+  @media (max-width: 640px) {
+    .fig-row {
+      gap: var(--space-4) var(--space-3);
+    }
+  }
+</style>
