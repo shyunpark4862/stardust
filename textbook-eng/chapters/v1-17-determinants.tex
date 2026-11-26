@@ -99,9 +99,9 @@ Without the absolute value, the triple product $\langle\mathbf a_1\times\mathbf 
 \fill (0.3,0.5,0) circle (0.9pt);
 \node[right] at (0.3,0.5,0.4) {$h$};
 \draw[line width=0.9pt, -{Latex[length=1.8mm]}] (0,0,0) -- (1.6,0.4,0) node[below] {$\mathbf a_1$};
-\draw[line width=0.9pt, -{Latex[length=1.8mm]}] (0,0,0) -- (0,2,0) node[above right=-1pt] {$\mathbf a_2$};
+\draw[line width=0.9pt, -{Latex[length=1.8mm]}] (0,0,0) -- (0,2,0) node[below right=0pt] {$\mathbf a_2$};
 \draw[line width=0.9pt, -{Latex[length=1.8mm]}] (0,0,0) -- (0.3,0.5,1.4) node[above left=-1pt] {$\mathbf a_3$};
-\draw[line width=0.6pt, -{Latex[length=1.6mm]}] (0.8,1.4,0) -- (0.8,1.4,1.0) node[pos=0.55, right] {$\mathbf a_1\times\mathbf a_2$};
+\draw[line width=0.6pt, -{Latex[length=1.6mm]}] (0.8,1.4,0) -- (0.8,1.4,1.0) node[pos=0.75, right] {$\mathbf a_1\times\mathbf a_2$};
 \end{tikzpicture}}{The parallelepiped spanned by $\mathbf a_1=(1.6,0.4,0)$, $\mathbf a_2=(0,2,0)$ and $\mathbf a_3=(0.3,0.5,1.4)$. The base $P(\mathbf a_1,\mathbf a_2)$ (shaded) lies in the plane $z=0$ and has the area $\|\mathbf a_1\times\mathbf a_2\|=3.2$; the cross product points upwards, and the height of $\mathbf a_3$ above the base is $h=1.4$ (dotted). The signed volume $\langle\mathbf a_1\times\mathbf a_2,\mathbf a_3\rangle=3.2\cdot1.4=4.48$ is positive: the triple is right-handed.\label{fig:parallelepiped}}
 \end{figure}
 
@@ -283,7 +283,7 @@ Let $D$ be multilinear and alternating, and $A\in\mathbb F^{n\times n}$.
 Property (i) says that an alternating function is \term{antisymmetric}. Over $\mathbb R$ and $\mathbb C$ the converse holds as well: if exchanging two equal columns changes the sign of $D(A)$, then $D(A)=-D(A)$, so $D(A)=0$. The step from $2D(A)=0$ to $D(A)=0$ is division by $2$, and the note below explains why the definition is nevertheless phrased with equal columns.
 
 \begin{note}{Alternating and antisymmetric functions over other fields}
-The theory of this chapter uses only the rules of arithmetic in a field, and it holds for every field, for instance for the integers modulo a prime $p$ (\cref{sec:congruences}), over which exact computations with integer matrices are often carried out. In the field $\mathbb Z/2\mathbb Z$, however, $1+1=0$, so $-1=1$, and antisymmetry says nothing: every symmetric function is antisymmetric. The bilinear function $D(\mathbf u,\mathbf v)=u_1v_1$ on $(\mathbb Z/2\mathbb Z)^{2\times2}$ is antisymmetric there, but $D(\mathbf e_1,\mathbf e_1)=1\ne0$, and the uniqueness theorem below fails for it. Defining the determinant by alternation, as we do, makes every statement of the chapter true over every field~\cite[Chap.~5]{hoffman1971}.
+The algebraic part of this chapter uses only the rules of arithmetic in a field, and it holds for every field, for instance for the integers modulo a prime $p$ (\cref{sec:congruences}), over which exact computations with integer matrices are often carried out. In the field $\mathbb Z/2\mathbb Z$, however, $1+1=0$, so $-1=1$, and antisymmetry says nothing: every symmetric function is antisymmetric. The bilinear function $D(\mathbf u,\mathbf v)=u_1v_1$ on $(\mathbb Z/2\mathbb Z)^{2\times2}$ is antisymmetric there, but $D(\mathbf e_1,\mathbf e_1)=1\ne0$, and the uniqueness theorem below fails for it. Defining the determinant by alternation, as we do, keeps the algebraic results of the chapter true over every field; the results on volume, orientation and inequalities need the real numbers. Hoffman and Kunze develop the theory in this generality, over commutative rings~\cite[Chap.~5]{hoffman1971}.
 \end{note}
 
 \subsection{Uniqueness}
@@ -391,7 +391,7 @@ For some matrices almost all terms of the Leibniz formula vanish.
 A triangular matrix is therefore invertible exactly when its determinant is nonzero, by \cref{thm:triangular}\,(ii); \cref{thm:det-invertible} below extends this to all square matrices. Part (ii) gives a second way of computing a sign: the permutation matrix of $3142$ is reduced to $I$ by three exchanges of columns, so its determinant, and the sign of $3142$, is $(-1)^3=-1$.
 
 \begin{note}{The permanent}
-Dropping the signs from the Leibniz formula gives the \emph{permanent} $\operatorname{per}A\coloneqq\sum_{\sigma}\prod_ja_{\sigma(j)j}$. It is multilinear, but symmetric instead of alternating, and it counts combinatorial objects: if $A$ is the $0$--$1$ matrix of a bipartite graph, $\operatorname{per}A$ is the number of perfect matchings, the ways of pairing every row with a column through an entry $1$. The difference in the sign changes everything computationally. Adding a multiple of one row to another changes the permanent, so elimination does not apply, and no method is known that computes the permanent of a general $n\times n$ matrix in a number of operations bounded by a polynomial in $n$. Valiant proved that computing the permanent of $0$--$1$ matrices is complete for the class $\#\mathrm P$ of counting problems~\cite{valiant1979}, which makes a polynomial algorithm very unlikely. The determinant, by contrast, costs a few multiples of $n^3$ operations, as \cref{sec:det-elimination} shows.
+Dropping the signs from the Leibniz formula gives the \emph{permanent} $\operatorname{per}A\coloneqq\sum_{\sigma}\prod_ja_{\sigma(j)j}$. It is multilinear, but symmetric instead of alternating, and it counts combinatorial objects: if $A$ is the $0$--$1$ matrix of a bipartite graph, $\operatorname{per}A$ is the number of perfect matchings, the ways of pairing every row with a column through an entry $1$. The difference in the sign changes everything computationally. Adding a multiple of one row to another changes the permanent, so elimination does not apply, and no method is known that computes the permanent of a general $n\times n$ matrix in a number of operations bounded by a polynomial in $n$. Valiant proved that computing the permanent of $0$--$1$ matrices is $\#\mathrm P$-complete~\cite{valiant1979}: a polynomial-time algorithm for it would give polynomial-time algorithms for every problem in the class $\#\mathrm P$ of counting problems, among them counting the solutions of any problem in NP, and would therefore imply $\mathrm P=\mathrm{NP}$. Whether such an algorithm exists is open, but it is widely conjectured that none does. The determinant, by contrast, costs a few multiples of $n^3$ operations, as \cref{sec:det-elimination} shows.
 \end{note}
 
 \section{Properties of the Determinant}
@@ -619,7 +619,7 @@ For $T_n$, the leading principal submatrices are $T_1,\ldots,T_n$ themselves, so
 \label{alg:det-lu}
 \end{algorithm}
 
-If a column is zero from the diagonal down, the matrix is singular by the argument of \cref{prop:gauss-singular}, and the algorithm returns $0$ at once. By \cref{prop:elimination-cost} the elimination costs $2n^3/3-n^2/2-n/6$ operations, to which the product of the $n$ pivots adds $n-1$ multiplications. The Leibniz formula needs $n!$ products of $n$ factors, that is $n!(n-1)$ multiplications, and $n!-1$ additions, $n\cdot n!-1$ operations in all. \Cref{tab:det-cost} compares the two counts. Already for $n=10$ the formula needs some sixty thousand times as many operations, and for $n=20$ it needs about $4.9\times10^{19}$ operations, which at the rate of $8.3\times10^{11}$ operations per second measured in \cref{tab:solve-timing} would take about two years. Elimination needs $5149$ operations for $n=20$.
+If a column is zero from the diagonal down, the matrix is singular by the argument of \cref{prop:gauss-singular}, and the algorithm returns $0$ at once. By \cref{prop:elimination-cost} the elimination costs $2n^3/3-n^2/2-n/6$ operations, to which the product of the $n$ pivots adds $n-1$ multiplications. The Leibniz formula needs $n!$ products of $n$ factors, that is $n!(n-1)$ multiplications, and $n!-1$ additions, $n\cdot n!-1$ operations in all. \Cref{tab:det-cost} compares the two counts. Already for $n=10$ the formula needs some sixty thousand times as many operations, and for $n=20$ it needs about $4.9\times10^{19}$ operations, which at the highest rate measured in \cref{tab:solve-timing}, $8.3\times10^{11}$ operations per second, would take about two years. Elimination needs $5149$ operations for $n=20$.
 
 \begin{table}
 \sdfloat{%
@@ -762,7 +762,7 @@ For the system $2x_1+x_2=3$, $x_1+3x_2=5$, the determinant is $6-1=5$, and Crame
 \[
 x_1=\frac15\det\begin{bmatrix}3&1\\5&3\end{bmatrix}=\frac45,\qquad x_2=\frac15\det\begin{bmatrix}2&3\\1&5\end{bmatrix}=\frac75 .
 \]
-The rule is an explicit formula for the solution, and its value is theoretical. It shows at a glance that the solution is a rational function of the data, continuous wherever $\det A\ne0$, and that the solution of an integer system has the denominator $\det A$ at most. As a method of computation it is wasteful: it needs $n+1$ determinants of order $n$, which by elimination cost about $(n+1)\cdot2n^3/3$ operations, while one factorisation $PA=LU$ and two triangular solves cost about $2n^3/3+2n^2$ (\cref{tab:lu-costs}); for $n=10$ the rule takes about eleven times as long, and with the Leibniz formula for the determinants it would be hopeless. Formula and algorithm are different things, a distinction that \cref{sec:det-computation} pursues.
+The rule is an explicit formula for the solution, and its value is theoretical. It shows at a glance that the solution is a rational function of the data, continuous wherever $\det A\ne0$, and that the solution of a system with integer entries consists of fractions with the common denominator $\det A$. As a method of computation it is wasteful: it needs $n+1$ determinants of order $n$, which by elimination cost about $(n+1)\cdot2n^3/3$ operations, while one factorisation $PA=LU$ and two triangular solves cost about $2n^3/3+2n^2$ (\cref{tab:lu-costs}). For $n=10$ these leading terms make the rule about eight times as expensive, and the ratio approaches $n+1$ as $n$ grows; with the Leibniz formula for the determinants the rule would be hopeless. Formula and algorithm are different things, a distinction that \cref{sec:det-computation} pursues.
 
 \subsection{Integer Matrices}
 
@@ -812,7 +812,7 @@ D_k=a_kD_{k-1}-b_{k-1}c_{k-1}D_{k-2}\qquad(k=2,\ldots,n).
 \end{proposition}
 
 \begin{proof}
-The last row of the leading submatrix $T_{(k)}$ of order $k$ is $(0,\ldots,0,c_{k-1},a_k)$. The expansion along it gives $a_kD_{k-1}-c_{k-1}M$, where $M$ is the minor of the entry $c_{k-1}$ in position $(k,k-1)$ and $(-1)^{2k-1}=-1$. Deleting the last row and the column $k-1$ of $T_{(k)}$ leaves a matrix whose last column has the single nonzero entry $b_{k-1}$, in its last row, and whose other columns form $T_{(k-2)}$; expanding along that column gives $M=b_{k-1}D_{k-2}$.
+The last row of the leading submatrix $T_{(k)}$ of order $k$ is $(0,\ldots,0,c_{k-1},a_k)$. The expansion along it gives $a_kD_{k-1}-c_{k-1}M$, where $M$ is the minor of the entry $c_{k-1}$ in position $(k,k-1)$ and $(-1)^{2k-1}=-1$. Deleting the last row and the column $k-1$ of $T_{(k)}$ leaves a matrix whose last column has the single nonzero entry $b_{k-1}$, in its last row; deleting this row and this column leaves $T_{(k-2)}$, so the expansion along the last column gives $M=b_{k-1}D_{k-2}$.
 \end{proof}
 
 For the second difference matrix, $a_k=2$ and $b_k=c_k=-1$, so $D_k=2D_{k-1}-D_{k-2}$ with $D_0=1$ and $D_1=2$; by induction $D_k=k+1$, since $2k-(k-1)=k+1$. This is $\det T_n=n+1$ once more, now without elimination. With $a_k=1$, $b_k=1$ and $c_k=-1$, the recurrence becomes $D_k=D_{k-1}+D_{k-2}$ with $D_0=D_1=1$, so $D_k=F_{k+1}$ is a Fibonacci number (\cref{sec:recurrences}). Three-term recurrences of this kind, and their relation to tridiagonal matrices, are a subject of Chapter~27.
@@ -990,7 +990,7 @@ The function $f(t)\coloneqq\det(\mathbf b_1(t),\ldots,\mathbf b_n(t))$ is a sum 
 A right hand cannot be turned into a left hand by a motion in space, and the proposition is the algebraic form of this observation: the right-handed frame $(\mathbf e_1,\mathbf e_2,\mathbf e_3)$ cannot be moved continuously, through bases, into the left-handed frame $(\mathbf e_1,\mathbf e_2,-\mathbf e_3)$. The converse also holds, as the following note shows. Orientation matters in computation wherever a sign decides a combinatorial question, such as on which side of a line or plane a point lies; Volume~XVI computes such signs exactly.
 
 \begin{note}{The two components of the invertible matrices}
-Any two ordered bases with the same orientation can be joined by a continuous path of bases; equivalently, every real matrix with $\det A>0$ can be joined to $I$, and every one with $\det A<0$ to $D_1(-1)=\operatorname{diag}(-1,1,\ldots,1)$, by a continuous path of invertible matrices. One proof uses \cref{cor:elementary-product}. Write $A$ as a product of exchanges, scalings and shears, and deform each factor. A shear $E_{ij}(c)$ is joined to $I$ by $E_{ij}(tc)$, $t\in[0,1]$, and a scaling $D_i(c)$ with $c>0$ by $D_i(c^t)$; a scaling with $c<0$ is $D_i(-1)D_i(|c|)$. An exchange $P_{ij}$ is the product of $D_j(-1)$ and the rotation through a right angle in the plane of $\mathbf e_i$ and $\mathbf e_j$, which is joined to $I$ through the rotations by smaller angles. After these deformations only a product of factors $D_i(-1)$ remains, a diagonal matrix with entries $\pm1$, and two entries $-1$ together form a rotation through the angle $\pi$ in a coordinate plane, which is again joined to $I$; in the same way a single remaining entry $-1$ in position $i$ is moved to position $1$, since $D_i(-1)=RD_1(-1)$ with the rotation $R$ through $\pi$ in the plane of $\mathbf e_1$ and $\mathbf e_i$. So $A$ is joined to $I$ or to $D_1(-1)$, according to the sign of $\det A$, which does not change along the way. In the language of topology, the invertible real $n\times n$ matrices form two path components, distinguished by the sign of the determinant, whereas the invertible complex matrices form a single one, since $\mathbb C\setminus\{0\}$ is connected.
+Any two ordered bases with the same orientation can be joined by a continuous path of bases; equivalently, every real matrix with $\det A>0$ can be joined to $I$, and every one with $\det A<0$ to $D_1(-1)=\operatorname{diag}(-1,1,\ldots,1)$, by a continuous path of invertible matrices. One proof uses \cref{cor:elementary-product}. Write $A$ as a product of exchanges, scalings and shears, and deform each factor along a path of invertible matrices; the product of the deformed factors is then a path of invertible matrices from $A$ to the product of the final factors. A shear $E_{ij}(c)$ is joined to $I$ by $E_{ij}(tc)$, $t\in[0,1]$, and a scaling $D_i(c)$ with $c>0$ by $D_i(c^t)$; a scaling with $c<0$ is $D_i(-1)D_i(|c|)$. An exchange $P_{ij}$ is the product of $D_j(-1)$ and the rotation through a right angle in the plane of $\mathbf e_i$ and $\mathbf e_j$, which is joined to $I$ through the rotations by smaller angles. After these deformations only a product of factors $D_i(-1)$ remains, a diagonal matrix with entries $\pm1$, and two entries $-1$ together form a rotation through the angle $\pi$ in a coordinate plane, which is again joined to $I$; in the same way a single remaining entry $-1$ in position $i$ is moved to position $1$, since $D_i(-1)=RD_1(-1)$ with the rotation $R$ through $\pi$ in the plane of $\mathbf e_1$ and $\mathbf e_i$. So $A$ is joined to $I$ or to $D_1(-1)$, according to the sign of $\det A$, which does not change along the way. In the language of topology, the invertible real $n\times n$ matrices form two path components, distinguished by the sign of the determinant, whereas the invertible complex matrices form a single one: in the same argument, a complex scaling $D_i(c)$, $c\ne0$, is joined to $I$ by a path of scalings $D_i(c(t))$ with $c(t)$ running from $c$ to $1$ in $\mathbb C\setminus\{0\}$, so that no factors $D_i(-1)$ remain.
 \end{note}
 
 \subsection{The Gram Determinant and \texorpdfstring{$k$}{k}-Dimensional Volume}
@@ -1111,27 +1111,47 @@ the sum of the squares of all minors of order $k$ formed from $k$ rows of $A$.
 Apply \cref{thm:cauchy-binet} to $A^{\mathsf T}\in\mathbb R^{k\times n}$ and $A$: the columns of $A^{\mathsf T}$ with indices in $S$ form $(A_{S,:})^{\mathsf T}$, whose determinant is $\det A_{S,:}$.
 \end{proof}
 
-The rows $S$ of $A$ are the coordinates of the vectors $\mathbf a_j$ in the coordinate subspace spanned by $\mathbf e_s$, $s\in S$, so $|\det A_{S,:}|$ is the $k$-dimensional volume of the shadow of the parallelepiped on that coordinate $k$-plane, by \cref{cor:k-volume}\,(iii). The corollary says that the square of a $k$-dimensional volume is the sum of the squares of the volumes of its shadows on all coordinate $k$-planes. For $k=1$ this is $\|\mathbf a\|^2=\sum_ia_i^2$, Pythagoras' theorem itself, and for $k=2$ it is Lagrange's identity (\cref{prop:lagrange-identity}), whose terms $(x_iy_j-x_jy_i)^2$ are the squares of the $2\times2$ minors. For $k=2$ and $n=3$, the parallelogram spanned by $\mathbf x=(1,2,0)$ and $\mathbf y=(0,1,3)$ has the area $\sqrt{46}$, since $\mathbf x\times\mathbf y=(6,-3,1)$, and its shadows have the areas $6$, $3$ and $1$, with $36+9+1=46$. \Cref{fig:shadows} shows a symmetric example; its parallelogram does not contain the origin, but translating a parallelogram translates its shadows and changes no area. For complex matrices the same proof gives $\det(A^{\mathsf H}A)=\sum_S|\det A_{S,:}|^2$.
+The rows $S$ of $A$ are the coordinates of the vectors $\mathbf a_j$ in the coordinate subspace spanned by $\mathbf e_s$, $s\in S$, so $|\det A_{S,:}|$ is the $k$-dimensional volume of the shadow of the parallelepiped on that coordinate $k$-plane, by \cref{cor:k-volume}\,(iii). The corollary says that the square of a $k$-dimensional volume is the sum of the squares of the volumes of its shadows on all coordinate $k$-planes. For $k=1$ this is $\|\mathbf a\|^2=\sum_ia_i^2$, Pythagoras' theorem itself, and for $k=2$ it is Lagrange's identity (\cref{prop:lagrange-identity}), whose terms $(x_iy_j-x_jy_i)^2$ are the squares of the $2\times2$ minors. For $k=2$ and $n=3$, the parallelogram spanned by $\mathbf x=(1,2,0)$ and $\mathbf y=(0,1,3)$ has the area $\sqrt{46}$, since $\mathbf x\times\mathbf y=(6,-3,1)$, and its shadows on the coordinate planes of $(x_1,x_2)$, $(x_1,x_3)$ and $(x_2,x_3)$ have the areas $1$, $3$ and $6$, with $1+9+36=46$ (\cref{fig:shadows}). For complex matrices the same proof gives $\det(A^{\mathsf H}A)=\sum_S|\det A_{S,:}|^2$.
 
 \begin{figure}
-\sdfloat{%
-\begin{tikzpicture}[x={(-0.75cm,-0.25cm)}, y={(0.85cm,-0.2cm)}, z={(0cm,1cm)}, scale=1.25, font=\scriptsize]
-\fill[black!10] (0,1,1) -- (0,0,1) -- (0,1,0) -- (0,2,0) -- cycle;
-\draw[black!60, dashed, line width=0.5pt] (0,1,1) -- (0,0,1) -- (0,1,0) -- (0,2,0) -- cycle;
-\fill[black!10] (1,0,1) -- (2,0,1) -- (2,0,0) -- (1,0,0) -- cycle;
-\draw[black!60, dashed, line width=0.5pt] (1,0,1) -- (2,0,1) -- (2,0,0) -- (1,0,0) -- cycle;
-\fill[black!10] (1,1,0) -- (2,0,0) -- (2,1,0) -- (1,2,0) -- cycle;
-\draw[black!60, dashed, line width=0.5pt] (1,1,0) -- (2,0,0) -- (2,1,0) -- (1,2,0) -- cycle;
-\draw[line width=0.4pt, -{Latex[length=1.5mm]}] (0,0,0) -- (2.7,0,0) node[below left=-1pt] {$x_1$};
-\draw[line width=0.4pt, -{Latex[length=1.5mm]}] (0,0,0) -- (0,2.8,0) node[right] {$x_2$};
-\draw[line width=0.4pt, -{Latex[length=1.5mm]}] (0,0,0) -- (0,0,1.7) node[above] {$x_3$};
-\fill[black!35, opacity=0.75] (1,1,1) -- (2,0,1) -- (2,1,0) -- (1,2,0) -- cycle;
-\draw[line width=0.7pt] (1,1,1) -- (2,0,1) -- (2,1,0) -- (1,2,0) -- cycle;
-\draw[densely dotted, line width=0.4pt] (1,1,1) -- (0,1,1) (2,0,1) -- (2,0,0) (1,2,0) -- (0,2,0) (1,1,1) -- (1,0,1);
-\node at (0,1.25,0.55) {$1$};
-\node at (1.5,0,0.75) {$1$};
-\node at (1.8,0.5,0) {$1$};
-\end{tikzpicture}}{The parallelogram with the corners $(1,1,1)$, $(2,0,1)$, $(2,1,0)$ and $(1,2,0)$ (dark), spanned by $(1,-1,0)$ and $(0,1,-1)$, and its shadows on the three coordinate planes (light, dashed), each of area $1$. The area of the parallelogram is $\sqrt{1^2+1^2+1^2}=\sqrt3$, the length of the cross product $(1,-1,0)\times(0,1,-1)=(1,1,1)$ (\cref{cor:pythagoras-volumes}).\label{fig:shadows}}
+\sdpanel{A}{\begin{tikzpicture}[x={(-0.5cm,-0.42cm)}, y={(0.95cm,0cm)}, z={(0cm,0.95cm)}, font=\scriptsize]
+\fill[black!12] (0,0,0) -- (1,0,0) -- (1,0,3) -- (0,0,3) -- cycle;
+\draw[line width=0.4pt, -{Latex[length=1.5mm]}] (0,0,0) -- (1.9,0,0) node[below left=-1pt] {$x_1$};
+\draw[line width=0.4pt, -{Latex[length=1.5mm]}] (0,0,0) -- (0,3.8,0) node[right] {$x_2$};
+\draw[line width=0.4pt, -{Latex[length=1.5mm]}] (0,0,0) -- (0,0,3.7) node[above] {$x_3$};
+\draw[black!60, dashed, line width=0.5pt] (1,0,0) -- (1,0,3) -- (0,0,3);
+\node at (0.5,0,1.5) {$3$};
+\fill[black!35, opacity=0.8] (0,0,0) -- (1,2,0) -- (1,3,3) -- (0,1,3) -- cycle;
+\draw[line width=0.6pt] (0,0,0) -- (1,2,0) -- (1,3,3) -- (0,1,3) -- cycle;
+\draw[densely dotted, line width=0.6pt] (1,2,0) -- (1,0,0) (0,1,3) -- (0,0,3) (1,3,3) -- (1,0,3);
+\draw[line width=0.9pt, -{Latex[length=1.8mm]}] (0,0,0) -- (1,2,0) node[below=1pt] {$\mathbf x$};
+\draw[line width=0.9pt, -{Latex[length=1.8mm]}] (0,0,0) -- (0,1,3) node[above left=-1pt] {$\mathbf y$};
+\end{tikzpicture}}\hfill
+\sdpanel{B}{\begin{tikzpicture}[scale=0.62, font=\scriptsize]
+\begin{scope}
+\fill[black!12] (0,0) -- (1,2) -- (1,3) -- (0,1) -- cycle;
+\draw[black!60, dashed, line width=0.5pt] (0,0) -- (1,2) -- (1,3) -- (0,1) -- cycle;
+\draw[line width=0.4pt, -{Latex[length=1.5mm]}] (0,0) -- (1.8,0) node[below] {$x_1$};
+\draw[line width=0.4pt, -{Latex[length=1.5mm]}] (0,0) -- (0,3.6) node[left] {$x_2$};
+\node at (0.5,1.5) {$1$};
+\end{scope}
+\begin{scope}[xshift=2.7cm]
+\fill[black!12] (0,0) -- (1,0) -- (1,3) -- (0,3) -- cycle;
+\draw[black!60, dashed, line width=0.5pt] (0,0) -- (1,0) -- (1,3) -- (0,3) -- cycle;
+\draw[line width=0.4pt, -{Latex[length=1.5mm]}] (0,0) -- (1.8,0) node[below] {$x_1$};
+\draw[line width=0.4pt, -{Latex[length=1.5mm]}] (0,0) -- (0,3.6) node[left] {$x_3$};
+\node at (0.5,1.5) {$3$};
+\end{scope}
+\begin{scope}[xshift=5.4cm]
+\fill[black!12] (0,0) -- (2,0) -- (3,3) -- (1,3) -- cycle;
+\draw[black!60, dashed, line width=0.5pt] (0,0) -- (2,0) -- (3,3) -- (1,3) -- cycle;
+\draw[line width=0.4pt, -{Latex[length=1.5mm]}] (0,0) -- (3.7,0) node[below] {$x_2$};
+\draw[line width=0.4pt, -{Latex[length=1.5mm]}] (0,0) -- (0,3.6) node[left] {$x_3$};
+\node at (1.5,1.5) {$6$};
+\end{scope}
+\end{tikzpicture}}
+\caption{Pythagoras' theorem for areas (\cref{cor:pythagoras-volumes}). (A) The parallelogram spanned by $\mathbf x=(1,2,0)$ and $\mathbf y=(0,1,3)$ (dark) and its shadow on the coordinate plane of $(x_1,x_3)$ (light, dashed), obtained by setting the second coordinate to $0$ (dotted). (B) The shadows on the three coordinate planes, with the areas $1$, $3$ and $6$, the absolute values of the $2\times2$ minors of the matrix with the columns $\mathbf x$ and $\mathbf y$. The parallelogram has the area $\|\mathbf x\times\mathbf y\|=\sqrt{46}$, and $1^2+3^2+6^2=46$.}
+\label{fig:shadows}
 \end{figure}
 
 \subsection{Hadamard's Inequality}
@@ -1211,7 +1231,7 @@ which vanishes nowhere; this is a third proof of \cref{prop:exponentials-indepen
 \[
 W(x^2,x|x|)=\det\begin{bmatrix}x^2&x|x|\\2x&2|x|\end{bmatrix}=2x^2|x|-2x^2|x|=0
 \]
-for every $x$. Peano pointed out this kind of example~\cite{peano1889}. For $k$ solutions of a linear differential equation of order $k$ with continuous coefficients and a leading coefficient that vanishes nowhere, the Wronskian is either zero everywhere or nowhere; Chapter~24 proves this through Abel's formula, which expresses the Wronskian of such solutions by an exponential.
+for every $x$. Peano was the first to point out, in two short notes of 1889, that independent functions can have a Wronskian that vanishes identically~\cite{peano1889wronskien,peano1889wronskiens}, and the pair $x^2$, $x|x|$ is usually attributed to him~\cite{bostan2010}. For $k$ solutions of a linear differential equation of order $k$ with continuous coefficients and a leading coefficient that vanishes nowhere, the Wronskian is either zero everywhere or nowhere; Chapter~24 proves this through Abel's formula, which expresses the Wronskian of such solutions by an exponential.
 
 \subsection{Differentiating a Determinant}
 
@@ -1374,7 +1394,7 @@ $10$ & $3\,628\,800$ & $2.1$ & $4.2\times10^{-7}$ & $1.5\times10^{-13}$ \\
 \end{sdtable}}{The time in seconds for one determinant of a random $n\times n$ matrix by the Leibniz formula, summed over all permutations in a Python program, and by the library routine \code{linalg.det}, and the relative difference of the two results.\label{tab:det-timing}}
 \end{table}
 
-From $n=7$ on, the time of the Leibniz formula grows by a factor close to the ratio $n^2/(n-1)$ of the operation counts $n\cdot n!$ and $(n-1)\cdot(n-1)!$: the measured factors are $8.6$, $9.8$ and $10.8$ for $n=8$, $9$ and $10$, against $9.1$, $10.1$ and $11.1$. The time of the library routine, by contrast, hardly changes in this range. The two results agree to about the accuracy of binary64 arithmetic, with relative differences between $2\times10^{-16}$ and $2\times10^{-13}$. The comparison is between a Python program and a compiled routine, so the absolute times say little about the two methods; what matters is how the times grow with $n$.
+For the largest orders, the time of the Leibniz formula grows by a factor close to the ratio $n^2/(n-1)$ of the operation counts $n\cdot n!$ and $(n-1)\cdot(n-1)!$: the measured factors are $8.6$, $9.8$ and $10.8$ for $n=8$, $9$ and $10$, against $9.1$, $10.1$ and $11.1$. Over the whole range the time of the formula grows by a factor of about $2.4\times10^5$, that of the library routine by a factor of $2$. The two results agree to about the accuracy of binary64 arithmetic, with relative differences between $2\times10^{-16}$ and $2\times10^{-13}$. The comparison is between a Python program and a compiled routine, so the absolute times say little about the two methods; what matters is how the times grow with $n$.
 
 The lesson extends to Cramer's rule, to the adjugate formula for the inverse, and to cofactor expansion. They are formulas, and they are indispensable in theory: they show that solutions and inverses are rational functions of the data, they give exact answers for small integer matrices, and they make the dependence on the data visible, as in \cref{thm:det-smooth}. As algorithms they are replaced by elimination, which computes the same numbers with a few multiples of $n^3$ operations, and, when only a solution is wanted, does not compute the determinant at all. Volume~VIII develops the library's routines for determinants and their accuracy.
 
@@ -1383,7 +1403,7 @@ The determinant is the unique function of the columns of a square matrix that is
 
 \chapternotes
 
-Determinants are older than matrices. Seki Takakazu in Japan in 1683 and Leibniz in a letter of 1693 used them to decide when systems of linear equations have common solutions, Cramer stated his rule in an appendix to his book on algebraic curves of 1750~\cite{cramer1750}, and Vandermonde treated determinants as objects of study in their own right; the accounts of Muir~\cite{muir1906} and Katz~\cite{katz2009} describe this early history. The word \emph{determinant} goes back to Gauss~\cite{gauss1801}, who used it for a quantity attached to quadratic forms, and Cauchy gave it its modern meaning in his memoir of 1815~\cite{cauchy1815}, which develops the theory through the alternating property, the sign of permutations and the product rule. Binet found the product formula for rectangular matrices at the same time, and the formula of \cref{thm:cauchy-binet} carries both names~\cite{muir1906}. Jacobi's papers of 1841~\cite{jacobi1841formatione,jacobi1841} made determinants a standard tool and introduced the functional determinants that bear his name; Cayley introduced the vertical bars~\cite{cayley1841}. Hadamard proved his inequality in 1893~\cite{hadamard1893}, Bareiss published fraction-free elimination in 1968~\cite{bareiss1968}, Bunch and Hopcroft related the cost of determinants to that of matrix multiplication~\cite{bunch1974}, and Valiant proved the hardness of the permanent~\cite{valiant1979}. The example of \cref{sec:minors-functions} showing that a vanishing Wronskian does not imply dependence goes back to Peano~\cite{peano1889}, and Silvester's note~\cite{silvester2000} collects the formulas for determinants of block matrices, among them \cref{prop:commuting-blocks}.
+Determinants are older than matrices. Seki Takakazu in Japan in 1683~\cite{mikami1914} and Leibniz in a letter of 1693 used them to decide when systems of linear equations have common solutions, Cramer stated his rule in an appendix to his book on algebraic curves of 1750~\cite{cramer1750}, and Vandermonde treated determinants as objects of study in their own right; Muir~\cite{muir1906} tells the European history in detail, and Katz~\cite{katz2009} gives a shorter account. The word \emph{determinant} goes back to Gauss~\cite{gauss1801}, who used it for a quantity attached to quadratic forms, and Cauchy gave it its modern meaning in his memoir of 1815~\cite{cauchy1815}, which develops the theory through the alternating property, the sign of permutations and the product rule. Binet found the product formula for rectangular matrices at the same time, and the formula of \cref{thm:cauchy-binet} carries both names~\cite{muir1906}. Jacobi's papers of 1841~\cite{jacobi1841formatione,jacobi1841} made determinants a standard tool and introduced the functional determinants that bear his name; Cayley introduced the vertical bars~\cite{cayley1841}. Hadamard proved his inequality in 1893~\cite{hadamard1893}, Bareiss published fraction-free elimination in 1968~\cite{bareiss1968}, Bunch and Hopcroft related the cost of determinants to that of matrix multiplication~\cite{bunch1974}, and Valiant proved the hardness of the permanent~\cite{valiant1979}. The observation of \cref{sec:minors-functions} that a vanishing Wronskian does not imply dependence goes back to Peano~\cite{peano1889wronskien,peano1889wronskiens}; Bostan and Dumas~\cite{bostan2010} recount its history and the conditions under which the converse holds, and Silvester's note~\cite{silvester2000} collects the formulas for determinants of block matrices, among them \cref{prop:commuting-blocks}.
 
 The characterisation of the determinant by multilinearity and alternation is the approach of Hoffman and Kunze~\cite[Chap.~5]{hoffman1971}, who work over commutative rings, and of Axler~\cite{axler2024}, who develops it from alternating multilinear forms and defines the determinant of an operator without matrices. Strang~\cite{strang2016} and Meyer~\cite{meyer2000} give the three properties, cofactors and Cramer's rule with many applications, Horn and Johnson~\cite[Sects.~0.3 and~0.8]{horn2013} collect the identities for minors, block matrices, the Cauchy--Binet formula and Jacobi's formula, and Halmos~\cite{halmos1958} treats determinants through multilinear forms. For the computational side, Golub and Van Loan~\cite{golub2013} and Higham~\cite{higham2002accuracy} discuss the computation of determinants by the LU factorisation and their rounding errors, and Cohen~\cite{cohen1993} the exact computation for integer matrices.
 

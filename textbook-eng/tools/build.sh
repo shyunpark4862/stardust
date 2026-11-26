@@ -10,5 +10,7 @@ for d in $docs; do
   cp "build/$d.pdf" "pdf/$d.pdf"
   pages=$(grep -o 'Output written on [^(]*([0-9]* pages' "build/$d.log" | grep -o '[0-9]* pages')
   warn=$(grep -cE 'undefined|multiply defined|Overfull' "build/$d.log")
+  bibwarn=0; [ -f "build/$d.blg" ] && bibwarn=$(grep -cE 'WARN|ERROR' "build/$d.blg")
+  warn=$((warn + bibwarn))
   echo "$d: $pages, warnings $warn"
 done
