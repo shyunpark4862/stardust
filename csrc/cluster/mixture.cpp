@@ -43,7 +43,6 @@
 //   gmm_precisions(covariances, type, k, p) -> (U, log det U) or None (the factor fails; the tests' entry)
 //   gmm_mstep(X, resp, type, reg) -> (weights, means, covariances)   the M step at given responsibilities (tests)
 //   gmm_sample(N, weights, perm, means, U, type, e, key0, key1) -> (points (N, p), labels (N,))
-//   gmm_subkey(key0, key1, r) -> (key0', key1')   a sub-call's two words at start r of the stream (CL41)
 #include "array/kernels/vmath.hpp"
 #include "cluster/cluster.hpp"
 #include "cluster/partition.hpp"
@@ -989,14 +988,6 @@ nb::object sample_py(
     return nb::make_tuple(wrap(float_array(X, N, p)), wrap(int_array(lab, N)));
 }
 
-// a sub-call's key (CL41): the first words of elements r 2^40 and r 2^40 + 1, as the int64 words key() hands out
-nb::object subkey_py(int64_t key0, int64_t key1, int64_t r) {
-    random::Stream st(key_of(key0, key1));
-    const std::uint64_t a = st.first(element(static_cast<std::uint64_t>(r), 0));
-    const std::uint64_t b = st.first(element(static_cast<std::uint64_t>(r), 1));
-    return nb::make_tuple(static_cast<int64_t>(a), static_cast<int64_t>(b));
-}
-
 }  // namespace
 
 void bind_mixture(nb::module_& m) {
@@ -1015,7 +1006,6 @@ void bind_mixture(nb::module_& m) {
         "gmm_sample", &sample_py, nb::arg("N"), nb::arg("weights"), nb::arg("perm"), nb::arg("means"), nb::arg("U"),
         nb::arg("type"), nb::arg("e"), nb::arg("key0"), nb::arg("key1")
     );
-    m.def("gmm_subkey", &subkey_py, nb::arg("key0"), nb::arg("key1"), nb::arg("r"));
 }
 
 }  // namespace sd::cluster

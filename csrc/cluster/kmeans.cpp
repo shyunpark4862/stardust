@@ -892,6 +892,19 @@ nb::object kmeans_py(
     return nb::make_tuple(head, out.best.n_iter, out.best.converged, out.best_init, out.relocated);
 }
 
+}  // namespace
+
+std::vector<int64_t> kmeans_labels(const double* X, int64_t n, int64_t p, int64_t k, random::Key key) {
+    std::vector<int64_t> order(static_cast<size_t>(n));
+    std::iota(order.begin(), order.end(), int64_t{0});
+    const KeyRows R(X, order.data(), nullptr, n, p);
+    Data D = R.data();
+    KMeansOut out = kmeans_run(D, k, 0, nullptr, 1, 300, tolerance(D, 1e-4), key, 0);
+    return std::move(out.best.lab);
+}
+
+namespace {
+
 // ---- mini-batch k-means ------------------------------------------------------------------------------------------
 
 // scikit-learn's MiniBatchKMeans (fit): the starts on subsamples of init_size points, the one of smallest inertia on

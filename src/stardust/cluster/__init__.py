@@ -6,15 +6,20 @@ Usage: ``import stardust as sd`` then ``sd.cluster.kmeans(X, k, rng=sd.random.de
 (k-means, k-medoids, fuzzy c-means), hierarchical (scipy's linkage tools and DIANA), density (DBSCAN,
 HDBSCAN, OPTICS), Gaussian mixtures and the clustering indices in one flat namespace (no submodules); the
 fitting functions return <Name>Result objects, the scipy-named hierarchy tools take and return arrays
-(decisions CL1-CL81 in docs/design/cluster.md §1.1).
+(decisions CL1-CL94 in docs/design/cluster.md §1.1).
 
 Milestone CL0 made the common base of the results (_results.py) and the argument checks (_common.py); the
 public names come with milestones CL1 to CL6 (CL1: the hierarchy, _hierarchy.py; CL2: the partitions, _kmeans.py,
-_kmedoids.py, _fuzzy.py; CL3: the density methods, _density.py; CL4: the Gaussian mixtures, _mixture.py).
+_kmedoids.py, _fuzzy.py; CL3: the density methods, _density.py; CL4: the Gaussian mixtures, _mixture.py; CL5: the
+indices, the gap statistic and Gower's distance, _metrics.py, _gap.py, _gower.py; CL6: affinity propagation,
+_affinity.py).
 """
 
+from ._affinity import AffinityPropagationResult, affinity_propagation
 from ._density import DBSCANResult, HDBSCANResult, OPTICSResult, dbscan, hdbscan, optics
 from ._fuzzy import FuzzyCMeansResult, fuzzy_cmeans
+from ._gap import GapResult, gap_statistic
+from ._gower import gower_distance
 from ._hierarchy import (
     CophenetResult,
     DendrogramResult,
@@ -41,6 +46,25 @@ from ._hierarchy import (
 )
 from ._kmeans import BisectingKMeansResult, KMeansResult, bisecting_kmeans, kmeans, minibatch_kmeans
 from ._kmedoids import KMedoidsResult, kmedoids
+from ._metrics import (
+    HomogeneityResult,
+    adjusted_mutual_info_score,
+    adjusted_rand_score,
+    calinski_harabasz_score,
+    completeness_score,
+    contingency_matrix,
+    davies_bouldin_score,
+    fowlkes_mallows_score,
+    homogeneity_completeness_v_measure,
+    homogeneity_score,
+    mutual_info_score,
+    normalized_mutual_info_score,
+    pair_confusion_matrix,
+    rand_score,
+    silhouette_samples,
+    silhouette_score,
+    v_measure_score,
+)
 from ._mixture import GaussianMixtureResult, gaussian_mixture
 
 __all__ = [
@@ -83,4 +107,26 @@ __all__ = [
     "OPTICSResult",
     "gaussian_mixture",
     "GaussianMixtureResult",
+    "silhouette_samples",
+    "silhouette_score",
+    "calinski_harabasz_score",
+    "davies_bouldin_score",
+    "adjusted_rand_score",
+    "rand_score",
+    "adjusted_mutual_info_score",
+    "normalized_mutual_info_score",
+    "mutual_info_score",
+    "homogeneity_score",
+    "completeness_score",
+    "v_measure_score",
+    "homogeneity_completeness_v_measure",
+    "HomogeneityResult",
+    "fowlkes_mallows_score",
+    "pair_confusion_matrix",
+    "contingency_matrix",
+    "gap_statistic",
+    "GapResult",
+    "gower_distance",
+    "affinity_propagation",
+    "AffinityPropagationResult",
 ]

@@ -2,38 +2,35 @@
  "schema": 1,
  "area": "cluster",
  "runs": {
-  "20261127-030114-7e318060+": {
-   "commit": "7e318060",
+  "20261127-035333-f68cf5b3+": {
+   "commit": "f68cf5b3",
    "dirty": true,
    "changed": [
-    "API.md",
-    "ARCHITECTURE.md",
     "CMakeLists.txt",
-    "README.md",
     "bench/accuracy/cluster.py",
     "bench/speed/cases/cluster.py",
     "csrc/bind/cluster_bind.cpp",
     "csrc/cluster/cluster.hpp",
     "csrc/cluster/kmeans.cpp",
+    "csrc/cluster/kmedoids.cpp",
+    "csrc/cluster/mixture.cpp",
+    "csrc/cluster/partition.hpp",
     "docs/api/cluster.md",
     "docs/design/cluster.md",
-    "site/src/content/areas/array.mdx",
+    "site/PLAN.md",
     "src/stardust/cluster/__init__.py",
-    "tests/cluster/ref/mixture.npz",
+    "src/stardust/cluster/_mixture.py",
+    "tests/cluster/data/r.json",
+    "tests/cluster/ref/metrics.npz",
     "tests/cluster/refdata.py",
     "tests/cluster/test_api_surface.py",
+    "tests/cluster/test_mixture.py",
     "tests/golden/cases_cluster.py",
     "tests/golden/data/cluster.json",
-    "textbook/chapters/v1-08-series-approximation.tex",
-    "textbook/chapters/v1-23-first-order-equations.tex",
-    "textbook/chapters/v1-24-linear-equations-of-higher-order.tex",
-    "textbook/chapters/v1-25-linear-systems-of-differential-equations.tex",
-    "textbook/plans/PROMISES.md",
-    "textbook/references.bib",
-    "textbook/vol1.tex",
+    "tools/cluster_probe.py",
     "tools/cluster_ref.py"
    ],
-   "date": "2026-11-27T03:01:14",
+   "date": "2026-11-27T03:53:33",
    "machine": "arm64",
    "python": "3.15.0",
    "references": {
@@ -233,8 +230,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261127-030114-7e318060+",
-   "comparators_run": "20261127-030114-7e318060+"
+   "run": "20261127-035333-f68cf5b3+",
+   "comparators_run": "20261127-035333-f68cf5b3+"
   },
   {
    "id": "cluster/fuzzy",
@@ -279,7 +276,7 @@
      ]
     }
    },
-   "run": "20261127-030114-7e318060+"
+   "run": "20261127-035333-f68cf5b3+"
   },
   {
    "id": "cluster/hierarchy",
@@ -1020,8 +1017,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261127-030114-7e318060+",
-   "comparators_run": "20261127-030114-7e318060+"
+   "run": "20261127-035333-f68cf5b3+",
+   "comparators_run": "20261127-035333-f68cf5b3+"
   },
   {
    "id": "cluster/kmeans",
@@ -1116,8 +1113,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261127-030114-7e318060+",
-   "comparators_run": "20261127-030114-7e318060+"
+   "run": "20261127-035333-f68cf5b3+",
+   "comparators_run": "20261127-035333-f68cf5b3+"
   },
   {
    "id": "cluster/kmedoids",
@@ -1167,8 +1164,278 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261127-030114-7e318060+",
-   "comparators_run": "20261127-030114-7e318060+"
+   "run": "20261127-035333-f68cf5b3+",
+   "comparators_run": "20261127-035333-f68cf5b3+"
+  },
+  {
+   "id": "cluster/metrics",
+   "area": "cluster",
+   "name": "metrics",
+   "points": 2193,
+   "regions": {
+    "metrics/ami": {
+     "points": 48,
+     "rel_max": 2.220446049250313e-16,
+     "contract": 0.027182130677017198,
+     "bound": 1.0,
+     "worst": [
+      "refine/120 geometric"
+     ]
+    },
+    "metrics/ari": {
+     "points": 13,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "small/6"
+     ]
+    },
+    "metrics/calinski_harabasz": {
+     "points": 18,
+     "rel_max": 1.3806518326233458e-12,
+     "contract": 0.01127207976363909,
+     "bound": 1.0,
+     "worst": [
+      "probe/300"
+     ]
+    },
+    "metrics/davies_bouldin": {
+     "points": 18,
+     "rel_max": 3.212188271260967e-14,
+     "contract": 0.022682773460775175,
+     "bound": 1.0,
+     "worst": [
+      "subnormal/k3p2"
+     ]
+    },
+    "metrics/emi": {
+     "points": 7,
+     "rel_max": 1.0416040923950032e-16,
+     "contract": 0.02400550574647075,
+     "bound": 1.0,
+     "worst": [
+      "small/6"
+     ]
+    },
+    "metrics/entropy": {
+     "points": 26,
+     "rel_max": 2.6554440317599465e-16,
+     "contract": 0.07025764901879619,
+     "bound": 1.0,
+     "worst": [
+      "unique-unique/6 true"
+     ]
+    },
+    "metrics/fm": {
+     "points": 13,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "small/6"
+     ]
+    },
+    "metrics/gap_logw": {
+     "points": 36,
+     "rel_max": 4.274890382873055e-14,
+     "contract": 0.46458926353906677,
+     "bound": 1.0,
+     "worst": [
+      "huge/k3p2 d_power=1"
+     ]
+    },
+    "metrics/homogeneity": {
+     "points": 26,
+     "rel_max": 1.1102230246251565e-16,
+     "contract": 0.04293423718953157,
+     "bound": 1.0,
+     "worst": [
+      "refine/120 completeness"
+     ]
+    },
+    "metrics/mi": {
+     "points": 13,
+     "rel_max": 2.220446049250313e-16,
+     "contract": 0.1011376918474262,
+     "bound": 1.0,
+     "worst": [
+      "small/6"
+     ]
+    },
+    "metrics/nmi": {
+     "points": 52,
+     "rel_max": 1.1102230246251565e-16,
+     "contract": 0.033072558394188364,
+     "bound": 1.0,
+     "worst": [
+      "refine/120 max"
+     ]
+    },
+    "metrics/ri": {
+     "points": 13,
+     "ulp_max": 0.0,
+     "ulp_p999": 0.0,
+     "rel_max": 0.0,
+     "contract": 0.0,
+     "bound": 1.0,
+     "worst": [
+      "small/6"
+     ]
+    },
+    "metrics/silhouette": {
+     "points": 1897,
+     "rel_max": 3.7470027081099033e-16,
+     "contract": 0.043269230769230685,
+     "bound": 1.0,
+     "worst": [
+      "overlap/k3p2 #0"
+     ]
+    },
+    "metrics/v": {
+     "points": 13,
+     "rel_max": 1.1102230246251565e-16,
+     "contract": 0.03343760342079962,
+     "bound": 1.0,
+     "worst": [
+      "refine/120"
+     ]
+    }
+   },
+   "comparators": {
+    "sklearn": {
+     "metrics/ami": {
+      "points": 48,
+      "rel_max": 4.227954791824473e-15,
+      "contract": 4.4006501674065595,
+      "bound": 1.0,
+      "worst": [
+       "random/1000 max"
+      ]
+     },
+     "metrics/ari": {
+      "points": 13,
+      "ulp_max": 0.0,
+      "ulp_p999": 0.0,
+      "rel_max": 0.0,
+      "contract": 0.0,
+      "bound": 1.0,
+      "worst": [
+       "small/6"
+      ]
+     },
+     "metrics/calinski_harabasz": {
+      "points": 18,
+      "rel_max": 142.409276069129,
+      "contract": 51546.532644462044,
+      "bound": 1.0,
+      "worst": [
+       "shifted/k3p2"
+      ]
+     },
+     "metrics/davies_bouldin": {
+      "points": 18,
+      "rel_max": 0.5138503323548289,
+      "contract": 166799986198906.75,
+      "bound": 1.0,
+      "worst": [
+       "subnormal/k3p2"
+      ]
+     },
+     "metrics/emi": {
+      "points": 7,
+      "rel_max": 8.529493153798156e-15,
+      "contract": 6.215322678435008,
+      "bound": 1.0,
+      "worst": [
+       "random/1000"
+      ]
+     },
+     "metrics/entropy": {
+      "points": 26,
+      "rel_max": 7.490148371773855e-16,
+      "contract": 0.13679226161839222,
+      "bound": 1.0,
+      "worst": [
+       "refine/120 true"
+      ]
+     },
+     "metrics/fm": {
+      "points": 13,
+      "ulp_max": 1.0,
+      "ulp_p999": 1.0,
+      "rel_max": 1.0,
+      "contract": 2.0,
+      "bound": 1.0,
+      "worst": [
+       "large/1e6"
+      ]
+     },
+     "metrics/homogeneity": {
+      "points": 26,
+      "rel_max": 2.220446049250313e-16,
+      "contract": 0.8383317570014681,
+      "bound": 1.0,
+      "worst": [
+       "random/1000 homogeneity"
+      ]
+     },
+     "metrics/mi": {
+      "points": 13,
+      "rel_max": 4.371503159461554e-16,
+      "contract": 0.9533881320710227,
+      "bound": 1.0,
+      "worst": [
+       "random/1000"
+      ]
+     },
+     "metrics/nmi": {
+      "points": 52,
+      "rel_max": 2.220446049250313e-16,
+      "contract": 0.7630104753811351,
+      "bound": 1.0,
+      "worst": [
+       "random/1000 max"
+      ]
+     },
+     "metrics/ri": {
+      "points": 13,
+      "ulp_max": 0.0,
+      "ulp_p999": 0.0,
+      "rel_max": 0.0,
+      "contract": 0.0,
+      "bound": 1.0,
+      "worst": [
+       "small/6"
+      ]
+     },
+     "metrics/silhouette": {
+      "points": 1897,
+      "rel_max": 0.7470509824196213,
+      "contract": 116014431932819.47,
+      "bound": 1.0,
+      "worst": [
+       "subnormal/k3p2 #3"
+      ]
+     },
+     "metrics/v": {
+      "points": 13,
+      "rel_max": 2.0816681711721685e-16,
+      "contract": 0.8282879572096191,
+      "bound": 1.0,
+      "worst": [
+       "random/1000"
+      ]
+     }
+    }
+   },
+   "comparator_seconds": 60.0,
+   "run": "20261127-035333-f68cf5b3+",
+   "comparators_run": "20261127-035333-f68cf5b3+"
   },
   {
    "id": "cluster/mixture",
@@ -1272,8 +1539,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261127-030114-7e318060+",
-   "comparators_run": "20261127-030114-7e318060+"
+   "run": "20261127-035333-f68cf5b3+",
+   "comparators_run": "20261127-035333-f68cf5b3+"
   }
  ]
 }

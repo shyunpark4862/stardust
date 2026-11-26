@@ -21,7 +21,7 @@ Sections (positional; default all):
   scipy    scipy 1.18.1's hierarchy and vq on the test data and at the edges the design departs from -> scipy.json
   sklearn  scikit-learn 1.9.1's KMeans, DBSCAN, HDBSCAN, OPTICS, GaussianMixture and indices -> sklearn.json
   r        R 4.6.2's stats (hclust, cutree, kmeans) and cluster 2.1.8.3 (pam, clara, fanny, agnes, diana,
-           silhouette, clusGap, daisy) through bench/accuracy/rsession.py -> r.json
+           silhouette, clusGap, maxSE, daisy) through bench/accuracy/rsession.py -> r.json
   time     the comparators' timings of §5 (best of three unless marked *)
 
 Records named rule/... are the behaviours the design departs from or relies on (§2.8). Every number is taken from
@@ -824,6 +824,55 @@ def r_records(log):
     rec["cluster/silhouette_singleton"] = r_call(
         f"library(cluster); {XR}; s <- silhouette(c(1, 1, 2, 3, 3), dist(x)); s[, 3]", rmat(Xs)
     )
+    # milestone CL5: silhouette on the sets with true labels, clusGap's log W with PAM (deterministic) and its
+    # reference mean (random: compared statistically), maxSE's five rules, daisy's Gower on mixed frames
+    for sid in S().point_ids():
+        s = S().points(sid)
+        if s.truth is None or s.n > 300 or not 2 <= len(set(s.truth.tolist())) <= s.n - 1:
+            continue
+        rec[f"silhouette/{sid}"] = r_call(
+            f"library(cluster); {XR}; s <- silhouette(cl, dist(x)); s[, 3]",
+            {**rmat(s.X), "cl": np.unique(s.truth, return_inverse=True)[1] + 1.0},
+        )
+    for sid in ("blobs/k3p2", "overlap/k3p2", "probe/300"):
+        X = S().points(sid).X
+        for dp in (1, 2):
+            for sp in ("scaledPCA", "original"):
+                rec[f"clusgap_pam/{sid}/{dp}/{sp}"] = r_call(
+                    f"library(cluster); {XR}; set.seed(1); g <- clusGap(x, pam, K.max = 6, B = 100, d.power = {dp}, "
+                    f"spaceH0 = '{sp}'); c(g$Tab[, 'logW'], g$Tab[, 'E.logW'], g$Tab[, 'SE.sim'])",
+                    rmat(X),
+                )
+    g = np.random.default_rng(20261127)
+    cases = []
+    for _ in range(60):
+        K = int(g.integers(2, 10))
+        f = np.round(g.normal(size=K), 1)
+        se = np.abs(np.round(g.normal(scale=0.3, size=K), 2))
+        cases.append((f, se))
+    out = []
+    for f, se in cases:
+        row = [f.tolist(), se.tolist()]
+        for m in ("firstSEmax", "Tibs2001SEmax", "globalSEmax", "firstmax", "globalmax"):
+            for fac in (1.0, 0.5):
+                v = r_call(f"library(cluster); maxSE(f, s, method = '{m}', SE.factor = {fac})", {"f": f, "s": se})
+                row.append(v["value"][0])
+        out.append(row)
+    rec["cluster/maxse"] = {"cases": out, "methods": ["firstSEmax", "Tibs2001SEmax", "globalSEmax", "firstmax",
+                                                      "globalmax"], "factors": [1.0, 0.5]}  # fmt: skip
+    frame = ("df <- data.frame(a = c(1, 2, 3, NA, 7.5, 2), b = factor(c('u', 'v', 'u', 'w', NA, 'v')), "
+             "c = c(TRUE, FALSE, TRUE, TRUE, FALSE, NA), d = c(1, 0, 0, 1, 0, 0), e = c(3, 1, 2, 2, 5, 1), "
+             "f = c(0.5, 2, 8, 1, 1, 4))")  # fmt: skip
+    rec["cluster/daisy_mixed"] = r_call(
+        f"library(cluster); {frame}; as.vector(daisy(df, metric = 'gower', type = list(asymm = 'd', symm = 'c', "
+        "ordratio = 'e', logratio = 'f'), weights = c(1, 2, 1, 0.5, 1, 3)))",
+        {"z": np.zeros(1)},
+    )
+    rec["cluster/daisy_default"] = r_call(
+        f"library(cluster); {frame}; as.vector(daisy(df, metric = 'gower'))", {"z": np.zeros(1)}
+    )
+    Y = S().points("blobs/k3p2").X
+    rec["cluster/daisy_numeric"] = r_call(f"library(cluster); {XR}; as.vector(daisy(x, metric = 'gower'))", rmat(Y))
     meta = {"tool": TOOL, "R": f"R version {rsession.version()}"}
     rec["_packages"] = r_call(
         "c(as.double(R.version$major), as.double(packageVersion('cluster')[[1, 1]]))", {"z": np.zeros(1)}

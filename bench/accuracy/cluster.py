@@ -26,8 +26,11 @@ tests/cluster/refdata.py:
               responsibilities (mstep_bound), against mixture.npz; comparator scikit-learn's _estimate_log_gaussian_prob,
               _compute_precision_cholesky and _estimate_gaussian_parameters at the same inputs (its expanded quadratic
               forms of diag and spherical and its one-pass tied, diag and spherical moments lose digits)
-  metrics     CL5: ARI, RI (correctly rounded: 0.5 ULP), FM, MI, NMI, AMI, homogeneity, completeness, V, the
-              silhouettes, Calinski-Harabasz and Davies-Bouldin; comparator scikit-learn's indices
+  metrics     CL5 (done): ARI, RI and FM (correctly rounded: 0.5 ULP), MI, the entropies, AMI's expected MI, NMI, AMI,
+              homogeneity, completeness and V (refdata.mi_bound, entropy_bound, emi_bound and their quotients), the
+              silhouettes, Calinski-Harabasz, Davies-Bouldin and the gap statistic's log W of a given partition
+              (silhouette_bound, ch_bound, db_bound, logw_bound) against metrics.npz; comparator scikit-learn's
+              indices (its entropy and expected_mutual_information too) at the same labelings, live
 """
 
 from __future__ import annotations
@@ -555,6 +558,165 @@ def _mixture_regions(lib):
     }
 
 
+# ---- metrics (CL5) ----------------------------------------------------------------------------------------------
+# Every labeling of metrics.npz and every point set with true labels: the exact indices in ULPs (their contract is
+# 0.5 ULP: correctly rounded), the others in units of their contract (tests/cluster/refdata.py). scikit-learn's
+# indices at the same inputs are the comparator column (its float pair counts, lgamma differences and expanded
+# distances).
+
+_AVGS = ("min", "geometric", "arithmetic", "max")
+
+
+def _norm(avg, ha, hb):
+    return {"min": min(ha, hb), "max": max(ha, hb), "geometric": math.sqrt(ha * hb), "arithmetic": (ha + hb) / 2}[avg]
+
+
+def _metric_values(lib, a, b, emi=True):
+    """{name: value} of one labeling pair."""
+    if lib == "sd":
+        import stardust as sd
+
+        cl = sd.cluster
+        ca = np.unique(a, return_inverse=True)[1].astype(np.int64)
+        cb = np.unique(b, return_inverse=True)[1].astype(np.int64)
+        _, _, _, mi, ha, hb, e = sd._core.cluster.external(
+            sd.asarray(ca), sd.asarray(cb), int(ca.max()) + 1, int(cb.max()) + 1, emi
+        )
+        out = {"mi": mi, "h_true": ha, "h_pred": hb, "emi": e}
+        M = cl
+    else:
+        import sklearn.metrics as M
+        from sklearn.metrics.cluster import _supervised as SV
+        from sklearn.metrics.cluster._expected_mutual_info_fast import expected_mutual_information
+
+        C = SV.contingency_matrix(a, b, sparse=True)
+        out = {"mi": M.mutual_info_score(a, b), "h_true": float(SV.entropy(a)), "h_pred": float(SV.entropy(b)),
+               "emi": float(expected_mutual_information(C, len(a))) if emi else math.nan}  # fmt: skip
+    out["ari"] = M.adjusted_rand_score(a, b)
+    out["ri"] = M.rand_score(a, b)
+    out["fm"] = M.fowlkes_mallows_score(a, b)
+    out["homogeneity"] = M.homogeneity_score(a, b)
+    out["completeness"] = M.completeness_score(a, b)
+    out["v"] = M.v_measure_score(a, b)
+    for avg in _AVGS:
+        out[f"nmi_{avg}"] = M.normalized_mutual_info_score(a, b, average_method=avg)
+        if emi:
+            out[f"ami_{avg}"] = M.adjusted_mutual_info_score(a, b, average_method=avg)
+    return out
+
+
+def _metrics_regions(lib):
+    from tests.cluster import refdata as D
+    from tests.cluster import samples as S
+
+    from .common import ulps
+
+    r = D.ref("metrics")
+    pts = {}
+
+    def gv(name, sid):
+        m = r.methods[name]
+        at = np.nonzero(m.index == D.group_of(r, sid))[0]
+        return (m.hi[at[0]], m.lo[at[0]], {k: v[at[0]] for k, v in m.fields.items()}) if len(at) else None
+
+    def add(key, where, err, bound, ulp=None):
+        e = pts.setdefault(key, {"where": [], "contract": [], "rel": [], "ulp": []})
+        for q, (v, b) in enumerate(zip(np.ravel(err), np.ravel(bound))):
+            e["where"].append(f"{where} #{q}" if np.size(err) > 1 else where)
+            e["contract"].append(v / b if b > 0 else (0.0 if v == 0 else math.inf))
+            e["rel"].append(v)
+        if ulp is not None:
+            e["ulp"].extend(np.ravel(ulp).tolist())
+
+    for lid in S.labeling_ids():
+        lb = S.labeling(lid)
+        emi_ref = gv("emi", lid)
+        vals = _metric_values(lib, lb.a, lb.b, emi=lb.n <= 10**5)
+        M, ra, rb, n = D.contingency(lb.a, lb.b)
+        for name in ("ari", "ri", "fm"):
+            hi, lo, _ = gv(name, lid)
+            d = float(ulps(vals[name], hi))
+            add(f"metrics/{name}", lid, d, 0.5, ulp=[d])  # correctly rounded: the nearest double, 0 ULP away
+        mi_ref, ha_ref, hb_ref = gv("mi", lid), gv("h_true", lid), gv("h_pred", lid)
+        dmi = D.mi_bound(M, n)
+        dha, dhb = D.entropy_bound(ra, ha_ref[0]), D.entropy_bound(rb, hb_ref[0])
+        add("metrics/mi", lid, abs(vals["mi"] - (mi_ref[0] + mi_ref[1])), dmi)
+        add("metrics/entropy", lid + " true", abs(vals["h_true"] - ha_ref[0] - ha_ref[1]), dha)
+        add("metrics/entropy", lid + " pred", abs(vals["h_pred"] - hb_ref[0] - hb_ref[1]), dhb)
+        if emi_ref is not None:
+            add("metrics/emi", lid, abs(vals["emi"] - emi_ref[0] - emi_ref[1]), D.emi_bound(emi_ref[2]["plus"]))
+        for avg in _AVGS:
+            ref = gv(f"nmi_{avg}", lid)
+            N = _norm(avg, ha_ref[0], hb_ref[0])
+            bound = 0.0 if ref[2]["special"] else D.ratio_bound(mi_ref[0], dmi, N, dha + dhb + 2 * D.U * N)
+            add("metrics/nmi", f"{lid} {avg}", abs(vals[f"nmi_{avg}"] - ref[0]), bound)
+            ref = gv(f"ami_{avg}", lid)
+            if ref is None or f"ami_{avg}" not in vals:
+                continue
+            if ref[2]["special"]:
+                add("metrics/ami", f"{lid} {avg}", abs(vals[f"ami_{avg}"] - ref[0]), 0.0)
+                continue
+            de = D.emi_bound(emi_ref[2]["plus"])
+            bound = D.ratio_bound(mi_ref[0] - emi_ref[0], dmi + de, N - emi_ref[0], dha + dhb + de + 2 * D.U * N)
+            add("metrics/ami", f"{lid} {avg}", abs(vals[f"ami_{avg}"] - ref[0]), bound)
+        for name, h, dh in (("homogeneity", ha_ref[0], dha), ("completeness", hb_ref[0], dhb)):
+            ref = gv(name, lid)
+            add("metrics/homogeneity", f"{lid} {name}", abs(vals[name] - ref[0]),
+                D.ratio_bound(mi_ref[0], dmi, h, dh) if h else 0.0)  # fmt: skip
+        ref = gv("v", lid)
+        s_ = ha_ref[0] + hb_ref[0]
+        add("metrics/v", lid, abs(vals["v"] - ref[0]),
+            D.ratio_bound(2 * mi_ref[0], 2 * dmi, s_, dha + dhb + D.U * s_) if s_ else 0.0)  # fmt: skip
+    sets = set(r.group_inputs["set"].tolist())
+    for sid in S.point_ids():
+        s = S.points(sid)
+        if sid not in sets or s.truth is None or not 2 <= len(set(s.truth.tolist())) <= s.n - 1:
+            continue
+        if lib == "sd":
+            import stardust as sd
+
+            cl = sd.cluster
+            sil = np.asarray(cl.silhouette_samples(s.X, s.truth))
+            ch, db = cl.calinski_harabasz_score(s.X, s.truth), cl.davies_bouldin_score(s.X, s.truth)
+            codes = np.unique(s.truth, return_inverse=True)[1].astype(np.int64)
+            o = np.asarray(sd._core.cluster.lex_order(sd.asarray(s.X)))
+            K = int(codes.max()) + 1
+            lw = {pw: sd._core.cluster.gap_logw(sd.asarray(np.ascontiguousarray(s.X[o])), sd.asarray(codes[o]), K,
+                                                float(pw)) for pw in (1, 2)}  # fmt: skip
+        else:
+            import sklearn.metrics as M
+
+            sil = M.silhouette_samples(s.X, s.truth)
+            ch, db = M.calinski_harabasz_score(s.X, s.truth), M.davies_bouldin_score(s.X, s.truth)
+            lw = None
+        pos, idx = D.at(r, "silhouette", sid, 0)
+        o2 = np.argsort(idx)
+        ref = r.methods["silhouette"].hi[pos[o2]] + r.methods["silhouette"].lo[pos[o2]]
+        n_max = int(np.max(np.unique(s.truth, return_counts=True)[1]))
+        add("metrics/silhouette", sid, np.abs(sil - ref), np.full(len(ref), D.silhouette_bound(n_max, s.p)))
+        hi, lo, _ = gv("calinski_harabasz", sid)
+        add("metrics/calinski_harabasz", sid, abs(ch - hi - lo), D.ch_bound(s.X, s.truth, hi))
+        hi, lo, _ = gv("davies_bouldin", sid)
+        add("metrics/davies_bouldin", sid, abs(db - hi - lo), D.db_bound(s.X, s.truth, hi))
+        if lw is not None:
+            K = len(set(s.truth.tolist()))
+            for pw in (1, 2):
+                ref = gv(f"logw_{pw}", sid)
+                if ref is not None:
+                    add("metrics/gap_logw", f"{sid} d_power={pw}", abs(lw[pw] - ref[0] - ref[1]),
+                        D.logw_bound(s.n, s.p, K, pw, ref[0]))  # fmt: skip
+    return {
+        key: region(
+            p["where"],
+            rel=np.array(p["rel"]),
+            contract=np.array(p["contract"]),
+            bound=1.0,
+            **({"ulp": np.array(p["ulp"])} if p["ulp"] else {}),
+        )  # fmt: skip
+        for key, p in sorted(pts.items())
+    }
+
+
 def sweeps():
     return [
         Custom(
@@ -568,4 +730,5 @@ def sweeps():
         Custom("cluster", "fuzzy", _fuzzy_regions),
         Custom("cluster", "density", lambda: _density_regions("sd"), compare_libs(_density_regions, ("sklearn",))),
         Custom("cluster", "mixture", lambda: _mixture_regions("sd"), compare_libs(_mixture_regions, ("sklearn",))),
+        Custom("cluster", "metrics", lambda: _metrics_regions("sd"), compare_libs(_metrics_regions, ("sklearn",))),
     ]

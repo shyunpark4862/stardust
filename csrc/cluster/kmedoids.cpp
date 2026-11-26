@@ -334,6 +334,17 @@ Out run(Dist& d, int64_t k, int method, int64_t max_iter, int64_t samples, int64
     return out;
 }
 
+}  // namespace
+
+std::vector<int64_t> pam_labels(const double* X, int64_t n, int64_t p, int64_t k) {
+    Dist d;
+    d.X = X, d.n = n, d.p = p, d.metric = 0;
+    Out out = run(d, k, 0, 1000, 1, n, random::Key{0, 0});
+    return std::move(out.lab);
+}
+
+namespace {
+
 nb::object kmedoids_py(
     nb::handle Xo,
     nb::handle Do,

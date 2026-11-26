@@ -280,7 +280,7 @@ def gaussian_mixture(
         code = 0
         data = _sd.empty((n_init, n), dtype=_sd.int64)
         for s in range(n_init):
-            s0, s1 = _core.gmm_subkey(k0, k1, s)  # the start's kmeans: its two words at start s (CL41)
+            s0, s1 = _core.subkey(k0, k1, s)  # the start's kmeans: its two words at start s (CL41)
             out = _core.kmeans(X, order, None, k, 0, None, 1, _KMEANS_MAX_ITER, _KMEANS_TOL, s0, s1, 0)
             data[s] = out[0][0]
     elif init == "k-means++":

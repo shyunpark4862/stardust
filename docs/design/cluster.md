@@ -1,6 +1,6 @@
 # 군집 영역 설계 (sd.cluster)
 
-> 상태: **확정** (2026-11-24). 큰 결정(§1.1 CL1–CL3)은 사용자가 정했다. §9의 질문 가운데 범위(미루는 것과 넣는 것: 19·22·27·28·29·32·36·37번), 결정성(6번), 라벨 번호(3번), 지표의 자리(10번)는 사용자가 (a)로 정했고(CL6, CL9, CL13, CL22, CL25, CL30–CL32, CL35, CL39, CL40), 연결법의 기본값(13번)은 메인 세션이 (b)로 정했으며(CL16, 사용자 위임), 나머지는 추천안 (a)다(사용자 위임). CL0 마일스톤(준비)을 마쳤다(2026-11-24): 결과의 공통 기반, 시험 자료, 참값, 비교 대상의 기록, 시제품의 측정과 그로 정한 CL41–CL48(추천안, 사용자 위임)이 있고 공개 이름은 아직 없다. k-평균의 거리 꼴(§9의 38번)은 사용자가 (a)로 정했다(CL49, 2026-11-26). CL1 마일스톤(계층)을 마쳤다(2026-11-27): `linkage`, `agglomerative`, `divisive`, `HierarchyResult`, scipy의 계층 도구와 `dendrogram`의 자료가 공개됐고, 그 세부를 CL50–CL57(추천안, 사용자 위임)과 CL58(메인 결정, 사용자 위임)로 정했다(§1.1; 높이 계약의 증명과 NN-chain 동점 검출의 충분함은 §4.1). CL2 마일스톤(분할)을 마쳤다(2026-11-27): `kmeans`, `minibatch_kmeans`, `bisecting_kmeans`, `kmedoids`(PAM·CLARA), `fuzzy_cmeans`와 결과들이 공개됐고, 그 세부를 CL59–CL66(추천안, 사용자 위임)으로 정했다(퍼지 c-평균의 `tol` = 10⁻⁵와 PAM의 `max_iter` = 1000을 확정; 경계 가속과 CL49 거르기의 증명은 §4.2). CL3 마일스톤(밀도)을 마쳤다(2026-11-27): `dbscan`, `hdbscan`, `optics`와 결과들이 공개됐고, 그 세부를 CL67–CL74(추천안, 사용자 위임)로 정했다(HDBSCAN은 같은 높이의 병합을 한꺼번에 줄여 입력 순서와 무관하고, 같은 높이가 없는 트리에서 scikit-learn과 같다; 계약과 증명은 §4.4). CL4 마일스톤(혼합)을 마쳤다(2026-11-27): `gaussian_mixture`와 `GaussianMixtureResult`가 공개됐고, 그 세부를 CL75–CL81(추천안, 사용자 위임)로 정했다(EM은 sklearn `GaussianMixture`의 단계와 기본값을 차의 꼴 이차형식과 평균을 뺀 2차 모멘트로 계산해, 같은 시작에서 sklearn과 같은 반복 수로 같은 고정점에 닿는다; 주어진 모수·책임도의 계약과 증명은 §4.5). 1스레드의 큰 p(약 35 이상)에서 full·tied의 E 단계가 같은 정의의 Accelerate 꼴보다 1.5배 넘게 느린 것은 §9의 40번으로 묻는다. 남은 임시 값(`affinity_propagation`의 `precomputed`의 이름, `gap_statistic`의 `select` 이름)은 해당 마일스톤에서 정한다. 이 문서의 잰 값은 `tools/cluster_probe.py`의 것이다(기록은 `tests/cluster/data/`의 `scipy.json`·`sklearn.json`·`r.json`, 시제품의 측정은 `prototype.json`; 설계 때의 탐침 `site/notes/cluster-design/probe_behavior.py`를 옮겨 넓혔다).
+> 상태: **확정** (2026-11-24). 큰 결정(§1.1 CL1–CL3)은 사용자가 정했다. §9의 질문 가운데 범위(미루는 것과 넣는 것: 19·22·27·28·29·32·36·37번), 결정성(6번), 라벨 번호(3번), 지표의 자리(10번)는 사용자가 (a)로 정했고(CL6, CL9, CL13, CL22, CL25, CL30–CL32, CL35, CL39, CL40), 연결법의 기본값(13번)은 메인 세션이 (b)로 정했으며(CL16, 사용자 위임), 나머지는 추천안 (a)다(사용자 위임). CL0 마일스톤(준비)을 마쳤다(2026-11-24): 결과의 공통 기반, 시험 자료, 참값, 비교 대상의 기록, 시제품의 측정과 그로 정한 CL41–CL48(추천안, 사용자 위임)이 있고 공개 이름은 아직 없다. k-평균의 거리 꼴(§9의 38번)은 사용자가 (a)로 정했다(CL49, 2026-11-26). CL1 마일스톤(계층)을 마쳤다(2026-11-27): `linkage`, `agglomerative`, `divisive`, `HierarchyResult`, scipy의 계층 도구와 `dendrogram`의 자료가 공개됐고, 그 세부를 CL50–CL57(추천안, 사용자 위임)과 CL58(메인 결정, 사용자 위임)로 정했다(§1.1; 높이 계약의 증명과 NN-chain 동점 검출의 충분함은 §4.1). CL2 마일스톤(분할)을 마쳤다(2026-11-27): `kmeans`, `minibatch_kmeans`, `bisecting_kmeans`, `kmedoids`(PAM·CLARA), `fuzzy_cmeans`와 결과들이 공개됐고, 그 세부를 CL59–CL66(추천안, 사용자 위임)으로 정했다(퍼지 c-평균의 `tol` = 10⁻⁵와 PAM의 `max_iter` = 1000을 확정; 경계 가속과 CL49 거르기의 증명은 §4.2). CL3 마일스톤(밀도)을 마쳤다(2026-11-27): `dbscan`, `hdbscan`, `optics`와 결과들이 공개됐고, 그 세부를 CL67–CL74(추천안, 사용자 위임)로 정했다(HDBSCAN은 같은 높이의 병합을 한꺼번에 줄여 입력 순서와 무관하고, 같은 높이가 없는 트리에서 scikit-learn과 같다; 계약과 증명은 §4.4). CL4 마일스톤(혼합)을 마쳤다(2026-11-27): `gaussian_mixture`와 `GaussianMixtureResult`가 공개됐고, 그 세부를 CL75–CL81(추천안, 사용자 위임)로 정했다(EM은 sklearn `GaussianMixture`의 단계와 기본값을 차의 꼴 이차형식과 평균을 뺀 2차 모멘트로 계산해, 같은 시작에서 sklearn과 같은 반복 수로 같은 고정점에 닿는다; 주어진 모수·책임도의 계약과 증명은 §4.5). 1스레드의 큰 p(약 35 이상)에서 full·tied의 E 단계가 같은 정의의 Accelerate 꼴보다 1.5배 넘게 느린 것은 §9의 40번으로 묻는다. CL5 마일스톤(지표와 k 고르기)과 CL6 마일스톤(그 밖)을 마쳤다(2026-11-27): sklearn 이름의 지표 17개와 `HomogeneityResult`, `gap_statistic`과 `GapResult`, `gower_distance`, `affinity_propagation`과 `AffinityPropagationResult`가 공개됐고, 그 세부를 CL82–CL94(추천안, 사용자 위임)로 정했다(ARI·RI·FM은 정확한 정수 셈의 올바른 반올림, AMI의 기대 MI는 초기하 비의 점화식; gap은 R `clusGap`·`maxSE`와 같은 뜻이고 PAM이면 R과 같은 log W; Affinity Propagation은 잡음 없이 열쇠 순서로 sklearn과 같은 연산이라, 잡음이 0인 sklearn과 같은 exemplar·라벨·반복 수; 계약과 증명은 §4.6). 임시로 두었던 이름은 정했다: `gap_statistic`의 `reference`·`select`는 R 이름의 소문자 꼴(CL87), `affinity_propagation`의 유사도 입력은 sklearn의 `affinity='precomputed'`(CL91). 이 문서의 잰 값은 `tools/cluster_probe.py`의 것이다(기록은 `tests/cluster/data/`의 `scipy.json`·`sklearn.json`·`r.json`, 시제품의 측정은 `prototype.json`; 설계 때의 탐침 `site/notes/cluster-design/probe_behavior.py`를 옮겨 넓혔다).
 
 `sd.cluster`(점들을 무리로 나누기: 분할, 계층, 밀도, 혼합 모형, 그리고 나눈 결과를 재는 지표)의 안과 내부 구조를 적는다.
 
@@ -100,6 +100,19 @@
 | CL79 거의 특이한 공분산 | §4.5의 마지막 물음(smooth SM58처럼 막을지)의 답: 막지 않는다(sklearn과 같다; `reg_covar`가 그 장치다). 공분산에서 인자로 가는 계약이 κ₂(Σ)에 비례한다(§4.5의 계약 8): full·tied는 max\|Û − U*\| ≤ C_PREC·p·γ_{p+1}·κ₂(Σ)·max\|U*\|(1차, C_PREC = 2), diag·spherical은 γ₂\|U*\|(증명). 측정에서 κ = 10⁴(full/k2p5)도 계약의 10⁻³배 안이다 (추천안, 사용자 위임 2026-11-27) |
 | CL80 혼합 모형의 표본 | `sample(shape=None, /, *, rng)`는 호출마다 `rng`의 두 단어를 받고(CL41) 표본 t(C 차례)는 원소 t다: 첫 단어로 라벨 차례의 누적 무게에서 성분을(무게에 비례), 이어지는 단어로 sd.stats의 ziggurat 정규 수 p개 z를(`stats/sample_dist.hpp`; `sd.stats.Normal`의 `sample`과 같은 꼴), 점은 μ + Lz, L = (U⁻¹)ᵀ(맞춤의 격자에서, 그다음 2⁻ᵉ)다. 표본마다 성분이 독립이다(sklearn은 다항 분포로 개수를 뽑아 성분 차례로 묶는다 `[sklearn과 다름]`). 결과는 namedtuple `MixtureSample(X, labels)`(공개 이름이 아니다; CL74의 `CondensedTree`와 같다), `shape=None`이면 (p,)와 int다 (추천안, 사용자 위임 2026-11-27) |
 | CL81 혼합 결과의 필드 | `GaussianMixtureResult`: `weights`, `means`, `covariances`, `precisions_cholesky`(sklearn의 모양), `loglik`(= `objective`), `lower_bound`, `bic` = −2·loglik + n_parameters·log n, `aic` = −2·loglik + 2·n_parameters(sklearn의 `score(X)·n`과 같은 값), `n_parameters`(sklearn `_n_parameters`), `n_iter`, `converged`(가장 좋은 시작의 것), `covariance_type`, `n_init`, `best_init`. 성분은 라벨의 처음 나오는 차례(CL6; 가장 큰 점이 없는 성분은 뒤에 맞춤의 차례로)이고 tied의 `covariances`·`precisions_cholesky`는 하나다. sklearn의 `precisions_`는 두지 않는다(`precisions_cholesky`에서 UUᵀ). `summary()`의 표는 크기와 `Weight`, 오른쪽은 공분산 꼴, 시작 수, 고른 시작, 하한, BIC, AIC다 (추천안, 사용자 위임 2026-11-27) |
+| CL82 지표의 라벨 | 라벨은 1차원의 정수, bool, 문자열(목록, numpy, `Series`)과 값이 정수인 실수다. 군집은 서로 다른 값이고 그 정렬 순서(numpy `np.unique`; 문자열은 Python의 정렬)가 분할표의 행·열이다. 소수가 있는 실수 라벨은 `ValueError`(sklearn은 `UserWarning`과 받기 `[sklearn과 다름]`), 라벨이 없으면 `ValueError`(sklearn은 많은 지표에서 1.0 `[sklearn과 다름]`), 점은 n(n − 1) < 2⁶³까지(짝 혼동 행렬의 int64; §3.8의 "C(n, 2) < 2⁶³, n < 2³²"를 이 한계로 바꾼다) (추천안, 사용자 위임 2026-11-27) |
+| CL83 정확한 외부 지표 | 분할표(C++: 칸 수가 max(4n, 2²⁰) 이하이면 밀집 셈, 넘으면 (행·열수 + 열) 열쇠의 정렬)의 정수 셈 Σ C(nᵢⱼ, 2), Σ C(aᵢ, 2), Σ C(bⱼ, 2)를 Python 정수로 받아, ARI·RI는 정확한 분자·분모의 Python 정수 나눗셈(CPython의 정수 나눗셈은 올바르게 반올림한다), FM = TP/√((TP + FP)(TP + FN))은 정수 제곱근과 끈적한 비트로 올바르게 반올림한 √(TP²/((TP + FP)(TP + FN)))다(§4.6의 "1 ULP 꼴"을 0.5 ULP로 좁힌다). 짝 혼동 행렬은 sklearn의 순서 있는 짝(2배)이다 (추천안, 사용자 위임 2026-11-27) |
+| CL84 정보 지표 | 로그는 L(x, y) = log(x/y)를 정확한 정수 x, y에서 x/y가 [1/2, 3/2] 안이면 log1p((x − y)/y)로 잰다(어디서나 상대오차 9u 안). MI = Σ(nᵢⱼ/n)L(n·nᵢⱼ, aᵢbⱼ)와 엔트로피는 칸 차례의 짝 합이고, MI는 0 아래를 0으로 자른다(sklearn처럼; sklearn은 ε 아래의 항을 0으로 지우기도 한다: sd는 지우지 않는다 `[sklearn과 다름]`). AMI의 기대 MI는 (행의 크기 α, 열의 크기 β)마다 초기하 무게를 비의 점화식 w(c + 1)/w(c) = (α − c)(β − c)/((c + 1)(n − α − β + c + 1))로 최빈값에서 밖으로 만들고(꼬리가 합의 2⁻⁸⁰ 아래이면 멈춘다; log-오목이라 남은 꼬리의 한계가 증명된다) 그 합으로 나눈다: sklearn의 lgamma 차는 n = 10⁶에서 10⁻⁸까지 상쇄한다. 같은 크기의 짝은 한 번만 재어 개수를 곱한다(그래서 n = 10⁶에서 10 ms; sklearn 397 ms). 특수 경우: 양쪽이 한 군집이거나 양쪽이 모두 홑원소면 AMI = 1, 한쪽만 한 군집이면 0(sklearn과 같다), 한쪽만 모두 홑원소면 모든 재배치의 MI가 다른 쪽 엔트로피와 같아(MI = E[MI]) 0이고 `'min'`은 1이다(그 정규화 값도 그 엔트로피다; 반올림한 sklearn도 1.0과 0 근처의 잡음을 낸다). 그 밖은 sklearn의 꼴(분모를 ±2⁻⁵² 밖으로)이다. 정확한 값이 [0, 1]인 NMI·동질성·완전성·V와 AMI는 1을 넘지 않게 자른다(sklearn의 동질성은 1.0000000000000002가 된다). V는 (1 + β)MI/(H_true + βH_pred)(h·c의 꼴보다 반올림이 적다; β = 0이면 h)라 β = 1이면 NMI(arithmetic)와 같은 비트다 (추천안, 사용자 위임 2026-11-27) |
+| CL85 실루엣의 길 | 관측값의 euclidean·sqeuclidean·cityblock·chebyshev는 spatial의 타일 커널(4점 × 8행의 판; `cdist`와 같은 비트)로 n × n 행렬 없이 재고, 그 밖의 거리는 열쇠 순서의 `sd.spatial.pdist`, 미리 계산한 거리는 그 행렬이다(CL43의 2의 거듭제곱으로 옮긴 자료: 비만 쓰여 값이 같다). 점마다 군집마다의 합은 군집 안 열쇠 순서에서 군집 안 자리의 4 나머지로 나눈 네 사슬을 (s₀ + s₁) + (s₂ + s₃)로 합친다(그래서 입력 순서와도, 군집의 라벨 값과도 무관한 비트다). a = b = 0인 점의 값은 0(sklearn의 `nan_to_num`과 같다), 평균은 CL48의 덩이 합이다 (추천안, 사용자 위임 2026-11-27) |
+| CL86 Calinski–Harabasz와 Davies–Bouldin | 두 지표가 평행 이동과 척도에 불변이라, 첫 열쇠의 점을 뺀 자료(그 점의 두 배 안의 좌표는 정확하다)에 CL43의 척도를 곱해 잰다. 군집 평균은 군집의 첫 점을 뺀 덩이 합(같은 점들의 군집이면 정확하다), W = 0이면 CH = 1(sklearn과 같다). DB는 모든 군집의 산포가 0이거나 모든 중심 사이 거리가 정확히 0일 때만 0이고(sklearn의 `np.allclose(…, 0)`은 10⁻⁸ 아래를 0으로 보아 척도에 따라 답이 다르다 `[sklearn과 다름]`), 중심이 같은 두 군집은 서로의 최댓값에서 뺀다(sklearn의 inf 거리와 같다). shifted/k3p2(10⁸ 평행 이동)에서 평균을 원점에서 잰 첫 판은 상대 2×10⁻⁹ 틀렸고 이 꼴은 4×10⁻¹⁵ 안이다 (추천안, 사용자 위임 2026-11-27) |
+| CL87 gap의 이름과 입력 | `reference='scaledpca'\|'original'`, `select='firstsemax'\|'tibs2001semax'\|'globalsemax'\|'firstmax'\|'globalmax'`: R 이름의 소문자 꼴이고, 다른 대소문자는 optimize의 방법 이름(O15)처럼 소문자 꼴을 짚는 `ValueError`다(`'select' must be lowercase: 'firstsemax', not 'firstSEmax'`). `k_max`는 2 이상(R과 같다)이고 서로 다른 점의 수 이하, `n_reference`는 2 이상(R의 B = 1은 SE가 NA라 `maxSE`가 실패한다 `[R과 다름]`), `d_power`는 0보다 큰 유한한 수, `se_factor`는 0 이상이다. 결과 `GapResult`는 분할이 아니라 `labels`·`n_clusters`가 없고 `log_w_reference`((B, k_max))와 `k_max`를 더한다 (추천안, 사용자 위임 2026-11-27) |
+| CL88 gap의 계산 | R `clusGap`의 단계를 이렇게 계산한다. 자료는 열쇠 순서, 가운데는 첫 점을 뺀 덩이 합의 평균, `'scaledpca'`의 축은 가운데로 옮긴 자료의 XᵀX(덩이 합)를 순환 Jacobi로 푼 고유벡터(고유값이 큰 차례, 같으면 번호; 열마다 절댓값이 가장 큰 성분을 양수로; R은 SVD의 V: 같은 축이고 부호는 상자의 분포를 바꾸지 않는다)이고 상자는 그 축의 좌표 범위다. 참조 자료 b(0 … B − 1)의 i번째 점의 d좌표는 원소 b·2⁴⁰ + i·p + d의 균등 수 u로 lo + (hi − lo)u(R의 `runif`), 그다음 축을 되돌려 가운데를 더한다. 벌마다 점을 열쇠 순서로 놓고, 군집은 k = 1이면 하나, 그 밖은 `'kmeans'`면 sd `kmeans`의 기본값(k-means++, 시작 하나; 집합 s(0이 자료, b + 1이 참조 b)의 k는 부모 흐름의 시작 2²³ + s·k_max + k의 두 단어; R은 Hartigan–Wong의 무작위 시작 하나 `[R과 다름]`), `'pam'`이면 sd `kmedoids`(PAM; R `pam`과 같은 medoid라 R과 같은 log W)다. W = ½Σ_r D_r/n_r, D_r은 군집 안 짝의 dᵖᵒʷᵉʳ(spatial의 유클리드; 행마다 네 사슬, 행들의 짝 합)이고 CL43의 격자에서 재어 log W에서 e·power·log 2를 뺀다(비정상 수 자료의 d²가 아래넘쳐 log 0이 되던 것을 막는다). E[log W]는 벌 차례의 평균, SE = √((1 + 1/B)·var)(평균을 뺀 두 번째 훑기, B − 1로 나눔). 벌(자료 포함 B + 1개)은 스레드마다 하나씩 나란히 돌고 벌 안의 군집은 차례다(풀 안에서는 중첩된 나란히가 차례로 돈다: 같은 비트). 하위 호출의 두 단어는 `_core.cluster.subkey`다(CL90) (추천안, 사용자 위임 2026-11-27) |
+| CL89 Gower의 세부 | CL38에 더한다: `data`는 `DataFrame` 또는 수의 2차원 배열(모든 열이 수)이고 `types`의 열쇠는 열 이름(배열이면 위치)이다. 문자열 열은 명목, bool 열은 대칭 이진, `'symm'`·`'asymm'`은 0·1(또는 bool)과 결측만, `'ordratio'`는 값의 조밀한 순위(문자열은 정렬 순서; R의 `as.ordered`)를 수로, `'logratio'`는 양수의 log10을 수로 읽는다(0 이하는 `ValueError`; R은 NaN·−Inf). R의 순서형 factor는 그 정수 코드를 수 열로 주면 같다(R도 코드를 범위로 나눈다). 수의 δ는 \|x − y\|/범위를 곧바로 잰다(R은 열을 (x − min)/범위로 먼저 옮긴다: 끝자리만 다르다), 상수 열의 범위는 1이다(R과 같다). 같이 가진 변수가 없는 짝은 NaN이다(R은 남은 무게의 합이 0.5 이하이면 NA라 무게가 작으면 값이 있는 짝도 NA가 된다 `[R과 다름]`). 차례는 변수 차례의 합 Σwδ/Σw이고 짝마다 나란하다 (추천안, 사용자 위임 2026-11-27) |
+| CL90 하위 호출의 두 단어 | CL4 마일스톤의 `_core.cluster.gmm_subkey`를 공용 이름 `_core.cluster.subkey(key0, key1, r)`(원소 r·2⁴⁰과 r·2⁴⁰ + 1의 첫 단어)로 옮겨 혼합 모형의 시작과 gap의 군집이 함께 쓴다(C++의 `metrics.cpp`; 결과의 비트는 그대로다) (추천안, 사용자 위임 2026-11-27) |
+| CL91 Affinity Propagation의 유사도 입력 | 임시로 둔 `metric='precomputed'`(유사도)를 sklearn의 `affinity='euclidean'\|'precomputed'`로 바꾼다: 이 영역의 `metric='precomputed'`는 언제나 거리(CL12)라 한 이름에 두 뜻을 두지 않는다. `'precomputed'`는 (n, n) 유사도 행렬(클수록 비슷하고 대칭이 아니어도 된다)이고, `'euclidean'`의 유사도는 음의 제곱 유클리드 거리(spatial의 차의 꼴)다. CL12의 "거리로 정의되는 방법" 목록에서 `affinity_propagation`을 뺀다 (추천안, 사용자 위임 2026-11-27) |
+| CL92 Affinity Propagation의 계산 | sklearn 1.9.1 `_affinity_propagation`의 연산을 하나씩 같은 차례로 하되 잡음을 더하지 않고 점을 열쇠 순서로 놓는다(미리 계산한 유사도는 입력 색인): 행마다 Y = max(A + S), 처음 나온 자리 I, 나머지의 최댓값 Y2; R = fl(fl(R·d) + fl(R_new·(1 − d))); 열의 합은 행 차례의 순차 합(numpy의 axis=0 줄이기와 같다); A = fl(fl(A·d) − fl(T·(1 − d))); E = A_kk + R_kk > 0. −0.0은 +0.0으로 바꾼다(잡음이 0인 sklearn의 S + 0이 그렇다). NEON의 max는 numpy의 `maximum`과 0의 부호만 다를 수 있고, 0의 부호는 비교와 0 아닌 값을 바꾸지 않는다. 그래서 열쇠 순서의 유사도에서 잡음이 0인 sklearn과 exemplar·라벨·반복 수가 같다(시험 자료 35개 × 세 설정의 105가지와 주어진 선호도). sklearn의 잡음은 퇴화(같은 유사도)를 깨려는 것이고 열쇠의 동점 규칙이 같은 일을 한다(CL40) (추천안, 사용자 위임 2026-11-27) |
+| CL93 Affinity Propagation의 결과와 멈춤 | `preference=None`은 유사도 n²개의 중앙값(numpy `median`: 짝수 개면 가운데 둘의 평균)이고 결과의 `preference`가 쓴 값이다(배열이면 입력 행마다; `'omit'`은 뺀 행의 값도 뺀다). 모든 비대각 유사도와 선호도가 같거나 n = 1이면 sklearn처럼 반복하지 않는다(선호도가 유사도보다 크면 모든 점이 exemplar, 아니면 첫 열쇠의 점 하나; `n_iter` 0, `converged` True). `convergence_iter`번 동안 모든 점의 exemplar 여부가 그대로이고 exemplar가 하나 이상이면 멈추며(`n_iter` = it + 1), 아니면 `max_iter`에서 `converged=False`다. 그때 exemplar가 없으면 모든 라벨이 −1, `n_clusters` 0이다(sklearn과 같다; 경고 없음). 라벨은 CL6의 처음 나오는 차례, `exemplars[j]`가 라벨 j의 exemplar다. `predict`는 제곱 거리가 가장 작은 exemplar(같으면 맞춤의 I 차례: 맞춘 점은 맞춤의 라벨을 받는다; exemplar가 둘 다 같은 점일 때만 예외), `'precomputed'`의 맞춤은 `ValueError`(sklearn과 같다). `damping`은 [0.5, 1), `max_iter`·`convergence_iter`는 1 이상(sklearn과 같다) (추천안, 사용자 위임 2026-11-27) |
+| CL94 Affinity Propagation의 메모리와 나란히 | S, R, A의 n × n 세 행렬(sklearn은 tmp까지 넷)과 중앙값을 고르는 사본 하나: 할당 전에 4·8n² 바이트가 물리 메모리보다 크면 `MemoryError`다. 반복마다 행의 훑기 한 번(앞 반복의 A 갱신과 이번 R 갱신을 한 행 안에서, 행 버퍼의 NEON)과 열 합의 훑기 한 번(256열 덩이마다 행 차례)이고, exemplar 판정은 열 합에서 대각만 O(n)으로 먼저 잰다. 행과 열 덩이가 나란하고 값마다 한 점 또는 한 열의 고정된 연산 차례라 스레드와 무관한 비트다 (추천안, 사용자 위임 2026-11-27) |
 
 ### 1.2 범위
 마일스톤 열은 그 이름을 만드는 §8의 마일스톤이고 "나중"은 첫 판에 넣지 않는 후보, "밖"은 이 영역에 두지 않는 것이다. 이름은 §9의 1·2·11번의 답(a)을 따른다.
@@ -146,16 +159,16 @@
 **지표와 k 고르기 → sd.cluster** (§9의 10·11번)
 | 다른 라이브러리 | sd.cluster | 마일스톤 |
 |---|---|---|
-| sklearn `silhouette_samples`, `silhouette_score`, R `cluster::silhouette` | 같은 이름. `silhouette_score`의 `sample_size`·`random_state`는 없다(언제나 전체) | CL5 |
-| sklearn `calinski_harabasz_score`, `davies_bouldin_score` | 같은 이름 | CL5 |
-| sklearn `adjusted_rand_score`, `rand_score`, `adjusted_mutual_info_score`, `normalized_mutual_info_score`, `mutual_info_score`, `homogeneity_score`, `completeness_score`, `v_measure_score`, `homogeneity_completeness_v_measure`, `fowlkes_mallows_score`, `pair_confusion_matrix`, `contingency_matrix`(`sklearn.metrics.cluster`) | 같은 이름 | CL5 |
-| R `cluster::clusGap(x, FUNcluster, K.max, B=100, d.power=1, spaceH0='scaledPCA')`, `maxSE` | `gap_statistic` → `GapResult`(§9의 34번) | CL5 |
-| R `cluster::daisy(x, metric='gower')` | `gower_distance`(§9의 35번) | CL5 |
+| sklearn `silhouette_samples`, `silhouette_score`, R `cluster::silhouette` | 같은 이름. `silhouette_score`의 `sample_size`·`random_state`는 없다(언제나 전체) | CL5 — **마침** |
+| sklearn `calinski_harabasz_score`, `davies_bouldin_score` | 같은 이름 | CL5 — **마침** |
+| sklearn `adjusted_rand_score`, `rand_score`, `adjusted_mutual_info_score`, `normalized_mutual_info_score`, `mutual_info_score`, `homogeneity_score`, `completeness_score`, `v_measure_score`, `homogeneity_completeness_v_measure`, `fowlkes_mallows_score`, `pair_confusion_matrix`, `contingency_matrix`(`sklearn.metrics.cluster`) | 같은 이름 | CL5 — **마침** |
+| R `cluster::clusGap(x, FUNcluster, K.max, B=100, d.power=1, spaceH0='scaledPCA')`, `maxSE` | `gap_statistic` → `GapResult`(§9의 34번; 이름은 소문자, CL87) | CL5 — **마침** |
+| R `cluster::daisy(x, metric='gower')` | `gower_distance`(§9의 35번; CL89) | CL5 — **마침** |
 
 **그 밖**
 | 다른 라이브러리 | sd.cluster | 마일스톤 |
 |---|---|---|
-| sklearn `AffinityPropagation`, `affinity_propagation` | `affinity_propagation`(§9의 37번) | CL6 |
+| sklearn `AffinityPropagation`, `affinity_propagation` | `affinity_propagation`(§9의 37번; 유사도 입력은 `affinity`, CL91) | CL6 — **마침** |
 | sklearn `SpectralClustering`, `spectral_clustering` | 나중, `sd.embed`의 스펙트럼 임베딩 뒤(§9의 36번) | 나중 |
 | sklearn `Birch`, `FeatureAgglomeration` | 나중(§9의 19·37번) | 나중 |
 | sklearn `SpectralBiclustering`, `SpectralCoclustering` | 밖(§9의 37번) | 밖 |
@@ -245,11 +258,12 @@
 - `predict`(가장 큰 책임도), `predict_proba`, `score_samples`(점마다의 로그 밀도), `sample(shape=None, /, *, rng)`.
 - **CL4 마일스톤에서 견준 것** (`tests/cluster/test_mixture.py`; CL75–CL81): 같은 시작(sd의 시작 모수를 `weights_init`·`means_init`·`precisions_init`로 sklearn에 준다; `'kmeans'`와 `'random'`, 네 공분산 꼴)에서 sklearn 1.9.1과 반복 수가 같고 `lower_bound`가 상대 10⁻¹³, 무게·평균이 10⁻¹⁰, 공분산이 10⁻⁹ 안이며 라벨, `score(X)·n`(= `loglik`), `bic(X)`, `aic(X)`, `_n_parameters`, 새 점의 `score_samples`·`predict_proba`·`predict`가 같다. 기본값으로 각자의 k-평균 시작을 쓰면 잘 떨어진 덩어리에서 같은 고정점이다(속도 사례의 자료에서 `lower_bound`가 비트까지 같았다). 10⁸만큼 옮긴 자료의 diag·spherical에서 sklearn의 펼친 이차형식은 q가 10⁻³ 넘게 틀리고 sd는 정확한 유리수 값과 상대 10⁻¹² 안이다.
 
-### 2.6 지표와 k 고르기 (CL5 마일스톤)
-- **내부 지표**: `silhouette_samples`, `silhouette_score`, `calinski_harabasz_score`, `davies_bouldin_score`. 홑원소 군집의 실루엣은 0이다(sklearn과 R `silhouette`이 같다; 탐침 [0.98, 0.979592, 0, 0.95, 0.952381]). 군집이 하나이거나 n개면 sklearn은 세 지표 모두 `ValueError`(`Number of labels is 1. Valid values are 2 to n_samples - 1 (inclusive)`)이고 sd도 같다.
-- **외부 지표**: 분할표의 정수 셈으로 정의된다. sklearn의 뜻 그대로다: `normalized_mutual_info_score`(기본 `average_method='arithmetic'`)는 `v_measure_score`(β = 1)와 같은 값이다(탐침에서 비트까지). ARI(한 군집, 한 군집) = 1, ARI(모두 홑원소, 모두 홑원소) = 1, AMI(한 군집, 한 군집) = 1, NMI(한 군집, 모두 홑원소) = 0이다(sklearn의 특수 경우; sd도 같다).
-- **`gap_statistic`** (§9의 34번): R `clusGap`의 뜻이다. 기본 `B=100`, `d_power=1`, `reference='scaledPCA'`, k 고르기는 `maxSE`의 `'firstSEmax'`와 `SE.factor=1`이다. R의 `d.power=1`은 Tibshirani 외(2001)의 제곱 거리(d.power = 2)와 다르다(R의 문서가 적는다). 탐침의 세 덩어리 60점에서 R은 k = 3을 골랐다.
-- **`gower_distance`** (§9의 35번): R `daisy(metric='gower')`의 뜻이다(수는 범위로 나눈 절댓값, 범주는 같은지, 순서형은 순위, 비대칭 이진은 둘 다 0인 짝을 뺀다). R은 논리형 열을 비대칭 이진으로 바꾸며 경고한다(탐침). 압축 꼴 거리를 돌려주어 `linkage`, `kmedoids`, `dbscan`의 `metric='precomputed'`에 바로 들어간다.
+### 2.6 지표와 k 고르기 (CL5 마일스톤 — 마침)
+- **라벨** (CL82): 정수, bool, 문자열과 값이 정수인 실수. 군집은 서로 다른 값의 정렬 순서다.
+- **내부 지표**: `silhouette_samples`, `silhouette_score`, `calinski_harabasz_score`, `davies_bouldin_score`. 홑원소 군집의 실루엣은 0이다(sklearn과 R `silhouette`이 같다; 탐침 [0.98, 0.979592, 0, 0.95, 0.952381]). 군집이 하나이거나 n개면 sklearn은 세 지표 모두 `ValueError`(`Number of labels is 1. Valid values are 2 to n_samples - 1 (inclusive)`)이고 sd도 같다(`silhouette_score(): the number of clusters must be between 2 and n - 1 (got 1)`). 실루엣의 길은 CL85, CH·DB는 CL86.
+- **외부 지표**: 분할표의 정수 셈으로 정의된다. sklearn의 뜻 그대로다: `normalized_mutual_info_score`(기본 `average_method='arithmetic'`)는 `v_measure_score`(β = 1)와 같은 값이다(탐침에서 비트까지; sd는 V를 (1 + β)MI/(H_true + βH_pred)로 재어 언제나 같은 비트다, CL84). ARI(한 군집, 한 군집) = 1, ARI(모두 홑원소, 모두 홑원소) = 1, AMI(한 군집, 한 군집) = 1, NMI(한 군집, 모두 홑원소) = 0이다(sklearn의 특수 경우; sd도 같다). ARI·RI·FM은 올바르게 반올림한 값(CL83), AMI의 한쪽이 모두 홑원소인 경우는 CL84.
+- **`gap_statistic`** (§9의 34번): R `clusGap`의 뜻이다. 기본 `n_reference=100`(R의 `B`), `d_power=1`, `reference='scaledpca'`, k 고르기는 `maxSE`의 `'firstsemax'`와 `se_factor=1`이다(이름은 R의 소문자 꼴, CL87; 계산은 CL88). R의 `d.power=1`은 Tibshirani 외(2001)의 제곱 거리(d.power = 2)와 다르다(R의 문서가 적는다). 탐침의 세 덩어리 90점(blobs/k3p2)에서 R은 k = 3을 골랐고 sd도 3이다. `method='pam'`의 log W는 R `clusGap(x, pam)`의 `logW`와 10⁻¹⁵ 안이고(같은 medoid), `maxSE`의 다섯 규칙은 무작위 60가지 × SE 계수 둘에서 R과 같다.
+- **`gower_distance`** (§9의 35번): R `daisy(metric='gower')`의 뜻이다(수는 범위로 나눈 절댓값, 범주는 같은지, 순서형은 순위, 비대칭 이진은 둘 다 0인 짝을 뺀다). R은 논리형 열을 비대칭 이진으로 바꾸며 경고한다(탐침). 압축 꼴 거리를 돌려주어 `linkage`, `kmedoids`, `dbscan`의 `metric='precomputed'`에 바로 들어간다. 섞인 자료(수, 명목, 논리, 비대칭 이진, 순위, 로그 비, 결측, 무게)에서 R과 상대 4×10⁻¹⁶ 안이다(CL89).
 
 ### 2.7 결과 객체
 | 이름 | 만드는 함수 | 이 결과만의 필드와 메서드 |
@@ -263,7 +277,8 @@
 | `HDBSCANResult` | `hdbscan` | `probabilities`, `outlier_scores`, `condensed_tree`, `single_linkage`(Z), `persistence`, `centroids`, `medoids`, `min_cluster_size`, `min_samples`, `cluster_selection_method`, `metric`, `dbscan_clustering`(CL74) |
 | `OPTICSResult` | `optics` | `ordering`, `reachability`, `core_distances`, `predecessor`, `cluster_hierarchy`, `min_samples`, `max_eps`, `cluster_method`, `eps`, `xi`, `metric`, `extract_xi`, `extract_dbscan`(새 결과; CL71) |
 | `GaussianMixtureResult` | `gaussian_mixture` | `weights`, `means`, `covariances`, `precisions_cholesky`, `loglik`, `lower_bound`, `bic`, `aic`, `n_parameters`, `n_iter`, `converged`, `covariance_type`, `n_init`, `best_init`, `predict`, `predict_proba`, `score_samples`, `sample`(namedtuple `MixtureSample(X, labels)`; CL80, CL81) |
-| `GapResult` | `gap_statistic` | `gap`, `se`, `log_w`, `e_log_w`, `k`, `select` |
+| `GapResult` | `gap_statistic` | `k`, `k_max`, `gap`, `se`, `log_w`, `e_log_w`, `log_w_reference`, `nobs`, `omitted`, `method`, `reference`, `select`, `se_factor`, `n_reference`, `d_power`(`labels`·`n_clusters`는 없다; CL87) |
+| `AffinityPropagationResult` | `affinity_propagation` | `exemplars`, `exemplar_points`, `n_iter`, `converged`, `damping`, `preference`, `affinity`, `predict`(CL93) |
 | `DendrogramResult` | `dendrogram` | namedtuple (`icoord`, `dcoord`, `leaves`, `ivl`, `color_list`, `leaves_color_list`) |
 
 ### 2.8 다른 라이브러리와 다른 곳 (모음)
@@ -301,6 +316,20 @@
 | 미니배치의 `init_size` < k | sklearn은 경고하고 3k로 바꾼다 | `ValueError`(CL64) |
 | 혼합 모형의 `'kmeans'` 시작과 서로 다른 점 | sklearn은 k-평균의 경고와 적은 군집 | `ValueError`(`kmeans`와 같다; CL76) |
 | R의 이름 | `ward.D2`, `mcquitty`, `nstart`, `iter.max`, `memb.exp` | `ward`, `weighted`, `n_init`, `max_iter`, `m` |
+| 외부 지표의 셈 | sklearn은 짝 수를 int64로 세지만 마지막 나눗셈을 float 둘의 나눗셈으로, FM을 √ 둘의 곱으로 한다 | 정확한 유리수의 올바른 반올림(CL83) |
+| AMI의 기대 MI | sklearn은 lgamma 차(n = 10⁶에서 10⁻⁸ 상쇄)이고 칸 수 전부를 훑는다(n = 10⁶에서 397 ms) | 초기하 비의 점화식, 같은 크기의 짝을 한 번(10 ms; CL84) |
+| 한쪽이 모두 홑원소인 AMI | sklearn은 반올림의 잡음(0 근처, `'min'`은 1.0) | 정확히 0, `'min'`은 1(CL84) |
+| 동질성·완전성·NMI의 1 넘음 | sklearn은 1.0000000000000002 | 1에서 자른다(CL84) |
+| 실수 라벨 | sklearn은 소수가 있어도 경고하고 받는다 | 값이 정수일 때만(CL82) |
+| Davies–Bouldin의 0 | sklearn은 `np.allclose(…, 0)`(10⁻⁸ 아래)이면 0 | 정확히 0일 때만(CL86) |
+| 먼 평행 이동의 CH·DB | sklearn은 원점에서 잰 평균(shifted/k3p2에서 상대 10⁻⁹ 꼴) | 첫 점을 뺀 자료(CL86) |
+| gap의 군집과 이름 | R `clusGap(x, kmeans)`는 Hartigan–Wong의 무작위 시작 하나, `spaceH0 = "scaledPCA"`, `maxSE(method = "firstSEmax")` | sd `kmeans`(k-means++), `reference='scaledpca'`, `select='firstsemax'`(CL87, CL88) |
+| Gower의 작은 무게 | R은 남은 무게의 합이 0.5 이하이면 NA | 같이 가진 변수가 없을 때만 NaN(CL89) |
+| Affinity Propagation의 잡음 | sklearn은 유사도에 `random_state`의 작은 잡음을 더한다 | 잡음 없이 열쇠의 동점 규칙(CL40, CL92) |
+| Affinity Propagation의 유사도 입력 | sklearn `affinity='precomputed'` | 같은 이름(`metric`이 아니다; CL91) |
+
+### 2.9 그 밖 (CL6 마일스톤 — 마침)
+- **`affinity_propagation`** (§9의 37번, CL40): sklearn `AffinityPropagation`의 반복과 멈춤과 기본값(`damping=0.5`, `max_iter=200`, `convergence_iter=15`, `preference=None`은 유사도의 중앙값)이다. 유사도는 `affinity='euclidean'`(음의 제곱 유클리드 거리) 또는 `'precomputed'`(주어진 행렬; CL91). 잡음을 더하지 않고 열쇠의 동점 규칙을 써서 `rng`가 없고, 입력 순서와 무관한 분할이며, 잡음이 0인 sklearn과 같은 답이다(CL92). 결과와 멈춤은 CL93, 메모리와 나란히는 CL94·§3.12.
 
 ---
 
@@ -366,13 +395,13 @@
 - **구현** (CL4 마일스톤, `csrc/cluster/mixture.cpp`, `_mixture.py`; CL75–CL81): 점은 열쇠 차례로 CL77의 격자에 옮겨 넘긴다. E 단계는 512점 작업마다 여덟 점을 한 덩이로 행을 열로 놓고(차례대로) 성분마다 z = x − μ를 NEON 두 칸씩, full·tied의 y = Uᵀz는 네 열 × 여덟 점의 판(누적기 16개, 열 끝을 0으로 채운 U)으로, q = Σy²를 판의 차례로 잰다(판의 0은 y에 정확한 0을 더하고 q에서 빠진다; 한 칸의 연산은 그 점만의 것이라 덩이와 무관한 비트). exp는 배열의 NEON exp(`array/kernels/vmath.hpp`, 1 ULP)다. M 단계의 첫 훑기(Σlog p, nk, Σrx)는 덩이마다, 두 번째 훑기(2차 모멘트)는 (덩이, 성분)마다의 작업이고 full·tied는 항(점, 또는 tied의 (점, 성분))을 128개씩 모아 네 행 × 여덟 열의 판을 누적기에 쥔 채 항의 차례로 더한다(원소마다의 합의 차례가 항의 차례 그대로다; r = 0인 항은 정확한 +0이라 건너뛴다). 덩이의 합은 덩이 차례의 짝 나무로 만난다(`pairwise_chunks`와 같은 나무). 작은 Cholesky와 삼각 역은 고정 순서의 fma다. `n_init`의 시작은 차례이고 시작 안이 나란하다. `'kmeans'`의 라벨과 `'k-means++'`의 점은 Python이 `_core.cluster.kmeans`·`kmeans_plusplus`로 만들어 넘긴다.
 
 ### 3.8 지표
-- **분할표**: 두 라벨 배열의 정수 셈(정렬과 고유값; 라벨은 어떤 값이든 받는다). 셈은 int64이고 짝의 수 C(n, 2)는 n < 2³²에서 int64에 들어간다(넘으면 `ValueError`; n = 4.3×10⁹은 메모리가 먼저 모자란다).
-- **ARI, RI, FM, 짝 혼동 행렬**: 정수 셈의 유리식이다. ARI = (Σ C(nᵢⱼ, 2) − E)/(½(Σ C(aᵢ, 2) + Σ C(bⱼ, 2)) − E)의 분자·분모를 128비트 정수로 정확히 구하고 마지막 나눗셈만 반올림한다: **올바르게 반올림한 값**이다(§4.6). FM = TP/√((TP + FP)(TP + FN))은 정수 곱의 제곱근 한 번과 나눗셈 한 번이다.
-- **MI, NMI, AMI, 동질성·완전성·V**: Σ(nᵢⱼ/n)log(n·nᵢⱼ/(aᵢbⱼ))와 엔트로피는 정해진 순서의 합이다. AMI의 기대 상호정보(Vinh 외 2010)는 초기하 분포의 합이고, 항을 lgamma의 차로 구한다(sklearn의 `expected_mutual_information`과 같은 식; 항의 수가 Σᵢⱼ min(aᵢ, bⱼ)라 큰 n에서 무겁다: 나란히 한다).
-- **실루엣**: 점마다 군집별 평균 거리. O(n²p) 시간, 행렬 없이 행 덩이로 나란히(점 하나의 합은 고정 순서). CH와 DB는 무게 중심의 짝 합이다.
+- **분할표**: 두 라벨 배열의 정수 셈(라벨을 정렬한 고유값의 번호로 바꾸고, 칸이 적으면 밀집 셈, 많으면 열쇠의 정렬; CL83). 셈은 int64이고 n(n − 1) < 2⁶³까지 받는다(짝 혼동 행렬의 항; 넘으면 `ValueError`, CL82).
+- **ARI, RI, FM, 짝 혼동 행렬**: 정수 셈의 유리식이다. 짝 수 Σ C(nᵢⱼ, 2), Σ C(aᵢ, 2), Σ C(bⱼ, 2)를 C++에서 128비트로 세어 Python 정수로 넘기고, ARI = 2(TP·TN − FN·FP)/((TP + FN)(FN + TN) + (TP + FP)(FP + TN))의 분자·분모를 Python 정수로 정확히 구해 마지막 나눗셈만 반올림한다: **올바르게 반올림한 값**이다(§4.6). FM = TP/√((TP + FP)(TP + FN))도 정수 제곱근과 끈적한 비트로 올바르게 반올림한다(CL83).
+- **MI, NMI, AMI, 동질성·완전성·V**: Σ(nᵢⱼ/n)log(n·nᵢⱼ/(aᵢbⱼ))와 엔트로피는 칸 차례의 짝 합이고, 로그는 1 근처에서 log1p다(CL84). AMI의 기대 상호정보(Vinh 외 2010)는 초기하 분포의 합이고, 무게를 비의 점화식으로 최빈값에서 밖으로 구해 그 합으로 나눈다(lgamma 차의 상쇄가 없다; 꼬리가 합의 2⁻⁸⁰ 아래이면 멈춘다). 같은 (행 크기, 열 크기)의 짝은 한 번만 재고(서로 다른 크기는 한쪽에 √(2n)개 아래), 짝들은 나란히 재어 크기 차례의 짝 합으로 합친다.
+- **실루엣**: 점마다 군집별 평균 거리. O(n²p) 시간, 행렬 없이 spatial의 타일 커널(4점 × 8행)로 32점 덩이마다 나란히(점 하나의 군집 합은 군집 안 열쇠 순서의 네 사슬; CL85). CH와 DB는 첫 점을 뺀 자료의 무게 중심과 덩이 합이다(CL86).
 
 ### 3.9 gap 통계량
-- R `clusGap`의 단계: k = 1 … K마다 log W_k(군집 안의 짝 거리 합의 반, `d_power`제곱; R의 `W.k`), 참조 자료 B벌(`'scaledPCA'`: 주성분 축에서 상자 안의 고른 난수; `'original'`: 원래 축의 상자)마다 같은 군집을 다시 하고, gap = E*[log W] − log W, SE = sd·√(1 + 1/B)다. 군집은 `method`(`'kmeans'`, `'pam'`; §9의 34번)로 이 영역의 함수를 부른다. 참조 자료와 군집의 난수는 `rng`의 하위 흐름이고 B벌은 나란하다.
+- R `clusGap`의 단계: k = 1 … K마다 log W_k(W = ½Σ_r D_r/n_r, D_r은 군집 r 안 짝의 `d_power`제곱 거리 합; R의 `W.k`), 참조 자료 B벌(`'scaledpca'`: 주성분 축에서 상자 안의 고른 난수; `'original'`: 원래 축의 상자)마다 같은 군집을 다시 하고, gap = E*[log W] − log W, SE = sd·√(1 + 1/B)다. 군집은 `method`(`'kmeans'`, `'pam'`; §9의 34번)로 이 영역의 C++ 함수(`partition.hpp`의 `kmeans_labels`, `pam_labels`: 공개 함수와 같은 비트)를 부른다. 참조 자료와 군집의 난수는 `rng`의 하위 흐름이고 B벌은 C++ 안에서 나란하다(CL88). k는 R `maxSE`의 규칙으로 Python에서 고른다.
 
 ### 3.10 병렬화와 결정성
 **같은 입력이면 스레드 수와 상관없이 같은 비트다**(§9의 6번 (a)). 테스트는 함수마다 1·3·10스레드(또는 1, 2, 3, 7, 10)에서 같은 바이트를 확인하고, 골든은 1·3·10스레드에서 같아야 한다.
@@ -395,7 +424,9 @@
 | EM의 E·M 단계 | E 단계는 점 작업(512점), M 단계는 (4096점 덩이, 성분)의 부분합, 덩이 차례의 짝 합 | 점마다의 값은 그 점의 연산 차례이고 합의 나무는 n으로만 정해진다(CL75) |
 | 혼합 모형의 표본 | 1024표본 작업 | 표본 t는 원소 t의 함수다(CL80) |
 | 실루엣·외부 지표의 셈 | 행 덩이, 정수 셈 | 정수 셈은 순서와 무관하고 실수 합은 덩이 순서다 |
-| gap의 참조 자료 B벌 | 벌마다 | 하위 흐름이 벌 번호로 정해진다 |
+| gap의 참조 자료 B벌 | 벌마다(자료 포함 B + 1; 벌 안의 군집은 차례) | 하위 흐름이 벌 번호로 정해진다(CL88) |
+| 기대 MI | (행 크기, 열 크기)의 짝마다 | 짝의 값은 그 짝의 연산 차례, 합은 크기 차례의 짝 합(CL84) |
+| Affinity Propagation | 16행 덩이의 A·R 갱신, 256열 덩이의 열 합 | 값마다 한 점 또는 한 열의 고정된 연산 차례(CL94) |
 
 - **난수의 하위 흐름** (CL41): 호출마다 `rng`에서 64비트 두 단어를 받아 키로 쓴다(회귀 `rlm(method='MM')`의 규칙). 시작(표본, 참조 자료) r의 t번째 수는 원소 r·2⁴⁰ + t의 Philox 출력이다(k-means++의 단계들은 t를 차례로 쓴다). 안에서 부르는 이 영역의 함수는 부모 흐름의 정해진 시작 번호에서 두 단어를 받아 자기 키로 쓴다. 그래서 `rng`는 호출 하나에 언제나 두 단어만 움직이고, 결과는 스레드 수와 무관하다.
 - 병렬 기준값은 배열의 규칙이다(float64 연산 2¹⁵개 분량 이상이면 나누고 GIL을 놓는다; API.md §3).
@@ -410,6 +441,12 @@
 - 혼합 모형(CL4 마일스톤): 자료의 열쇠 차례 사본(격자로 옮긴 것) O(np), 책임도 O(nk), log p(x) O(n), 2차 모멘트의 덩이 잎 O(⌈n/4096⌉·k·p²)(sklearn은 성분마다 (n, p)의 차 행렬을 만든다). 결과는 모수와 맞춤의 격자 값만 쥔다.
 - 실루엣: O(n·k)(군집별 합)이고 n × n 행렬을 만들지 않는다(sklearn은 행 덩이의 거리 행렬을 만든다).
 - 결과 객체는 `predict`를 위해 중심·medoid·모수만 쥐고 자료의 사본을 쥐지 않는다(`HDBSCANResult.medoids` 같은 게으른 필드는 결과가 자료의 참조를 쥔다; §9의 1번에서 정한다).
+- 지표(CL5 마일스톤): 분할표는 칸이 max(4n, 2²⁰) 이하면 밀집 int64, 넘으면 n개의 열쇠를 정렬한다. 기대 MI는 짝마다 잘린 무게 하나(최빈값 둘레). 실루엣은 군집으로 묶은 자료의 사본과 판 O(np). gap은 벌마다 자료 크기의 사본 O(np)(스레드마다 하나)와 군집 안 행 사본. Gower는 결과(압축 꼴)와 열마다의 수 행렬 O(np).
+- Affinity Propagation(CL6 마일스톤): S, R, A의 3·8n² 바이트와 중앙값의 사본 8n²(CL94; sklearn은 tmp까지 4·8n²).
+
+### 3.12 Affinity Propagation (CL6 마일스톤)
+- 반복 하나: 행마다(16행 덩이로 나란히) 앞 반복의 열 합으로 A 행을 고치고(대각은 자르지 않는다), 행 버퍼에 A + S를 써서 최댓값·처음 자리·나머지의 최댓값을 NEON으로 찾고 R 행을 고친다. 그다음 열 합을 256열 덩이마다 행 차례로 더한다(numpy의 axis=0 줄이기와 같은 차례). exemplar 판정은 대각의 새 A를 열 합에서 O(n)으로 먼저 잰다(멈추면 A의 나머지는 고치지 않는다). 연산은 sklearn의 것과 하나씩 같다(CL92).
+- n = 2000, p = 2(200번)는 1스레드 1.47 s, 10스레드 0.22 s이고 sklearn은 2.4 s다(§5). 1스레드는 메모리 대역에 묶인다(반복마다 약 190 MB).
 
 ---
 
@@ -456,10 +493,21 @@ CL4 마일스톤이 정하고 `tests/cluster/test_mixture.py`와 `bench/cluster/
 - **반복**: EM의 경로와 멈춘 자리는 약속하지 않는다(정해진 멈춤 규칙의 결과). `converged=True`이면 마지막 두 하한의 차가 `tol` 미만이고(시험이 `max_iter`를 하나 줄여 확인한다), `labels`는 결과의 모수에서의 `predict`와 같으며, `loglik`·`bic`·`aic`는 결과의 모수에서 위의 한계(정리 7의 합)다. 같은 시작에서 sklearn과 같은 반복 수로 같은 고정점 근처에 닿는다(§2.5).
 
 ### 4.6 지표
-- **ARI, RI, FM, 짝 혼동 행렬, 분할표, 동질성의 셈**: 정수 셈은 정확하다. ARI와 RI는 **올바르게 반올림한 값**(0.5 ULP), FM은 1 ULP 꼴이다. 참값은 `Fraction`이다.
-- **MI, NMI, V, AMI**: 로그 합의 한계 c·u·(log n)·Σ|항|. AMI의 EMI는 lgamma 차의 상쇄가 있어 CL5 마일스톤에서 측정으로 상수를 정한다(참값은 Arb의 초기하 합).
-- **실루엣, CH, DB**: 짝 합과 나눗셈의 한계. 실루엣의 (b − a)/max(a, b)는 a ≈ b에서 상쇄가 있어 절대 한계 c·γ·(a + b)/max(a, b) 꼴이다.
-- **gap**: 난수가 정해지면 log W의 한계를 따른다. 참조 자료의 군집은 그 군집 함수의 계약이다.
+CL5 마일스톤이 정하고 증명했다(참값은 `tools/cluster_ref.py`의 `metrics`; 한계 함수는 `tests/cluster/refdata.py`; 잰 값은 `bench/cluster/accuracy.md`의 `metrics`). γ_k = ku/(1 − ku), 1차 꼴은 γ끼리의 곱을 버린다.
+
+1. **ARI, RI, 짝 혼동 행렬, 분할표**: 정수 셈은 정확하다(n(n − 1) < 2⁶³이라 짝 수와 그 두 배가 int64에 든다; ARI의 분자·분모는 Python 정수라 넘치지 않는다). ARI와 RI는 정확한 정수 둘의 몫을 CPython의 정수 나눗셈으로 한 번 반올림한다: **올바르게 반올림한 값**(0.5 ULP). 특수 경우(sklearn의 1.0)는 정확한 값이다.
+2. **FM**: FM = √(TP²/((TP + FP)(TP + FN))). s = 60 − ⌊(bits(분자) − bits(분모))/2⌋로 q = ⌊분자·2²ˢ/분모⌋, r = ⌊√q⌋(`math.isqrt`)이면 ⌊√⌊x⌋⌋ = ⌊√x⌋라 r = ⌊FM·2ˢ⌋이고 r ≥ 2⁵⁹다. m = 2r + [나머지가 있거나 r² ≠ q]는 FM·2ˢ⁺¹을 아래로 자른 값에 끈적한 비트를 붙인 것이라, 53비트로의 가장 가까운 짝수 반올림(`float(m)`)은 FM·2ˢ⁺¹의 올바른 반올림이다(반올림 자리가 r의 끝자리보다 6비트 이상 위이고, 끈적한 비트가 정확히 가운데인 경우와 가운데를 넘는 경우를 가른다). 2⁻ˢ⁻¹을 곱하는 것은 정확하다: **올바르게 반올림한 값**.
+3. **로그 L(x, y)** (정확한 정수 x, y > 0): x/y가 [1/2, 3/2] 밖이면 x, y의 변환과 나눗셈으로 몫은 상대 γ₃ 안이고 |log| ≥ log(3/2)라 L의 상대오차는 γ₃/log(3/2) + u ≤ 8.5u다. 안이면 d = (x − y)/y는 정확한 차의 변환·y의 변환·나눗셈으로 상대 γ₃, |d| ≤ 1/2에서 |d/((1 + d)log1p(d))| ≤ 1.443이라 L의 상대오차는 1.443γ₃ + u ≤ 5.4u다(log·log1p 자체는 1 ULP 안으로 본다). 그래서 어디서나 |L̂ − L| ≤ 9u|L|.
+4. **MI와 엔트로피**: 항 t = (c/n)·L은 나눗셈과 곱의 두 반올림이 더해져 |t̂ − t| ≤ γ₁₁|t|이고, m개 항의 짝 합(여덟 항까지 차례, 그 위는 반으로)은 깊이 ⌈log₂ m⌉ + 5 안이라 |MÎ − MI| ≤ γ_{⌈log₂ m⌉+16}·T⁺, T⁺ = Σ|tᵢⱼ|다(엔트로피는 항이 모두 양수라 T⁺ = H). 0에서 자르기는 참값(≥ 0) 쪽으로만 움직인다.
+5. **기대 MI**: 짝 (α, β)마다 무게의 비 r̂(c)는 정확한 정수의 변환(2⁵³ 아래), 두 곱, 나눗셈으로 상대 γ₃이고 누적 곱 하나가 더해져, 최빈값 c*에서 |c − c*|걸음 떨어진 ŵ(c)는 상대 γ_{4|c−c*|} 안이다. 잘라 낸 꼬리는 log-오목(비가 c에 줄어든다)이라 남은 질량이 ŵ·r/(1 − r) 아래이고 2⁻⁸⁰·합 아래에서 멈춘다(무시할 만하다). 합 S와 분자 Σŵt̂(차례 합)의 오차를 1차로 모으면 짝의 값 v = Σ P t의 오차는 u·[Σ_c P(c)|t(c)|(4|c − c*| + 2L + 12) + |v|(4D + 2L + 2)] 안이다(D = Σ P|c − c*|, L = ⌈log₂(2n)⌉ + 5는 합의 깊이의 한계: 창의 길이와 짝의 수가 2n 아래). 개수를 곱하는 반올림과 짝들의 짝 합을 더해 **|ÊMI − EMI| ≤ u·E⁺**(1차), E⁺는 위의 괄호를 모든 행–열 짝(개수만큼)에 더한 것이고 참값 도구가 함께 낸다(필드 `plus`).
+6. **NMI, AMI, 동질성, 완전성, V**: 몫 q = N/D의 오차는 1차로 (ΔN + q·ΔD)/|D| + u·q다(`refdata.ratio_bound`). NMI는 N = MI, D = 정규화 값(평균·기하 평균의 반올림 γ₂·D를 더한다), AMI는 N = MI − E, D = 정규화 값 − E(ΔN = ΔMI + ΔE, ΔD = ΔH + ΔE + γ₂·D), 동질성·완전성은 MI/H, V는 2MI/(H_true + H_pred)다. 자르기(≤ 1)는 참값 쪽으로만 움직인다. AMI의 분모가 ±2⁻⁵² 안으로 가는 sklearn의 지킴은 특수 경우(CL84)가 아니면 참값의 분모가 0이 아니어서(한쪽이 한 군집이나 모두 홑원소가 아니면 재배치로 MI가 줄어 E < min(H)) 한계가 그 분모로 정해진다.
+7. **실루엣**: 거리는 spatial의 계약(유클리드 |d̂ − d| ≤ γ_{p/2+2}·d; 나머지 셋은 그 안)이고, 군집 합은 네 사슬(길이 ⌈m/4⌉)과 두 덧셈이라 상대 γ_{⌈m/4⌉+p/2+4}, 평균은 한 번 더, b의 최솟값은 정확하다. (b̂ − â)/max(â, b̂)의 절대오차는 1차로 2γ_K·(a + b)/max(a, b) + 2u 안이고 (a + b)/max(a, b) ≤ 2라 **|ŝ − s| ≤ 4γ_{⌈n_max/4⌉+p/2+8} + 2u**(n_max는 가장 큰 군집)다. 평균은 덩이 합의 한계를 더한다(값이 [−1, 1]이라 γ_{⌈log₂ n⌉+...}의 작은 항).
+8. **Calinski–Harabasz**: 자료에서 첫 점을 뺀 값 y(상대 u)와 그 최대 크기 M으로, 군집 평균(첫 점을 뺀 덩이 합)의 좌표 오차는 δ = γ_{⌈log₂ n⌉+13}·M 안이다. W(μ̂) − W(μ) = Σn_c‖μ̂_c − μ_c‖² ≤ npδ²(평균이 W를 가장 작게 하므로 2차), B의 오차는 Σn_c·2‖μ_c − μ‖·‖Δ(μ_c − μ)‖ ≤ 4√p·δ·Σn_c‖μ_c − μ‖ ≤ 4√p·δ·√(nB)(코시–슈바르츠)에 합의 반올림 γ_A·B를 더한다(A = p + ⌈log₂ n⌉ + K + 16). 그래서 **|ĈH − CH| ≤ CH·[γ_A(3 + 4M√(np/B)) + npδ²/W]**(1차). B가 작은(군집의 평균이 모두 가까운) 자료에서 한계가 커지는 것은 그 조건수다.
+9. **Davies–Bouldin**: 산포 s_c와 중심 거리 d_ce는 평균의 오차로 각각 √p·δ, 2√p·δ 안에서 움직이고 거리의 계약과 합의 반올림이 더해져, 몫 (s_c + s_e)/d_ce의 상대오차는 γ_A + 4√p·δ/m 안이다(m: 0이 아닌 s_c + s_e와 d_ce의 가장 작은 값). 최댓값과 평균은 상대오차를 키우지 않아 **|D̂B − DB| ≤ DB·(2γ_A + 4√p·δ/m)**(1차)다. 0의 판정은 정확한 0이다(CL86).
+10. **gap의 log W** (주어진 분할): dᵖᵒʷᵉʳ은 상대 max(1, power)·γ_{p/2+2} + u, 행의 네 사슬과 행들의 짝 합, 군집 몫과 군집의 합으로 Ŵ = W(1 + θ), |θ| ≤ γ_G, G = max(1, power)(p/2 + 2) + ⌈n/4⌉ + ⌈log₂ n⌉ + K + 12이고, log와 격자의 되돌림(e·power·log 2의 곱과 뺄셈)으로 **|log Ŵ − log W| ≤ γ_G/(1 − γ_G) + 2u|log W|**다. gap 통계량은 난수가 정해지면 벌마다 이 한계와 그 벌의 군집(k-평균·PAM의 계약)을 따른다.
+11. **Affinity Propagation**: 수의 계약이 아니라 연산의 계약이다: 잡음이 0인 sklearn과 같은 연산 차례(CL92)라 열쇠 순서의 같은 유사도에서 exemplar·라벨·반복 수가 같다(테스트가 105가지에서 본다).
+
+잰 값(정확도 스윕 `metrics`, 2026-11-27; 한계의 몫은 `bench/cluster/accuracy.md`): ARI·RI·FM은 라벨 짝 13가지 모두 참값의 가장 가까운 double(0 ULP), MI·엔트로피는 상대 1.8u 안(몫 0.1 아래), 기대 MI는 몫 0.024, NMI·AMI·동질성·완전성·V는 몫 0.043 아래, 실루엣은 절대 1.7u 안(몫 0.043), CH·DB는 상대 4×10⁻¹⁵ 안(몫 0.023 아래), log W는 상대 2u 안(몫 0.46: huge/k3p2의 격자 되돌림)이다. sklearn은 같은 한계로 FM이 1 ULP(large/1e6; 몫 2), AMI가 몫 4.4, 기대 MI가 몫 6.2이고(lgamma 차), shifted·subnormal 자료의 실루엣(0.75)과 CH(절대 142)·DB(0.51)가 한계를 크게 넘는다(전개식 거리, 원점에서 잰 평균).
 
 ---
 
@@ -474,7 +522,7 @@ CL4 마일스톤이 정하고 `tests/cluster/test_mixture.py`와 `bench/cluster/
 | `dbscan`, n = 2×10⁴, p = 2 | sklearn 31 ms | sklearn 이하 / 1/4 이하 |
 | `hdbscan`, n = 2×10⁴, p = 2 | sklearn 623 ms | sklearn의 1/3 이하 / 1/10 이하(Borůvka) |
 | `gaussian_mixture` full, k = 5, n = 2×10⁴, p = 10 | sklearn 65 ms | sklearn 이하 / 1/3 이하 |
-| `silhouette_score`, n = 2×10⁴ | (CL5 마일스톤에서 잰다) | sklearn 이하 / 1/8 이하 |
+| `silhouette_score`, n = 2×10⁴, p = 10, k = 5 | sklearn 1090 ms(1스레드 1089), R `silhouette(dist)` 1738 ms | sklearn 이하 / 1/8 이하: 525 / 61 ms(CL5 마일스톤) |
 
 - 큰 n의 계층 군집: O(n²) 메모리가 첫 벽이다. 행렬 없는 길(§3.2)이 scipy가 못 푸는 크기를 푼다. single은 MST라 O(n log n) 어림(낮은 차원의 Borůvka), ward·centroid·median은 O(n²p) 시간이다. NN-chain은 본디 차례 알고리즘이라 병렬의 몫은 거리 갱신과 높이 다시 계산이다.
 - 2차원 단일 연결은 Delaunay 변 위의 MST로 O(n log n)이 되지만(유클리드 MST는 Delaunay의 부분 그래프) 첫 판에 넣지 않는다: Borůvka로 충분한지 CL1 마일스톤에서 본다.
@@ -555,7 +603,24 @@ CL4 마일스톤이 정하고 `tests/cluster/test_mixture.py`와 `bench/cluster/
 
   §5 첫 표의 목표(full, n = 2×10⁴, p = 10, k = 5: sklearn 이하 / 1/3 이하)에 이른다(속도 사례의 세 번 중 가장 빠른 값 7.2 / 2.2 ms 대 sklearn 16.5 / 16.2). sklearn의 GMM은 numpy(Accelerate) 위에서 스레드 수와 무관하게 거의 같은 시간이다. 1스레드의 p = 50에서 sd가 느리다: 같은 정의(차의 꼴)의 Accelerate 꼴(성분마다 (X − μ)U의 `dgemm`과 행의 제곱합)과 견준 E 단계는 p = 20에서 1.74 대 1.49 ms(1.17배), p = 30에서 2.78 대 1.94(1.43배), p = 50에서 6.3 대 3.7(1.72배), p = 100에서 21.3 대 7.4(2.9배)이고(n = 2×10⁴, k = 5, 1스레드), M 단계의 2차 모멘트는 같은 정의의 Accelerate 꼴((rZ)ᵀZ)과 1.23배 안이다(p = 100에서는 sd가 빠르다: r = 0의 항을 건너뛴다). 10스레드에서는 E 단계도 Accelerate 꼴의 1/3–1/4이다(p = 50에서 0.81 대 3.0 ms). tied의 M 단계는 성분마다 평균을 빼는 두 번째 훑기라 sklearn의 한 번 훑기(XᵀX − Σnkμμᵀ)보다 k배 많은 곱이다(CL75의 정의). 1스레드에서 Accelerate 꼴보다 1.5배 넘게 느린 큰 p의 E 단계는 §9의 40번으로 묻는다. 커널의 판(E 단계 네 열 × 여덟 점, 2차 모멘트 네 행 × 여덟 열)은 스칼라 고리보다 full·tied의 E 단계를 4.6배, 2차 모멘트를 2배 빠르게 했다(비트는 같다).
 - **퍼지 c-평균의 멈춤** (CL66): 시험 자료 28개와 무작위 자료 3개에서 `tol=1e-5`가 멈춘 반복은 e1071의 규칙(목적의 상대 변화 < √ε)이 멈출 반복과 같거나 늦었다(27개; 하나는 한 반복 일찍, 셋은 둘 다 `max_iter`=100에 닿았다).
-- 다른 라이브러리가 틀리는 곳(기록): §2.8의 표. sklearn `silhouette_samples`는 shifted/k3p2에서 0.21, subnormal/k3p2에서 0.75까지 참값과 다르다(전개식 거리).
+- **CL5·CL6 마일스톤의 측정** (Apple M4 Pro, 부하 평균 1.3–1.8, 세 번 중 가장 빠른 값; `notes/cluster/cl5_time.py`의 기록; sd는 1 / 10스레드, sklearn은 numpy(1스레드)나 OpenMP 기본, R은 1스레드에 자료 옮기기 포함):
+
+  | 사례 | sd 1 / 10스레드 | 비교 대상 |
+  |---|---|---|
+  | `silhouette_score` n = 2×10⁴, p = 10, k = 5 | 525 / 61 ms | sklearn 1089(1스레드) / 1090, R 1738 |
+  | `calinski_harabasz_score` n = 10⁵, p = 10 | 4.2 / 2.9 ms | sklearn 4.6 |
+  | `davies_bouldin_score` n = 10⁵, p = 10 | 4.2 / 2.9 ms | sklearn 4.1 |
+  | `adjusted_rand_score` n = 10⁶, k = 20 | 8.1 / 4.8 ms | sklearn 63 |
+  | `normalized_mutual_info_score` n = 10⁶ | 8.2 / 5.0 ms | sklearn 78 |
+  | `adjusted_mutual_info_score` n = 10⁴ / 10⁵ / 10⁶ | 0.3 / 1.6 / 10.3 ms(1스레드) | sklearn 4.7 / 41 / 398 |
+  | `gap_statistic` k-평균 n = 1000, p = 4, k_max = 8, B = 50 | 217 / 27 ms | R `clusGap(kmeans)` 985 |
+  | `gap_statistic` PAM, 같은 크기 | 7137 / 875 ms | R `clusGap(pam)` 30581 |
+  | `gower_distance` n = 3000, 섞인 열 6개 | 51 / 7.0 ms | R `daisy` 159 |
+  | `affinity_propagation` n = 2000, p = 2(200번) | 1481 / 210 ms | sklearn 2390 |
+  | `affinity_propagation` n = 3000, p = 10, 선호도 −2000 | 961 / 150 ms | sklearn 1291 |
+
+  실루엣은 §5 첫 표의 목표(sklearn 이하 / 1/8 이하)에 이른다. CH·DB의 1스레드는 sklearn과 비슷하고(1.03배 안) 10스레드의 몫이 작다: 열쇠 순서(`lex_order` 1.1 ms)와 Python 층의 검사가 시간의 반이다(CL7 마일스톤의 점검거리). Affinity Propagation의 1스레드는 메모리 대역에 묶인다(§3.12).
+- 다른 라이브러리가 틀리는 곳(기록): §2.8의 표. sklearn `silhouette_samples`는 shifted/k3p2에서 0.21, subnormal/k3p2에서 0.75까지 참값과 다르다(전개식 거리). R `silhouette(dist(x))`는 subnormal/k3p2에서 모든 값이 0이다(`dist`의 아래넘침).
 
 ---
 
@@ -572,10 +637,11 @@ CL4 마일스톤이 정하고 `tests/cluster/test_mixture.py`와 `bench/cluster/
   - `fuzzy.cpp` (CL2 마일스톤): 퍼지 c-평균
   - `density.cpp` (CL3 마일스톤): 반경·k 최근접 찾기(KD 트리, 훑기, 행렬), DBSCAN, 핵심 거리, HDBSCAN(Kruskal의 단일 연결 트리, 같은 높이를 한꺼번에 거두는 줄인 트리, 안정성, 고르기, 확률, GLOSH, 지속성, 중심과 medoid), `dbscan_clustering`의 자르기, OPTICS의 차례, ξ·DBSCAN 추출
   - `mixture.cpp` (CL4 마일스톤): EM(네 공분산 꼴; E 단계의 NEON 판과 2차 모멘트의 판), 작은 Cholesky와 그 역, 시작의 책임도, 표본(stats의 `sample_dist.hpp`의 정규 난수)
-  - `metrics.cpp`: 분할표, 128비트 정수의 ARI·RI, MI·EMI, 실루엣·CH·DB, gap의 log W
+  - `metrics.cpp` (CL5 마일스톤): 분할표와 짝 수(128비트), MI·엔트로피·기대 MI(초기하 비의 점화식), 실루엣(spatial의 타일 커널)·CH·DB, gap(참조 자료, Jacobi의 축, 벌마다의 군집, log W), Gower의 거리, 공용 `subkey`(CL90)
+  - `affinity.cpp` (CL6 마일스톤): Affinity Propagation(행의 A·R 갱신, 열 합, 멈춤, exemplar 다듬기)
   - `cluster.hpp`: 파일마다의 `bind_*`
-- 바인딩 `bind/cluster_bind.cpp`: `_core.cluster` 하위 모듈(CL0 마일스톤부터; CL1 마일스톤의 `lex_order`, `linkage`, `diana`, `cophenet`, `optimal_leaf_ordering`, 측정용 `_mst`; CL2 마일스톤의 `kmeans`, `minibatch_kmeans`, `bisecting_kmeans`, `bisecting_predict`, `kmeans_predict`, `kmeans_distinct`, `first_seen`, `kmedoids`, `fuzzy_cmeans`, `fuzzy_memberships`, 측정용 `_kmeans_assign_expanded`; CL3 마일스톤의 `dbscan`, `core_distances`, `hdbscan`, `hdbscan_cut`, `hdbscan_centres`, `weighted_medoid`, `optics`, `optics_xi`, `optics_dbscan`; CL4 마일스톤의 `gmm_fit`, `gmm_estimate`, `gmm_sample`, `gmm_subkey`, `kmeans_plusplus`(혼합의 시작), 시험용 `gmm_precisions`, `gmm_mstep`).
-- `src/stardust/cluster/`(하위 패키지 없음): `__init__.py`(`__all__`), `_common.py`(입력 정리, `metric`과 `'precomputed'`, `nan_policy`, `rng`의 검사, 메시지), `_results.py`(공통 기반 `ClusterResult`와 `summary`; CL44), `_hierarchy.py`, `_kmeans.py`, `_kmedoids.py`, `_fuzzy.py`, `_density.py`, `_mixture.py`, `_metrics.py`, `_gap.py`, `_gower.py`.
+- 바인딩 `bind/cluster_bind.cpp`: `_core.cluster` 하위 모듈(CL0 마일스톤부터; CL1 마일스톤의 `lex_order`, `linkage`, `diana`, `cophenet`, `optimal_leaf_ordering`, 측정용 `_mst`; CL2 마일스톤의 `kmeans`, `minibatch_kmeans`, `bisecting_kmeans`, `bisecting_predict`, `kmeans_predict`, `kmeans_distinct`, `first_seen`, `kmedoids`, `fuzzy_cmeans`, `fuzzy_memberships`, 측정용 `_kmeans_assign_expanded`; CL3 마일스톤의 `dbscan`, `core_distances`, `hdbscan`, `hdbscan_cut`, `hdbscan_centres`, `weighted_medoid`, `optics`, `optics_xi`, `optics_dbscan`; CL4 마일스톤의 `gmm_fit`, `gmm_estimate`, `gmm_sample`, `kmeans_plusplus`(혼합의 시작), 시험용 `gmm_precisions`, `gmm_mstep`; CL5 마일스톤의 `contingency`, `external`, `silhouette`, `ch_db`, `gap`, 시험용 `gap_logw`, `gower`, 그리고 CL4의 `gmm_subkey`를 옮긴 공용 `subkey`(CL90); CL6 마일스톤의 `affinity_propagation`). `partition.hpp`는 gap이 부르는 `kmeans_labels`(kmeans.cpp)와 `pam_labels`(kmedoids.cpp)를 선언한다(공개 함수의 기본값과 같은 비트).
+- `src/stardust/cluster/`(하위 패키지 없음): `__init__.py`(`__all__`), `_common.py`(입력 정리, `metric`과 `'precomputed'`, `nan_policy`, `rng`의 검사, 메시지), `_results.py`(공통 기반 `ClusterResult`와 `summary`; CL44), `_hierarchy.py`, `_kmeans.py`, `_kmedoids.py`, `_fuzzy.py`, `_density.py`, `_mixture.py`, `_metrics.py`, `_gap.py`, `_gower.py`, `_affinity.py`.
 
 ---
 
@@ -599,21 +665,21 @@ CL0 마일스톤의 여섯 묶음이다(점은 시험 자료의 id와 종류·�
 - `fuzzy` (CL2 마일스톤): 300점 이하 집합 31개의 주어진 중심(k-평균 시작의 중점, 반올림)에서 m = 2, 1.5의 소속도(정확한 유리수)와 m = 3(Arb), m = 2의 한 걸음 중심과 목적(유리수).
 - `density`: DBSCAN 24가지(정확한 d² ≤ eps², 무게, 경계 점은 가장 가까운 핵심 점, 핵심·eps 근처 표시)와 HDBSCAN의 14벌(min_samples = 5의 핵심 거리, 상호 도달 거리의 정확한 MST). CL3 마일스톤이 같은 14벌에 더했다: HDBSCAN의 정의(CL67–CL69; `min_cluster_size` = 5)를 정확한 산술로(높이는 정확한 제곱 상호 도달 거리, λ = 1/√w²는 Arb) 푼 `'eom'`·`'leaf'`의 라벨, 확률, GLOSH, 줄인 군집마다의 안정성(계약의 S⁺와 행 수), 고르기 비교의 가장 작은 상대 간격(`selection_gap`); OPTICS(min_samples = 5, max_eps = inf)의 정확한 차례(단계마다 가까운 동점 표시)와 도달 거리·선행자. 38 태스크, 6 프로세스로 1초 아래, 워커 RSS 0.02 GB.
 - `mixture`: 네 공분산 꼴의 6가지 혼합에서 점마다 로그 밀도·성분 밀도·책임도(정확한 역행렬과 행렬식, Arb의 log·exp)와 반올림한 책임도의 M 단계(유리수, `reg_covar` = 10⁻⁶). CL4 마일스톤이 더하고 고쳤다: 주어진 인자 U_f(sklearn `precisions_cholesky_`의 double; 그룹 입력 `prec_chol`)에서의 같은 값(`score_u`, `logdens_u_<j>`, `resp_u_<j>`: 이차형식은 정확한 유리수, log det U_f는 Arb), 정확한 공분산의 정확한 인자 U*(`prec_chol`, Arb의 맨 아래 행부터의 Cholesky), M 단계는 CL75의 정의(nk = Σr + 10ε, 무게 nk/Σnk). 6 태스크, 1초, 워커 RSS 0.2 GB.
-- `metrics`: 라벨 짝 13가지의 ARI·RI(정확한 유리수; sklearn의 특수 경우), FM·MI·NMI 넷·AMI 넷(EMI는 Arb의 초기하 합; 10⁵점 넘는 짝은 뺀다)·동질성·완전성·V, 참 라벨이 있는 점 집합 18개의 실루엣(점마다와 평균)·Calinski–Harabasz(유리수)·Davies–Bouldin.
+- `metrics`: 라벨 짝 13가지의 ARI·RI(정확한 유리수; sklearn의 특수 경우), FM·MI·NMI 넷·AMI 넷(EMI는 Arb의 초기하 합; 10⁵점 넘는 짝은 뺀다)·동질성·완전성·V, 참 라벨이 있는 점 집합 18개의 실루엣(점마다와 평균)·Calinski–Harabasz(유리수)·Davies–Bouldin. CL5 마일스톤이 더했다: 엔트로피 `h_true`·`h_pred`, 기대 MI `emi`(필드 `plus`: §4.6의 E⁺; 라벨링마다 한 번 재어 AMI 넷이 함께 쓴다), AMI의 한쪽이 모두 홑원소인 경우(0, `'min'`은 1; CL84), 참 분할의 gap log W `logw_1`·`logw_2`(R `W.k`의 d.power 1·2; Arb의 제곱근 합과 정확한 유리수). 31 태스크, 6 프로세스로 1초 아래, 워커 RSS 0.08 GB.
 - mpmath는 쓰지 않는다.
 
 ### 7.3 테스트 (`tests/cluster/`)
-- 파일(어림; CL3 마일스톤까지 있는 것: `test_dbscan.py`, `test_hdbscan.py`, `test_optics.py`가 참값, sklearn과의 견줌, 길·스레드·입력 순서, 결과, 에러를 함수마다 보고, CL4 마일스톤의 `test_mixture.py`가 주어진 인자·공분산·책임도의 계약, sklearn의 고정점, 멈춤, 시작과 `rng`, 스레드·입력 순서, 표본, NaN, 척도, 에러를 본다): `test_api_surface.py`, `test_reference_data.py`, `test_results.py`, `test_hierarchy.py`, `test_kmeans.py`, `test_kmedoids.py`, `test_fuzzy.py`, `test_dbscan.py`, `test_hdbscan.py`, `test_optics.py`, `test_mixture.py`, `test_metrics.py`, `test_gap.py`, `test_threads.py`, 그리고 `conftest.py`, `samples.py`, `refdata.py`(참값 읽기와 계약의 한계 함수).
+- 파일(어림; CL3 마일스톤까지 있는 것: `test_dbscan.py`, `test_hdbscan.py`, `test_optics.py`가 참값, sklearn과의 견줌, 길·스레드·입력 순서, 결과, 에러를 함수마다 보고, CL4 마일스톤의 `test_mixture.py`가 주어진 인자·공분산·책임도의 계약, sklearn의 고정점, 멈춤, 시작과 `rng`, 스레드·입력 순서, 표본, NaN, 척도, 에러를 본다): `test_api_surface.py`, `test_reference_data.py`, `test_results.py`, `test_hierarchy.py`, `test_kmeans.py`, `test_kmedoids.py`, `test_fuzzy.py`, `test_dbscan.py`, `test_hdbscan.py`, `test_optics.py`, `test_mixture.py`, `test_metrics.py`, `test_gap.py`, `test_gower.py`, `test_affinity.py`(CL5·CL6 마일스톤: 참값의 비트와 계약, sklearn·R의 값, 라벨의 꼴, 길·스레드·입력 순서, 잡음이 0인 sklearn의 AP, 에러), 그리고 `conftest.py`, `samples.py`, `refdata.py`(참값 읽기와 계약의 한계 함수).
 - 성질: 1·3·10스레드의 같은 바이트, 입력 순서를 섞어도 같은 분할(결정적인 방법; §9의 4번), 두 길의 같은 비트(NN-chain과 일반, 행렬 길과 행렬 없는 길, Prim과 Borůvka, Lloyd와 경계 가속, KD 트리와 훑기), 같은 `rng` 상태의 같은 비트와 `rng`가 두 단어만 움직이는 것, 2의 거듭제곱 척도의 같은 분할(같은 비트로 옮겨 가는 높이·중심).
 - 비교 대상과는 그 자리에서 견준다: scipy `linkage`(동점 없는 자료에서 같은 트리, 높이 계약), R `hclust`(이름 대응과 눈금), sklearn `KMeans`(같은 시작에서 같은 고정점), R `pam`(같은 medoid; 동점 없는 자료), sklearn `DBSCAN`(경계 점 밖에서 같은 분할), sklearn `HDBSCAN`·`OPTICS`(같은 라벨; 동점 없는 자료), sklearn `GaussianMixture`(같은 시작에서 같은 고정점의 근처), sklearn·R의 지표 값.
 
 ### 7.4 비교 대상의 기록 (`tools/cluster_probe.py` → `tests/cluster/data/`)
 - 설계 때의 탐침(`site/notes/cluster-design/probe_behavior.py`, `probe_signatures.py`, `probe_r_formals.R`)을 옮겨 넓혔다(CL0 마일스톤): 동점의 트리, 연결법의 눈금, 역전 자르기, 잎의 순서, k-평균의 기본값·동점·빈 군집·퇴화·스레드 의존, DBSCAN의 경계 점, HDBSCAN의 같은 점, 혼합 모형의 멈춤, 지표의 특수 경우, R `cluster`의 함수들, 시간.
-- 기록: `scipy.json`, `sklearn.json`, `r.json`(R은 `bench/accuracy/rsession.py`의 세션으로 부른다). 문서의 `[… 와 다름]`은 `rule/…` 항목이나 같은 자료의 기록이 받친다.
-- 비교 대상이 없는 것: mclust의 공분산 꼴(나중), R `dbscan`·원본 `hdbscan`(sklearn만), `e1071::cmeans`(퍼지 c-평균은 참값으로만), `apcluster`(Affinity Propagation은 sklearn만), scikit-learn-extra의 `KMedoids`(R `pam`만).
+- 기록: `scipy.json`, `sklearn.json`, `r.json`(R은 `bench/accuracy/rsession.py`의 세션으로 부른다). 문서의 `[… 와 다름]`은 `rule/…` 항목이나 같은 자료의 기록이 받친다. CL5 마일스톤이 `r.json`에 더했다(앞의 기록은 그대로): 참 라벨 집합의 `silhouette/…`, `clusgap_pam/<집합>/<d.power>/<spaceH0>`(log W, E.logW, SE.sim; B = 100), `cluster/maxse`(무작위 60가지 × 규칙 다섯 × SE 계수 둘), `cluster/daisy_mixed`·`daisy_default`·`daisy_numeric`.
+- 비교 대상이 없는 것: mclust의 공분산 꼴(나중), R `dbscan`·원본 `hdbscan`(sklearn만), `e1071::cmeans`(퍼지 c-평균은 참값으로만), `apcluster`(Affinity Propagation은 sklearn만: 테스트가 잡음이 0인 `random_state`로 sklearn의 `_affinity_propagation`을 그 자리에서 부른다), scikit-learn-extra의 `KMedoids`(R `pam`만).
 
 ### 7.5 정확도·속도 체계와 골든
-- **정확도** (`bench/accuracy/cluster.py`, 표는 `bench/cluster/accuracy.md`): 스윕 `hierarchy`(CL1 마일스톤, 기준선: 높이의 ULP와 계약의 몫, 참값과 다른 트리의 수; scipy·R 열), `kmeans`(중심, 관성, 고정점), `kmedoids`, `density`(CL3 마일스톤: DBSCAN의 분할, HDBSCAN의 핵심 거리·트리·안정성·확률·GLOSH·라벨, OPTICS의 도달 거리와 차례; sklearn 열), `mixture`(CL4 마일스톤: 주어진 인자의 성분·혼합 로그 밀도와 책임도, 공분산의 인자, 주어진 책임도의 M 단계; sklearn 열), `metrics`. `--compare`가 비교 패키지의 같은 양을 같은 한계로 잰다.
+- **정확도** (`bench/accuracy/cluster.py`, 표는 `bench/cluster/accuracy.md`): 스윕 `hierarchy`(CL1 마일스톤, 기준선: 높이의 ULP와 계약의 몫, 참값과 다른 트리의 수; scipy·R 열), `kmeans`(중심, 관성, 고정점), `kmedoids`, `density`(CL3 마일스톤: DBSCAN의 분할, HDBSCAN의 핵심 거리·트리·안정성·확률·GLOSH·라벨, OPTICS의 도달 거리와 차례; sklearn 열), `mixture`(CL4 마일스톤: 주어진 인자의 성분·혼합 로그 밀도와 책임도, 공분산의 인자, 주어진 책임도의 M 단계; sklearn 열), `metrics`(CL5 마일스톤: ARI·RI·FM의 ULP, MI·엔트로피·기대 MI·NMI·AMI·동질성·완전성·V, 실루엣·CH·DB, gap의 log W를 §4.6의 한계 단위로; sklearn 열). `--compare`가 비교 패키지의 같은 양을 같은 한계로 잰다.
 - **속도** (`bench/speed/cases/cluster.py`): §5의 사례와 크기, 1·10스레드. `--smoke`에서 결과를 비교 대상과 견준다.
 - **골든** (`tests/golden/cases_cluster.py`, 기록은 `tests/golden/data/cluster.json`): 모든 공개 함수 × 시험 자료의 대표, 옵션의 값마다, 틀린 호출, 병렬 길을 탈 큰 케이스(워커 하나 1 GB 아래). 1·3·10스레드의 결과가 모두 같아야 한다.
 
@@ -627,8 +693,8 @@ CL0 마일스톤의 여섯 묶음이다(점은 시험 자료의 id와 종류·�
 | CL2 분할 | `kmeans`, `minibatch_kmeans`, `bisecting_kmeans`, `kmedoids`(PAM·CLARA), `fuzzy_cmeans`와 결과들 | 고정점의 계약, sklearn·R과 같은 시작에서 같은 답, 경계 가속이 Lloyd와 같은 비트, `rng` 규칙, 속도 사례 — **마침**(2026-11-27; CL59–CL66) |
 | CL3 밀도 | `dbscan`, `hdbscan`, `optics`와 결과들 | 정의대로의 분할(참값), sklearn과의 차이가 문서대로(경계 점), KD 트리와 훑기의 같은 비트, 속도 사례 — **마침**(2026-11-27; CL67–CL74) |
 | CL4 혼합 | `gaussian_mixture`와 결과(네 공분산 꼴, `bic`·`aic`, `sample`) | 주어진 모수·책임도의 계약, sklearn과 같은 시작에서 같은 고정점 근처, 속도 사례 — **마침**(2026-11-27; CL75–CL81) |
-| CL5 지표와 k 고르기 | 내부·외부 지표, `gap_statistic`, `gower_distance` | 지표의 계약(ARI 등은 올바른 반올림), sklearn·R과 같은 값, 속도 사례 |
-| CL6 그 밖 | `affinity_propagation`(CL40) | 정의와 멈춤 규칙이 문서대로, sklearn과 같은 답(잡음 없이) |
+| CL5 지표와 k 고르기 | 내부·외부 지표, `gap_statistic`, `gower_distance` | 지표의 계약(ARI 등은 올바른 반올림), sklearn·R과 같은 값, 속도 사례 — **마침**(2026-11-27; CL82–CL90) |
+| CL6 그 밖 | `affinity_propagation`(CL40) | 정의와 멈춤 규칙이 문서대로, sklearn과 같은 답(잡음 없이) — **마침**(2026-11-27; CL91–CL94) |
 | CL7 성능과 일관성 점검 | 모든 공개 함수를 크기마다 비교 대상과 견주어 고치기(CL2 마일스톤에서 넘긴 것: k-평균 배정의 1스레드 커널(§9의 39번), Elkan 경계의 측정(CL60), `bisecting_kmeans`의 1스레드(sklearn 31 대 40.8 ms); CL1 마일스톤에서 넘긴 것: 10스레드 목표에 못 미친 `linkage`의 complete·average·weighted·centroid·median·ward, n = 5000에서 70–108 ms 대 목표 scipy의 1/3 ≈ 50 ms; NN-chain과 일반 알고리즘의 차례 부분), 갈래의 문턱(Prim·Borůvka, 경계 가속, 트리와 훑기), 메시지·시그니처의 영역 간 일관성, 코드 리뷰 | 속도 표와 정확도 표가 기준선이 되고 §5의 목표를 적은 대로 확인한다 |
 | CL8 문서 | `docs/api/cluster.md`의 확정, 이 문서를 구현대로 고치기, 등록 문서의 확인 | 문서가 코드와 맞고 `test_api_surface`가 통과한다 |
 

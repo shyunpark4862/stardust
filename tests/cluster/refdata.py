@@ -30,9 +30,11 @@ computed with; and per method the reference hi + lo:
                logdens_u_<j>, resp_u_<j> (kind 0, at the given factors: group input prec_chol, scikit-learn's
                precisions_cholesky_ shape flattened); prec_chol (kind 2: the exact factor of the exact covariance,
                flattened); mstep (kind 1: weights, means, covariances in sklearn's shapes; decision CL75)
-    metrics    over the labelings' groups: ari, ri, fm, mi, nmi_<avg>, ami_<avg>, homogeneity, completeness, v
-               (field special: sklearn's special case); per point set with true labels: silhouette (kind 0) and
-               over the groups silhouette_score, calinski_harabasz, davies_bouldin
+    metrics    over the labelings' groups: ari, ri, fm, mi, nmi_<avg>, ami_<avg>, homogeneity, completeness, v,
+               h_true, h_pred, emi (field plus: E+ of §4.6) (field special: sklearn's special case and AMI's
+               degenerate ones); per point set with true labels: silhouette (kind 0) and over the groups
+               silhouette_score, calinski_harabasz, davies_bouldin, logw_1, logw_2 (the gap's log W of the true
+               partition for d_power 1 and 2)
 
 tests/cluster/data holds the other libraries' records (tools/cluster_probe.py: scipy.json, sklearn.json, r.json)
 and the prototype measurements of milestone CL0 (prototype.json), each with its own "_provenance".
@@ -70,6 +72,15 @@ holds them to these constants), and each milestone settles its own):
                            first order; C_PREC measured);
                            diag, spherical: gamma(2) |U*| (one square root, one division)              (§4.5)
     the M step             at given responsibilities (theorem 9, first order, doubled; mstep_bound)       (§4.5)
+    ARI, RI, FM            correctly rounded (the reference's hi); the counts and matrices exact        (§4.6)
+    MI, entropies          gamma(ceil(log2 m) + 16) T+, T+ the sum of the terms' absolute values (mi_bound,
+                           entropy_bound)                                                               (§4.6)
+    the expected MI        u E+ (first order; E+ the reference's field plus: emi_bound)                (§4.6)
+    NMI, AMI, h, c, V      the quotients of those (ratio_bound, first order)                          (§4.6)
+    silhouette             4 gamma(ceil(n_max / 4) + p/2 + 8) + 2u, absolute (silhouette_bound)         (§4.6)
+    Calinski-Harabasz,     relative, with the means' error delta = gamma(ceil(log2 n) + 13) M of the points less
+    Davies-Bouldin         the first (ch_bound, db_bound; first order)                                 (§4.6)
+    the gap's log W        gamma(G) / (1 - gamma(G)) + 2u |log W| for a given partition (logw_bound)      (§4.6)
 """
 
 from __future__ import annotations
@@ -404,3 +415,102 @@ def mstep_bound(ctype, X, R, ref):
             bc = per.sum(axis=1) / p + gamma(p + 1) * np.abs(cov)
     bc = bc + U * np.abs(cov)
     return C_FIRST * np.concatenate([bw, bmu, bc])
+
+
+# ---- the indices (§4.6; milestone CL5) ---------------------------------------------------------------------------
+
+
+def contingency(a, b):
+    """(cells (m,) of the nonzero counts, row sums, column sums, n) of two labelings, as numpy int64."""
+    _, ia = np.unique(np.asarray(a), return_inverse=True)
+    _, ib = np.unique(np.asarray(b), return_inverse=True)
+    M = np.zeros((ia.max() + 1, ib.max() + 1), np.int64)
+    np.add.at(M, (ia, ib), 1)
+    return M, M.sum(axis=1), M.sum(axis=0), int(M.sum())
+
+
+def _log_depth(m):
+    return math.ceil(math.log2(max(m, 2)))
+
+
+def mi_terms(M, n):
+    """|t_ij| = (n_ij / n) |log(n n_ij / (a_i b_j))| of the nonzero cells (doubles: a bound's input)."""
+    a, b = M.sum(axis=1), M.sum(axis=0)
+    i, j = np.nonzero(M)
+    c = M[i, j].astype(float)
+    return c / n * np.abs(np.log(n * c / (a[i].astype(float) * b[j])))
+
+
+def mi_bound(M, n):
+    """|MI^ - MI| <= gamma(ceil(log2 m) + 16) T+, T+ = sum |t_ij| (m nonzero cells): each term's logarithm within 9u
+    relatively (log1p near 1), two more roundings, the pairwise sum (§4.6)."""
+    t = mi_terms(M, n)
+    return gamma(_log_depth(t.size) + 16) * float(t.sum())
+
+
+def entropy_bound(counts, value):
+    """|H^ - H| <= gamma(ceil(log2 k) + 16) H (positive terms)."""
+    return gamma(_log_depth(int(np.count_nonzero(counts))) + 16) * abs(value)
+
+
+def emi_bound(plus):
+    """|E^ - E| <= u E+ (first order; E+ the reference's field: the recurrence's steps, the sums' depths, §4.6)."""
+    return U * plus
+
+
+def ratio_bound(num, dnum, den, dden):
+    """|q^ - q| for q = num / den from the errors of both, first order, plus the division's rounding."""
+    q = abs(num / den) if den else 0.0
+    return (dnum + q * dden) / abs(den) + U * q if den else math.inf
+
+
+def silhouette_bound(n_max, p):
+    """|s^ - s| <= 4 gamma(ceil(n_max / 4) + p / 2 + 8) + 2u (absolute; (a + b) / max(a, b) <= 2): the distances
+    within gamma(p/2 + 2), the four interleaved sums, the means and the quotient (§4.6)."""
+    return 4 * gamma(math.ceil(n_max / 4) + p / 2 + 8) + 2 * U
+
+
+def logw_bound(n, p, k, power, value):
+    """|log W^ - log W| <= gamma(max(1, power)(p/2 + 2) + ceil(n/4) + ceil(log2 n) + k + 12) + u |log W| (§4.6)."""
+    g = gamma(max(1.0, power) * (p / 2 + 2) + math.ceil(n / 4) + _log_depth(n) + k + 12)
+    return g / (1 - g) + 2 * U * abs(value)
+
+
+def _translated(X):
+    Y = np.asarray(X, float) - np.asarray(X, float)[0]
+    return Y, float(np.max(np.abs(Y))) if Y.size else 0.0
+
+
+def ch_bound(X, labels, value):
+    """|CH^ - CH| <= CH gamma(A)(3 + 4 M sqrt(n p / B)) + CH n p delta^2 / W, A = p + ceil(log2 n) + K + 16, M the
+    largest |coordinate| of the points less the first, delta = gamma(ceil(log2 n) + 13) M the means' error, B and
+    W the between and within sums (§4.6: the means' error enters B to first order, W to second)."""
+    Y, Mx = _translated(X)
+    n, p = Y.shape
+    ks = np.unique(labels)
+    K = len(ks)
+    mu = Y.mean(axis=0)
+    B = sum(np.sum(labels == c) * np.sum((Y[labels == c].mean(axis=0) - mu) ** 2) for c in ks)
+    W = sum(np.sum((Y[labels == c] - Y[labels == c].mean(axis=0)) ** 2) for c in ks)
+    A = p + _log_depth(n) + K + 16
+    delta = gamma(_log_depth(n) + 13) * Mx
+    cond = 4 * Mx * math.sqrt(n * p / B) if B > 0 else (0.0 if Mx == 0 else math.inf)
+    rel = gamma(A) * (3 + cond) + (n * p * delta**2 / W if W > 0 else 0.0)
+    return abs(value) * rel
+
+
+def db_bound(X, labels, value):
+    """|DB^ - DB| <= DB (gamma(A) + 4 sqrt(p) delta / m) with m the smallest positive s_c + s_e or distance between
+    means, delta = gamma(ceil(log2 n) + 13) M as in ch_bound (§4.6: each ratio's parts move by sqrt(p) delta)."""
+    Y, Mx = _translated(X)
+    n, p = Y.shape
+    ks = np.unique(labels)
+    K = len(ks)
+    mus = np.array([Y[labels == c].mean(axis=0) for c in ks])
+    s = np.array([np.mean(np.sqrt(np.sum((Y[labels == c] - mus[q]) ** 2, axis=1))) for q, c in enumerate(ks)])
+    d = np.sqrt(((mus[:, None, :] - mus[None, :, :]) ** 2).sum(axis=2))
+    cand = [v for v in list((s[:, None] + s[None, :])[np.triu_indices(K, 1)]) + list(d[np.triu_indices(K, 1)]) if v > 0]
+    m = min(cand) if cand else math.inf
+    A = p + _log_depth(n) + K + 16
+    delta = gamma(_log_depth(n) + 13) * Mx
+    return abs(value) * (gamma(A) + 4 * math.sqrt(p) * delta / m) + gamma(A) * abs(value)

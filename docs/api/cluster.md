@@ -1,8 +1,8 @@
 # sd.cluster API
 
-> 상태: **확정** (2026-11-24; 설계 결정 CL1–CL81). CL4 마일스톤(혼합, 2026-11-27)까지 마쳤다: §2·§3·§4·§5의 이름이 공개됐고 나머지 이름은 CL5·CL6 마일스톤에서 생긴다(tests/cluster/test_api_surface.py가 이름마다의 마일스톤을 쥔다). 이름과 시그니처는 [docs/design/cluster.md](../design/cluster.md) §9의 답(13번만 (b), 나머지 (a))을 따른다. 시그니처는 scikit-learn 1.9.1(`sklearn.cluster`, `sklearn.mixture`, `sklearn.metrics`), scipy 1.18.1(`scipy.cluster.hierarchy`), R 4.6.2의 `stats`와 `cluster` 2.1.8.3의 이름과 뜻에 stardust의 규칙과 CL1–CL40의 결정을 입힌 것이다. `fuzzy_cmeans`의 `tol`과 `kmedoids`의 `max_iter`는 CL2 마일스톤이 정했다(설계 문서 CL65·CL66). 남은 임시 값(`affinity_propagation`의 `metric='precomputed'`의 이름, `gap_statistic`의 `select` 이름)은 해당 마일스톤에서 정한다(표시가 그 자리에 있다).
+> 상태: **확정** (2026-11-24; 설계 결정 CL1–CL94). CL6 마일스톤(그 밖, 2026-11-27)까지 마쳤다: 모든 이름이 공개됐다(tests/cluster/test_api_surface.py가 이름마다의 마일스톤을 쥔다). 이름과 시그니처는 [docs/design/cluster.md](../design/cluster.md) §9의 답(13번만 (b), 나머지 (a))을 따른다. 시그니처는 scikit-learn 1.9.1(`sklearn.cluster`, `sklearn.mixture`, `sklearn.metrics`), scipy 1.18.1(`scipy.cluster.hierarchy`), R 4.6.2의 `stats`와 `cluster` 2.1.8.3의 이름과 뜻에 stardust의 규칙과 CL1–CL40의 결정을 입힌 것이다. `fuzzy_cmeans`의 `tol`과 `kmedoids`의 `max_iter`는 CL2 마일스톤이 정했다(설계 문서 CL65·CL66). 임시로 두었던 이름은 CL5·CL6 마일스톤이 정했다: `gap_statistic`의 `reference`·`select`는 R 이름의 소문자 꼴(CL87), `affinity_propagation`의 유사도 입력은 sklearn의 `affinity='precomputed'`(CL91).
 
-- 설계와 결정의 근거는 [docs/design/cluster.md](../design/cluster.md)(§1.1 CL1–CL81), 공통 규칙은 [API.md](../../API.md)다.
+- 설계와 결정의 근거는 [docs/design/cluster.md](../design/cluster.md)(§1.1 CL1–CL94), 공통 규칙은 [API.md](../../API.md)다.
 - 언어 표시가 없는 코드 블록은 `tests/cluster/test_api_surface.py`가 읽는다. 블록의 줄은 모듈의 함수(`name(...)`), 결과 클래스(`Name`), 결과의 메서드(`Name.method(...)`)다. 블록의 모듈 수준 이름이 마일스톤을 마칠 때마다 `sd.cluster.__all__`에 들어가 CL6 마일스톤에서 그 전부가 된다.
 - 절 끝의 "(§9의 n번)"은 그 줄을 정한 설계 문서의 질문이다(답은 §1.1의 CL4–CL40).
 
@@ -19,7 +19,7 @@
 ### §1.2 입력 (§9의 4·8·9번)
 - **받는 것**: API.md §5의 상위 함수 입력이다: `sd.ndarray`, 수의 시퀀스, numpy 배열, `sd.frame`의 `DataFrame`(열이 변수)과 `Series`(한 변수). 점은 행이다: `X`는 (n, p), 1차원은 (n, 1)로 읽는다. 계산은 float64다. bool·정수는 float64로 바꾼다. 복소수는 `TypeError`다.
 - **라벨 입력**(지표): 1차원의 정수, bool, 문자열 배열(sklearn과 같다). 두 라벨의 길이가 다르면 `ValueError`다.
-- **미리 계산한 거리**: 거리로 정의되는 방법(`linkage`, `agglomerative`, `divisive`, `kmedoids`, `dbscan`, `hdbscan`, `optics`, `silhouette_samples`, `silhouette_score`, `affinity_propagation`)은 `metric='precomputed'`로 (n, n) 정사각(대칭, 대각 0, 음수·NaN 없음; `ValueError`) 또는 1차원 압축 꼴(길이 n(n − 1)/2)을 받는다. scipy 이름의 `linkage`만 scipy처럼 1차원 입력을 압축 꼴로 읽고, 2차원은 언제나 관측값이다. 거리의 이름(`'euclidean'`, `'sqeuclidean'`, `'cityblock'`, `'chebyshev'`, `'minkowski'` 등)과 값은 `sd.spatial.cdist`와 같다.
+- **미리 계산한 거리**: 거리로 정의되는 방법(`linkage`, `agglomerative`, `divisive`, `kmedoids`, `dbscan`, `hdbscan`, `optics`, `silhouette_samples`, `silhouette_score`)은 `metric='precomputed'`로 (n, n) 정사각(대칭, 대각 0, 음수·NaN 없음; `ValueError`) 또는 1차원 압축 꼴(길이 n(n − 1)/2)을 받는다. scipy 이름의 `linkage`만 scipy처럼 1차원 입력을 압축 꼴로 읽고, 2차원은 언제나 관측값이다. 거리의 이름(`'euclidean'`, `'sqeuclidean'`, `'cityblock'`, `'chebyshev'`, `'minkowski'` 등)과 값은 `sd.spatial.cdist`와 같다.
 - **`nan_policy`**: `'raise'`(기본; `ValueError`)와 `'omit'`(NaN이 있는 행을 빼고 맞춘다; 그 행의 라벨은 −1, `nobs`는 뺀 뒤의 수, `omitted`가 뺀 행의 bool 배열). ±inf는 언제나 `ValueError`다. 평가점(`predict`)의 NaN은 `ValueError`다(라벨이 NaN이 될 수 없다).
 - **무게**: `kmeans`, `minibatch_kmeans`, `bisecting_kmeans`, `dbscan`은 `weights=`(점의 무게; sklearn의 `sample_weight`)를 받는다. 유한한 0 이상이고 양수가 하나 이상이어야 한다.
 - **입력 순서**: 결정적인 방법(계층, PAM, DBSCAN, HDBSCAN, OPTICS, AP)은 같은 점들을 어떤 순서로 주든 같은 분할이고 라벨은 입력 순서로 처음 나오는 차례다(§1.3). 무작위 방법도 같은 `rng` 상태면 입력 순서와 무관한 분할이다(표본을 좌표의 사전순 번호로 뽑는다).
@@ -64,6 +64,8 @@
   | sklearn `HDBSCAN`: `copy`의 기본값 변경(`FutureWarning`) | 없음: `copy` 인자가 없다(입력을 고치지 않는다) |
   | sklearn `GaussianMixture`: 공분산 실패(`ValueError`) | `LinAlgError`: `gaussian_mixture(): component 2 has an ill-defined covariance; increase 'reg_covar' or check for duplicate points` |
   | R `daisy`: 논리형 열(경고, 비대칭 이진으로) | 대칭 이진(`types`로 바꾼다) |
+  | sklearn 지표: 소수가 있는 실수 라벨(`UserWarning`) | `ValueError`: `adjusted_rand_score(): float labels in 'labels_true' must be whole numbers` |
+  | sklearn `AffinityPropagation`: 수렴하지 않음, 같은 유사도(`ConvergenceWarning`, `UserWarning`) | `converged=False`; 같은 유사도는 sklearn과 같은 답 |
 
 - 할당 전에 `MemoryError`인 곳(API.md §2): 계층 군집의 압축 꼴 거리 행렬(8·n(n − 1)/2 바이트)이 물리 메모리보다 클 때(행렬 없는 길이 있는 연결법은 그 길로 간다), `metric='precomputed'`의 정사각을 압축 꼴로 바꿀 때.
 
@@ -75,7 +77,9 @@
 - HDBSCAN: 같은 높이의 병합을 한꺼번에 줄인다(sklearn은 그때 입력 순서에 따라 다르다), GLOSH `outlier_scores`가 더 있다, `copy`·`store_centers`가 없다.
 - OPTICS: 거리를 소수 15자리로 반올림하지 않는다, 가장 작은 열쇠에서 시작한다.
 - 혼합 모형: `k`, `bic`·`aic`는 필드, `lower_bound`와 `loglik`을 나눈다, 이차형식은 차의 꼴과 평균을 뺀 2차 모멘트(sklearn은 펼친다), 표본은 (*shape, p)이고 표본마다 성분이 독립이다.
-- 지표: ARI·RI는 정확한 정수 셈, `silhouette_score`에 표본 뽑기가 없다.
+- 지표: ARI·RI·FM은 정확한 정수 셈의 올바른 반올림, 정확한 값이 [0, 1]인 지표는 1을 넘지 않는다, `silhouette_score`에 표본 뽑기가 없다, 실수 라벨은 정수 값만.
+- gap: R의 `clusGap`·`maxSE`이고 군집은 이 영역의 `kmeans`·`kmedoids`, 이름은 소문자(`'scaledpca'`, `'firstsemax'`).
+- Affinity Propagation: 잡음 없이 열쇠의 동점 규칙, 유사도 입력은 `affinity='precomputed'`.
 
 ## §2. 계층 (§9의 12–19번)
 ```
@@ -251,33 +255,39 @@ HomogeneityResult
 fowlkes_mallows_score(labels_true, labels_pred, /)
 pair_confusion_matrix(labels_true, labels_pred, /)
 contingency_matrix(labels_true, labels_pred, /, *, sparse=False)
-gap_statistic(X, k_max, /, *, rng, method='kmeans', n_reference=100, d_power=1, reference='scaledPCA', select='firstSEmax', se_factor=1.0, nan_policy='raise')
+gap_statistic(X, k_max, /, *, rng, method='kmeans', n_reference=100, d_power=1, reference='scaledpca', select='firstsemax', se_factor=1.0, nan_policy='raise')
 GapResult
 GapResult.summary()
 gower_distance(data, /, *, types=None, weights=None)
 ```
-- **내부 지표**: 뜻과 특수 경우는 sklearn과 같다: 홑원소 군집의 실루엣은 0, 군집 수가 1이거나 n이면 `ValueError`(`silhouette_score(): the number of clusters must be between 2 and n - 1 (got 1)`). 라벨 −1(잡음)도 한 군집으로 센다(sklearn과 같다). `silhouette_score`는 `silhouette_samples`의 평균이고 표본 뽑기(`sample_size`)가 없다.
-- **외부 지표**: 분할표의 정수 셈이다. ARI·RI·짝 혼동 행렬은 정확한 정수 셈을 한 번 반올림한 값이다. 특수 경우(두 분할이 같은 한 군집 또는 모두 홑원소)의 값은 sklearn과 같다(ARI = 1, AMI = 1, 한 군집 대 모두 홑원소의 NMI = 0). `average_method`는 `'min'`, `'geometric'`, `'arithmetic'`, `'max'`. `contingency_matrix`는 (군집 수, 군집 수) int64이고 `sparse=True`면 `sd.sparse.csr_array`다. 행과 열은 라벨 값의 정렬 순서다.
+- **라벨**: 1차원의 정수, bool, 문자열(목록, numpy 배열, `sd.frame`의 `Series`)과 값이 정수인 실수 배열이다. 군집은 서로 다른 값이고, 분할표의 행과 열은 그 값의 정렬 순서(numpy `np.unique`의 순서)다. 소수가 있는 실수 라벨은 `ValueError`다(sklearn은 경고하고 받는다 `[sklearn과 다름]`; 설계 문서 CL82). 라벨이 하나도 없으면 `ValueError`다(sklearn은 많은 지표에서 1.0).
+- **내부 지표**: 뜻과 특수 경우는 sklearn과 같다: 홑원소 군집의 실루엣은 0(a = b = 0인 점도 0), 군집 수가 1이거나 n이면 `ValueError`(`silhouette_score(): the number of clusters must be between 2 and n - 1 (got 1)`). 라벨 −1(잡음)도 한 군집으로 센다(sklearn과 같다). `silhouette_score`는 `silhouette_samples`의 평균이고 표본 뽑기(`sample_size`)가 없다. `metric`은 `sd.spatial`의 이름 또는 `'precomputed'`(거리 행렬이나 압축 꼴)다: euclidean·sqeuclidean·cityblock·chebyshev는 n × n 행렬 없이 spatial의 타일 커널로 재고, 그 밖의 거리는 `sd.spatial.pdist`의 압축 꼴이다. Calinski–Harabasz와 Davies–Bouldin은 유클리드다. 같은 점들을 어떤 순서로 주든, 군집의 라벨 값을 바꾸어도 같은 비트다. Davies–Bouldin은 모든 군집의 산포가 0이거나 모든 중심 사이 거리가 0일 때만 0이다(sklearn의 `np.allclose(…, 0)`는 10⁻⁸ 아래를 0으로 본다 `[sklearn과 다름]`).
+- **외부 지표**: 분할표의 정수 셈이다. ARI·RI·짝 혼동 행렬은 정확한 정수 셈을 한 번 반올림한 값이고, Fowlkes–Mallows는 정확한 유리수의 올바르게 반올림한 제곱근이다. 특수 경우(두 분할이 같은 한 군집 또는 모두 홑원소)의 값은 sklearn과 같다(ARI = 1, AMI = 1, 한 군집 대 모두 홑원소의 NMI = 0). 한쪽이 모두 홑원소이고 다른 쪽이 그렇지 않으면 AMI는 0이고 `'min'`에서는 1이다(모든 재배치의 MI가 같다; 설계 문서 CL84). 정확한 값이 [0, 1]인 지표(NMI, 동질성, 완전성, V)와 AMI는 1을 넘지 않게 자른다(sklearn의 동질성은 1.0000000000000002가 될 수 있다). `average_method`는 `'min'`, `'geometric'`, `'arithmetic'`, `'max'`. `v_measure_score(beta=1)`은 `normalized_mutual_info_score`(arithmetic)와 같은 비트다. `contingency_matrix`는 (군집 수, 군집 수) int64이고 `sparse=True`면 `sd.sparse.csr_array`다. 점은 n(n − 1) < 2⁶³까지 받는다.
 - `homogeneity_completeness_v_measure` → `HomogeneityResult(homogeneity, completeness, v_measure)`(namedtuple).
-- **`gap_statistic`**: R `clusGap`의 뜻이다(`n_reference`는 R의 `B`, `reference`는 `spaceH0`). `method`는 `'kmeans'`(`kmeans(X, k, rng=…)`, `n_init='auto'`) 또는 `'pam'`(`kmedoids`). `select`는 R `maxSE`의 다섯 규칙(`'firstSEmax'`, `'Tibs2001SEmax'`는 `'tibs2001semax'`로, `'globalSEmax'`, `'firstmax'`, `'globalmax'`; 소문자 이름) — 이름의 꼴은 임시이고 CL5 마일스톤에서 정한다.
-- **`gower_distance`**: R `daisy(metric='gower')`의 뜻이다. `data`는 `DataFrame`(수 열은 범위로 나눈 차, 범주 열은 같은지, 순서형 범주는 순위, bool은 대칭 이진)이다. `types`는 열 이름 → `'asymm'`, `'symm'`, `'ordratio'`, `'logratio'`의 사전, `weights`는 열의 무게. 결측은 그 짝에서 그 변수를 빼고 무게를 다시 맞춘다. 압축 꼴 거리(길이 n(n − 1)/2)를 돌려준다.
+- **`gap_statistic`**: R `clusGap`과 `maxSE`의 뜻이다(`n_reference`는 R의 `B`, `reference`는 `spaceH0`, `select`는 `maxSE`의 `method`, `se_factor`는 `SE.factor`). `method`는 `'kmeans'`(`kmeans(X, k, rng=…)`의 기본값: k-means++, 시작 하나) 또는 `'pam'`(`kmedoids(X, k)`). `reference`는 `'scaledpca'`(가운데로 옮긴 자료의 주축 상자; R의 기본) 또는 `'original'`, `select`는 R의 다섯 규칙을 소문자로 쓴 `'firstsemax'`(기본), `'tibs2001semax'`, `'globalsemax'`, `'firstmax'`, `'globalmax'`다(optimize의 방법 이름처럼 다른 대소문자는 소문자 꼴을 짚는 `ValueError`: `gap_statistic(): 'select' must be lowercase: 'firstsemax', not 'firstSEmax'`; 설계 문서 CL87). `k_max`는 2 이상이고 서로 다른 점의 수 이하, `n_reference`는 2 이상이다(표준오차에 두 벌이 필요하다). 참조 자료와 k-평균의 시작은 `rng`의 두 단어에서 뽑고, 벌들이 C++ 안에서 나란히 돈다(스레드 수와 무관한 비트).
+- **`gower_distance`**: R `daisy(metric='gower')`의 뜻이다. `data`는 `DataFrame`(수 열은 범위로 나눈 차, 문자열 열은 같은지, bool 열은 대칭 이진) 또는 수의 2차원 배열(모든 열이 수)이다. `types`는 열(이름; 배열이면 위치) → `'asymm'`(비대칭 이진: 둘 다 0인 짝을 뺀다), `'symm'`, `'ordratio'`(값의 조밀한 순위를 수로), `'logratio'`(양수의 log10을 수로)의 사전, `weights`는 열마다 0 이상의 무게. R의 순서형 factor는 그 정수 코드를 수 열로 주면 같다(|Δ|/범위). 결측은 그 짝에서 그 변수를 빼고 남은 무게로 나누고, 같이 가진 변수가 없는 짝은 NaN이다(R은 무게의 합이 0.5 이하이면 NA `[R과 다름]`; 설계 문서 CL89). R은 논리형 열을 비대칭 이진으로 바꾸며 경고하지만 sd의 bool 열은 대칭 이진이다(`types`로 바꾼다). 압축 꼴 거리(길이 n(n − 1)/2, scipy의 순서)를 돌려주어 `linkage(y)`, `kmedoids(…, metric='precomputed')` 등에 바로 들어간다.
 
 | `GapResult`의 필드 | 뜻 |
 |---|---|
 | `k` | 고른 군집 수 |
+| `k_max` | 시도한 가장 큰 k |
 | `gap`, `se`, `log_w`, `e_log_w` | k = 1 … `k_max`의 (k_max,) 배열(R `Tab`의 열 `gap`, `SE.sim`, `logW`, `E.logW`) |
-| `method`, `select`, `n_reference`, `d_power`, `reference` | 설정 |
+| `log_w_reference` | 참조 자료마다의 log W ((n_reference, k_max)) |
+| `nobs`, `omitted` | 맞춤에 든 점의 수, `'omit'`이 뺀 행 |
+| `method`, `reference`, `select`, `se_factor`, `n_reference`, `d_power` | 설정 |
+
+- `GapResult`는 분할이 아니라 `labels`·`n_clusters`가 없다. `summary()`는 머리(방법, 점 수, 참조 자료 수, 고른 k; 참조, 규칙, SE 계수, 거리의 거듭제곱)와 k마다 한 줄(log W, E[log W], gap, SE; 고른 k에 `*`)이다.
 
 ## §7. 그 밖 (§9의 36·37번)
 ```
-affinity_propagation(X, /, *, damping=0.5, max_iter=200, convergence_iter=15, preference=None, metric='euclidean', nan_policy='raise')
+affinity_propagation(X, /, *, damping=0.5, max_iter=200, convergence_iter=15, preference=None, affinity='euclidean', nan_policy='raise')
 AffinityPropagationResult
 AffinityPropagationResult.predict(X_new, /)
 AffinityPropagationResult.summary()
 ```
-- sklearn `AffinityPropagation`의 반복과 멈춤이다. 유사도는 음의 제곱 유클리드 거리(sklearn의 `affinity='euclidean'`) 또는 `metric='precomputed'`의 유사도 행렬(이 함수만 거리가 아니라 유사도를 받는다; 이 이름은 임시이고 CL6 마일스톤에서 정한다). `preference=None`은 유사도의 중앙값이다.
-- `[sklearn과 다름]` sklearn은 퇴화를 깨려고 유사도에 작은 잡음(`random_state`)을 더한다. sd는 더하지 않고 동점을 열쇠로 깬다. 그래서 `rng`가 없다.
-- 결과: 공통 필드, `exemplars`(점의 색인), `exemplar_points`, `predict`(가장 가까운 exemplar; sklearn과 같다).
+- sklearn `AffinityPropagation`의 반복과 멈춤이다(`damping`은 [0.5, 1), `max_iter`·`convergence_iter`는 1 이상). 유사도는 `affinity='euclidean'`이면 음의 제곱 유클리드 거리(spatial의 차의 꼴), `affinity='precomputed'`이면 X 자체((n, n) 유사도 행렬; 클수록 비슷하고 대칭일 필요가 없다)다. sklearn의 이름과 뜻이고, 거리를 받는 다른 함수의 `metric='precomputed'`와 섞이지 않게 `metric` 인자는 두지 않는다(설계 문서 CL91). `preference`는 수 하나, 점마다의 배열, 또는 None(유사도 n² 개의 중앙값)이다.
+- `[sklearn과 다름]` sklearn은 퇴화를 깨려고 유사도에 작은 잡음(`random_state`)을 더한다. sd는 더하지 않고 점을 열쇠 순서로 놓아 동점을 작은 열쇠로 깬다. 그래서 `rng`가 없고, 같은 점들을 어떤 순서로 주든 같은 분할이며, 열쇠 순서의 유사도에서 잡음이 0인 sklearn과 exemplar·라벨·반복 수가 같다.
+- 결과: 공통 필드, `exemplars`(점의 색인; `exemplars[j]`가 라벨 j의 exemplar), `exemplar_points`(`'precomputed'`면 None), `n_iter`, `converged`, `damping`, `preference`(쓴 값), `affinity`. `predict`는 가장 가까운 exemplar(제곱 유클리드 거리, 같으면 맞춤이 먼저 든 exemplar; 그래서 맞춘 점은 맞춤의 라벨이다)이고, `'precomputed'`의 맞춤에서는 `ValueError`(sklearn과 같다)다. exemplar가 생기지 않으면(수렴 전에 `max_iter`에 닿을 때) 모든 라벨이 −1이고 `n_clusters`가 0이다(sklearn과 같다; 경고 대신 `converged=False`).
 - 스펙트럼 군집은 나중의 `sd.embed` 뒤에 둔다. Birch와 바이클러스터링은 없다.
 
 ## §8. 다른 라이브러리의 이름 (대응표)
@@ -308,9 +318,9 @@ AffinityPropagationResult.summary()
 | sklearn `metrics.adjusted_rand_score` 등 | 같은 이름 |
 | sklearn `silhouette_score(X, labels, sample_size=…, random_state=…)` | `silhouette_score(X, labels)`(언제나 전체) |
 | R `silhouette(cl, dist(x))` | `silhouette_samples(X, labels)` |
-| R `clusGap(x, kmeans, K.max, B=100)`, `maxSE` | `gap_statistic(X, k_max, rng=…, n_reference=100)` |
+| R `clusGap(x, kmeans, K.max, B=100)`, `maxSE(f, SE.f, method='Tibs2001SEmax')` | `gap_statistic(X, k_max, rng=…, n_reference=100)`, `select='tibs2001semax'`(군집은 sd의 `kmeans`; R의 Hartigan–Wong이 아니다) |
 | R `daisy(df, metric='gower')` | `gower_distance(df)` |
-| sklearn `AffinityPropagation(random_state=…)` | `affinity_propagation(X)`(잡음 없음) |
+| sklearn `AffinityPropagation(random_state=…)`, `affinity='precomputed'` | `affinity_propagation(X)`(잡음 없음), `affinity='precomputed'` |
 | sklearn `SpectralClustering`, `MeanShift`, `Birch`, `BayesianGaussianMixture`, `FeatureAgglomeration`, `connectivity=` | 없음(나중; 설계 문서 §8) |
 | sklearn `SpectralBiclustering`, `SpectralCoclustering`, scipy `to_tree`, `ClusterNode`, `fclusterdata`, `whiten` | 없음 |
 | 분류기와 그 회귀판(트리, 포레스트, k-NN, SVM, 부스팅), 차원 축소 | 나중의 `sd.classify`, `sd.embed`(CL2) |

@@ -60,11 +60,14 @@ lexicographic ranks, samples.lex_rank) and "gap" records how close the runner-up
                 covariances about the means in sklearn's shapes, reg_covar 1e-6 added), exact rationals, index
                 in that order
     metrics     per labeling (one group each): ari, ri, fm, mi, nmi_<avg> and ami_<avg> for the four
-                averages, homogeneity, completeness, v (beta 1) over the groups (Fraction for ari, ri and the
-                counts; Arb otherwise, AMI's expectation the exact hypergeometric sum with lgamma, left out
-                above 10^5 points; sklearn's values in its special cases, field special 1); per point set with
-                true labels: silhouette (kind 0; Arb sums of square roots), and over the groups
-                silhouette_score, calinski_harabasz (exact rational) and davies_bouldin
+                averages, homogeneity, completeness, v (beta 1), h_true, h_pred (the entropies) and emi (AMI's
+                expected MI, field plus: the bound term E+ of its contract, docs/design/cluster.md §4.6) over the
+                groups (Fraction for ari, ri and the counts; Arb otherwise, AMI's expectation the exact
+                hypergeometric sum with lgamma, left out above 10^5 points; sklearn's values in its special cases
+                and AMI's degenerate ones (a side all singletons: 0, 1 with 'min'), field special 1); per point
+                set with true labels: silhouette (kind 0; Arb sums of square roots), and over the groups
+                silhouette_score, calinski_harabasz (exact rational), davies_bouldin, logw_1 and logw_2 (log of R
+                cluster's W.k of the true partition for d.power 1 and 2)
 
 Settling: an exact rational is exact; an Arb value is settled to 2^-110 relative. Workers are forked, replaced every
 8 tasks (maxtasksperchild), each task under a time limit (SIGALRM). No mpmath (the project's rule). The console
@@ -1333,6 +1336,13 @@ def external_task(lid):
             "arithmetic": lambda: (ha + hb) / 2,
         }[avg]()
 
+    # the expected MI (Vinh et al. 2010), once per labeling, with the bound term of its contract (§4.6)
+    emi = None
+    if not (both_one or one_side or len(av) == n or len(bv) == n) and n <= AMI_MAX_N:
+        emi = _emi(av, bv, n)
+        gm["emi"] = (*emi[0], {"plus": emi[1]})
+    gm["h_true"] = safe(lambda: entropy(av))
+    gm["h_pred"] = safe(lambda: entropy(bv))
     for avg in ("min", "geometric", "arithmetic", "max"):
         if both_one:
             gm[f"nmi_{avg}"] = (1.0, 0.0, {"special": 1.0})
@@ -1345,9 +1355,11 @@ def external_task(lid):
         gm[f"nmi_{avg}"] = safe(lambda avg=avg: mi() / mean(entropy(av), entropy(bv), avg), special=0.0)
         if len(av) == len(bv) == n:  # all singletons on both sides: MI = E[MI] = the normalizer, 1 (sklearn's eps)
             gm[f"ami_{avg}"] = (1.0, 0.0, {"special": 1.0})
-        elif n <= AMI_MAX_N:
+        elif len(av) == n or len(bv) == n:  # one side all singletons: MI = E[MI] = the other's entropy, 0 (1: min)
+            gm[f"ami_{avg}"] = (1.0 if avg == "min" else 0.0, 0.0, {"special": 1.0})
+        elif emi is not None:
             gm[f"ami_{avg}"] = safe(
-                lambda avg=avg: _ami(M, av, bv, n, mi(), entropy(av), entropy(bv), mean, avg), special=0.0
+                lambda avg=avg: _ami_of(mi(), entropy(av), entropy(bv), emi[2], mean, avg), special=0.0
             )
 
     def hcv():
@@ -1369,25 +1381,57 @@ def external_task(lid):
     return {"set": lid, "digest": lb.digest, "ginputs": {"n": np.array(n)}, "points": [], "gmethods": gm}
 
 
-def _ami(M, av, bv, n, mi, ha, hb, mean, avg):
-    """(MI - E[MI]) / (mean(H_a, H_b) - E[MI]), E[MI] the exact hypergeometric expectation (Vinh et al. 2010)."""
-    lgn = arb(n + 1).lgamma()
-    emi = arb(0)
-    for a in av:
-        for b in bv:
-            lo, hi = max(1, a + b - n), min(a, b)
-            base = arb(a + 1).lgamma() + arb(b + 1).lgamma() + arb(n - a + 1).lgamma() + arb(n - b + 1).lgamma() - lgn
-            for c in range(lo, hi + 1):
-                lt = (
-                    base
-                    - arb(c + 1).lgamma()
-                    - arb(a - c + 1).lgamma()
-                    - arb(b - c + 1).lgamma()
-                    - arb(n - a - b + c + 1).lgamma()
+def _emi(av, bv, n):
+    """((hi, lo) of E[MI], its contract's bound term E+, the Arb function of E[MI]): the hypergeometric sum over every
+    row-column pair, P(c) from lgamma in Arb. E+ (docs/design/cluster.md §4.6) sums, for each pair, P(c) |t(c)|
+    (4 |c - c*| + 2 L + 12) over the cells c and |v| (4 D + 2 L + 2), t(c) = (c / n) log(n c / (a b)), v the pair's
+    value, c* its mode floor((a + 1)(b + 1) / (n + 2)), D = sum P(c) |c - c*|, L = ceil(log2(2 n)) + 5."""
+    L = math.ceil(math.log2(2 * n)) + 5
+
+    def terms():  # at the precision of the caller (rigorous() raises it)
+        lgn = arb(n + 1).lgamma()
+        out = []
+        for a in av:
+            for b in bv:
+                lo, hi = max(0, a + b - n), min(a, b)
+                mode = min(max((a + 1) * (b + 1) // (n + 2), lo), hi)
+                base = (
+                    arb(a + 1).lgamma() + arb(b + 1).lgamma() + arb(n - a + 1).lgamma() + arb(n - b + 1).lgamma() - lgn
                 )
-                emi += arb(c) / n * (arb(n) * c / (arb(a) * b)).log() * lt.exp()
-    den = mean(ha, hb, avg) - emi
-    return (mi - emi) / den
+                cells = []
+                for c in range(max(1, lo), hi + 1):
+                    lt = (
+                        base
+                        - arb(c + 1).lgamma()
+                        - arb(a - c + 1).lgamma()
+                        - arb(b - c + 1).lgamma()
+                        - arb(n - a - b + c + 1).lgamma()
+                    )
+                    t = arb(c) / n * (arb(n) * c / (arb(a) * b)).log()
+                    cells.append((c, lt.exp(), t))
+                out.append((mode, cells))
+        return out
+
+    def value():
+        s = arb(0)
+        for _, cells in terms():
+            for _, P, t in cells:
+                s += P * t
+        return s
+
+    plus = 0.0
+    for mode, cells in terms():
+        v = sum(float(P.mid()) * float(t.mid()) for _, P, t in cells)
+        D = sum(float(P.mid()) * abs(c - mode) for c, P, _ in cells)
+        plus += sum(float(P.mid()) * abs(float(t.mid())) * (4 * abs(c - mode) + 2 * L + 12) for c, P, t in cells)
+        plus += abs(v) * (4 * D + 2 * L + 2)
+    return settle(value), plus, value
+
+
+def _ami_of(mi, ha, hb, emi_fn, mean, avg):
+    """(MI - E[MI]) / (mean(H_a, H_b) - E[MI])."""
+    e = emi_fn()
+    return (mi - e) / (mean(ha, hb, avg) - e)
 
 
 def internal_task(pid):
@@ -1444,6 +1488,23 @@ def internal_task(pid):
         return tot / K
 
     gm["davies_bouldin"] = (*settle(db), {})
+
+    def logw(power):  # R cluster's W.k: 1/2 sum_r (sum over the pairs of r of d^power) / n_r
+        def f():
+            tot = arb(0)
+            for c in ks:
+                part = arb(0)
+                for x in range(len(idx[c])):
+                    for y in range(x + 1, len(idx[c])):
+                        q = D2[idx[c][x]][idx[c][y]]
+                        part += arb_q(q).sqrt() if power == 1 else arb_q(q)
+                tot += part / len(idx[c])
+            return (tot / 2).log()
+
+        return f
+
+    gm["logw_1"] = safe(logw(1))
+    gm["logw_2"] = safe(logw(2))
     return {"set": pid, "digest": s.digest, "ginputs": {}, "points": pts, "gmethods": gm}
 
 

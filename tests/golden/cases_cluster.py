@@ -25,10 +25,18 @@ start (init), n_init, tol, reg_covar, max_iter (0 included), the given weights, 
 predict, predict_proba, score_samples and sample, nan_policy, an ill-defined covariance, the wrong calls, and cases
 of tens of thousands of points.
 
-The plan for the rest (docs/design/cluster.md §7.5): every public function on the representatives of
-tests/cluster/samples.py times each option's values (average_method, beta), NaN under each nan_policy and the same
-points in two orders (decision CL7). Results are the same at 1, 3 and 10 threads (decision CL9), so no case is
-thread dependent.
+The indices (CL5 milestone): every external index on labelings of the kinds of tests/cluster/samples.py (equal,
+one cluster, all singletons, refinements, random, strings, bools, whole floats; a large pair that splits into
+tasks) and each average_method and beta, the contingency and pair confusion matrices; the silhouettes, Calinski-
+Harabasz and Davies-Bouldin on the point sets, the metrics and 'precomputed'; gap_statistic with both methods,
+references and every select rule, d_power, nan_policy and its result's summary; gower_distance on mixed frames with
+types, weights and missing values; and the wrong calls.
+
+Affinity propagation (CL6 milestone): affinity_propagation on the point sets, damping, max_iter, convergence_iter,
+preference (a float, an array), 'precomputed' similarities, nan_policy, the result's predict and summary, a fit
+without exemplars, the wrong calls, and a case of thousands of points.
+
+Results are the same at 1, 3 and 10 threads (decision CL9), so no case is thread dependent.
 """
 
 import math
@@ -40,6 +48,7 @@ METHODS = ("single", "complete", "average", "weighted", "centroid", "median", "w
 EXCLUDED = {
     "DendrogramResult": "a namedtuple class: dendrogram's cases store it whole",
     "CophenetResult": "a namedtuple class: cophenet_correlation's cases store it whole",
+    "HomogeneityResult": "a namedtuple class: homogeneity_completeness_v_measure's cases store it whole",
 }
 
 
@@ -488,9 +497,174 @@ def _mixture_cases(L):
     yield "GaussianMixtureResult 30000 score_samples", lambda: rb.score_samples(a(big))
 
 
+def _metric_cases(L):
+    """Milestone CL5: the external and internal indices, the gap statistic and Gower's distance."""
+    sd, np = L.sd, L.np
+    a = L.arr
+    cl = sd.cluster
+    r = L.rng(20261127)
+    pairs = {
+        "small": ([0, 0, 1, 1, 2, 2], [0, 0, 1, 2, 3, 3]),
+        "equal": ([0, 0, 0, 1, 1, 1, 2, 2], [5, 5, 5, 0, 0, 0, 9, 9]),
+        "one-one": ([0] * 6, [0] * 6),
+        "unique-unique": (list(range(6)), list(range(6))),
+        "one-unique": ([0] * 6, list(range(6))),
+        "unique-four": (list(range(8)), [0, 0, 1, 1, 2, 2, 3, 3]),
+        "two": ([0, 1], [0, 0]),
+        "single": ([3], [7]),
+        "random200": (r.integers(0, 5, 200).tolist(), r.integers(0, 4, 200).tolist()),
+        "refine": None,
+        "strings": (["x", "y", "x", "z", "y", "y"], ["b", "b", "a", "a", "a", "c"]),
+        "bools": ([True, False, True, True], [False, False, True, True]),
+        "floats": ([0.0, 0.0, 2.0, 2.0, 1.0], [1.0, 1.0, 1.0, 0.0, 0.0]),
+    }
+    t = r.integers(0, 4, 120)
+    pairs["refine"] = (t.tolist(), (t * 3 + r.integers(0, 3, 120)).tolist())
+    simple = ("adjusted_rand_score", "rand_score", "mutual_info_score", "homogeneity_score", "completeness_score",
+              "fowlkes_mallows_score", "pair_confusion_matrix", "contingency_matrix")  # fmt: skip
+    for name, (x, y) in pairs.items():
+        for f in simple:
+            yield f"{f} {name}", lambda f=f, x=x, y=y: getattr(cl, f)(x, y)
+        for avg in ("min", "geometric", "arithmetic", "max"):
+            yield f"normalized_mutual_info_score {name} {avg}", lambda x=x, y=y, avg=avg: (
+                cl.normalized_mutual_info_score(x, y, average_method=avg))  # fmt: skip
+            yield f"adjusted_mutual_info_score {name} {avg}", lambda x=x, y=y, avg=avg: (
+                cl.adjusted_mutual_info_score(x, y, average_method=avg))  # fmt: skip
+        for beta in (0.0, 0.5, 1.0, 2.0):
+            yield f"v_measure_score {name} beta={beta}", lambda x=x, y=y, beta=beta: cl.v_measure_score(x, y, beta=beta)
+            yield f"homogeneity_completeness_v_measure {name} beta={beta}", lambda x=x, y=y, beta=beta: (
+                cl.homogeneity_completeness_v_measure(x, y, beta=beta))  # fmt: skip
+
+    def parts(m):  # a csr_array's parts (golden encodes sd.sparse arrays in the sparse area only)
+        return type(m).__name__, tuple(m.shape), m.indptr, m.indices, m.data
+
+    yield "contingency_matrix sparse", lambda: parts(cl.contingency_matrix(*pairs["random200"], sparse=True))
+    big_a = r.integers(0, 30, 300000)
+    big_b = np.where(r.random(300000) < 0.8, big_a, r.integers(0, 40, 300000))
+    for f in ("adjusted_rand_score", "adjusted_mutual_info_score", "normalized_mutual_info_score", "v_measure_score",
+              "fowlkes_mallows_score", "contingency_matrix"):  # fmt: skip
+        yield f"{f} 300000", lambda f=f: getattr(cl, f)(a(big_a), a(big_b))
+    yield "adjusted_rand_score error lengths", lambda: cl.adjusted_rand_score([0, 1, 1], [0, 1])
+    yield "adjusted_rand_score error fractional", lambda: cl.adjusted_rand_score([0.5, 1.0], [0, 1])
+    yield "adjusted_rand_score error empty", lambda: cl.adjusted_rand_score([], [])
+    yield "normalized_mutual_info_score error average", lambda: cl.normalized_mutual_info_score(
+        [0, 1], [0, 1], average_method="mean")  # fmt: skip
+    yield "v_measure_score error beta", lambda: cl.v_measure_score([0, 1], [0, 1], beta=-1.0)
+    # internal indices
+    sets = dict(_sets(L))
+    for name in ("blobs60", "overlap45", "p5_40", "lattice16", "dups20", "hexagon7", "collinear25", "narrow30",
+                 "shifted30", "huge30", "subnormal30"):  # fmt: skip
+        X = sets[name]
+        lab = cl.kmeans(a(X), 3, rng=sd.random.default_rng(0)).labels
+        for metric in ("euclidean", "sqeuclidean", "cityblock", "chebyshev", "cosine"):
+            yield f"silhouette_samples {name} {metric}", lambda X=X, lab=lab, m=metric: cl.silhouette_samples(
+                a(X), lab, metric=m)  # fmt: skip
+        yield f"silhouette_score {name}", lambda X=X, lab=lab: cl.silhouette_score(a(X), lab)
+        yield f"calinski_harabasz_score {name}", lambda X=X, lab=lab: cl.calinski_harabasz_score(a(X), lab)
+        yield f"davies_bouldin_score {name}", lambda X=X, lab=lab: cl.davies_bouldin_score(a(X), lab)
+        D = sd.spatial.pdist(a(X))
+        yield f"silhouette_samples {name} precomputed", lambda D=D, lab=lab: cl.silhouette_samples(
+            D, lab, metric="precomputed")  # fmt: skip
+    X = sets["blobs60"]
+    big = np.vstack([r.normal(c, 1.0, (2500, 4)) for c in (0.0, 4.0, 8.0)])
+    big_lab = np.repeat([0, 1, 2], 2500)
+    yield "silhouette_samples 7500", lambda: cl.silhouette_samples(a(big), a(big_lab))
+    yield "calinski_harabasz_score 7500", lambda: cl.calinski_harabasz_score(a(big), a(big_lab))
+    yield "davies_bouldin_score 7500", lambda: cl.davies_bouldin_score(a(big), a(big_lab))
+    yield "silhouette_score error one cluster", lambda: cl.silhouette_score(a(X), [0] * 60)
+    yield "silhouette_score error labels", lambda: cl.silhouette_score(a(X), [0, 1])
+    yield "calinski_harabasz_score error nan", lambda: cl.calinski_harabasz_score(
+        a(np.vstack([X[:5], [[np.nan, 0.0]]])), [0, 0, 0, 1, 1, 1])  # fmt: skip
+    # the gap statistic
+    for method in ("kmeans", "pam"):
+        for ref in ("scaledpca", "original"):
+            for dp in (1, 2):
+                yield f"gap_statistic blobs60 {method} {ref} d_power={dp}", lambda m=method, ref=ref, dp=dp: (
+                    cl.gap_statistic(a(X), 6, rng=sd.random.default_rng(1), method=m, reference=ref, d_power=dp,
+                                     n_reference=20))  # fmt: skip
+    for sel in ("firstsemax", "tibs2001semax", "globalsemax", "firstmax", "globalmax"):
+        for fac in (1.0, 0.5):
+            yield (
+                f"gap_statistic select={sel} se_factor={fac}",
+                lambda sel=sel, fac=fac: cl.gap_statistic(
+                    a(sets["overlap45"]), 6, rng=sd.random.default_rng(2), n_reference=10, select=sel, se_factor=fac
+                ),
+            )
+    gr = cl.gap_statistic(a(X), 5, rng=sd.random.default_rng(3), n_reference=10)
+    yield "GapResult summary", lambda: gr.summary()
+    Xn = X.copy()
+    Xn[[3, 17], 1] = NAN
+    for pol in ("raise", "omit"):
+        yield f"gap_statistic nan_policy={pol}", lambda pol=pol: cl.gap_statistic(
+            a(Xn), 4, rng=sd.random.default_rng(1), n_reference=5, nan_policy=pol)  # fmt: skip
+    yield "gap_statistic 3000 p=3", lambda: cl.gap_statistic(a(big[::2, :3]), 5, rng=sd.random.default_rng(4),
+                                                             n_reference=8)  # fmt: skip
+    yield "gap_statistic error select case", lambda: cl.gap_statistic(a(X), 4, rng=sd.random.default_rng(0),
+                                                                      select="firstSEmax")  # fmt: skip
+    yield "gap_statistic error no rng", lambda: cl.gap_statistic(a(X), 4)
+    yield "gap_statistic error k_max", lambda: cl.gap_statistic(a(X), 1, rng=sd.random.default_rng(0))
+    yield "gap_statistic error n_reference", lambda: cl.gap_statistic(a(X), 3, rng=sd.random.default_rng(0),
+                                                                      n_reference=1)  # fmt: skip
+    # Gower's distance
+    F = sd.frame
+    df = F.DataFrame({"a": [1.0, 2.0, 3.0, None, 7.5, 2.0], "b": ["u", "v", "u", "w", None, "v"],
+                      "c": [True, False, True, True, False, None], "d": [1, 0, 0, 1, 0, 0],
+                      "e": [3, 1, 2, 2, 5, 1], "f": [0.5, 2.0, 8.0, 1.0, 1.0, 4.0]})  # fmt: skip
+    yield "gower_distance frame", lambda: cl.gower_distance(df)
+    types = {"d": "asymm", "c": "symm", "e": "ordratio", "f": "logratio"}
+    yield "gower_distance frame types weights", lambda: cl.gower_distance(df, types=types, weights=[1, 2, 1, 0.5, 1, 3])
+    yield "gower_distance array", lambda: cl.gower_distance(a(X))
+    yield "gower_distance 3000", lambda: cl.gower_distance(a(big[::5]))
+    yield "gower_distance error types", lambda: cl.gower_distance(df, types={"a": "ordinal"})
+    yield "gower_distance error binary", lambda: cl.gower_distance(df, types={"e": "asymm"})
+
+
+def _affinity_cases(L):
+    """Milestone CL6: affinity_propagation on the point sets and its options, predict, the wrong calls."""
+    sd, np = L.sd, L.np
+    a = L.arr
+    cl = sd.cluster
+    sets = dict(_sets(L))
+    names = ("blobs60", "overlap45", "p5_40", "lattice16", "lattice16_shuffled", "line7", "dups20", "allsame6",
+             "hexagon7", "two", "three", "collinear25", "narrow30", "shifted30", "huge30", "subnormal30")  # fmt: skip
+    for name in names:
+        X = sets[name]
+        yield f"affinity_propagation {name}", lambda X=X: cl.affinity_propagation(a(X))
+        yield f"affinity_propagation {name} damping=0.9", lambda X=X: cl.affinity_propagation(a(X), damping=0.9)
+    X = sets["blobs60"]
+    for kw in ({"preference": -50.0}, {"preference": -2.0}, {"max_iter": 5}, {"max_iter": 1}, {"convergence_iter": 3},
+               {"preference": np.linspace(-80.0, -5.0, 60)}):  # fmt: skip
+        key = {k: (v if not hasattr(v, "shape") else "array") for k, v in kw.items()}
+        yield f"affinity_propagation {sorted(key.items())!r}", lambda kw=kw: cl.affinity_propagation(
+            a(X), **{k: (a(v) if hasattr(v, "shape") else v) for k, v in kw.items()})  # fmt: skip
+    S_ = -(sd.spatial.cdist(a(X), a(X), metric="sqeuclidean"))
+    yield "affinity_propagation precomputed", lambda: cl.affinity_propagation(S_, affinity="precomputed")
+    yield "affinity_propagation precomputed asymmetric", lambda: cl.affinity_propagation(
+        a(np.asarray(S_) + np.triu(np.ones((60, 60)))), affinity="precomputed")  # fmt: skip
+    r = cl.affinity_propagation(a(X))
+    Xe = np.array([[0.0, 0.0], [3.0, 3.0], [100.0, -50.0], [6.0, 0.5]])
+    yield "AffinityPropagationResult predict", lambda: r.predict(a(Xe))
+    yield "AffinityPropagationResult summary", lambda: r.summary()
+    r0 = cl.affinity_propagation(a(X), max_iter=1)
+    yield "AffinityPropagationResult no exemplar predict", lambda: r0.predict(a(Xe))
+    Xn = X.copy()
+    Xn[[3, 17], 0] = NAN
+    for pol in ("raise", "omit"):
+        yield f"affinity_propagation nan_policy={pol}", lambda pol=pol: cl.affinity_propagation(a(Xn), nan_policy=pol)
+    rr = L.rng(14)
+    big = np.vstack([rr.normal(c, 1.0, (700, 2)) for c in (0.0, 5.0, 10.0)])
+    yield "affinity_propagation 2100", lambda: cl.affinity_propagation(a(big), damping=0.8, max_iter=60)
+    yield "affinity_propagation error damping", lambda: cl.affinity_propagation(a(X), damping=0.3)
+    yield "affinity_propagation error affinity", lambda: cl.affinity_propagation(a(X), affinity="cosine")
+    yield "affinity_propagation error not square", lambda: cl.affinity_propagation(a(X), affinity="precomputed")
+    yield "affinity_propagation error metric", lambda: cl.affinity_propagation(a(X), metric="precomputed")
+
+
 def cases(L):
     yield from _linkage_cases(L)
     yield from _tool_cases(L)
     yield from _partition_cases(L)
     yield from _density_cases(L)
     yield from _mixture_cases(L)
+    yield from _metric_cases(L)
+    yield from _affinity_cases(L)

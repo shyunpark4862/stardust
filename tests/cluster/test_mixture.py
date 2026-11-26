@@ -188,7 +188,7 @@ def test_scikit_learns_defaults_and_kmeans_start():
     assert a.loglik == pytest.approx(b.score(X) * X.shape[0], rel=1e-9)
     # init='kmeans' is the labels of one kmeans with the start's two words (CL41, CL76)
     k0, k1 = _rng(1).integers(-(2**63), 2**63 - 1, endpoint=True, shape=(2,)).tolist()
-    s0, s1 = CORE.gmm_subkey(k0, k1, 0)
+    s0, s1 = CORE.subkey(k0, k1, 0)
     o = CORE.lex_order(A(X))
     km = CORE.kmeans(A(X), o, None, 4, 0, None, 1, 300, 1e-4, s0, s1, 0)
     r0 = CL.gaussian_mixture(X, 4, rng=_rng(1), max_iter=0)

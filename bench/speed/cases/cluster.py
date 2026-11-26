@@ -3,7 +3,8 @@
 
 The plan of the area's cases, milestone by milestone: every spec below names its milestone and the sd.cluster names
 it needs, and cases() keeps a spec once its names are public (CL1 the hierarchy, CL2 k-means and k-medoids, CL3
-the density methods, CL4 the mixtures, CL5 the indices). The sizes are those of docs/design/cluster.md §5, where
+the density methods, CL4 the mixtures, CL5 the indices, the gap statistic and Gower's distance, CL6 affinity
+propagation). The sizes are those of docs/design/cluster.md §5, where
 milestone CL0 timed the comparators (tools/cluster_probe.py time). The matrix-free hierarchy at n = 10^5 has no
 comparator: scipy and R would need the 40 GB condensed matrix. k-means and the mixture start every library from
 the same centres (the data's first k rows), so the smoke run compares their fixed points; scikit-learn runs on its
@@ -57,12 +58,14 @@ def _blobs(n, p, k, seed=20261125):
         centers = 4.0 * g.standard_normal((k, p))
         X = centers[g.integers(0, k, n)] + g.standard_normal((n, p))
         init = X[:k].copy()
+        lab = g.integers(0, k, n)
         return {
             "X": X,
             "sX": sd.asarray(X),
             "init": init,
             "sinit": sd.asarray(init),
-            "labels": g.integers(0, k, n),
+            "labels": lab,
+            "r_lab": lab + 1.0,
             "r_x": np.ascontiguousarray(X.T.ravel()),
             "dims": np.array([n, p], float),
         }
@@ -506,7 +509,11 @@ def _mixture_specs():
 
 def _metrics_specs():
     from_sk = lambda name: lambda d: lambda: getattr(__import__("sklearn.metrics", fromlist=[name]), name)  # noqa: E731
-    return [
+
+    def sk(name):
+        return getattr(__import__("sklearn.metrics", fromlist=[name]), name)
+
+    out = [
         Spec(
             "CL5",
             "metrics",
@@ -519,8 +526,38 @@ def _metrics_specs():
                 Ref(
                     "sklearn", lambda d: lambda: from_sk("silhouette_score")(d)()(d["X"], d["labels"]), threads="follow"
                 ),
+                RRef(
+                    "R cluster",
+                    "mean(cluster::silhouette(lab, dist(x))[, 3])",
+                    data={**R_X, "r_lab": "lab"},
+                    setup=R_MATRIX,
+                    packages=("cluster",),
+                    differs="R needs the 1.6 GB dist object (made in the timing)",
+                ),
             ),
             quick=True,
+            check=Check(rtol=1e-12),
+        ),
+        Spec(
+            "CL5",
+            "metrics",
+            "calinski_harabasz_score p=10 k=5",
+            ("calinski_harabasz_score",),
+            count(10**5),
+            _blobs(10**5, 10, 5),
+            lambda d: lambda: _cl().calinski_harabasz_score(d["sX"], d["labels"]),
+            (Ref("sklearn", lambda d: lambda: sk("calinski_harabasz_score")(d["X"], d["labels"])),),
+            check=Check(rtol=1e-12),
+        ),
+        Spec(
+            "CL5",
+            "metrics",
+            "davies_bouldin_score p=10 k=5",
+            ("davies_bouldin_score",),
+            count(10**5),
+            _blobs(10**5, 10, 5),
+            lambda d: lambda: _cl().davies_bouldin_score(d["sX"], d["labels"]),
+            (Ref("sklearn", lambda d: lambda: sk("davies_bouldin_score")(d["X"], d["labels"])),),
             check=Check(rtol=1e-12),
         ),
         Spec(
@@ -532,13 +569,179 @@ def _metrics_specs():
             _labelings(10**6),
             lambda d: lambda: _cl().adjusted_rand_score(d["sa"], d["sb"]),
             (Ref("sklearn", lambda d: lambda: from_sk("adjusted_rand_score")(d)()(d["a"], d["b"])),),
+            quick=True,
             check=Check(rtol=1e-15),
+        ),
+        Spec(
+            "CL5",
+            "metrics",
+            "normalized_mutual_info_score k=20",
+            ("normalized_mutual_info_score",),
+            count(10**6),
+            _labelings(10**6),
+            lambda d: lambda: _cl().normalized_mutual_info_score(d["sa"], d["sb"]),
+            (Ref("sklearn", lambda d: lambda: sk("normalized_mutual_info_score")(d["a"], d["b"])),),
+            check=Check(rtol=1e-13),
+        ),
+        Spec(
+            "CL5",
+            "metrics",
+            "adjusted_mutual_info_score k=20",
+            ("adjusted_mutual_info_score",),
+            count(10**5),
+            _labelings(10**5),
+            lambda d: lambda: _cl().adjusted_mutual_info_score(d["sa"], d["sb"]),
+            (Ref("sklearn", lambda d: lambda: sk("adjusted_mutual_info_score")(d["a"], d["b"])),),
+            quick=True,
+            note="the expected MI by the hypergeometric ratio recurrence (scikit-learn: lgamma at every cell count)",
+            check=Check(rtol=1e-9),
+        ),
+        Spec(
+            "CL5",
+            "metrics",
+            "gap_statistic kmeans p=4 k_max=8 B=50",
+            ("gap_statistic",),
+            count(1000),
+            _blobs(1000, 4, 5),
+            lambda d: (
+                lambda: _cl().gap_statistic(
+                    d["sX"], 8, rng=__import__("stardust").random.default_rng(0), n_reference=50
+                )
+            ),  # fmt: skip
+            (
+                RRef(
+                    "R cluster",
+                    "set.seed(1); g <- cluster::clusGap(x, kmeans, K.max = 8, B = 50, verbose = FALSE); "
+                    "cluster::maxSE(g$Tab[, 'gap'], g$Tab[, 'SE.sim'])",
+                    data=R_X,
+                    setup=R_MATRIX,
+                    packages=("cluster",),
+                    differs="R's kmeans is Hartigan-Wong with one random start, its reference sets another stream",
+                ),
+            ),
+            quick=True,
+            check=Check(
+                sd=lambda r: float(r.k), ref=lambda label, r: float(np.asarray(r).ravel()[0]), rtol=0.0, atol=0.0
+            ),  # fmt: skip
+        ),
+        Spec(
+            "CL5",
+            "metrics",
+            "gap_statistic pam p=2 k_max=6 B=20",
+            ("gap_statistic",),
+            "300",
+            _blobs(300, 2, 3),
+            lambda d: (
+                lambda: _cl().gap_statistic(
+                    d["sX"], 6, rng=__import__("stardust").random.default_rng(0), n_reference=20, method="pam"
+                )
+            ),  # fmt: skip
+            (
+                RRef(
+                    "R cluster",
+                    "set.seed(1); cluster::clusGap(x, cluster::pam, K.max = 6, B = 20, verbose = FALSE)$Tab[, 'logW']",
+                    data=R_X,
+                    setup=R_MATRIX,
+                    packages=("cluster",),
+                ),
+            ),
+            check=Check(sd=lambda r: np.asarray(r.log_w), ref=lambda label, r: np.asarray(r).ravel(), rtol=1e-12),
+        ),
+        Spec(
+            "CL5",
+            "metrics",
+            "gower_distance p=6",
+            ("gower_distance",),
+            "3000",
+            _mixed(3000),
+            lambda d: lambda: _cl().gower_distance(d["frame"]),
+            (
+                RRef(
+                    "R cluster",
+                    "as.vector(cluster::daisy(df, metric = 'gower', type = list(symm = 'c')))",
+                    data=_MIXED_R,
+                    setup=_MIXED_SETUP,
+                    packages=("cluster",),
+                ),
+            ),
+            quick=True,
+            check=Check(rtol=1e-14),
+        ),
+    ]
+    return out
+
+
+def _affinity_specs():
+    def sk_ap():
+        return __import__("sklearn.cluster", fromlist=["AffinityPropagation"]).AffinityPropagation
+
+    return [
+        Spec(
+            "CL6",
+            "affinity",
+            "affinity_propagation p=2",
+            ("affinity_propagation",),
+            "2000",
+            _blobs(2000, 2, 10),
+            lambda d: lambda: _cl().affinity_propagation(d["sX"]),
+            (Ref("sklearn", lambda d: lambda: sk_ap()(random_state=0).fit(d["X"])),),
+            quick=True,
+            note="both run the 200 iterations (no convergence); scikit-learn's noise gives other exemplars",
+            check=Check(skip="scikit-learn adds random noise to the similarities"),
+        ),
+        Spec(
+            "CL6",
+            "affinity",
+            "affinity_propagation p=10 preference",
+            ("affinity_propagation",),
+            "3000",
+            _blobs(3000, 10, 6),
+            lambda d: lambda: _cl().affinity_propagation(d["sX"], preference=-2000.0, damping=0.9),
+            (Ref("sklearn", lambda d: lambda: sk_ap()(preference=-2000.0, damping=0.9, random_state=0).fit(d["X"])),),
+            check=Check(
+                sd=lambda r: float(r.n_clusters),
+                ref=lambda label, r: float(len(r.cluster_centers_indices_)),
+                rtol=0.0,
+                atol=0.0,
+            ),  # fmt: skip
         ),
     ]
 
 
+_MIXED_R = {"r_a": "a", "r_b": "b", "r_c": "c", "r_d": "d", "r_e": "e", "r_f": "f"}
+_MIXED_SETUP = ("df <- data.frame(a = a, b = factor(b), c = c == 1, d = d, e = factor(e), f = f); "
+                "df$a[is.nan(df$a)] <- NA")  # fmt: skip
+
+
+def _mixed(n, seed=20261127):
+    def setup():
+        import stardust as sd
+
+        g = np.random.Generator(np.random.PCG64([seed, n]))
+        a = g.normal(size=n)
+        a[g.random(n) < 0.05] = np.nan
+        b = g.integers(0, 4, n)
+        c = g.integers(0, 2, n)
+        d = g.exponential(size=n)
+        e = g.integers(0, 3, n)
+        f = g.uniform(size=n)
+        frame = sd.frame.DataFrame({"a": [None if np.isnan(v) else float(v) for v in a],
+                                    "b": [f"b{v}" for v in b], "c": [bool(v) for v in c], "d": d.tolist(),
+                                    "e": [f"e{v}" for v in e], "f": f.tolist()})  # fmt: skip
+        return {"frame": frame, "r_a": a, "r_b": b.astype(float), "r_c": c.astype(float), "r_d": d,
+                "r_e": e.astype(float), "r_f": f}  # fmt: skip
+
+    return setup
+
+
 SPECS = (
-    _hierarchy_specs() + _kmeans_specs() + _partition_specs() + _density_specs() + _mixture_specs() + _metrics_specs()
+    _hierarchy_specs()
+    + _kmeans_specs()
+    + _partition_specs()
+    + _density_specs()
+    + _mixture_specs()
+    + _metrics_specs()
+    + _affinity_specs()
 )
 
 
@@ -572,5 +775,6 @@ TITLES = {
     "partition": "분할 (`kmeans`, `minibatch_kmeans`, `bisecting_kmeans`, `kmedoids`, `fuzzy_cmeans`)",
     "density": "밀도 군집",
     "mixture": "가우스 혼합",
-    "metrics": "지표",
+    "metrics": "지표 (`gap_statistic`, `gower_distance` 포함)",
+    "affinity": "Affinity Propagation",
 }

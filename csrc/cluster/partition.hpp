@@ -125,6 +125,15 @@ inline std::vector<double> scaled_copy(const double* X, int64_t m, int e) {
     return out;
 }
 
+// ---- the partitions other kernels run (the gap statistic, metrics.cpp) ----------------------------------------
+
+// The labels (key order, the centres' numbers) of sd.cluster.kmeans(X, k) with its defaults (k-means++, one start,
+// max_iter 300, tol 1e-4) on rows X already in key order, keyed by the call's two words (kmeans.cpp).
+std::vector<int64_t> kmeans_labels(const double* X, int64_t n, int64_t p, int64_t k, random::Key key);
+// The labels (key order, medoid slots) of sd.cluster.kmedoids(X, k) (PAM, euclidean, max_iter 1000) on rows in key
+// order (kmedoids.cpp).
+std::vector<int64_t> pam_labels(const double* X, int64_t n, int64_t p, int64_t k);
+
 // ---- arguments ---------------------------------------------------------------------------------------------------
 
 inline const double* matrix_arg(nb::handle o, const char* what, int64_t& n, int64_t& p) {
