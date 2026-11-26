@@ -39,7 +39,7 @@ line-length = 120
 target-version = "py314"
 # Python only: Markdown code blocks in docs/ and the root documents are not formatted.
 include = ["*.py", "*.pyi"]
-extend-exclude = ["third_party", "build"]
+extend-exclude = ["third_party", "build", "textbook"]
 force-exclude = true  # also for paths given on the command line (tools/format.py PATH, editors)
 
 [tool.ruff.format]
