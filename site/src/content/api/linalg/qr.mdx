@@ -135,10 +135,11 @@ computes $A P = Q R$, where $P$ is the permutation matrix with ones at positions
 
 ### Signs and uniqueness
 
-The diagonal of $R$ is real, also for complex input, but its entries can be negative; the signs are not normalized. When $A$ has full column rank, the
-reduced factorization whose $R$ has a positive diagonal is unique, and the computed factors differ from it only in
-the signs of matching columns of $Q$ and rows of $R$. When $A$ is rank deficient, and for the extra columns of the
-complete $Q$, the factors are not unique.
+The diagonal of $R$ is real, also for complex input, but its entries can be negative; the signs are not normalized. When
+$A$ has full column rank, the reduced factorization whose $R$ has a positive diagonal is unique, and the computed
+factors differ from it only in the signs of matching columns of $Q$ and rows of $R$. When $A$ is rank deficient, and for
+the extra columns of the complete $Q$, the factors are not unique. The function makes the same choice on every run with
+the same number of threads (see [determinism and threads](/start/conventions/#determinism-and-threads)).
 
 ### Column pivoting
 
@@ -159,16 +160,17 @@ rank.
 For matrices with no rows or no columns, `Q` and `R` are
 empty arrays of the shapes above, except that `mode="complete"` gives an identity `Q`.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.linalg.qr`, `scipy.linalg.qr` and R's `qr`.
+**NumPy.** The nearest equivalent is `numpy.linalg.qr`.
 
 - `mode` takes only `'reduced'` and `'complete'`, with the default `'reduced'` as in `numpy.linalg.qr`. NumPy's
   `'r'` and `'raw'` modes do not exist; `qr(x).R` gives `R` alone.
+- The signs on the diagonal of `R` are not normalized, as in NumPy.
+
+**SciPy.** The nearest equivalent is `scipy.linalg.qr`.
+
 - `scipy.linalg.qr` defaults to `mode="full"`, which is `'complete'` here; SciPy's `'economic'` is `'reduced'`.
 - Column pivoting is a separate function. `qr_pivoted(x).perm` is the permutation `P` that
   `scipy.linalg.qr(a, pivoting=True)` returns, with the same meaning, `x[:, perm] == Q @ R`.
-- The signs on the diagonal of `R` are not normalized, as in NumPy and SciPy.
-- R's `qr` returns a compact object; `qr.Q` and `qr.R` extract the factors. By default it moves only columns it
-  judges linearly dependent to the end, so its `pivot` can differ from `perm`. With `LAPACK = TRUE` it pivots as
-  `qr_pivoted` does, with 1-based indices.
+- The signs on the diagonal of `R` are not normalized, as in SciPy.

@@ -246,10 +246,9 @@ array([-9223372036854775808], dtype=int64)
 Integer division by zero is described on the [`floor_divide` and `remainder`](/api/array/floor_divide-remainder/)
 page.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The dtype objects correspond to `numpy.bool`, `numpy.int64`, `numpy.float64` and `numpy.complex128`. R's
-logical, integer, double, complex and character types are the nearest matches in R.
+The dtype objects correspond to `numpy.bool`, `numpy.int64`, `numpy.float64` and `numpy.complex128`.
 
 - NumPy has many more dtypes (`int8` to `uint64`, `float16`, `float32`, dates, strings). `asarray` widens NumPy
   arrays of smaller integer and floating-point types to `int64` and `float64`, and raises `TypeError` for `uint64`
@@ -260,5 +259,3 @@ logical, integer, double, complex and character types are the nearest matches in
   array as 2; here it raises `TypeError`.
 - `astype` from `complex128` to a real type raises `TypeError`. NumPy drops the imaginary part with a warning.
 - A dtype object is not equal to its name: `x.dtype == "float64"` is `False`, while NumPy compares it as `True`.
-- R's integer type has 32 bits, and an integer overflow gives `NA` with a warning. `int64` has 64 bits and wraps
-  around.

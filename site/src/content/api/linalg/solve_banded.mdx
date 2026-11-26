@@ -1,0 +1,168 @@
+---
+kind: function
+title: solve_banded
+names: [solve_banded]
+group: Structured matrices
+order: 2
+signatures:
+  - "sd.linalg.solve_banded(ab, b, /, *, lower_bandwidth, upper_bandwidth)"
+summary: Solve a linear system whose matrix is banded, given in band storage.
+params:
+  - name: ab
+    type: array of shape (..., lower_bandwidth + upper_bandwidth + 1, n)
+    kind: positional-only
+    desc: "Band storage of the coefficient matrix `a`, of any dtype, or a stack of them (see [matrices and stacks](/api/linalg/#matrices-and-stacks)): `ab[upper_bandwidth + i - j, j]` holds `a[i, j]`, so each row of `ab` is one diagonal of `a`. The number of columns `n` is the size of `a`. The corner elements that fall outside `a` are not read (see [band storage](#band-storage))."
+  - name: b
+    type: array of shape (n,) or (..., n, k)
+    kind: positional-only
+    desc: "Right-hand side: one vector, or `k` vectors as columns (see [right-hand sides](/api/linalg/#right-hand-sides)). Leading axes broadcast against those of `ab`."
+  - name: lower_bandwidth
+    type: int
+    kind: keyword-only
+    desc: "Number of nonzero diagonals below the main diagonal. Must be nonnegative. There is no default."
+  - name: upper_bandwidth
+    type: int
+    kind: keyword-only
+    desc: "Number of nonzero diagonals above the main diagonal. Must be nonnegative. There is no default."
+returns:
+  - type: ndarray of shape (..., n) or (..., n, k)
+    desc: "Solution `x`, with the shape of `b` after broadcasting. `float64`, or `complex128` when `ab` or `b` is complex (see [result types](/api/linalg/#result-types))."
+raises:
+  - type: TypeError
+    desc: "If `ab` or `b` is not an `sd.ndarray`, if `lower_bandwidth` or `upper_bandwidth` is missing, or if either bandwidth is not an `int`."
+  - type: ValueError
+    desc: "If `ab` has fewer than two dimensions, if a bandwidth is negative, if `ab` does not have `lower_bandwidth + upper_bandwidth + 1` rows, if `b` does not have `n` rows, if the leading axes do not broadcast, or if the elements of `ab` that are read or `b` contain NaN or infinity."
+  - type: OverflowError
+    desc: "If `lower_bandwidth` or `upper_bandwidth` is an `int` outside the `int64` range."
+  - type: LinAlgError
+    desc: "If a matrix `a` stored in `ab` is singular (its elimination meets an exact zero pivot). For a stack, the message gives the index of the first such matrix."
+seeAlso: [bandwidth, solve_tridiagonal, solve, solve_triangular, lu_solve]
+---
+import Fig from '../../../components/fig/Fig.astro';
+import ArrayFig from '../../../components/fig/ArrayFig.astro';
+import Op from '../../../components/fig/Op.astro';
+
+export const full = [[1, 3, 6, 0, 0], [2, 4, 7, 10, 0], [0, 5, 8, 11, 14], [0, 0, 9, 12, 15], [0, 0, 0, 13, 16]];
+export const fullTones = [['b', 'a', 'a', 'm', 'm'], ['a', 'b', 'a', 'a', 'm'], ['m', 'a', 'b', 'a', 'a'], ['m', 'm', 'a', 'b', 'a'], ['m', 'm', 'm', 'a', 'b']];
+export const band = [['*', '*', 6, 10, 14], ['*', 3, 7, 11, 15], [1, 4, 8, 12, 16], [2, 5, 9, 13, '*']];
+export const bandTones = [['g', 'g', 'a', 'a', 'a'], ['g', 'a', 'a', 'a', 'a'], ['b', 'b', 'b', 'b', 'b'], ['a', 'a', 'a', 'a', 'g']];
+
+`solve_banded` solves `a @ x = b` when the square matrix `a` is banded: its nonzero elements lie on the main diagonal,
+on at most `lower_bandwidth` diagonals below it and on at most `upper_bandwidth` diagonals above it. The matrix is
+passed in band storage, one row per diagonal, so the zeros outside the band are not stored and the work grows only
+linearly with `n` for a fixed band.
+
+Both bandwidths are required keyword arguments, since `ab` alone does not tell how its rows split between the two
+sides of the diagonal. [`bandwidth`](/api/linalg/bandwidth/) returns the two values for a full matrix. A tridiagonal
+matrix (both bandwidths 1) can also be given by its three diagonals to
+[`solve_tridiagonal`](/api/linalg/solve_tridiagonal/); a diagonal matrix has both bandwidths 0.
+
+<Fig caption="A 5-by-5 matrix with lower bandwidth 1 and upper bandwidth 2, and its band storage of shape (4, 5). Every element keeps its column; the main diagonal becomes row 2. The corners marked * are not read.">
+  <ArrayFig data={full} tones={fullTones} name="a" note="shape (5, 5)" />
+  <Op>→</Op>
+  <ArrayFig data={band} tones={bandTones} name="ab" note="shape (4, 5)" />
+</Fig>
+
+## Examples
+
+The system with the matrix from the figure, its band storage written out, and the unused corners set to zero:
+
+```python
+>>> import stardust as sd
+>>> ab = sd.asarray([[0.0, 0.0, 6.0, 10.0, 14.0],
+...                  [0.0, 3.0, 7.0, 11.0, 15.0],
+...                  [1.0, 4.0, 8.0, 12.0, 16.0],
+...                  [2.0, 5.0, 9.0, 13.0, 0.0]])
+>>> b = sd.asarray([10.0, 3.0, 30.0, 27.0, 19.0])
+>>> sd.linalg.solve_banded(ab, b, lower_bandwidth=1, upper_bandwidth=2)
+array([ 1.0,  1.0,  1.0, -1.0,  2.0], dtype=float64)
+```
+
+The band storage of a full matrix, built from the rule `ab[u + i - j, j] = a[i, j]`, with the bandwidths from
+`bandwidth`. The corners are left as NaN, which does not matter because they are not read:
+
+```python
+>>> a = sd.asarray([[1.0, 3.0, 6.0, 0.0, 0.0],
+...                 [2.0, 4.0, 7.0, 10.0, 0.0],
+...                 [0.0, 5.0, 8.0, 11.0, 14.0],
+...                 [0.0, 0.0, 9.0, 12.0, 15.0],
+...                 [0.0, 0.0, 0.0, 13.0, 16.0]])
+>>> kl, ku = sd.linalg.bandwidth(a)
+>>> kl, ku
+(1, 2)
+>>> n = a.shape[-1]
+>>> band = sd.full((kl + ku + 1, n), float("nan"))
+>>> for j in range(n):
+...     for i in range(max(0, j - ku), min(n, j + kl + 1)):
+...         band[ku + i - j, j] = a[i, j]
+>>> band
+array([[ nan,  nan,  6.0, 10.0, 14.0],
+       [ nan,  3.0,  7.0, 11.0, 15.0],
+       [ 1.0,  4.0,  8.0, 12.0, 16.0],
+       [ 2.0,  5.0,  9.0, 13.0,  nan]], dtype=float64)
+>>> sd.linalg.solve_banded(band, b, lower_bandwidth=kl, upper_bandwidth=ku)
+array([ 1.0,  1.0,  1.0, -1.0,  2.0], dtype=float64)
+```
+
+A diagonal matrix has both bandwidths 0, and `ab` is the diagonal as a single row:
+
+```python
+>>> sd.linalg.solve_banded(sd.asarray([[2.0, 4.0, 5.0]]), sd.asarray([2.0, 4.0, 10.0]), lower_bandwidth=0, upper_bandwidth=0)
+array([1.0, 1.0, 2.0], dtype=float64)
+```
+
+The number of rows of `ab` must match the bandwidths:
+
+```python
+>>> sd.linalg.solve_banded(ab, b, lower_bandwidth=2, upper_bandwidth=2)
+Traceback (most recent call last):
+    ...
+ValueError: solve_banded(): 'ab' must have lower_bandwidth + upper_bandwidth + 1 rows (2 + 2 + 1), got 4
+```
+
+<Reference />
+
+## Notes
+
+### Band storage
+
+With $u$ the upper and $l$ the lower bandwidth, `ab` has $l + u + 1$ rows and $n$ columns, and describes the
+$n \times n$ matrix $A$ with
+
+$$
+A_{ij} = \mathit{ab}_{u + i - j,\, j} \quad \text{for } -u \le i - j \le l, \qquad A_{ij} = 0 \text{ otherwise}.
+$$
+
+Each element keeps its column, and each diagonal of $A$ becomes one row of `ab`:
+
+- row $0$ holds the $u$-th diagonal above the main one, and row $u - 1$ the first diagonal above it;
+- row $u$ holds the main diagonal;
+- rows $u + 1$ to $u + l$ hold the diagonals below the main one, the first one first.
+
+A diagonal above the main one is shorter than $n$ and is stored right-aligned: row $r \lt u$ leaves its first
+$u - r$ elements unused. A diagonal below is stored left-aligned: row $r \gt u$ leaves its last $r - u$ elements
+unused. These corner elements fall outside the matrix. They are not read and may hold any value, NaN included.
+
+The bandwidths do not have to be the smallest possible: zeros inside the band are allowed, and a bandwidth may exceed
+$n - 1$. The extra rows of `ab` then lie entirely outside the matrix and are not read.
+
+### Method
+
+The function computes an LU factorization of $A$ with partial pivoting that keeps the band structure, then solves the
+two triangular systems. Only an exact zero pivot raises `LinAlgError`; a nearly singular matrix gives large errors
+without a warning.
+
+With both bandwidths 1 the result equals that of [`solve_tridiagonal`](/api/linalg/solve_tridiagonal/) on the same
+diagonals bit for bit, for real and complex input. The results of [`solve`](/api/linalg/solve/) on the full matrix
+agree with those of `solve_banded` only up to rounding.
+
+## Comparison with other libraries
+
+The nearest equivalent is `scipy.linalg.solve_banded`, which uses the same band storage. NumPy has no banded solver.
+
+- The bandwidths are the required keyword arguments `lower_bandwidth` and `upper_bandwidth`. SciPy takes them as the
+  tuple `(l, u)` in the first position: `scipy.linalg.solve_banded((l, u), ab, b)`.
+- The unused corners of `ab` are not read. `scipy.linalg.solve_banded` raises `ValueError` when they hold NaN or
+  infinity, unless `check_finite=False` is given.
+- There are no `overwrite_ab`, `overwrite_b` or `check_finite` options; the inputs are never modified and are always
+  checked for NaN and infinity in the elements that are read.

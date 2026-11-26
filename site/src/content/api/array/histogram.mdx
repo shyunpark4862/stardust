@@ -142,14 +142,11 @@ A range so narrow that the requested number of edges cannot all be distinct `flo
 Repeated edges in a `bins` array are allowed; the bin between them is empty, except when it is the last bin, which
 holds the values equal to the last edge. The counts do not depend on the number of threads.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.histogram` and R's `hist(x, breaks, plot = FALSE)`.
+The nearest equivalent is `numpy.histogram`.
 
 - The result is a named tuple with read-only arrays; NumPy returns a plain tuple of writable arrays. Both unpack as
   `hist, edges = ...`.
 - `bins` must be an `int` or an `sd.ndarray`. NumPy also accepts a list of edges and rule names such as `"auto"`.
 - With floating-point weights, the sums for an edges array and the densities can differ from NumPy's in the last digit.
-- R's bins contain their right edge and not their left one (`right = TRUE`), and the first bin contains both. With
-  edges 1 to 5, the data above gives the R counts `2 2 2 1` and here `1 2 1 3`.
-- R's default edges follow Sturges' rule; here the default is 10 equal bins.

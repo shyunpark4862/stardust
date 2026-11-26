@@ -1,0 +1,138 @@
+---
+kind: function
+title: expm
+names: [expm]
+group: Matrix functions
+order: 1
+signatures:
+  - "sd.linalg.expm(x, /)"
+summary: Compute the matrix exponential of a square matrix.
+params:
+  - name: x
+    type: array of shape (..., n, n)
+    kind: positional-only
+    desc: "Square matrix, of any dtype, or a stack of them (see [matrices and stacks](/api/linalg/#matrices-and-stacks))."
+returns:
+  - type: ndarray of shape (..., n, n)
+    desc: "Matrix exponential of each matrix, with the shape of `x`. `float64`, or `complex128` when `x` is complex (see [result types](/api/linalg/#result-types))."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`."
+  - type: ValueError
+    desc: "If `x` has fewer than two dimensions or is not square, or if `x` contains NaN or infinity."
+seeAlso: [matrix_power, solve, eig, array/exp-log]
+---
+
+`expm` computes the matrix exponential $e^A$, defined by the power series
+$I + A + A^2/2! + A^3/3! + \dots$. It is the matrix function behind linear differential equations: the solution of
+$x'(t) = A x(t)$ with initial value $x(0)$ is $x(t) = e^{tA} x(0)$. It also maps a skew-symmetric matrix to a rotation
+and the generator of a continuous-time Markov chain to its transition matrices.
+
+The matrix exponential is not the element-wise exponential. [`sd.exp`](/api/array/exp-log/) applies `exp` to each
+entry; `expm` combines all entries. Even for a diagonal matrix the two differ: off the diagonal, `expm` gives 0 and
+`sd.exp` gives 1.
+
+The result is a new, writable array. Entries too large for `float64` become `inf` without a warning.
+
+## Examples
+
+The exponential of the zero matrix is the identity, and that of a diagonal matrix is the exponential of its diagonal.
+`sd.exp` differs off the diagonal:
+
+```python
+>>> import stardust as sd
+>>> sd.linalg.expm(sd.zeros((2, 2)))
+array([[1.0, 0.0],
+       [0.0, 1.0]], dtype=float64)
+>>> d = sd.asarray([[1.0, 0.0], [0.0, 2.0]])
+>>> sd.linalg.expm(d)
+array([[2.718281828459045,               0.0],
+       [              0.0,  7.38905609893065]], dtype=float64)
+>>> sd.exp(d)
+array([[2.718281828459045,               1.0],
+       [              1.0,  7.38905609893065]], dtype=float64)
+```
+
+For a nilpotent matrix the series ends after a few terms. A skew-symmetric matrix gives a rotation, here by an angle
+of 1 radian, with $\cos 1$ and $\sin 1$ as entries:
+
+```python
+>>> sd.linalg.expm(sd.asarray([[0.0, 1.0], [0.0, 0.0]]))
+array([[1.0, 1.0],
+       [0.0, 1.0]], dtype=float64)
+>>> sd.linalg.expm(sd.asarray([[0.0, -1.0], [1.0, 0.0]]))
+array([[ 0.5403023058681397, -0.8414709848078965],
+       [ 0.8414709848078965,  0.5403023058681397]], dtype=float64)
+```
+
+The solution at $t = 1$ of $x' = A x$, $x(0) = (1, 0)$. The exact solution is $x_1(t) = 2 e^{-t} - e^{-2t}$,
+$x_2(t) = -2 e^{-t} + 2 e^{-2t}$:
+
+```python
+>>> a = sd.asarray([[0.0, 1.0], [-2.0, -3.0]])
+>>> t = 1.0
+>>> sd.linalg.expm(t * a) @ sd.asarray([1.0, 0.0])
+array([ 0.6004235991062721, -0.4650883158696593], dtype=float64)
+>>> import math
+>>> 2 / math.e - 1 / math.e**2, -2 / math.e + 2 / math.e**2
+(0.600423599106272, -0.46508831586965926)
+```
+
+A stack is exponentiated matrix by matrix. $e^{1000}$ overflows to `inf`; NaN is rejected:
+
+```python
+>>> sd.linalg.expm(sd.stack([sd.zeros((2, 2)), sd.asarray([[1000.0, 0.0], [0.0, 1.0]])]))
+array([[[              1.0,               0.0],
+        [              0.0,               1.0]],
+
+       [[              inf,               0.0],
+        [              0.0, 2.718281828459045]]], dtype=float64)
+>>> sd.linalg.expm(sd.asarray([[1.0, sd.nan], [0.0, 1.0]]))
+Traceback (most recent call last):
+    ...
+ValueError: expm(): 'x' contains NaN or infinity
+```
+
+<Reference />
+
+## Notes
+
+The matrix exponential of a square matrix $A$ is
+
+$$
+e^A = \sum_{k=0}^{\infty} \frac{A^k}{k!} .
+$$
+
+It is always invertible, with $(e^A)^{-1} = e^{-A}$, and $\det e^A = e^{\operatorname{tr} A}$. The rule
+$e^{A + B} = e^A e^B$ holds when $A$ and $B$ commute ($A B = B A$), but not in general.
+
+The function uses the scaling and squaring method with Padé approximants of Al-Mohy and Higham [1]: it computes a
+rational approximation of $e^{A / 2^s}$ and squares the result $s$ times, choosing the degree of the approximation and
+$s$ from norms of powers of $A$. For matrices of moderate norm, the error relative to the largest entry of the result
+is a small multiple of the rounding error of `float64`. Matrices of very large norm lose accuracy; for
+`sd.asarray([[-1e12, 1e12], [1e12, -1e12]])`, whose exact exponential has entries very close to 0.5, the computed
+entries are 0.5000038.
+
+A diagonal matrix gives the exponential of each diagonal entry and exact zeros elsewhere. A triangular matrix gives a
+triangular result whose other triangle is exactly zero; its diagonal is the exponential of the diagonal of `x`, and its
+first off-diagonal is computed from an exact formula, which keeps it accurate when neighboring diagonal entries are
+nearly equal.
+
+A 0-by-0 matrix gives a 0-by-0 result.
+
+## References
+
+1. A. H. Al-Mohy and N. J. Higham, "A new scaling and squaring algorithm for the matrix exponential", *SIAM Journal on
+   Matrix Analysis and Applications* 31(3), 970–989, 2009.
+
+## Comparison with other libraries
+
+The nearest equivalent is `scipy.linalg.expm`. NumPy has no matrix exponential; `numpy.exp` is element-wise, like
+`sd.exp`.
+
+- `x` must be an `sd.ndarray`; lists raise `TypeError`.
+- NaN or infinity in `x` raises `ValueError`. `scipy.linalg.expm` raises no error; NaN in `x` gives a result of NaN.
+- Results agree with `scipy.linalg.expm` only up to rounding.
+- For a triangular matrix with nearly equal diagonal entries, the entry above the diagonal is computed accurately:
+  for `[[10, 1], [0, 10 + 1e-12]]` it is `22026.465794817752`, against an exact value of 22026.46579481773, where
+  `scipy.linalg.expm` gives about `22026.0036`.

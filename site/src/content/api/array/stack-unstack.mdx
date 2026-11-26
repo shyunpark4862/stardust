@@ -97,10 +97,9 @@ ValueError: stack(): all arrays must have the same shape; got (3,) and (2,)
 
 <Reference />
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.stack` and `numpy.unstack`. For two 1-D vectors, R's `rbind(x, y)` matches
-`stack([x, y])` and `cbind(x, y)` matches `stack([x, y], axis=-1)`.
+The nearest equivalents are `numpy.stack` and `numpy.unstack`.
 
 - Every element of `arrays` must be an `sd.ndarray`; NumPy also accepts lists there.
 - There are no `out`, `dtype` or `casting` arguments.

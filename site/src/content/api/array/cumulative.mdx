@@ -118,14 +118,12 @@ accumulated in a different order from [`sum`](/api/array/sum/), so the last runn
 the last digits. As for [`prod`](/api/array/prod/), running products that leave the `float64` range become infinite,
 and a later zero then gives NaN.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
 The nearest equivalents are `numpy.cumulative_sum` and `numpy.cumulative_prod` (also `numpy.cumsum` and
-`numpy.cumprod`), and R's `cumsum` and `cumprod`.
+`numpy.cumprod`).
 
 - `axis` is required for arrays with two or more dimensions, as in `numpy.cumulative_sum`. `numpy.cumsum` flattens
   such arrays when `axis` is left out; flatten with [`ravel`](/api/array/ravel/) first for that result.
 - There is no `out=` argument, and `dtype=sd.bool` raises `TypeError`.
 - Long `float64` accumulations can differ from NumPy's in the last digits.
-- R's `cumsum` and `cumprod` work on vectors and flatten a matrix in column-major order. A matrix's running sums by
-  column are `apply(m, 2, cumsum)`.

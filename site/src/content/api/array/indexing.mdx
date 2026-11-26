@@ -285,7 +285,7 @@ array([ -1,   1, 100,   3,   4,   5], dtype=int64)
 
 The page [Views and copies](/api/array/views/) lists which other operations return views.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
 Indexing follows NumPy's rules, with these differences:
 
@@ -296,6 +296,3 @@ Indexing follows NumPy's rules, with these differences:
 - `x[True]` and `x[False]` raise `IndexError`. NumPy treats them as a 0-D mask.
 - Assignment never converts to a narrower dtype. NumPy stores `2.5` into an integer array as 2.
 - Selecting a single element returns a Python scalar, not a NumPy scalar.
-- R counts positions from 1, and a negative index in R removes that position, while here it counts from the end. An
-  integer index removes its axis and a slice keeps it, even with length 1. R drops every dimension of length 1 unless
-  `drop = FALSE` is given.

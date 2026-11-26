@@ -120,14 +120,12 @@ where NaN is treated as greater than every number and equal to NaN. In particula
 comparison is made in the promoted dtype: for an `int64` `x1` and a `float` value, both are compared as `float64`,
 so `searchsorted(sd.asarray([1, 2, 3]), 2.5)` is 2. An empty `x1` gives 0 for every value.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.searchsorted` and R's `findInterval`.
+The nearest equivalent is `numpy.searchsorted`.
 
 - The arguments are positional-only and named `x1` and `x2`; NumPy names them `a` and `v`.
 - A Python scalar `x2` gives a Python `int`; NumPy returns a `numpy.int64`.
 - `sorter` must be an `int64` `sd.ndarray`, and negative positions in it raise `IndexError`. NumPy also accepts a
   list and counts negative positions from the end.
 - Complex values raise `TypeError`; NumPy orders complex numbers by real part, then imaginary part.
-- R's `findInterval(v, x1)` counts the elements less than or equal to each value, which is the result with
-  `side="right"`.

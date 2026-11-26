@@ -163,9 +163,9 @@ above the last, so the function between the last node and $p$ runs toward the va
 Each value is computed on its own, so the result does not depend on the number of threads (see
 [Determinism and threads](/start/conventions/#determinism-and-threads)).
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.interp` and R's `approx(xp, fp, xout = x, rule = 2)`.
+The nearest equivalent is `numpy.interp`.
 
 - `xp`, `fp` must be `sd.ndarray`; lists raise `TypeError`.
 - `xp` must be finite and nondecreasing. NumPy does not check the order and returns values without an error:
@@ -173,5 +173,3 @@ The nearest equivalents are `numpy.interp` and R's `approx(xp, fp, xout = x, rul
 - `left`, `right` and `period` are keyword-only; NumPy also accepts `left` and `right` by position.
 - A `period` of NaN or infinity raises `ValueError`; NumPy returns NaN or the values without the reduction.
 - With a single node, a NaN point gives NaN; NumPy gives `fp[0]`.
-- R's `approx` gives `NA` outside the nodes with its default `rule = 1`, and averages the values at repeated nodes
-  (with a warning) instead of making a step.

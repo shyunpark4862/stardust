@@ -132,14 +132,13 @@ in both parts otherwise.
 
 `pow` has no modulus argument: the three-argument form `pow(x, y, m)` raises `TypeError`.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.pow` (`numpy.power`) and R's `^`.
+The nearest equivalent is `numpy.pow` (`numpy.power`).
 
 - Integers raised to negative integer powers give `int64` results (0 for most bases). NumPy raises `ValueError`.
 - `(-0.0) ** 0.5` is `0.0` and `(-inf) ** 0.5` is `inf`. With a scalar exponent of 0.5, NumPy uses the square root
   and returns `-0.0` and NaN.
 - In `float64`, a zero base with a negative exponent gives `inf`, and a negative base with a non-integer exponent
-  gives NaN, without a warning. NumPy issues a `RuntimeWarning`; R's `^` gives `Inf` and `NaN` silently.
+  gives NaN, without a warning. NumPy issues a `RuntimeWarning`.
 - Booleans count as 0 and 1 and give `int64`.
-- R's `^` always returns doubles: `2L^-1L` is 0.5.

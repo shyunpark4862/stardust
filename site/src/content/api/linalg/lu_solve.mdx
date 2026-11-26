@@ -42,7 +42,7 @@ raises:
   - type: ValueError
     desc: "If `l` or `u` has fewer than two dimensions or is not square, if the sizes of `l`, `u`, `perm` and `b` do not match, if the leading axes do not broadcast, if `trans` is not `'N'`, `'T'` or `'H'`, if `l`, `u` or `b` contains NaN or infinity in the part that is read, or if a vector in `perm` is not a permutation."
   - type: LinAlgError
-    desc: "If `u` has an exact zero on its diagonal, that is, the factored matrix is singular. For a stack, the message gives the index of the first such matrix."
+    desc: "If `u` has an exact zero on its diagonal (the factored matrix is singular). For a stack, the message gives the index of the first such matrix."
 seeAlso: [lu, solve, cholesky_solve, solve_triangular, inv]
 ---
 
@@ -122,7 +122,7 @@ triangles that are read are ignored, and may also be NaN.
 For the factors that `lu` returns, `lu_solve(*sd.linalg.lu(a), b)` equals `solve(a, b)` bit for bit, except when `a`
 is real and `b` is complex; the two then agree only up to rounding.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
 The nearest equivalent is `scipy.linalg.lu_solve`. NumPy has no LU solver.
 

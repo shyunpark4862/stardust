@@ -103,9 +103,9 @@ with the last term evaluated as `log1p(exp(-abs(x1 - x2)))`. The exponential is 
 When $x_1 = x_2$, including two infinities of the same sign, the result is $x_1 + \ln 2$, so `logaddexp(inf, inf)` is
 `inf` and `logaddexp(-inf, -inf)` is `-inf`. `logaddexp(inf, -inf)` is `inf`.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalent is `numpy.logaddexp`. Base R has no such function.
+The nearest equivalent is `numpy.logaddexp`.
 
 - The values agree with NumPy's, including the infinite cases. A NaN operand gives NaN without a warning; NumPy
   issues a `RuntimeWarning`.

@@ -121,12 +121,12 @@ The function makes the same choice on every run with the same number of threads 
 
 An empty matrix ($n = 0$) gives empty results.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalent is `scipy.linalg.schur`. NumPy and base R have no Schur decomposition.
+The nearest equivalent is `scipy.linalg.schur`. NumPy has no Schur decomposition.
 
 - There is no `output=` option: the dtype of `x` selects the real or the complex form. Pass `x.astype(sd.complex128)`
   where SciPy takes `output="complex"`.
 - There is no `sort=` option; the eigenvalues appear on the diagonal of `T` in the order the algorithm finds them.
-- The result is a named tuple `(T, Z)`; `scipy.linalg.schur` returns a plain tuple `(T, Z)`.
+- The result is the named tuple `SchurResult(T, Z)`. `scipy.linalg.schur` returns a plain tuple `(T, Z)`.
 - NaN or infinity raises `ValueError`, as in `scipy.linalg.schur` by default.

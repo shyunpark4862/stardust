@@ -1,0 +1,160 @@
+---
+kind: function
+title: matrix_norm
+names: [matrix_norm]
+group: Norms and scalar measures
+order: 2
+signatures:
+  - "sd.linalg.matrix_norm(x, /, *, keepdims=False, ord='fro')"
+summary: Compute the norm of a matrix.
+params:
+  - name: x
+    type: array of shape (..., m, n)
+    kind: positional-only
+    desc: "Matrix to measure, of any dtype, or a stack of them (see [matrices and stacks](/api/linalg/#matrices-and-stacks)). Need not be square."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    default: "False"
+    desc: "If `True`, the last two axes stay in the result with length 1."
+  - name: ord
+    type: str, int or float
+    kind: keyword-only
+    default: "'fro'"
+    desc: "Kind of norm. A `float` with the value of one of the integers is accepted like the integer; strings are case-sensitive."
+    choices:
+      - [ "'fro'", "Frobenius norm: the square root of the sum of the squared absolute values of all entries." ]
+      - [ "'nuc'", "Nuclear norm: the sum of the singular values." ]
+      - [ "1", "Largest sum of absolute values in a column." ]
+      - [ "-1", "Smallest sum of absolute values in a column." ]
+      - [ "2", "Spectral norm: the largest singular value." ]
+      - [ "-2", "Smallest singular value." ]
+      - [ "sd.inf", "Largest sum of absolute values in a row." ]
+      - [ "-sd.inf", "Smallest sum of absolute values in a row." ]
+returns:
+  - type: float or ndarray of shape (...)
+    desc: "Norm of each matrix, with the leading axes of `x` as its shape (and two more axes of length 1 if `keepdims` is `True`). Always `float64`, also for complex input. A Python `float` for a single matrix when `keepdims` is `False`."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`, if `keepdims` is not `True` or `False`, if `ord` is a `bool`, or if `ord` is not a `str`, an `int` or a `float`."
+  - type: ValueError
+    desc: "If `x` has fewer than two dimensions, if `ord` is not one of the listed values, or if `ord` is `2`, `-2` or `'nuc'` and `x` contains NaN or infinity."
+  - type: OverflowError
+    desc: "If `ord` is an `int` too large to convert to a `float`."
+  - type: LinAlgError
+    desc: "If `ord` is `2`, `-2` or `'nuc'` and the singular value decomposition does not converge. For a stack, the message gives the index of the first matrix that failed."
+seeAlso: [vector_norm, cond, svd, matrix_rank]
+---
+
+`matrix_norm` measures the size of each matrix formed by the last two axes of `x` with a single nonnegative number.
+The default, `ord='fro'`, is the Frobenius norm, the Euclidean length of all entries taken as one vector. The other
+values of `ord` give norms that depend on the matrix as a linear map: the largest column or row sum of absolute
+values, and norms computed from the singular values.
+
+`ord` values 1, 2 and `sd.inf` give the induced norms: the largest factor by which the matrix stretches a vector,
+with the vector measured by the 1-norm, the Euclidean norm or the largest absolute value. The negative values -1, -2
+and `-sd.inf` give the corresponding minimum. They are not norms. The smallest singular value, `ord=-2`, is the
+distance in the 2-norm from the matrix to the nearest matrix of rank less than $\min(m, n)$.
+
+`'fro'`, `1`, `-1`, `sd.inf` and `-sd.inf` add and compare entries only and accept NaN and infinity: NaN gives a NaN
+result, and an infinite entry makes its sums infinite. `2`, `-2` and `'nuc'` compute the singular values and raise
+`ValueError` for NaN or infinity (see [finite values](/api/linalg/#finite-values)).
+
+## Examples
+
+Every `ord` for one 2-by-2 matrix. Its column sums of absolute values are 4 and 6, its row sums 3 and 7:
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([[1.0, -2.0], [3.0, 4.0]])
+>>> sd.linalg.matrix_norm(x)
+5.477225575051661
+>>> sd.linalg.matrix_norm(x, ord=1), sd.linalg.matrix_norm(x, ord=-1)
+(6.0, 4.0)
+>>> sd.linalg.matrix_norm(x, ord=sd.inf), sd.linalg.matrix_norm(x, ord=-sd.inf)
+(7.0, 3.0)
+>>> sd.linalg.matrix_norm(x, ord=2), sd.linalg.matrix_norm(x, ord=-2)
+(5.116672736016928, 1.954395075848548)
+>>> sd.linalg.matrix_norm(x, ord="nuc")
+7.0710678118654755
+```
+
+The norms with `ord` 2, -2 and `'nuc'` come from the singular values:
+
+```python
+>>> sd.linalg.svdvals(x)
+array([5.116672736016928, 1.954395075848548], dtype=float64)
+```
+
+A stack gives one norm per matrix. With `keepdims=True` the result broadcasts against the stack, here to scale each
+matrix to Frobenius norm 1:
+
+```python
+>>> s = sd.stack([x, sd.eye(2)])
+>>> sd.linalg.matrix_norm(s)
+array([ 5.477225575051661, 1.4142135623730951], dtype=float64)
+>>> s / sd.linalg.matrix_norm(s, keepdims=True)
+array([[[0.18257418583505536, -0.3651483716701107],
+        [ 0.5477225575051661,  0.7302967433402214]],
+
+       [[ 0.7071067811865475,                 0.0],
+        [                0.0,  0.7071067811865475]]], dtype=float64)
+```
+
+NaN propagates through the Frobenius norm but is rejected by the norms that need the singular values. `ord` takes only
+the listed values:
+
+```python
+>>> y = sd.asarray([[1.0, sd.nan], [0.0, 1.0]])
+>>> sd.linalg.matrix_norm(y)
+nan
+>>> sd.linalg.matrix_norm(y, ord=2)
+Traceback (most recent call last):
+    ...
+ValueError: matrix_norm(): 'x' contains NaN or infinity
+>>> sd.linalg.matrix_norm(x, ord=3)
+Traceback (most recent call last):
+    ...
+ValueError: matrix_norm(): 'ord' must be 'fro', 'nuc', 1, -1, 2, -2, inf or -inf, not 3
+```
+
+<Reference />
+
+## Notes
+
+For an $m \times n$ matrix $A$ with entries $a_{ij}$ and singular values $\sigma_1 \ge \dots \ge \sigma_k \ge 0$,
+$k = \min(m, n)$:
+
+$$
+\lVert A \rVert_F = \Bigl(\sum_{i,j} \lvert a_{ij} \rvert^2\Bigr)^{1/2}, \qquad
+\lVert A \rVert_* = \sum_{i=1}^{k} \sigma_i, \qquad
+\lVert A \rVert_2 = \sigma_1,
+$$
+
+$$
+\lVert A \rVert_1 = \max_j \sum_{i=1}^{m} \lvert a_{ij} \rvert, \qquad
+\lVert A \rVert_\infty = \max_i \sum_{j=1}^{n} \lvert a_{ij} \rvert .
+$$
+
+The values -1, -2 and `-sd.inf` replace the maximum by the minimum ($\sigma_k$ for -2). For $p$ = 1, 2 and $\infty$,
+$\lVert A \rVert_p = \max_{x \ne 0} \lVert A x \rVert_p / \lVert x \rVert_p$, with the vector norms of
+[`vector_norm`](/api/linalg/vector_norm/). The Frobenius norm is the vector 2-norm of all entries, as
+`vector_norm(x, axis=(-2, -1))` computes it, and is computed without overflow in intermediate steps.
+
+The values for `ord` 2, -2 and `'nuc'` use the singular values of [`svdvals`](/api/linalg/svd/):
+`matrix_norm(x, ord=2)` equals `svdvals(x)[..., 0]`, and `matrix_norm(x, ord="nuc")` equals
+`sd.sum(svdvals(x), axis=-1)`, bit for bit.
+
+A matrix with no rows or no columns has norm 0 for every `ord`.
+
+## Comparison with other libraries
+
+The nearest equivalents are `numpy.linalg.matrix_norm` and, for 2-D input, `numpy.linalg.norm` and
+`scipy.linalg.norm`.
+
+- `x` must be an `sd.ndarray`; lists raise `TypeError`.
+- The values of `ord` and the default `'fro'` are the same as in `numpy.linalg.matrix_norm`.
+- NaN or infinity with `ord` 2, -2 or `'nuc'` raises `ValueError`. `numpy.linalg.matrix_norm` raises `LinAlgError`
+  ("SVD did not converge") for it.
+- A matrix with no rows or no columns has norm 0 for every `ord`. `numpy.linalg.matrix_norm` raises `ValueError` for
+  `ord=-inf` on a 0-by-3 matrix.

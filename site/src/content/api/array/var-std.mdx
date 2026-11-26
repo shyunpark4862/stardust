@@ -125,16 +125,13 @@ therefore does not cancel the significant digits, as it does in the formula $\ov
 0.6666666666666666
 ```
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.var` and `numpy.std` with `ddof=` (or `correction=`), the methods of
-`numpy.ndarray`, and R's `var` and `sd`.
+The nearest equivalents are `numpy.var` and `numpy.std` with `ddof=` (or `correction=`), and the methods
+of `numpy.ndarray`.
 
-- The default `correction=0` divides by $N$, as NumPy's default `ddof=0`. R's `var` and `sd` divide by $N - 1$; pass
-  `correction=1` for the same result.
+- The default `correction=0` divides by $N$, as NumPy's default `ddof=0`.
 - There is no `ddof=` argument; `correction` takes its place. There are no `dtype=`, `out=`, `where=` or `mean=`
   arguments.
-- $N - c \le 0$ gives NaN without a warning. NumPy issues a `RuntimeWarning`; R's `var` of one value is `NA`.
+- $N - c \le 0$ gives NaN without a warning. NumPy issues a `RuntimeWarning`.
 - Results for `float64` input can differ from NumPy's in the last digit.
-- R's `var` of a matrix is the covariance matrix of its columns; here it is the variance of all elements. The
-  covariance matrix is [`cov`](/api/array/cov-corrcoef/).

@@ -1,0 +1,124 @@
+---
+kind: function
+title: block_diag
+names: [block_diag]
+group: Products and powers
+order: 8
+signatures:
+  - "sd.linalg.block_diag(arrays, /)"
+summary: Build a block-diagonal matrix from a sequence of matrices.
+params:
+  - name: arrays
+    type: list or tuple of arrays
+    kind: positional-only
+    desc: "Blocks to place on the diagonal, in order: a list or tuple of at least one `sd.ndarray`, of any dtypes. Each block is a matrix of shape `(..., m_i, n_i)`, or a 1-D array of shape `(n_i,)`, which acts as a matrix with one row. The leading axes of all blocks broadcast against each other (see [matrices and stacks](/api/linalg/#matrices-and-stacks))."
+returns:
+  - type: ndarray of shape (..., M, N)
+    desc: "Block-diagonal matrix, with `M` the sum of the row counts `m_i` and `N` the sum of the column counts `n_i`. Every element outside the blocks is 0, or `False` for `bool`. The dtype is the promoted dtype of the blocks (see [type promotion](/api/array/dtypes/#type-promotion)); `bool` and `int64` are kept."
+raises:
+  - type: TypeError
+    desc: "If `arrays` is not a list or tuple, or if an element of `arrays` is not an `sd.ndarray`."
+  - type: ValueError
+    desc: "If `arrays` is empty, or if the leading axes of the blocks do not broadcast."
+seeAlso: [diagonal, kron, array/block, array/concat, det, inv]
+---
+
+`block_diag` places matrices one after another along the diagonal of a larger matrix and fills the rest with zeros.
+The first block occupies the top-left corner; each further block starts in the row after the last row of the previous
+block and in the column after its last column. The result has as many rows as all blocks together and as many columns
+as all blocks together; the blocks need not be square.
+
+The blocks are passed as one list or tuple, as for [`sd.concat`](/api/array/concat/) and
+[`sd.block`](/api/array/block/). A 1-D block acts as a matrix with one row. A block with no rows or no columns still
+takes its place: a block of shape `(0, 2)` adds two columns and no rows.
+
+Unlike most functions of this area, `block_diag` keeps the dtype: it only copies values, so the result has the
+promoted dtype of the blocks, and integer and boolean blocks give integer and boolean results (see
+[result types](/api/linalg/#result-types)). NaN and infinity are copied as they are.
+
+## Examples
+
+Two integer blocks give an integer matrix. A `float64` block makes the result `float64`:
+
+```python
+>>> import stardust as sd
+>>> a = sd.asarray([[1, 2], [3, 4]])
+>>> sd.linalg.block_diag([a, sd.asarray([[5]])])
+array([[1, 2, 0],
+       [3, 4, 0],
+       [0, 0, 5]], dtype=int64)
+>>> sd.linalg.block_diag([a, sd.asarray([[5.5]])])
+array([[1.0, 2.0, 0.0],
+       [3.0, 4.0, 0.0],
+       [0.0, 0.0, 5.5]], dtype=float64)
+```
+
+A 1-D block is one row, and an empty block still takes up its columns. `bool` blocks are filled with `False`:
+
+```python
+>>> sd.linalg.block_diag([sd.asarray([7, 8, 9]), a])
+array([[7, 8, 9, 0, 0],
+       [0, 0, 0, 1, 2],
+       [0, 0, 0, 3, 4]], dtype=int64)
+>>> sd.linalg.block_diag([sd.asarray([[1.0]]), sd.zeros((0, 2)), sd.asarray([[2.0]])])
+array([[1.0, 0.0, 0.0, 0.0],
+       [0.0, 0.0, 0.0, 2.0]], dtype=float64)
+>>> sd.linalg.block_diag([sd.asarray([[True]]), sd.asarray([[True, True]])])
+array([[ True, False, False],
+       [False,  True,  True]], dtype=bool)
+```
+
+A stack of two blocks combined with one matrix gives a stack of two block-diagonal matrices:
+
+```python
+>>> s = sd.reshape(sd.arange(8), (2, 2, 2))
+>>> sd.linalg.block_diag([s, sd.asarray([[-1]])])
+array([[[ 0,  1,  0],
+        [ 2,  3,  0],
+        [ 0,  0, -1]],
+
+       [[ 4,  5,  0],
+        [ 6,  7,  0],
+        [ 0,  0, -1]]], dtype=int64)
+```
+
+The blocks must come in one list or tuple, and at least one is needed:
+
+```python
+>>> sd.linalg.block_diag(a)
+Traceback (most recent call last):
+    ...
+TypeError: block_diag(): 'arrays' must be a list or tuple of sd.ndarray, not ndarray
+>>> sd.linalg.block_diag([])
+Traceback (most recent call last):
+    ...
+ValueError: block_diag(): 'arrays' must hold at least one array
+```
+
+<Reference />
+
+## Notes
+
+For blocks $A_0, \dots, A_{r-1}$, the result is
+
+$$
+\begin{pmatrix}
+A_0 & 0 & \cdots & 0 \\
+0 & A_1 & \cdots & 0 \\
+\vdots & \vdots & \ddots & \vdots \\
+0 & 0 & \cdots & A_{r-1}
+\end{pmatrix}.
+$$
+
+Many properties of a block-diagonal matrix with square blocks follow from those of its blocks: its determinant is the
+product of their determinants, its inverse is the block-diagonal matrix of their inverses, and its eigenvalues are
+theirs together.
+
+## Comparison with other libraries
+
+The nearest equivalent is `scipy.linalg.block_diag`. NumPy has no such function.
+
+- The blocks are passed as one list or tuple: `block_diag([a, b])`. `scipy.linalg.block_diag(a, b)` takes them as
+  separate arguments.
+- An empty list raises `ValueError`. `scipy.linalg.block_diag()` returns an array of shape `(1, 0)`.
+- Each block must be an `sd.ndarray`; SciPy also accepts nested lists.

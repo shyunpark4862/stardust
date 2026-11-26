@@ -40,8 +40,8 @@ whose blocks are 1-by-1 or 2-by-2. `D` has as many positive, negative and zero e
 factorization also counts them.
 
 The result is a named tuple `LDLResult(L, D, perm)`. Its fields are read by name or by position, and its arrays are
-read-only (see [named tuples](/api/linalg/#named-tuples)). Only the lower triangle of `x` is read; the function does not check
-that `x` is symmetric.
+read-only (see [named tuples](/api/linalg/#named-tuples)). Only the lower triangle of `x` is read; the function does not
+check that `x` is symmetric.
 
 ## Examples
 
@@ -158,7 +158,7 @@ in exact arithmetic usually gives a small nonzero 1-by-1 block after rounding, n
 blocks are then not reliable. Complex symmetric
 matrices that are not Hermitian are not supported: complex input is always read as Hermitian.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
 The nearest equivalent is `scipy.linalg.ldl`. NumPy has no LDL function.
 

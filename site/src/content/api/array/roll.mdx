@@ -103,9 +103,9 @@ TypeError: roll(): 'shift' must be an int when 'axis' is None
 | sequence | `int` | That axis shifts by the sum of `shift`. |
 | sequence | sequence | Axis `axis[i]` shifts by `shift[i]`; the lengths must be equal. |
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalent is `numpy.roll`. Base R has no equivalent.
+The nearest equivalent is `numpy.roll`.
 
 - An axis named twice in `axis` raises `ValueError`. NumPy accepts it and adds up the shifts for that axis.
 - `x` must be an `sd.ndarray`; lists raise `TypeError`.

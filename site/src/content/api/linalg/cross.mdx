@@ -1,0 +1,122 @@
+---
+kind: function
+title: cross
+names: [cross]
+group: Products and powers
+order: 3
+signatures:
+  - "sd.linalg.cross(x1, x2, /, *, axis=-1)"
+summary: Compute the cross products of 3-element vectors along an axis.
+params:
+  - name: x1
+    type: array
+    kind: positional-only
+    desc: "First array of 3-element vectors, of any dtype."
+  - name: x2
+    type: array
+    kind: positional-only
+    desc: "Second array of 3-element vectors, of any dtype. Its axes other than `axis` broadcast against those of `x1` (see [Broadcasting](/api/array/broadcasting/))."
+  - name: axis
+    type: int
+    kind: keyword-only
+    default: "-1"
+    desc: "Axis along which the vectors lie, counted in the broadcast shape of `x1` and `x2`. Negative values count from the end. Both arrays must have length 3 along it. `None`, a tuple or a list is rejected."
+returns:
+  - type: ndarray
+    desc: "Cross products, with the broadcast shape of the operands; the vectors of the result lie along `axis`. `float64`, or `complex128` when `x1` or `x2` is complex (see [result types](/api/linalg/#result-types))."
+raises:
+  - type: TypeError
+    desc: "If `x1` or `x2` is not an `sd.ndarray`, or if `axis` is not an `int`."
+  - type: ValueError
+    desc: "If `axis` is out of range, if `x1` or `x2` does not have length 3 along `axis`, or if their other axes do not broadcast."
+  - type: OverflowError
+    desc: "If `axis` is an `int` outside the `int64` range."
+seeAlso: [vecdot, outer, det, array/broadcasting]
+---
+
+`cross` computes the cross product of vectors in three-dimensional space. For vectors $a$ and $b$, $a \times b$ is
+perpendicular to both, its length is the area of the parallelogram they span, and its direction follows the
+right-hand rule: the cross product of the first and second unit vectors is the third. Swapping the arguments changes
+the sign.
+
+The vectors lie along `axis`, the last axis by default, and must have exactly 3 elements there. The other axes
+broadcast, so one vector can be crossed with every row of a matrix. As for [`vecdot`](/api/linalg/vecdot/), `axis`
+counts in the broadcast shape, in which a missing leading axis has length 1, and the axis itself does not broadcast.
+
+Complex entries are not conjugated.
+
+## Examples
+
+The first two unit vectors give the third, and swapping them changes the sign:
+
+```python
+>>> import stardust as sd
+>>> e1 = sd.asarray([1.0, 0.0, 0.0])
+>>> e2 = sd.asarray([0.0, 1.0, 0.0])
+>>> sd.linalg.cross(e1, e2)
+array([0.0, 0.0, 1.0], dtype=float64)
+>>> sd.linalg.cross(e2, e1)
+array([ 0.0,  0.0, -1.0], dtype=float64)
+```
+
+Integer input gives a `float64` result. The cross product is perpendicular to both arguments:
+
+```python
+>>> a = sd.asarray([1, 2, 3])
+>>> c = sd.linalg.cross(a, sd.asarray([4, 5, 6]))
+>>> c
+array([-3.0,  6.0, -3.0], dtype=float64)
+>>> sd.linalg.vecdot(c, a), sd.linalg.vecdot(c, sd.asarray([4, 5, 6]))
+(0.0, 0.0)
+```
+
+Each row of a matrix crossed with one vector, and vectors stored as columns with `axis=0`:
+
+```python
+>>> rows = sd.asarray([[1.0, 0.0, 0.0], [0.0, 1.0, 0.0]])
+>>> sd.linalg.cross(rows, sd.asarray([0.0, 0.0, 1.0]))
+array([[ 0.0, -1.0,  0.0],
+       [ 1.0,  0.0,  0.0]], dtype=float64)
+>>> cols = sd.asarray([[1.0, 0.0], [0.0, 1.0], [0.0, 0.0]])
+>>> sd.linalg.cross(cols, sd.asarray([[0.0, 0.0], [0.0, 0.0], [1.0, 1.0]]), axis=0)
+array([[ 0.0,  1.0],
+       [-1.0,  0.0],
+       [ 0.0,  0.0]], dtype=float64)
+```
+
+Only 3-element vectors have a cross product:
+
+```python
+>>> sd.linalg.cross(sd.asarray([1.0, 2.0]), sd.asarray([3.0, 4.0]))
+Traceback (most recent call last):
+    ...
+ValueError: cross(): 'x1' and 'x2' must have size 3 along the axis, got 2 and 2
+```
+
+<Reference />
+
+## Notes
+
+For $a = (a_0, a_1, a_2)$ and $b = (b_0, b_1, b_2)$,
+
+$$
+a \times b = (a_1 b_2 - a_2 b_1,\; a_2 b_0 - a_0 b_2,\; a_0 b_1 - a_1 b_0) .
+$$
+
+Each product is rounded, then the difference is rounded, so a component that is zero in exact arithmetic can come
+out as a small nonzero number. NaN and infinity are not rejected; they follow the arithmetic of the products and
+differences (see [finite values](/api/linalg/#finite-values)).
+
+The length of $a \times b$ is $\lVert a \rVert \, \lVert b \rVert \sin\theta$, where $\theta$ is the angle between the
+vectors, and the scalar triple product $(a \times b) \cdot c$ is the determinant of the 3-by-3 matrix with rows $a$,
+$b$, $c$.
+
+## Comparison with other libraries
+
+The nearest equivalents are `numpy.linalg.cross` and `numpy.cross`.
+
+- For `float64` and `complex128` input the results equal those of `numpy.cross` bit for bit.
+- `bool` and `int64` input gives `float64`. NumPy keeps `int64`.
+- There are no `axisa=`, `axisb=` or `axisc=` arguments: one `axis` holds the vectors in both arguments and in the
+  result. It counts in the broadcast shape, so `numpy.cross(numpy.ones((3, 3)), numpy.ones(3), axis=0)` is valid,
+  while here a 1-D `x2` has length 1 along axis 0 of the broadcast shape and raises `ValueError`.

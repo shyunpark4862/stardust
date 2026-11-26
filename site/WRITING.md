@@ -105,11 +105,15 @@ Body (MDX), in this order; leave out a section that would be empty:
 3. `<Reference />`: the template's Parameters / Returns / Raises block.
 4. `## Notes`: definitions, formulas, numerical caveats, the method when it matters. Math only here.
 5. `## References`: numbered, only for real published sources the page relies on.
-6. `## For NumPy, SciPy and R users`: only when there is something useful to say. Name the nearest equivalents
+6. `## Comparison with other libraries`: only when there is something useful to say. Name the nearest equivalents
    (`numpy.linalg.solve`, `scipy.stats.ttest_ind`, R `t.test`) and list real differences (defaults, argument names,
-   result shape or names, NaN handling) as 2–6 bullets. Verify every claim about NumPy/SciPy/pandas by running them in
-   the pinned interpreter (they are installed there). For R, state only what you are sure of from R's documentation
-   or by running `Rscript` if available; otherwise leave R out.
+   result shape or names, NaN handling) as 2–6 bullets. Compare only with the libraries of the area (§10); comparisons
+   with other libraries appear neither in the section nor elsewhere on the page. Format (§10): with one library, a sentence naming
+   it ("The nearest equivalent is `numpy.diff`.") followed by plain bullets; with more than one, the bullets grouped
+   under bold lead-ins in the order of §10 (`**NumPy.** The nearest equivalent is ...`, bullets, then
+   `**SciPy.** ...`). Verify every claim about NumPy/SciPy/pandas/statsmodels by running them in the pinned
+   interpreter (they are installed there). For R (only in areas that compare with R), state only what you are sure
+   of from R's documentation or by running `Rscript` if available; otherwise leave R out.
 
 The template adds the See also list at the end from `seeAlso`.
 
@@ -130,7 +134,7 @@ methods:
 Body: description; `## Examples` (create it, read two or three attributes, print `summary()`); `<Reference />` (renders
 Attributes and Methods tables); `## The summary() report` when the class has one, showing the output and saying which
 attribute each part comes from; `## Methods` with an `### name` subsection per method that has no page of its own;
-then Notes / References / For NumPy, SciPy and R users. Small result objects keep all methods on one page. Large
+then Notes / References / Comparison with other libraries. Small result objects keep all methods on one page. Large
 classes (`ndarray`, `DataFrame`, `Series`, sparse arrays, `Generator`, plot figures) get one page per method
 (`kind: method`, `of: <Class slug>`), shaped like a function page.
 
@@ -147,8 +151,10 @@ groups:
 
 Body: `## Concepts` (short: shared definitions, shapes, the result-object pattern; math allowed); `<FunctionTables />`
 (renders every group as a table of name + summary, in `groups` order); `<ResultTable />` when the area returns result
-objects; `## For NumPy, SciPy and R users` (a 3-column table stardust | NumPy/SciPy | R for the main functions, then
-3–8 bullets of the important differences).
+objects; `## Comparison with other libraries` (one sentence, then a table with a column for stardust and one for
+each comparison library or library group of §10, for the main functions, then 3–8 bullets of the important
+differences, grouped under bold lead-ins as on function pages when there is more than one library). Array:
+`stardust | NumPy`; linalg: `stardust | NumPy / SciPy`.
 
 ## 5. Examples
 
@@ -205,10 +211,36 @@ Rules that held across the 87 array pages and apply to every area:
   stay fixed (`/start/conventions/#...`, the concept pages of the area). Do not restate it.
 - **Accuracy.** "For `float64` input, the results are within a few units in the last place of the exact value."
   "Correctly rounded" only for operations that are (square root, `1 / x`). No ULP figures.
-- **Comparison with NumPy.** When results differ from NumPy's only by rounding (measured): "Results for `float64`
-  input can differ from NumPy's in the last digit." Missing warnings: "<case> gives <value> without a warning. NumPy
+- **Comparison with NumPy.** In `## Comparison with other libraries`, when results differ from NumPy's only by
+  rounding (measured): "Results for `float64` input can differ from NumPy's in the last digit." Missing warnings: "<case> gives <value> without a warning. NumPy
   issues a `RuntimeWarning`."
 - **Family pages.** One summary sentence for the whole family ("Return the smallest or the largest element over the
   given axes."), not one per name. A page for one name that is also a method uses the method's summary verbatim.
 - **Terms.** "dtype" in running text; "data type" only where the term is introduced and in the `dtype` parameter's
   first words ("Data type of the result."). "1-D", "2-D"; "row-major order", not "C order".
+
+## 10. Comparison libraries by area
+
+The section `## Comparison with other libraries` compares each area only with these libraries, in this order.
+Comparisons with other libraries (R in the array and linalg areas, for example) do not appear on the pages of that
+area.
+
+| Area | Compared with |
+|---|---|
+| array, random | NumPy |
+| linalg, special, optimize, integrate, differentiate, sparse, spatial, graph, interpolate, fft | NumPy / SciPy |
+| frame | pandas |
+| stats | SciPy, R |
+| htest | SciPy, statsmodels, R |
+| regression | statsmodels, R |
+| smooth | statsmodels / SciPy, R |
+| plot | Matplotlib |
+
+On regression pages, SciPy takes the place of statsmodels for a function that only SciPy has
+(`scipy.stats.theilslopes`).
+
+- One library on a page: a sentence naming it, then plain bullets.
+- More than one: bold lead-ins `**NumPy.**`, `**SciPy.**`, `**statsmodels.**`, `**R.**` in the table's order, each
+  followed by its nearest equivalent and its bullets. A sentence that a library has no counterpart ("NumPy has no
+  triangular solver.") may stand in the intro of the library that does.
+- The section is omitted when nothing useful remains.

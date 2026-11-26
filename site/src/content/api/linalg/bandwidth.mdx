@@ -1,0 +1,116 @@
+---
+kind: function
+title: bandwidth
+names: [bandwidth]
+group: Structured matrices
+order: 4
+signatures:
+  - "sd.linalg.bandwidth(x, /)"
+summary: Return the lower and upper bandwidth of a matrix.
+params:
+  - name: x
+    type: array of shape (..., m, n)
+    kind: positional-only
+    desc: "Matrix to examine, of any dtype, or a stack of them (see [matrices and stacks](/api/linalg/#matrices-and-stacks)). Need not be square."
+returns:
+  - name: lower
+    type: int or ndarray of shape (...)
+    desc: "Largest `i - j` over the nonzero elements `x[i, j]` below the main diagonal, or 0 when there are none. A Python `int` for a single matrix; for a stack, an `int64` array with one value per matrix, even when the stack holds one matrix."
+  - name: upper
+    type: int or ndarray of shape (...)
+    desc: "Largest `j - i` over the nonzero elements `x[i, j]` above the main diagonal, or 0 when there are none. Same type as `lower`."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`."
+  - type: ValueError
+    desc: "If `x` has fewer than two dimensions."
+seeAlso: [solve_banded, solve_tridiagonal, solve_triangular, array/tril-triu, array/diag]
+---
+
+`bandwidth` measures how far the nonzero elements of a matrix reach from the main diagonal. The lower bandwidth is
+the number of the farthest diagonal below the main one that holds a nonzero element, and the upper bandwidth the
+same above it; diagonal `k` above the main one holds the elements `x[i, i + k]`. A diagonal matrix has bandwidths
+`(0, 0)`, a tridiagonal matrix `(1, 1)`.
+
+The two values tell the structure of a matrix: an upper bandwidth of 0 means that `x` is lower triangular, a lower
+bandwidth of 0 that it is upper triangular. They are also the `lower_bandwidth` and `upper_bandwidth` arguments of
+[`solve_banded`](/api/linalg/solve_banded/), which gives the smallest band storage for the matrix.
+
+The result is a named tuple `BandwidthResult(lower, upper)`. Its fields are read by name or by position, and for a
+stack its arrays are read-only (see [named tuples](/api/linalg/#named-tuples)).
+
+## Examples
+
+A matrix with one nonzero diagonal below the main one and two above it:
+
+```python
+>>> import stardust as sd
+>>> a = sd.asarray([[1.0, 3.0, 6.0, 0.0],
+...                 [2.0, 4.0, 7.0, 10.0],
+...                 [0.0, 5.0, 8.0, 11.0],
+...                 [0.0, 0.0, 9.0, 12.0]])
+>>> r = sd.linalg.bandwidth(a)
+>>> r
+BandwidthResult(lower=1, upper=2)
+>>> r.lower, r.upper
+(1, 2)
+```
+
+Triangular, diagonal and non-square matrices:
+
+```python
+>>> sd.linalg.bandwidth(sd.triu(sd.ones((3, 3))))
+BandwidthResult(lower=0, upper=2)
+>>> sd.linalg.bandwidth(sd.eye(3))
+BandwidthResult(lower=0, upper=0)
+>>> sd.linalg.bandwidth(sd.asarray([[1.0, 0.0, 0.0, 2.0], [0.0, 3.0, 0.0, 0.0]]))
+BandwidthResult(lower=0, upper=3)
+```
+
+For a stack, each field holds one value per matrix:
+
+```python
+>>> s = sd.stack([sd.eye(3), sd.triu(sd.ones((3, 3))), sd.tril(sd.ones((3, 3)), k=1)])
+>>> sd.linalg.bandwidth(s)
+BandwidthResult(lower=array([0, 0, 2], dtype=int64), upper=array([0, 2, 1], dtype=int64))
+```
+
+Any element that compares unequal to zero counts, however small, and so does NaN. Negative zero is zero:
+
+```python
+>>> sd.linalg.bandwidth(sd.asarray([[1.0, 0.0], [1e-300, 1.0]]))
+BandwidthResult(lower=1, upper=0)
+>>> sd.linalg.bandwidth(sd.asarray([[1.0, 0.0], [float("nan"), 1.0]]))
+BandwidthResult(lower=1, upper=0)
+>>> sd.linalg.bandwidth(sd.asarray([[1.0, 0.0], [-0.0, 1.0]]))
+BandwidthResult(lower=0, upper=0)
+```
+
+<Reference />
+
+## Notes
+
+For a matrix $X$ of shape $m \times n$,
+
+$$
+\text{lower} = \max \{\, i - j : X_{ij} \ne 0,\ i \gt j \,\}, \qquad
+\text{upper} = \max \{\, j - i : X_{ij} \ne 0,\ j \gt i \,\},
+$$
+
+with the maximum of an empty set taken as 0. An element is nonzero when it compares unequal to zero: `True` for
+`bool`, and a nonzero real or imaginary part for `complex128`. The test is exact, with no tolerance; values that
+are zero only up to rounding count as nonzero, so a matrix computed in floating point may have a larger bandwidth
+than expected. Set such elements to zero first, for example with [`sd.where`](/api/array/where/).
+
+The function only compares elements with zero. It accepts every dtype without converting it, and accepts NaN and
+infinity, which count as nonzero.
+
+## Comparison with other libraries
+
+The nearest equivalent is `scipy.linalg.bandwidth`. NumPy has no such function.
+
+- The result is the named tuple `BandwidthResult(lower, upper)`. `scipy.linalg.bandwidth` returns a plain tuple
+  `(lower, upper)`.
+- Both functions return one pair of values per matrix for a stack, and both count NaN as nonzero.
+- For some non-square matrices, `scipy.linalg.bandwidth` returns a smaller lower bandwidth than the nonzero elements
+  give: `(0, 0)` for a 3-by-1 matrix whose only nonzero element is the last one. `bandwidth` returns `(2, 0)` for it.

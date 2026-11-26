@@ -134,13 +134,11 @@ or `TypeError` (dtype) and leaves `x1` unchanged.
 
 Linear systems are solved with [`sd.linalg.solve`](/api/linalg/solve/), not by multiplying with an inverse.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.matmul` and the `@` operator of NumPy arrays, and R's `%*%`.
+The nearest equivalents are `numpy.matmul` and the `@` operator of NumPy arrays.
 
 - Both operands must be `sd.ndarray`; NumPy also accepts lists. Python scalars raise `TypeError` here and
   `ValueError` in NumPy.
 - The product of two `bool` arrays is `int64`. NumPy returns `bool`.
 - There is no `out=` argument, and no `dot` or `inner` function.
-- R's `%*%` returns a matrix, also a 1-by-1 matrix for two vectors, and its result is always double; integer and
-  logical inputs are converted. Here the product of two vectors is a Python scalar, and integer products stay `int64`.

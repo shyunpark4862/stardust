@@ -40,9 +40,9 @@ to its transpose) or a Hermitian matrix (equal to its conjugate transpose). The 
 and its eigenvectors can be chosen orthonormal. `eigvalsh` computes the eigenvalues only.
 
 `eigh` returns a named tuple `EighResult(eigenvalues, eigenvectors)`. Its fields are read by name or by position, and
-its arrays are read-only (see [named tuples](/api/linalg/#named-tuples)). `eigvalsh` returns the eigenvalues as one writable
-array. The eigenvalues are in ascending order, the most negative first, and column `i` of `eigenvectors` belongs to
-`eigenvalues[..., i]`.
+its arrays are read-only (see [named tuples](/api/linalg/#named-tuples)). `eigvalsh` returns the eigenvalues as one
+writable array. The eigenvalues are in ascending order, the most negative first, and column `i` of `eigenvectors`
+belongs to `eigenvalues[..., i]`.
 
 Both functions read only the lower triangle of `a`, diagonal included, and never read or check the upper triangle. A
 matrix that is not symmetric is therefore treated as the symmetric matrix with the same lower triangle. Complex input is
@@ -146,16 +146,19 @@ or basis. Compare eigenvectors through properties such as $A v - \lambda v$ inst
 An empty matrix ($n = 0$) gives empty results. `eigvalsh`
 does not compute the eigenvectors, and its eigenvalues can differ from those of `eigh` in the last digits.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.linalg.eigh`, `scipy.linalg.eigh` (which also solves the generalized problem) and
-R's `eigen(a, symmetric = TRUE)`.
+**NumPy.** The nearest equivalent is `numpy.linalg.eigh`.
 
-- The lower triangle is always read, as by default in `numpy.linalg.eigh`, `scipy.linalg.eigh` and R's `eigen`; there
-  is no `UPLO=` or `lower=` option to read the upper one.
+- The lower triangle is always read, as by default in `numpy.linalg.eigh`; there is no `UPLO=` option to read the
+  upper one.
+- NaN or infinity in the lower triangle raises `ValueError`. `numpy.linalg.eigh` returns NaN instead.
+
+**SciPy.** The nearest equivalent is `scipy.linalg.eigh`, which also solves the generalized problem.
+
+- The lower triangle is always read, as by default in `scipy.linalg.eigh`; there is no `lower=` option to read the
+  upper one.
 - `b` is the second positional argument, as in `scipy.linalg.eigh(a, b)`; it cannot be passed by keyword. The
   eigenvectors are normalized the same way: `sd.conj(v.mT) @ b @ v` is the identity.
-- NaN or infinity in the lower triangle raises `ValueError`. `numpy.linalg.eigh` returns NaN instead;
-  `scipy.linalg.eigh` raises `ValueError` by default, as here.
+- NaN or infinity in the lower triangle raises `ValueError`, as in `scipy.linalg.eigh` by default.
 - There are no options for a subset of the eigenvalues or for the algorithm.
-- R's `eigen` returns the eigenvalues in decreasing order; `eigh` and `eigvalsh` return them in ascending order.

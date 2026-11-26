@@ -132,14 +132,11 @@ The result is a view of `x` or a copy (see [Views and copies](/api/array/views/)
 An array with zero elements can take any shape whose lengths multiply to zero. A `-1` is then ambiguous next to a
 length of 0, and `reshape` raises `ValueError`.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.reshape`, the method `numpy.ndarray.reshape`, and R's `dim(x) <- c(...)` or
-`array(x, dim)`.
+The nearest equivalents are `numpy.reshape` and the method `numpy.ndarray.reshape`.
 
 - There is no `order` argument. The order is always row-major, the NumPy default `order="C"`.
-- R fills arrays in column-major order: `dim(x) <- c(2, 3)` applied to `0:5` puts `0` and `1` in the first column.
-  `sd.reshape(sd.arange(6), (2, 3))` puts `0, 1, 2` in the first row.
 - `shape` must be an `int` or a tuple. NumPy also accepts a list, and its method also accepts separate lengths, as in
   `x.reshape(2, 3)`.
 - `shape=()` raises `ValueError`; NumPy returns a 0-D array.

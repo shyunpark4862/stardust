@@ -95,11 +95,8 @@ True
 
 <Reference />
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.isnan`, `numpy.isinf` and `numpy.isfinite`, and R's `is.nan`, `is.infinite` and
-`is.finite`.
+The nearest equivalents are `numpy.isnan`, `numpy.isinf` and `numpy.isfinite`.
 
 - The results agree with NumPy's for every dtype, complex included.
-- R distinguishes the missing value `NA` from `NaN`: `is.nan(NA)` is `FALSE`, while `is.na` is `TRUE` for both.
-  stardust represents a missing number as NaN, so `isnan` plays the role of `is.na` for numbers.

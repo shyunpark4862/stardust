@@ -80,9 +80,9 @@ to length $d$, so the counts apply to the last axes. If $k \gt d$, `x` is given 
 length of the result on each axis is then the length of `x` on that axis times the count for it. An empty tuple
 returns a copy of `x`.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.tile` and, for vectors, R's `rep(x, times = n)`.
+The nearest equivalent is `numpy.tile`.
 
 - `repetitions` must be an `int` or a tuple; NumPy also accepts a list.
 - `x` must be an `sd.ndarray`; lists and scalars raise `TypeError`.

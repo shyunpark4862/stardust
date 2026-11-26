@@ -101,11 +101,9 @@ array([[1.0, nan],
 A value of `k` that puts the boundary outside the matrix is allowed: `tril(x, k=-m)` and `triu(x, k=n)` are all
 zeros, and `tril(x, k=n - 1)` is a copy of `x`. The result is always a new array.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.tril` and `numpy.triu`, and in R the masks `lower.tri(x)` and `upper.tri(x)`.
+The nearest equivalents are `numpy.tril` and `numpy.triu`.
 
 - A 1-D argument raises `ValueError`. `numpy.tril` turns a 1-D array into a square matrix by repeating it as rows.
 - `k` is keyword-only: `numpy.tril(x, -1)` is `sd.tril(x, k=-1)`.
-- R's `lower.tri` and `upper.tri` return logical masks without the diagonal (unless `diag = TRUE`), to be used as
-  in `x[upper.tri(x)] <- 0`.

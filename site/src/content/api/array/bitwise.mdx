@@ -140,13 +140,11 @@ read as an unsigned number, so a negative count acts as a count of 64 or more: `
 `~x` equals $-x - 1$ for every `int64` $x$; on `bool`, `~True` is `False`. Shifting never raises an error for the
 value of the count.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
 The nearest equivalents are `numpy.bitwise_and`, `numpy.bitwise_or`, `numpy.bitwise_xor`, `numpy.bitwise_invert`
 (also `numpy.invert`), `numpy.bitwise_left_shift` (also `numpy.left_shift`) and `numpy.bitwise_right_shift` (also
-`numpy.right_shift`), and R's `bitwAnd`, `bitwOr`, `bitwXor`, `bitwNot`, `bitwShiftL` and `bitwShiftR`.
+`numpy.right_shift`).
 
 - The shifts reject `bool` input. NumPy shifts a `bool` array as integers and returns an integer array.
 - There are no `invert`, `left_shift` and `right_shift` aliases.
-- R's bitwise functions work on 32-bit integers, and `bitwShiftR` fills with zeros. Here integers have 64 bits, and
-  `>>` fills with the sign bit.

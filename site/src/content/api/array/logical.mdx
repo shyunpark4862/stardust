@@ -110,14 +110,9 @@ array([ True, False, False], dtype=bool)
 
 <Reference />
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.logical_and`, `numpy.logical_or`, `numpy.logical_xor` and `numpy.logical_not`, and
-R's `&`, `|`, `xor` and `!`.
+The nearest equivalents are `numpy.logical_and`, `numpy.logical_or`, `numpy.logical_xor` and `numpy.logical_not`.
 
-- Only `bool` input is accepted. NumPy and R treat nonzero numbers as true; here `int64` and `float64` input raise
+- Only `bool` input is accepted. NumPy treats nonzero numbers as true; here `int64` and `float64` input raise
   `TypeError`.
-- R's `&` and `|` work on logical vectors element by element like these functions, and `&&` and `||` take single
-  values. Here Python's `and` and `or` correspond to `&&` and `||` and raise `TypeError` for arrays.
-- There is no missing Boolean value. R's `NA & FALSE` is `FALSE` and `NA & TRUE` is `NA`; a `bool` array holds only
-  `True` and `False`.

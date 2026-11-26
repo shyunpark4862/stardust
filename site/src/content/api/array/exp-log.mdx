@@ -136,14 +136,12 @@ last digit: `log2(8 + 0j)` is `(2.9999999999999996+0j)`, while `log2(8.0)` is `3
 **Accuracy.** For `float64` input, the results are within a few units in the last place of the exact value, and the
 special values (signed zeros, infinities, NaN) are exact.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.exp`, `numpy.expm1`, `numpy.log`, `numpy.log1p`, `numpy.log2` and `numpy.log10`,
-and R's `exp`, `expm1`, `log`, `log1p`, `log2` and `log10`.
+The nearest equivalents are `numpy.exp`, `numpy.expm1`, `numpy.log`, `numpy.log1p`, `numpy.log2` and `numpy.log10`.
 
 - `log(0)`, the logarithm of a negative number and an overflow of `exp` give `-inf`, NaN and `inf` without a warning.
-  NumPy issues a `RuntimeWarning` for each; R warns "NaNs produced" for the logarithm of a negative number.
+  NumPy issues a `RuntimeWarning` for each.
 - Results for `float64` input can differ from NumPy's in the last digit.
 - `x` must be an `sd.ndarray` or a Python scalar; a list raises `TypeError`.
 - The only keyword argument is `out`. There is no `where=`, `dtype=` or `casting=`.
-- R's `log(x, base)` takes a base; here, divide by `sd.log(base)`.

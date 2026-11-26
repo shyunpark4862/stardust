@@ -1,0 +1,114 @@
+---
+kind: function
+title: outer
+names: [outer]
+group: Products and powers
+order: 2
+signatures:
+  - "sd.linalg.outer(x1, x2, /)"
+summary: Compute the outer product of two vectors.
+params:
+  - name: x1
+    type: array of shape (..., m)
+    kind: positional-only
+    desc: "Left vector, of any dtype, or a stack of them along the leading axes. Its entries index the rows of the result."
+  - name: x2
+    type: array of shape (..., n)
+    kind: positional-only
+    desc: "Right vector, of any dtype, or a stack of them. Its entries index the columns of the result. Leading axes broadcast against those of `x1` (see [matrices and stacks](/api/linalg/#matrices-and-stacks))."
+returns:
+  - type: ndarray of shape (..., m, n)
+    desc: "Outer product: element `[..., i, j]` is `x1[..., i] * x2[..., j]`. The leading axes are the broadcast leading axes of `x1` and `x2`. `float64`, or `complex128` when `x1` or `x2` is complex (see [result types](/api/linalg/#result-types))."
+raises:
+  - type: TypeError
+    desc: "If `x1` or `x2` is not an `sd.ndarray`."
+  - type: ValueError
+    desc: "If the leading axes of `x1` and `x2` do not broadcast."
+seeAlso: [vecdot, kron, cross, array/matmul, array/arithmetic]
+---
+
+`outer` multiplies every entry of one vector with every entry of another: for `x1` of length $m$ and `x2` of length
+$n$, the result is the $m \times n$ matrix whose element `(i, j)` is `x1[i] * x2[j]`. Such a matrix has rank one
+(unless a vector is zero), and every rank-one matrix arises this way.
+
+Only the last axis of each argument is a vector. Further leading axes index a stack of vectors and broadcast between
+the two arguments, so a matrix `x1` of shape `(k, m)` and a vector `x2` of shape `(n,)` give `k` outer products, one
+per row of `x1`.
+
+Complex entries are not conjugated. The product with the conjugate transpose, $x y^H$, is
+`outer(x1, sd.conj(x2))`.
+
+## Examples
+
+The outer product of two integer vectors, computed in `float64`:
+
+```python
+>>> import stardust as sd
+>>> u = sd.asarray([1, 2, 3])
+>>> v = sd.asarray([1, 0, -1, 2])
+>>> sd.linalg.outer(u, v)
+array([[ 1.0,  0.0, -1.0,  2.0],
+       [ 2.0,  0.0, -2.0,  4.0],
+       [ 3.0,  0.0, -3.0,  6.0]], dtype=float64)
+```
+
+Complex vectors are multiplied as they are. Conjugating the first argument gives a Hermitian matrix:
+
+```python
+>>> z = sd.asarray([1j, 2.0])
+>>> sd.linalg.outer(z, z)
+array([[(-1+0j),      2j],
+       [     2j,  (4+0j)]], dtype=complex128)
+>>> sd.linalg.outer(sd.conj(z), z)
+array([[(1+0j),    -2j],
+       [    2j, (4+0j)]], dtype=complex128)
+```
+
+Each row of a matrix with one vector, giving a stack of two 3-by-2 matrices:
+
+```python
+>>> m = sd.asarray([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0]])
+>>> sd.linalg.outer(m, sd.asarray([1.0, 10.0]))
+array([[[ 1.0, 10.0],
+        [ 2.0, 20.0],
+        [ 3.0, 30.0]],
+
+       [[ 4.0, 40.0],
+        [ 5.0, 50.0],
+        [ 6.0, 60.0]]], dtype=float64)
+```
+
+Infinity times zero is NaN, and the leading axes must broadcast:
+
+```python
+>>> sd.linalg.outer(sd.asarray([float("inf"), 1.0]), sd.asarray([0.0, 2.0]))
+array([[nan, inf],
+       [0.0, 2.0]], dtype=float64)
+>>> sd.linalg.outer(sd.ones((2, 3)), sd.ones((3, 4)))
+Traceback (most recent call last):
+    ...
+ValueError: outer(): batch shapes do not broadcast: (2,) (3,)
+```
+
+<Reference />
+
+## Notes
+
+For vectors $x$ of length $m$ and $y$ of length $n$, the outer product is the $m \times n$ matrix
+
+$$
+x y^T, \qquad (x y^T)_{ij} = x_i \, y_j .
+$$
+
+Each element is one product, rounded once, and equals `x1[..., :, None] * x2[..., None, :]` bit for bit. NaN and
+infinity are not rejected; they follow the arithmetic of the product (see
+[finite values](/api/linalg/#finite-values)). An empty vector gives an empty matrix, of shape `(0, n)` or `(m, 0)`.
+
+## Comparison with other libraries
+
+The nearest equivalents are `numpy.linalg.outer` and `numpy.outer`.
+
+- Leading axes are a stack of vectors and broadcast. `numpy.linalg.outer` accepts only 1-D arrays, and `numpy.outer`
+  flattens its arguments first.
+- `bool` and `int64` input gives `float64`. NumPy keeps `int64`.
+- Both arguments must be `sd.ndarray`; NumPy also accepts lists and scalars.

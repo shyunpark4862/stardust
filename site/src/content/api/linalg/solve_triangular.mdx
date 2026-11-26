@@ -109,14 +109,13 @@ diagonal element gives large or infinite entries in `x` without an error.
 There is no option for the transposed system. The transpose `a.mT` of an upper triangular matrix is lower
 triangular, so `solve_triangular(a.mT, b, upper=False)` solves `a.mT @ x = b`.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `scipy.linalg.solve_triangular` and R's `backsolve` and `forwardsolve`. NumPy has no
-triangular solver.
+The nearest equivalent is `scipy.linalg.solve_triangular`. NumPy has no triangular solver.
 
 - `upper` is required and keyword-only. `scipy.linalg.solve_triangular` has `lower=False`, so it assumes an upper
   triangular matrix when nothing is given.
 - There is no `trans=` option; pass `a.mT` with the other value of `upper`.
 - NaN or infinity raises `ValueError` only in the triangle that is read. `scipy.linalg.solve_triangular` checks the
   whole matrix and raises `ValueError` for NaN in the triangle it ignores.
-- A zero on the diagonal raises `LinAlgError`, as in `scipy.linalg.solve_triangular`; R's `backsolve` also stops.
+- A zero on the diagonal raises `LinAlgError`, as in `scipy.linalg.solve_triangular`.

@@ -7,7 +7,7 @@
 - title: Arrays, ns: `sd`, lead: N차원 배열과 그 위의 원소별 함수·집계·정렬·행렬곱; 선형대수 분해는 `sd.linalg`, 표 데이터는 `sd.frame`.
 - glance: asarray, filled(zeros…), arange/linspace, reshape, sum, mean, sort, matmul
 - Concepts: 배열(모양·축·dtype), 원소별 함수와 브로드캐스팅, 집계와 `axis`/`keepdims`, 뷰와 복사 — 각 개념 페이지로 링크.
-- For NumPy, SciPy and R users: 대응표(stardust | NumPy | R) + 차이(이름: concat/permute_dims/pow 등 Array API 이름, dtype 5종만, 정수 나눗셈·NaN 규칙, `out=`, 기본 correction=0 등 — 실제로 돌려 확인).
+- Comparison with other libraries: 대응표(stardust | NumPy) + 차이(이름: concat/permute_dims/pow 등 Array API 이름, dtype 5종만, 정수 나눗셈·NaN 규칙, `out=`, 기본 correction=0 등 — 실제로 돌려 확인).
 
 ## 그룹과 페이지
 
@@ -51,7 +51,7 @@
 - 용어: array(“tensor”, “matrix”는 2-D 문맥에서만), element-wise, axis/axes, shape, dtype, broadcast, view / copy, reduction, NaN, "0-D array". 차원은 "1-D", "2-D".
 - 여러 페이지가 공유하는 규칙은 한 곳에만 설명하고 링크: 브로드캐스팅 → `/api/array/broadcasting/`, dtype 승격 → `/api/array/dtypes/`, 뷰·복사 → `/api/array/views/`, 인덱싱 → `/api/array/indexing/`, `axis`·`keepdims`·`out=`·NaN 일반 규칙 → `/start/conventions/`. 함수 페이지에는 그 함수 고유의 내용만.
 - 묶음(family) 페이지: title은 짧은 영어 제목(예: "zeros, ones, full, empty"처럼 이름 나열), signatures에 전부, params는 공유 인자 한 번(fmcheck가 요구하는 꼴을 따름).
-- 비교 절 제목은 정확히 `## For NumPy, SciPy and R users`. array 영역은 NumPy와 R base만 해당. 차이는 고정 인터프리터의 numpy로 실제 확인한 것만.
+- 비교 절 제목은 정확히 `## Comparison with other libraries`. array 영역은 NumPy만 비교한다(R은 쓰지 않음, 2026-11-27 사용자 결정; `WRITING.md` §10). 라이브러리가 하나이므로 그 이름을 대는 문장 하나 뒤에 굵은 머리말 없이 bullet. 차이는 고정 인터프리터의 numpy로 실제 확인한 것만.
 - 예제 배열 출력은 고정 빌드의 repr 그대로(`array([...], dtype=float64)`).
 - 아직 없는 페이지로의 링크·seeAlso는 이 문서의 slug 목록에 있는 것만 허용.
 - (A1 일치 점검 뒤 추가, A2–A4 작성·검증이 따름)
@@ -73,7 +73,7 @@
   - raises 문구: TypeError "If `x` is not an `sd.ndarray` or a Python scalar, or if `out` cannot hold the result dtype."(복소 거부는 앞에 "If `x` is complex, "; 결과가 `bool`이면 `out` 구절은 빼며, `bool`은 모든 dtype으로 바뀌어 TypeError가 나지 않음), "(a list, for example)" 같은 괄호는 붙이지 않음. ValueError "If `x` does not broadcast to the shape of `out`, or if `out` is read-only." OverflowError "If `x` is a Python `int` outside the `int64` range."(이항: "... is an operand and the promoted dtype is `bool` or `int64`.").
   - 실수 결과 규칙: "`bool` and `int64` input is converted to `float64` first (see [functions with floating-point results](/api/array/dtypes/#functions-with-floating-point-results))." 문장 중간 링크 글자는 소문자.
   - 정확도: "For `float64` input, the results are within a few units in the last place of the exact value." "correctly rounded"는 IEEE 정확 연산(`sqrt`, `1 / x`, 정확 지수의 `pow`)에만. ULP 숫자는 쓰지 않음.
-  - NumPy 절: 결과가 NumPy와 마지막 자리에서 다르면(직접 재어 확인) "Results for `float64` input can differ from NumPy's in the last digit." 경고는 "<경우> give <값> without a warning. NumPy issues a `RuntimeWarning`"; R은 실제로 경고할 때만(`Rscript`로 확인) 'R warns "NaNs produced"'.
+  - NumPy 절: 결과가 NumPy와 마지막 자리에서 다르면(직접 재어 확인) "Results for `float64` input can differ from NumPy's in the last digit." 경고는 "<경우> give <값> without a warning. NumPy issues a `RuntimeWarning`".
   - A2 slug(링크 가능): arithmetic, floor_divide-remainder, pow, abs, square-sqrt, sign, reciprocal, maximum-minimum, clip, copysign, hypot, nextafter, exp-log, logaddexp, trig, atan2, hyperbolic, deg2rad-rad2deg, rounding, comparison, logical, bitwise, isnan-isinf-isfinite, signbit, where, complex. NaN 판정은 `/api/array/isnan-isinf-isfinite/`, `bool` 결과 규칙은 `/api/array/dtypes/#arithmetic-on-booleans`(시프트는 `bool` 거부).
 - (A3 일치 점검 뒤 추가, A4 작성·검증이 따름. 원문은 `notes/consistency/array-A3.md`)
   - 묶음 페이지 summary는 이름마다 쓰지 않고 한 문장으로 합친다: "Return the smallest or the largest element over the given axes.", "Compute running sums or running products along an axis." 메서드가 있는 묶음 페이지는 이 합친 문장이 `ndarray.mdx`의 메서드별 요약과 달라도 된다(한 이름 페이지만 글자까지 같게).

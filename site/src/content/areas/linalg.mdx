@@ -8,9 +8,9 @@ groups:
   - { title: Factorizations, desc: "LU, Cholesky, QR, LDL, Schur, Hessenberg and singular value decompositions." }
   - { title: Eigenvalues, desc: "Eigenvalues and eigenvectors of symmetric or Hermitian matrices and of general square matrices." }
   - { title: Norms and scalar measures, desc: "Vector and matrix norms, condition numbers, determinants and rank." }
-  - { title: Products and powers, desc: "Dot, outer, cross and Kronecker products, matrix powers, traces, diagonals and block-diagonal assembly." }
+  - { title: Products and powers, desc: "Dot, outer, cross and Kronecker products, Kronecker sums, matrix powers, traces, diagonals and block-diagonal assembly." }
   - { title: Structured matrices, desc: "Tridiagonal, banded and Sylvester systems, and the bandwidth of a matrix." }
-  - { title: Matrix functions, desc: "Functions of a square matrix." }
+  - { title: Matrix functions, desc: "The exponential of a square matrix." }
   - { title: Errors, desc: "The exception raised for numerical failures." }
 ---
 
@@ -49,7 +49,8 @@ with a single array result, such as `inv` and `eigvals`, return a writable array
 
 Functions that factor a matrix (solvers, factorizations, eigenvalues, `det`, `cond`, `expm` and others) raise
 `ValueError` if the part of an argument they read contains NaN or infinity. Functions that only multiply or add, such
-as `vecdot`, `outer` and `trace`, propagate NaN and infinity instead.
+as `vecdot`, `outer` and `trace`, propagate NaN and infinity instead. So do the norms, except `matrix_norm` with `ord`
+2, -2 or `'nuc'`, which is computed from singular values and raises.
 
 ### Singular matrices
 
@@ -72,31 +73,60 @@ ignore the imaginary part of the diagonal. The upper triangle is never read or c
 
 <FunctionTables />
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-| stardust | NumPy / SciPy | R |
-|---|---|---|
-| `solve(a, b)` | `numpy.linalg.solve`, `scipy.linalg.solve` | `solve(a, b)` |
-| `lstsq(a, b)` | `numpy.linalg.lstsq` | `qr.solve(a, b)` |
-| `inv(x)` | `numpy.linalg.inv` | `solve(a)` |
-| `det(x)` | `numpy.linalg.det` | `det(a)` |
-| `cholesky(x)` | `numpy.linalg.cholesky` | `chol(a)` |
-| `eigh(a)` | `numpy.linalg.eigh` | `eigen(a, symmetric = TRUE)` |
-| `svd(x)` | `numpy.linalg.svd` | `svd(a)` |
-| `qr(x)` | `numpy.linalg.qr` | `qr(a)` |
-| `lu(x)` | `scipy.linalg.lu` | |
-| `expm(x)` | `scipy.linalg.expm` | |
+The table lists the nearest NumPy and SciPy equivalents of the main functions; the lists after it give the main
+differences.
+
+| stardust | NumPy / SciPy |
+|---|---|
+| `solve(a, b)` | `numpy.linalg.solve`, `scipy.linalg.solve` |
+| `lstsq(a, b)` | `numpy.linalg.lstsq`, `scipy.linalg.lstsq` |
+| `inv(x)`, `pinv(x)` | `numpy.linalg.inv`, `numpy.linalg.pinv`, `scipy.linalg.inv`, `scipy.linalg.pinv` |
+| `lu_solve(l, u, perm, b)` | `scipy.linalg.lu_solve` |
+| `cholesky_solve(l, b)` | `scipy.linalg.cho_solve` |
+| `solve_triangular(a, b, upper=...)` | `scipy.linalg.solve_triangular` |
+| `lu(x)` | `scipy.linalg.lu` |
+| `cholesky(x)` | `numpy.linalg.cholesky`, `scipy.linalg.cholesky` |
+| `qr(x)` | `numpy.linalg.qr`, `scipy.linalg.qr` |
+| `ldl(x)`, `hessenberg(x)` | `scipy.linalg.ldl`, `scipy.linalg.hessenberg` |
+| `schur(x)` | `scipy.linalg.schur` |
+| `svd(x)`, `svdvals(x)` | `numpy.linalg.svd`, `numpy.linalg.svdvals`, `scipy.linalg.svd` |
+| `eigh(a)`, `eigvalsh(a)` | `numpy.linalg.eigh`, `numpy.linalg.eigvalsh`, `scipy.linalg.eigh` |
+| `eig(x)`, `eigvals(x)` | `numpy.linalg.eig`, `numpy.linalg.eigvals`, `scipy.linalg.eig` |
+| `vector_norm(x)`, `matrix_norm(x)` | `numpy.linalg.vector_norm`, `numpy.linalg.matrix_norm` |
+| `cond(x)`, `matrix_rank(x)` | `numpy.linalg.cond`, `numpy.linalg.matrix_rank` |
+| `det(x)`, `slogdet(x)` | `numpy.linalg.det`, `numpy.linalg.slogdet`, `scipy.linalg.det` |
+| `vecdot`, `outer`, `cross` | `numpy.linalg.vecdot`, `numpy.linalg.outer`, `numpy.linalg.cross` |
+| `kron(x1, x2)`, `kronsum(x1, x2)` | `numpy.kron`, `scipy.sparse.kronsum` |
+| `matrix_power(x, n)` | `numpy.linalg.matrix_power` |
+| `trace(x)`, `diagonal(x)` | `numpy.linalg.trace`, `numpy.linalg.diagonal` |
+| `block_diag(arrays)` | `scipy.linalg.block_diag` |
+| `solve_banded(ab, b, ...)` | `scipy.linalg.solve_banded` |
+| `solve_sylvester(a, b, c)` | `scipy.linalg.solve_sylvester` |
+| `bandwidth(x)` | `scipy.linalg.bandwidth` |
+| `expm(x)` | `scipy.linalg.expm` |
+
+**NumPy.**
 
 - Array arguments must be `sd.ndarray`. Lists and NumPy arrays raise `TypeError`; convert them with `sd.asarray`.
-- NaN or infinity in the input of a factoring function raises `ValueError`. `numpy.linalg.solve` returns NaN instead;
-  `scipy.linalg.solve` raises `ValueError` by default, as here.
-- The matrix structure is chosen by the function name, not by an option: `solve` always uses a general LU
-  factorization, and there is no `assume_a=`. Use `solve_triangular`, `cholesky_solve` or `solve_banded` for structured
-  matrices.
+- NaN or infinity in the input of a factoring function raises `ValueError`. `numpy.linalg.solve` returns NaN instead.
+- `bool` and `int64` input is converted to `float64` (see [result types](#result-types)), also by `trace`, `outer`,
+  `kron`, `vecdot` and `matrix_power`, which keep `int64` in NumPy.
 - `svd` returns the reduced factorization by default (`mode="reduced"`); `numpy.linalg.svd` defaults to
   `full_matrices=True`.
-- `eig` and `eigvals` sort eigenvalues by real part, then imaginary part; NumPy leaves the order unspecified. `eigh`
-  sorts in ascending order, while R's `eigen` returns decreasing order.
-- `lstsq` returns `(solution, rank, singular_values)` and takes `rtol=`; `numpy.linalg.lstsq` also returns the residuals
-  and takes `rcond=`. `trace` of an integer matrix is a `float` (`numpy.trace` keeps the integer type), and `cholesky`
-  returns the lower factor by default (R's `chol` returns the upper one).
+- `eig` and `eigvals` sort eigenvalues by real part, then imaginary part; NumPy leaves the order unspecified. `eigh` and
+  `eigvalsh` sort in ascending order, as NumPy does.
+- `lstsq` returns `(solution, rank, singular_values)` and takes `rtol=`; `numpy.linalg.lstsq` also returns the
+  residuals and takes `rcond=`.
+- `cholesky` returns the lower factor by default, as `numpy.linalg.cholesky` does.
+
+**SciPy.**
+
+- NaN or infinity in the input of a factoring function raises `ValueError`, as `scipy.linalg.solve` does by default.
+- The matrix structure is chosen by the function name, not by an option: `solve` always uses a general LU
+  factorization, and there is no `assume_a=`. Use `solve_triangular`, `cholesky_solve`, `solve_tridiagonal` or
+  `solve_banded` for structured matrices.
+- `scipy.linalg.svd` also defaults to `full_matrices=True`.
+- `scipy.linalg.lstsq` also returns the residuals, and takes `cond=` for the cutoff.
+- `scipy.linalg.cholesky` returns the upper factor by default.

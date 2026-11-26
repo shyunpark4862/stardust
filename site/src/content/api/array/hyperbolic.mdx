@@ -126,13 +126,13 @@ On a cut, the sign of the zero part chooses the side: `atanh(complex(2, 0.0))` h
 **Accuracy.** For `float64` input, the results are within a few units in the last place of the exact value, and the
 special values are exact.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
 The nearest equivalents are `numpy.sinh`, `numpy.cosh`, `numpy.tanh`, `numpy.asinh` (also `numpy.arcsinh`),
-`numpy.acosh` and `numpy.atanh`, and R's functions of the same names.
+`numpy.acosh` and `numpy.atanh`.
 
 - The inverse functions are named `asinh`, `acosh` and `atanh`; there are no `arcsinh`, `arccosh` and `arctanh`
   aliases.
 - Results for `float64` input can differ from NumPy's in the last digit.
 - No warning is issued for an argument outside the domain or for an overflow. NumPy issues a `RuntimeWarning` for
-  each; R warns "NaNs produced" for an argument outside the domain and returns `Inf` silently on overflow.
+  each.

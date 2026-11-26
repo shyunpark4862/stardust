@@ -101,10 +101,8 @@ not depend on the number of threads.
 The length of the result follows the largest element of `x`, so a single large value allocates a long array. For
 values that are not small nonnegative integers, [`unique_counts`](/api/array/unique/) counts the distinct values only.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.bincount` and R's `tabulate(bin, nbins)`.
+The nearest equivalent is `numpy.bincount`.
 
 - `x` and `weights` must be `sd.ndarray`; NumPy also accepts lists.
-- R's `tabulate` counts the integers from 1 to `nbins`, ignores 0 and negative values, and has no weights:
-  `tabulate(c(1, 2, 2, 5))` gives `1 2 0 0 1`. Here 0 is counted in entry 0 and negative values raise `ValueError`.

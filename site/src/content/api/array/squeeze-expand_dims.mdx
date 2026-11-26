@@ -91,10 +91,10 @@ ValueError: squeeze(): squeezing every axis would give a 0-dimensional array (st
 
 <Reference />
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.squeeze`, `numpy.expand_dims` and R's `drop(x)`.
+The nearest equivalents are `numpy.squeeze` and `numpy.expand_dims`.
 
-- `squeeze` requires `axis`. `numpy.squeeze` defaults to removing every axis of length 1, and R's `drop` always does.
+- `squeeze` requires `axis`. `numpy.squeeze` defaults to removing every axis of length 1.
 - Removing every axis raises `ValueError`; NumPy returns a 0-D array.
 - `expand_dims` matches `numpy.expand_dims`, except that `x` must be an `sd.ndarray`.

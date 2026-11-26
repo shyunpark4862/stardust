@@ -48,9 +48,9 @@ ones is the rank, and the ratio of the largest to the smallest is the condition 
 computes the singular values only.
 
 `svd` returns a named tuple `SVDResult(U, S, Vh)`. Its fields are read by name or by position, and its arrays are
-read-only (see [named tuples](/api/linalg/#named-tuples)). `S` holds the diagonal of $\Sigma$ as a vector, and `Vh` is $V^H$, so
-that `x` equals `(U * S) @ Vh` up to rounding in the default mode. `svdvals` returns the singular values as one writable
-array.
+read-only (see [named tuples](/api/linalg/#named-tuples)). `S` holds the diagonal of $\Sigma$ as a vector, and `Vh` is
+$V^H$, so that `x` equals `(U * S) @ Vh` up to rounding in the default mode. `svdvals` returns the singular values as
+one writable array.
 
 With `mode="reduced"` (the default), `U` and `Vh` hold only the $k = \min(m, n)$ singular vectors that belong to a
 singular value. With `mode="complete"`, they are completed to square orthogonal or unitary matrices. The extra columns
@@ -134,21 +134,25 @@ vectors are not unique beyond that. The function fixes neither choice, but makes
 same number of threads (see [determinism and threads](/start/conventions/#determinism-and-threads)).
 
 A singular value that is zero in exact arithmetic usually comes out as a small positive number of the order of the
-rounding error times $\sigma_1$. [`matrix_rank`](/api/linalg/matrix_rank/) counts the singular values above a
-relative cutoff. `matrix_rank`, `cond` with `ord` 2 or -2, and `matrix_norm` with `ord` 2, -2 or
-`'nuc'` use the values of `svdvals`. `svdvals` does not compute the singular vectors, and its values can differ from `S` of `svd` in the last digits.
+rounding error times $\sigma_1$. [`matrix_rank`](/api/linalg/matrix_rank/) counts the singular values above a relative
+cutoff. `matrix_rank`, `cond` with `ord` 2 or -2, and `matrix_norm` with `ord` 2, -2 or `'nuc'` use the values of
+`svdvals`. `svdvals` does not compute the singular vectors, and its values can differ from `S` of `svd` in the last
+digits.
 
 When $k = 0$, `S` is empty; with `mode="complete"`, `U`
 and `Vh` are then identity matrices.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.linalg.svd`, `scipy.linalg.svd`, `numpy.linalg.svdvals` and R's `svd(x)`.
+**NumPy.** The nearest equivalents are `numpy.linalg.svd` and `numpy.linalg.svdvals`.
 
-- The default is the reduced decomposition. `numpy.linalg.svd` and `scipy.linalg.svd` default to
-  `full_matrices=True`, which corresponds to `mode="complete"`; `full_matrices=False` corresponds to the default here.
-- The result has the fields `U`, `S`, `Vh`, as in NumPy; `scipy.linalg.svd` returns a plain tuple. R's `svd` returns
-  `d`, `u` and `v`, where `v` is $V$, not its conjugate transpose.
+- The default is the reduced decomposition. `numpy.linalg.svd` defaults to `full_matrices=True`, which corresponds to
+  `mode="complete"`; `full_matrices=False` corresponds to the default here.
+- The result has the fields `U`, `S`, `Vh`, as in NumPy.
 - There is no `compute_uv=` option; `svdvals` returns the singular values alone.
-- NaN or infinity raises `ValueError`, as in `scipy.linalg.svd` by default. `numpy.linalg.svd` raises `LinAlgError`
-  ("SVD did not converge") for it.
+- NaN or infinity raises `ValueError`. `numpy.linalg.svd` raises `LinAlgError` ("SVD did not converge") for it.
+
+**SciPy.** The nearest equivalent is `scipy.linalg.svd`.
+
+- `scipy.linalg.svd` also defaults to `full_matrices=True`, and returns a plain tuple.
+- NaN or infinity raises `ValueError`, as in `scipy.linalg.svd` by default.

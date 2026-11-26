@@ -10,14 +10,17 @@ For every assigned page check, and fix directly in the page:
 1. Facts: every statement in description, params, returns, raises, notes and the comparison section is true for the
    pinned build. Do not trust the page: read the source in site/.sdbuild/stardust and run it. Try edge cases the page
    mentions (and obvious ones it does not: empty input, 0-D, wrong dtype, negative axis, NaN). Each `raises` entry must
-   be reproducible; each claim about NumPy/SciPy/pandas must be reproduced in the pinned interpreter; R claims with
-   Rscript if available, otherwise remove claims you cannot confirm.
+   be reproducible; each claim about NumPy/SciPy/pandas/statsmodels must be reproduced in the pinned interpreter; R
+   claims (only in areas that compare with R, WRITING.md §10) with Rscript if available, otherwise remove claims you
+   cannot confirm. Remove any comparison with a library the area does not compare with.
 2. Completeness: every parameter documented with correct type/default/kind; return shape and dtype stated; important
    behaviors a user would hit are not missing.
 3. Voice (WRITING.md §2): professional library reference. Imperative verb-first summaries, noun-phrase parameter
    descriptions, impersonal declarative prose; no "you/we/let's", questions, chatty or tutorial tone, filler,
    history, meta talk, implementation internals, speed claims, em-dash glue, Unicode fake math.
-4. Structure (WRITING.md §4): section order, exact heading names, `<Reference />` placement, empty sections omitted.
+4. Structure (WRITING.md §4, §10): section order, exact heading names (`## Comparison with other libraries`), the
+   comparison format (one library: naming sentence + bullets; several: bold lead-ins in §10 order), `<Reference />`
+   placement, empty sections omitted.
 5. Consistency with the shared decisions and with sibling pages: terms, type notation, group names, how shared rules
    are linked rather than re-explained, same wording for the same fact across pages.
 6. Examples: correct, minimal, deterministic, output exact (the checker compares exactly, spaces included).

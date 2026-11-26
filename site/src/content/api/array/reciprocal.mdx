@@ -70,9 +70,9 @@ For a complex number $a + bi$, the reciprocal is $(a - bi)/(a^2 + b^2)$, compute
 (Smith's method) so that the squares do not overflow. A complex zero gives NaN in both parts, while
 `divide(1, 0j)` gives `inf+nanj`.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.reciprocal` and R's `1 / x`.
+The nearest equivalent is `numpy.reciprocal`.
 
 - Integers give `float64` reciprocals. `numpy.reciprocal` keeps the integer dtype, so the reciprocals of 2 and 4 are
   0.

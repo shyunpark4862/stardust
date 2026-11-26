@@ -108,9 +108,9 @@ A pair of axis sequences gives the same result as moving the paired axes of `x1`
 front, in the order listed, and then using `axes=n` with their number $n$. An axis of length 0 among the paired axes
 gives zeros.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalent is `numpy.tensordot`. Base R has no general equivalent; for two matrices, `axes=1` is `%*%`.
+The nearest equivalent is `numpy.tensordot`.
 
 - `axes` is keyword-only, and a pair of plain `int` values such as `axes=(1, 0)` raises `TypeError`; NumPy reads it
   as `([1], [0])`.

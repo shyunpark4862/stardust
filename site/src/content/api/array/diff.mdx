@@ -129,12 +129,10 @@ checking them (see [Views and copies](/api/array/views/)). When `x` has length 0
 nor `append` is given, the result is also `x` itself, so a Boolean `x` then stays `bool`. In all other cases the
 result is a new array.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.diff` and R's `diff(x, lag = 1, differences = n)`.
+The nearest equivalent is `numpy.diff`.
 
 - A Boolean `x` gives `int64` differences (-1, 0, 1). `numpy.diff` gives a Boolean array that is `True` where
   neighbors differ.
 - `x`, and array values of `prepend` and `append`, must be `sd.ndarray`; lists raise `TypeError`.
-- R's `diff` of a matrix works down the columns, like `axis=0` here; the default `axis=-1` works along the rows.
-- R's `lag` takes differences between elements `lag` apart; there is no such argument here.

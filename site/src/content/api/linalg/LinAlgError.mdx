@@ -1,0 +1,121 @@
+---
+kind: class
+title: LinAlgError
+names: [LinAlgError]
+group: Errors
+order: 1
+summary: Exception for a numerical failure in linear algebra, such as a singular matrix or an algorithm that does not converge.
+seeAlso: [solve, inv, cholesky, eigh, svd, solve_sylvester]
+---
+
+`LinAlgError` is the exception the functions of `sd.linalg` raise when a computation fails for numerical reasons:
+the matrix is singular, it is not positive definite, or an iterative algorithm does not converge. Wrong argument
+types, wrong shapes and NaN or infinity in the input are not numerical failures; they raise `TypeError` and
+`ValueError` as everywhere in stardust (see [errors and warnings](/start/conventions/#errors-and-warnings)).
+
+The class is a subclass of `ValueError`, so `except ValueError` catches it together with the other errors in the
+input. `except sd.linalg.LinAlgError` catches the numerical failures alone. Functions in other areas that factor
+matrices raise the same class, for example `sd.sparse.splu` and `sd.sparse.spsolve` for a singular sparse matrix.
+
+The message starts with the name of the function, followed by the reason. When the input is a stack of matrices, it
+ends with the index of the first matrix that failed, as in `(at batch index (1, 0))` (see
+[errors in a stack](/api/linalg/#errors-in-a-stack)). The exception has no other attributes; the message is its only
+argument.
+
+## Examples
+
+Catch the failure of a solver:
+
+```python
+>>> import stardust as sd
+>>> s = sd.asarray([[1.0, 2.0], [2.0, 4.0]])
+>>> try:
+...     sd.linalg.solve(s, sd.asarray([1.0, 2.0]))
+... except sd.linalg.LinAlgError as e:
+...     print("failed:", e)
+failed: solve(): singular matrix
+```
+
+`except ValueError` also catches it. To tell numerical failures from invalid input, catch `LinAlgError` first:
+
+```python
+>>> issubclass(sd.linalg.LinAlgError, ValueError)
+True
+>>> def safe_inv(x):
+...     try:
+...         return sd.linalg.inv(x)
+...     except sd.linalg.LinAlgError as e:
+...         return f"numerical failure: {e}"
+...     except ValueError as e:
+...         return f"invalid input: {e}"
+>>> safe_inv(s)
+'numerical failure: inv(): singular matrix'
+>>> safe_inv(sd.asarray([[1.0, sd.nan], [0.0, 1.0]]))
+"invalid input: inv(): 'x' contains NaN or infinity"
+```
+
+In a stack, the message gives the position of the first failing matrix along the leading axes, here row 1 and column
+0 of a 2-by-2 grid of matrices:
+
+```python
+>>> grid = sd.stack([sd.stack([sd.eye(2), sd.eye(2)]), sd.stack([s, sd.eye(2)])])
+>>> grid.shape
+(2, 2, 2, 2)
+>>> sd.linalg.inv(grid)
+Traceback (most recent call last):
+    ...
+stardust.linalg.LinAlgError: inv(): singular matrix (at batch index (1, 0))
+```
+
+Other reasons:
+
+```python
+>>> sd.linalg.cholesky(sd.asarray([[1.0, 2.0], [2.0, 1.0]]))
+Traceback (most recent call last):
+    ...
+stardust.linalg.LinAlgError: cholesky(): matrix is not positive definite
+>>> sd.linalg.solve_sylvester(sd.eye(2), -sd.eye(2), sd.ones((2, 2)))
+Traceback (most recent call last):
+    ...
+stardust.linalg.LinAlgError: solve_sylvester(): a and -b have a common or close eigenvalue
+```
+
+Functions whose result is defined for a singular matrix return it instead of raising:
+
+```python
+>>> sd.linalg.det(s), sd.linalg.cond(s, ord=1)
+(0.0, inf)
+```
+
+## Notes
+
+The message after the function name is one of the following:
+
+| Message | Raised by |
+|---|---|
+| `singular matrix` | `solve`, `inv`, `lu_solve`, `cholesky_solve`, `solve_triangular`, `solve_tridiagonal`, `solve_banded`, and `matrix_power` with a negative power |
+| `matrix is not positive definite` | `cholesky`, and `eigh` and `eigvalsh` for the matrix `b` |
+| `eigenvalue algorithm did not converge` | `eig`, `eigvals`, `eigh`, `eigvalsh`, `schur`, `solve_sylvester` |
+| `SVD did not converge` | `svd`, `svdvals`, `lstsq`, `pinv`, `matrix_rank`, and `cond` and `matrix_norm` with `ord` `2`, `-2` or `'nuc'` |
+| `a and -b have a common or close eigenvalue` | `solve_sylvester` |
+
+A matrix counts as singular only when its factorization produces an exact zero pivot, or when a triangular factor has an
+exact zero on its diagonal (see [singular matrices](/api/linalg/#singular-matrices)). A matrix that is singular in exact
+arithmetic but not after rounding raises nothing; [`cond`](/api/linalg/cond/) measures how close it is to singular.
+`solve_sylvester` has its own test: it raises when an eigenvalue of `a` and an eigenvalue of `-b`, as computed, are
+equal or too close to tell apart at working precision (see [`solve_sylvester`](/api/linalg/solve_sylvester/#notes)).
+
+No error is raised where the result is defined for a singular matrix: `det` returns 0, `slogdet` returns
+`(0.0, -inf)`, `cond` returns `inf`, `lu` and `ldl` return their factors, and `matrix_rank`, `pinv` and `lstsq` treat
+small singular values as zero.
+
+## Comparison with other libraries
+
+The nearest equivalent is `numpy.linalg.LinAlgError`, which is also `scipy.linalg.LinAlgError`.
+
+- Both are subclasses of `ValueError`, but they are different classes: `except numpy.linalg.LinAlgError` does not
+  catch the errors of stardust.
+- A matrix that is not square raises `ValueError` here. NumPy raises `LinAlgError` ("Last 2 dimensions of the array
+  must be square").
+- The message names the function and, for a stack, the index of the failing matrix. NumPy's message for a singular
+  matrix in a stack is "Singular matrix", without an index.

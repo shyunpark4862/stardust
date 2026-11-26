@@ -84,10 +84,9 @@ array([0, 0, 0], dtype=int64)
 
 <Reference />
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.count_nonzero` and, in R, `sum(x != 0)`.
+The nearest equivalent is `numpy.count_nonzero`.
 
 - The results agree with NumPy's, including NaN counting as nonzero. A count over all axes is a Python `int`.
 - `x` must be an `sd.ndarray`; lists raise `TypeError`.
-- In R, `sum(x != 0)` is `NA` when `x` contains `NaN`, since the comparison gives `NA`. Here NaN counts as nonzero.

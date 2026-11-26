@@ -111,11 +111,10 @@ $2^{53}$ in magnitude may be rounded.
 
 [`clip`](/api/array/clip/) applies `maximum` with a lower bound and `minimum` with an upper bound in one call.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.maximum` and `numpy.minimum`, and R's `pmax` and `pmin`.
+The nearest equivalents are `numpy.maximum` and `numpy.minimum`.
 
 - Complex operands raise `TypeError`. NumPy compares complex numbers by real part, then imaginary part.
 - There is no NaN-skipping variant like `numpy.fmax` and `numpy.fmin`; combine `where` and `isnan`. The reductions
   [`nanmax` and `nanmin`](/api/array/nan-reductions/) skip NaN within one array.
-- R's `pmax` and `pmin` return `NA` for a pair with `NA` unless `na.rm = TRUE`.

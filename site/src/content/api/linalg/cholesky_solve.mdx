@@ -107,14 +107,12 @@ The function does not check that `l` came from `cholesky`. Any triangular `l` wi
 matrix $L L^H$ (or $U^H U$), and the system with that matrix is solved. The triangle that is not read is ignored and
 may also be NaN.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `scipy.linalg.cho_solve` and, in R, `backsolve(r, forwardsolve(t(r), b))` with
-`r <- chol(a)`. NumPy has no Cholesky solver.
+The nearest equivalent is `scipy.linalg.cho_solve`. NumPy has no Cholesky solver.
 
 - `scipy.linalg.cho_solve((c, lower), b)` takes the factor and a flag in one tuple. Here the flag is the
   keyword-only `upper`, and its default `False` matches the lower factor that `cholesky` returns by default.
-  `scipy.linalg.cho_factor` and R's `chol` return the upper factor by default.
+  `scipy.linalg.cho_factor` returns the upper factor by default.
 - An exact zero on the diagonal of `l` raises `LinAlgError`. `scipy.linalg.cho_solve` returns NaN or infinity
   without an error.
-- R's `chol2inv(r)` computes the inverse from the upper factor; `cholesky_solve(l, sd.eye(n))` gives it here.

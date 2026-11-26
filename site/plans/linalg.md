@@ -24,7 +24,7 @@
 - 결과가 여러 개인 함수(lu, qr, svd, eigh, eig, lstsq, slogdet …): 반환 객체의 필드 이름과 언패킹 가능 여부를 돌려 보고 returns에 필드별로 적는다. 결과 클래스가 공개 이름이 아니면 클래스 페이지를 만들지 않는다.
 - 페이지마다: 입력 dtype별 결과 dtype(bool·int → float64, complex), 정사각/비정사각·빈 행렬·스택, NaN·inf 입력의 처리(ValueError인지), 특이·비양정치 등에서 `LinAlgError`가 나는 조건, 분해의 부호·순서 규약(고유값 정렬 순서, 특이값 내림차순, 피벗 표현, Q·R의 부호), 재구성 예제(`q @ r` 등)를 넣는다.
 - 알고리즘은 사용자가 선택·해석에 필요할 때만 Notes에(예: partial pivoting, 대칭 문제 전용 여부). 외부 라이브러리 이름은 쓰지 않는다.
-- 비교 절: NumPy(`numpy.linalg`), SciPy(`scipy.linalg`), R(base: `solve`, `qr`, `svd`, `eigen`, `chol`, `det`, `kronecker` 등). 돌려서 확인한 것만.
+- 비교 절: 제목 `## Comparison with other libraries`, NumPy(`numpy.linalg`)와 SciPy(`scipy.linalg`)만(R은 쓰지 않음, 2026-11-27 사용자 결정; `WRITING.md` §10). 두 라이브러리를 다 다루면 `**NumPy.**`, `**SciPy.**` 굵은 머리말로 나누고(이 순서), 하나뿐이면 그 이름을 대는 문장 뒤에 bullet. 돌려서 확인한 것만.
 - 스레드: `set_num_threads`가 제한하지 않는 연산이 있다는 사실은 `/api/array/threads/`에만 있고, 페이지에서 되풀이하지 않는다.
 - (L1 점검 뒤 추가) 개요 Concepts 앵커: `#matrices-and-stacks`, `#right-hand-sides`, `#result-types`, `#named-tuples`, `#finite-values`, `#singular-matrices`, `#errors-in-a-stack`, `#symmetric-and-hermitian-input`. 페이지 앵커: `/api/linalg/lu/#factor-format`, `/api/linalg/cholesky/#factor-format`, `/api/linalg/cholesky/#positive-definiteness`(제목 바꾸지 않음).
 - 입력 문구: "<역할>, of any dtype, or a stack of them (see [matrices and stacks](/api/linalg/#matrices-and-stacks))." 우변: "Right-hand side: one vector, or `k` vectors as columns (see [right-hand sides](/api/linalg/#right-hand-sides))."

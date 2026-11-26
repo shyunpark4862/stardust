@@ -96,12 +96,10 @@ two results that agree to within a few multiples of $\varepsilon \lvert x \rvert
 Positive values below `smallest_normal` are subnormal: they are representable down to about $4.9 \times 10^{-324}$,
 but with fewer significant bits. Values beyond `max` in magnitude overflow to infinity.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.finfo` and `numpy.iinfo`, and R's `.Machine$double.eps`, `.Machine$double.xmax`,
-`.Machine$double.xmin` and `.Machine$integer.max`.
+The nearest equivalents are `numpy.finfo` and `numpy.iinfo`.
 
 - The result has only the fields above. NumPy's `tiny`, `resolution`, `precision`, `smallest_subnormal` and the
   exponent fields are absent; `tiny` equals `smallest_normal`.
 - Python types (`float`, `int`) and NumPy dtypes are not accepted.
-- R's integers have 32 bits: `.Machine$integer.max` is `2**31 - 1`, while `int64` reaches `2**63 - 1`.

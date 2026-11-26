@@ -135,13 +135,11 @@ run and for any number of threads.
 The rank of each element (0 for the smallest) is `argsort(argsort(x))`. A sorted 1-D array is searched with
 [`searchsorted`](/api/array/searchsorted/), which uses the same order, NaN included.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.sort` and `numpy.argsort`, and R's `sort` and `order`.
+The nearest equivalents are `numpy.sort` and `numpy.argsort`.
 
 - `axis=None` raises `TypeError`; NumPy sorts the flattened array. `kind=` and `order=` do not exist, and there is no
   in-place method `x.sort()`.
 - With `descending=True`, NaN comes first. NumPy's `descending=True` puts NaN last.
 - Complex input raises `TypeError`. NumPy orders complex numbers by real part, then imaginary part.
-- R's `sort` removes NaN and `NA` by default (`na.last = NA`), and `order` puts them last, also with
-  `decreasing = TRUE`. R's `order` counts from 1 and keeps ties in their original order, as `argsort` does.

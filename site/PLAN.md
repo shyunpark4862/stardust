@@ -13,9 +13,24 @@ common(Install·Conventions 첫판은 템플릿 작업과 함께) → array → 
 | array | A2 Element-wise functions | 산술, 지수·로그, 삼각·쌍곡, 반올림, 비교·논리·비트, 판별, where, 복소수 | 완료 |
 | array | A3 Reductions and statistics | 집계, 누적, NaN 건너뛰는 집계, 분위수·중앙값, 공분산, bincount·histogram | 완료 |
 | array | A4 Indexing, sorting and products | take·nonzero·searchsorted·interp·diff, 정렬·고유값, 행렬곱, 스레드 | 완료 |
-| linalg | L1 Systems, factorizations and eigenvalues | 선형 시스템, 분해, 고유값 (16쪽) | 진행 |
-| linalg | L2 Norms, products, structured matrices and matrix functions | 노름·지표, 곱, 특수 구조, expm, 에러, 개요 점검 (19쪽) | 예정 |
+| linalg | L1 Systems, factorizations and eigenvalues | 선형 시스템, 분해, 고유값 (16쪽) | 완료 |
+| linalg | L2 Norms, products, structured matrices and matrix functions | 노름·지표, 곱, 특수 구조, expm, 에러, 개요 점검 (19쪽) | 완료 |
 | common | C2 A short tour | 여러 영역을 잇는 짧은 둘러보기 | 예정 |
 | common | C3 Home and index polish | 첫 페이지 다듬기, 색인·검색 점검 | 예정 |
 
 다른 영역의 마일스톤은 그 영역을 시작할 때 얼개와 함께 더한다.
+
+## 비교 절 (2026-11-27 사용자 결정)
+- 절 제목은 모든 페이지에서 `## Comparison with other libraries`. 절 안은 해당 라이브러리만 굵은 머리말로 나눈다.
+- 영역별 비교 대상(이 밖의 라이브러리는 다루지 않음):
+
+| 영역 | 비교 대상 |
+|---|---|
+| array, random | NumPy |
+| linalg, special, optimize, integrate, differentiate, sparse, spatial, graph, interpolate, fft | NumPy / SciPy |
+| frame | pandas |
+| stats | SciPy, R |
+| htest | SciPy, statsmodels, R |
+| regression | statsmodels, R |
+| smooth | statsmodels / SciPy, R |
+| plot | Matplotlib |

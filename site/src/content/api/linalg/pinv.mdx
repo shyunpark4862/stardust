@@ -11,7 +11,7 @@ params:
   - name: x
     type: array of shape (..., m, n)
     kind: positional-only
-    desc: "Matrix, of any dtype, or a stack of matrices (see [matrices and stacks](/api/linalg/#matrices-and-stacks)). Need not be square or of full rank."
+    desc: "Matrix, of any dtype, or a stack of them (see [matrices and stacks](/api/linalg/#matrices-and-stacks)). Need not be square or of full rank."
   - name: rtol
     type: float or None
     kind: keyword-only
@@ -115,13 +115,16 @@ zero stay zero. With `rtol=0`, the pseudo-inverse of `sd.asarray([[1.0, 0.0], [0
 
 A matrix with no rows or no columns, and a zero matrix, have a zero pseudo-inverse of shape `(n, m)`.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.linalg.pinv`, `scipy.linalg.pinv` and `MASS::ginv` in R.
+**NumPy.** The nearest equivalent is `numpy.linalg.pinv`.
 
-- The default cutoff is `max(m, n)` times the machine epsilon, as in `scipy.linalg.pinv`. `numpy.linalg.pinv` treats
-  singular values at or below `1e-15` times the largest as zero by default, so the two can differ for singular values
-  near the cutoff. `MASS::ginv` uses a much larger default, `sqrt(.Machine$double.eps)`.
-- The cutoff is `rtol=` and is keyword-only. There is no absolute tolerance (`atol=` in SciPy) and no `hermitian=`
-  option (NumPy).
+- The default cutoff is `max(m, n)` times the machine epsilon. `numpy.linalg.pinv` treats singular values at or below
+  `1e-15` times the largest as zero by default, so the two can differ for singular values near the cutoff.
+- There is no `hermitian=` option.
 - NaN or infinity in `x` raises `ValueError`. `numpy.linalg.pinv` raises `LinAlgError` ("SVD did not converge").
+
+**SciPy.** The nearest equivalent is `scipy.linalg.pinv`.
+
+- The default cutoff is the same as in `scipy.linalg.pinv`.
+- The cutoff is `rtol=` and is keyword-only. There is no absolute tolerance (`atol=` in SciPy).

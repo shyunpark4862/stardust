@@ -106,13 +106,11 @@ The conversion depends only on the dtypes, never on the values, and never raises
 
 The result has the memory layout of `x`. With the default `copy=True` it never shares memory with `x`.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.astype` and the method `numpy.ndarray.astype`, and R's `as.integer`, `as.numeric`
-and `as.logical`.
+The nearest equivalents are `numpy.astype` and the method `numpy.ndarray.astype`.
 
 - Complex to real raises `TypeError`. NumPy discards the imaginary part with a `ComplexWarning`.
 - NaN and out-of-range values convert as listed in [Explicit conversion](/api/array/dtypes/#explicit-conversion),
   without a warning; NumPy emits a `RuntimeWarning` for them.
 - `dtype` is positional-only, and there are no `casting=`, `order=` or `subok=` arguments.
-- R's `as.integer(NaN)` and `as.logical(NaN)` give `NA`. Here NaN becomes 0 as an `int64` and `True` as a `bool`.

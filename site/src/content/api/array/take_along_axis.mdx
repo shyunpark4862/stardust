@@ -107,10 +107,9 @@ For 2-D arrays and `axis=1`, the result is $r_{ij} = x_{i, k_{ij}}$ with $k_{ij}
 A position $k$ is valid when $-n \le k \lt n$ for an axis of length $n$. When the result is empty, the positions are
 not checked.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalent is `numpy.take_along_axis`. R has no direct equivalent; a matrix of (row, column) pairs used
-as an index, `x[cbind(i, j)]`, selects the same elements.
+The nearest equivalent is `numpy.take_along_axis`.
 
 - `axis=None` is rejected. NumPy then selects from the flattened array; [`ravel`](/api/array/ravel/) gives that
   array.

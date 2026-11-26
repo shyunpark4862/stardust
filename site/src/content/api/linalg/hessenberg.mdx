@@ -108,12 +108,12 @@ The signs of the columns of `Q` beyond the first (for complex input, their phase
 not fixed by the decomposition. The function makes the same choice on every run with the same number of threads (see
 [determinism and threads](/start/conventions/#determinism-and-threads)). An empty matrix ($n = 0$) gives empty results.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalent is `scipy.linalg.hessenberg`. NumPy and base R have no Hessenberg reduction.
+The nearest equivalent is `scipy.linalg.hessenberg`. NumPy has no Hessenberg reduction.
 
-- `Q` is always returned: the result is the named tuple `(H, Q)`. `scipy.linalg.hessenberg` returns only `H` unless
-  `calc_q=True` is given.
+- `Q` is always returned: the result is the named tuple `HessenbergResult(H, Q)`. `scipy.linalg.hessenberg` returns only
+  `H` unless `calc_q=True` is given.
 - A complex 2-by-2 matrix comes back with a real subdiagonal; `scipy.linalg.hessenberg` returns every matrix of size 2
   or less unchanged.
 - NaN or infinity raises `ValueError`, as in `scipy.linalg.hessenberg` by default.

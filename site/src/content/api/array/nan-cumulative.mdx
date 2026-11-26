@@ -109,13 +109,11 @@ the computation, such as $\infty + (-\infty)$, stays and makes the later running
 array([inf, inf, nan, nan], dtype=float64)
 ```
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.nancumsum` and `numpy.nancumprod`. R's `cumsum` and `cumprod` have no `na.rm`
-argument.
+The nearest equivalents are `numpy.nancumsum` and `numpy.nancumprod`.
 
 - `axis=None` is accepted only for 1-D input. NumPy flattens an array of more dimensions; here it raises `ValueError`.
 - `include_initial` has no counterpart in `numpy.nancumsum` and `numpy.nancumprod`.
 - There is no `out=` argument.
 - Long `float64` accumulations can differ from NumPy's in the last digits.
-- In R, `cumsum(c(1, NA, 3))` gives `1 NA NA`: every value after the first `NA` is `NA`.

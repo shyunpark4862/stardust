@@ -1,0 +1,154 @@
+---
+kind: function
+title: vector_norm
+names: [vector_norm]
+group: Norms and scalar measures
+order: 1
+signatures:
+  - "sd.linalg.vector_norm(x, /, *, axis=None, keepdims=False, ord=2)"
+summary: Compute a vector norm over the given axes.
+params:
+  - name: x
+    type: array
+    kind: positional-only
+    desc: "Array to measure, of any dtype and any number of dimensions. The elements along the reduced axes form the vector."
+  - name: axis
+    type: int, tuple of int or None
+    kind: keyword-only
+    default: None
+    desc: "Axis or axes to compute the norm over. `None` computes the norm over all axes, and `()` over none, which gives the absolute value of each element. A list is accepted like a tuple. Negative values count from the end. See [`axis` and `keepdims`](/start/conventions/#axis-and-keepdims)."
+  - name: keepdims
+    type: bool
+    kind: keyword-only
+    default: "False"
+    desc: "If `True`, each reduced axis stays in the result with length 1."
+  - name: ord
+    type: int or float
+    kind: keyword-only
+    default: "2"
+    desc: "Order of the norm:"
+    choices:
+      - [ "2", "Euclidean norm: the square root of the sum of the squared absolute values." ]
+      - [ "1", "Sum of the absolute values." ]
+      - [ "sd.inf", "Largest absolute value." ]
+      - [ "-sd.inf", "Smallest absolute value." ]
+      - [ "0", "Number of nonzero elements, as a `float`. NaN counts as nonzero." ]
+      - [ "any other `p`", "The sum of the absolute values raised to the power `p`, raised to the power `1 / p`. Positive, negative and non-integer `p` alike." ]
+returns:
+  - type: float or ndarray
+    desc: "Norm over the given axes, with the shape of `x` without the reduced axes (with those axes of length 1 if `keepdims` is `True`). Always `float64`, also for complex input. A Python `float` when every axis is reduced and `keepdims` is `False`."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`, if `axis` is not an `int`, a tuple or list of `int`, or `None`, if `keepdims` is not `True` or `False`, if `ord` is a `bool`, or if `ord` is not an `int` or a `float`."
+  - type: ValueError
+    desc: "If an axis is out of range or repeated, or if `ord` is NaN."
+  - type: OverflowError
+    desc: "If an axis is an `int` outside the `int64` range, or if `ord` is an `int` too large to convert to a `float`."
+seeAlso: [matrix_norm, vecdot, cond, array/abs, array/hypot]
+---
+
+`vector_norm` reduces the elements of `x` along the given axes to a single nonnegative number that measures their
+size. The default, `ord=2`, is the Euclidean length: the square root of the sum of the squared absolute values. Other
+values of `ord` give the sum of the absolute values, the largest absolute value and the other $p$-norms. Complex
+elements are measured by their absolute value.
+
+By default the norm is taken over all elements, whatever the shape of `x`. With `axis`, it is taken separately along
+one axis or a group of axes, so that each row, each column or each matrix of a stack gets its own norm. The matrix
+norms that are not norms of the entries as one vector, such as the largest singular value, are in
+[`matrix_norm`](/api/linalg/matrix_norm/).
+
+NaN and infinity in `x` are allowed (see [finite values](/api/linalg/#finite-values)); the Notes give the result for
+each `ord`. For positive `ord`, large and tiny elements cause no overflow or underflow in intermediate steps: the
+result is finite and accurate whenever the norm itself is within the range of `float64`.
+
+## Examples
+
+The length of a vector, and other orders of the norm:
+
+```python
+>>> import stardust as sd
+>>> v = sd.asarray([3.0, -4.0])
+>>> sd.linalg.vector_norm(v)
+5.0
+>>> sd.linalg.vector_norm(v, ord=1), sd.linalg.vector_norm(v, ord=sd.inf)
+(7.0, 4.0)
+>>> sd.linalg.vector_norm(v, ord=3)
+4.497941445275415
+>>> sd.linalg.vector_norm(v, ord=0)
+2.0
+```
+
+Over all elements of a 2-D array, and along one axis. With `axis=1` each row is a vector:
+
+```python
+>>> x = sd.asarray([[1.0, 2.0], [3.0, 4.0]])
+>>> sd.linalg.vector_norm(x)
+5.477225575051661
+>>> sd.linalg.vector_norm(x, axis=1)
+array([2.23606797749979,              5.0], dtype=float64)
+>>> sd.linalg.vector_norm(x, axis=0, keepdims=True)
+array([[3.1622776601683795,   4.47213595499958]], dtype=float64)
+```
+
+Integer and complex input give a `float64` result. Squaring `1e200` overflows, but the norm does not:
+
+```python
+>>> sd.linalg.vector_norm(sd.asarray([3, 4]))
+5.0
+>>> sd.linalg.vector_norm(sd.asarray([3 + 4j, 1j]))
+5.0990195135927845
+>>> sd.linalg.vector_norm(sd.asarray([1e200, 1e200]))
+1.414213562373095e+200
+>>> sd.linalg.vector_norm(sd.asarray([1.0, sd.nan]))
+nan
+```
+
+`ord` takes numbers only. The Frobenius and other matrix norms are computed by `matrix_norm`:
+
+```python
+>>> sd.linalg.vector_norm(x, ord="fro")
+Traceback (most recent call last):
+    ...
+TypeError: vector_norm(): 'ord' must be an int or a float, not str
+```
+
+<Reference />
+
+## Notes
+
+For the elements $x_1, \dots, x_n$ along the reduced axes and $p$ = `ord`,
+
+$$
+\lVert x \rVert_p = \Bigl(\sum_{i=1}^{n} \lvert x_i \rvert^p\Bigr)^{1/p}, \qquad
+\lVert x \rVert_\infty = \max_i \lvert x_i \rvert, \qquad
+\lVert x \rVert_{-\infty} = \min_i \lvert x_i \rvert .
+$$
+
+`ord=0` counts the elements with $x_i \ne 0$. It is not a norm, and neither is $\lVert x \rVert_p$ for $p \lt 1$: for
+those orders the triangle inequality $\lVert x + y \rVert \le \lVert x \rVert + \lVert y \rVert$ fails. For negative
+$p$, an element equal to zero makes the result zero, and an infinite element contributes nothing.
+
+If the reduced elements contain NaN, the result is NaN for every `ord` except 0, which counts NaN as nonzero. Without
+NaN, an infinite element gives an infinite result for positive `ord`.
+
+For positive `ord`, when the sum of the powers $\lvert x_i \rvert^p$ overflows or all its terms are so small that
+precision would be lost, the elements are divided by the largest absolute value before the sum is formed. The result
+is therefore finite and accurate even when the powers of the elements would overflow or underflow. For negative `ord`
+the powers are not rescaled: `vector_norm(sd.asarray([1e-200, 1e-200]), ord=-2)` is `0.0` instead of about
+`7.07e-201`.
+
+The norm of an empty set of elements is 0 for every `ord`.
+
+## Comparison with other libraries
+
+The nearest equivalents are `numpy.linalg.vector_norm` and, for vector input, `numpy.linalg.norm` and
+`scipy.linalg.norm`.
+
+- `x` must be an `sd.ndarray`; lists raise `TypeError`.
+- `ord=None` is rejected with `TypeError`; the default is `ord=2`. `numpy.linalg.vector_norm` accepts `None` as the
+  2-norm.
+- For positive `ord`, overflow and underflow are avoided: `[1e200, 1e200]` has norm `1.414213562373095e+200`.
+  `numpy.linalg.vector_norm` returns `inf` with a `RuntimeWarning`, and gives `0.0` for `[1e-200, 1e-200]`.
+- The norm of an empty array is 0 for every `ord`. `numpy.linalg.vector_norm` raises `ValueError` for `ord=-inf` on
+  an empty array.
+- Vector and matrix norms are separate functions. `numpy.linalg.norm` chooses between them from the number of axes.

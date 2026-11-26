@@ -1,0 +1,123 @@
+---
+kind: function
+title: matrix_rank
+names: [matrix_rank]
+group: Norms and scalar measures
+order: 5
+signatures:
+  - "sd.linalg.matrix_rank(x, /, *, rtol=None)"
+summary: Return the numerical rank of a matrix.
+params:
+  - name: x
+    type: array of shape (..., m, n)
+    kind: positional-only
+    desc: "Matrix, of any dtype, or a stack of them (see [matrices and stacks](/api/linalg/#matrices-and-stacks)). Need not be square."
+  - name: rtol
+    type: float or None
+    kind: keyword-only
+    default: None
+    desc: "Relative cutoff for small singular values. Singular values at or below `rtol` times the largest singular value are treated as zero. `None` means `max(m, n)` times the machine epsilon of `float64`. Must be finite and nonnegative; a value of 1 or more makes every singular value zero."
+returns:
+  - type: int or ndarray of shape (...)
+    desc: "Rank of each matrix: the number of singular values above the cutoff. A Python `int` for a single matrix, an `int64` array for a stack."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`, if `rtol` is a `bool`, or if `rtol` is not `None`, an `int` or a `float`."
+  - type: ValueError
+    desc: "If `x` has fewer than two dimensions, if `x` contains NaN or infinity, or if `rtol` is negative or not finite."
+  - type: OverflowError
+    desc: "If `rtol` is an `int` too large to convert to a `float`."
+  - type: LinAlgError
+    desc: "If the singular value decomposition does not converge. For a stack, the message gives the index of the first matrix that failed."
+seeAlso: [svd, cond, lstsq, pinv, det]
+---
+
+The rank of a matrix is the number of its linearly independent rows, which equals the number of linearly independent
+columns and the number of nonzero singular values. In floating point, a singular value that is zero in exact
+arithmetic usually comes out as a small number of the order of the rounding error. `matrix_rank` therefore counts only
+the singular values above a cutoff relative to the largest one, and returns the numerical rank.
+
+The default cutoff suits matrices whose entries are exact or rounded only once. For data with measurement errors, a
+larger `rtol` that matches the relative size of those errors gives a more meaningful rank. [`lstsq`](/api/linalg/lstsq/)
+and [`pinv`](/api/linalg/pinv/) take `rtol` with the same meaning and the same default. They compute the singular
+values separately, so the number they keep can differ from `matrix_rank` when a singular value lies very close to the
+cutoff.
+
+## Examples
+
+The 3-by-3 matrix below has rank 2: its third row is twice the second minus the first. A matrix of ones has rank 1,
+and the zero matrix rank 0:
+
+```python
+>>> import stardust as sd
+>>> n = sd.asarray([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]])
+>>> sd.linalg.matrix_rank(n)
+2
+>>> sd.linalg.matrix_rank(sd.ones((3, 5))), sd.linalg.matrix_rank(sd.zeros((3, 3)))
+(1, 0)
+```
+
+The third singular value of `n` is not exactly zero, only below the default cutoff. With `rtol=0`, every nonzero
+singular value counts:
+
+```python
+>>> sd.linalg.svdvals(n)
+array([    16.84810335261421,    1.0683695145547094, 3.358907901991618e-16], dtype=float64)
+>>> sd.linalg.matrix_rank(n, rtol=0)
+3
+```
+
+A larger `rtol` ignores more singular values. A value exactly at the cutoff counts as zero:
+
+```python
+>>> d = sd.diag(sd.asarray([1.0, 1e-3, 1e-9]))
+>>> sd.linalg.matrix_rank(d)
+3
+>>> sd.linalg.matrix_rank(d, rtol=1e-6), sd.linalg.matrix_rank(d, rtol=1e-3)
+(2, 1)
+```
+
+A stack gives an `int64` array:
+
+```python
+>>> sd.linalg.matrix_rank(sd.stack([n, sd.eye(3)]))
+array([2, 3], dtype=int64)
+```
+
+`rtol` must be a finite number of at least 0:
+
+```python
+>>> sd.linalg.matrix_rank(n, rtol=-1.0)
+Traceback (most recent call last):
+    ...
+ValueError: matrix_rank(): 'rtol' must be a finite number >= 0
+```
+
+<Reference />
+
+## Notes
+
+With $\sigma_1 \ge \sigma_2 \ge \dots \ge \sigma_k \ge 0$ the $k = \min(m, n)$ singular values of an $m \times n$
+matrix, the function returns
+
+$$
+\operatorname{rank}(A) = \#\{\, i : \sigma_i \gt \text{rtol} \cdot \sigma_1 \,\}, \qquad
+\text{rtol} = \max(m, n) \, \varepsilon \text{ by default},
+$$
+
+where $\varepsilon = 2^{-52} \approx 2.22 \times 10^{-16}$ is the machine epsilon of `float64`. The comparison is
+strict, so a matrix of zeros has rank 0 for any `rtol`, and `rtol` of 1 or more gives rank 0 for every matrix.
+
+The singular values are those of [`svdvals`](/api/linalg/svd/), and the result equals the count computed from
+`svdvals(x)` with the same cutoff, bit for bit. A matrix with no rows or no columns has rank 0.
+
+## Comparison with other libraries
+
+The nearest equivalent is `numpy.linalg.matrix_rank`.
+
+- The default cutoff is the same as in `numpy.linalg.matrix_rank`, and so is the meaning of `rtol`.
+- There is no absolute `tol=` and no `hermitian=` option. An absolute cutoff `tol` is
+  `sd.sum(sd.linalg.svdvals(x) > tol, axis=-1)`.
+- `x` must have at least two dimensions. `numpy.linalg.matrix_rank` also accepts a 1-D array.
+- NaN or infinity in `x` raises `ValueError`. `numpy.linalg.matrix_rank` raises `LinAlgError` ("SVD did not converge")
+  for it.

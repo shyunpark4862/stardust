@@ -94,12 +94,10 @@ ValueError: matrix_transpose(): the array must have at least 2 dimensions, got 1
 
 <Reference />
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.permute_dims` (also `numpy.transpose`), `numpy.matrix_transpose`, and R's
-`aperm(a, perm)` and `t(m)`.
+The nearest equivalents are `numpy.permute_dims` (also `numpy.transpose`) and `numpy.matrix_transpose`.
 
 - `axes` is required. In NumPy it defaults to reversing all axes.
 - `x.T` is defined for 2-D arrays only and raises `ValueError` otherwise; in NumPy it reverses all axes for any number
   of dimensions. Use `matrix_transpose` (or `x.mT`) for stacks of matrices.
-- R's `aperm` numbers axes from 1; `axes` here numbers them from 0.

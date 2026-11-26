@@ -1,0 +1,156 @@
+---
+kind: function
+title: cond
+names: [cond]
+group: Norms and scalar measures
+order: 3
+signatures:
+  - "sd.linalg.cond(x, /, *, ord=2)"
+summary: Compute the condition number of a matrix.
+params:
+  - name: x
+    type: array of shape (..., m, n)
+    kind: positional-only
+    desc: "Matrix, of any dtype, or a stack of them (see [matrices and stacks](/api/linalg/#matrices-and-stacks)). Must be square unless `ord` is `2` or `-2`, and must have at least one row and one column."
+  - name: ord
+    type: str, int or float
+    kind: keyword-only
+    default: "2"
+    desc: "Norm in which the condition number is measured, one of the values of `ord` in [`matrix_norm`](/api/linalg/matrix_norm/):"
+    choices:
+      - [ "2", "Ratio of the largest to the smallest singular value. `x` need not be square." ]
+      - [ "-2", "Ratio of the smallest to the largest singular value, the reciprocal of `ord=2`. `x` need not be square." ]
+      - [ "'fro', 'nuc', 1, -1, sd.inf, -sd.inf", "`matrix_norm(x, ord=ord) * matrix_norm(inv(x), ord=ord)`. `x` must be square." ]
+returns:
+  - type: float or ndarray of shape (...)
+    desc: "Condition number of each matrix, with the leading axes of `x` as its shape. `inf` for a singular matrix (`0.0` with `ord=-2`). Always `float64`. A Python `float` for a single matrix."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`, if `ord` is a `bool`, or if `ord` is not a `str`, an `int` or a `float`."
+  - type: ValueError
+    desc: "If `x` has fewer than two dimensions, if `ord` is not one of the listed values, if `x` is not square and `ord` is not `2` or `-2`, if the matrices of `x` have no rows or no columns, or if `x` contains NaN or infinity."
+  - type: OverflowError
+    desc: "If `ord` is an `int` too large to convert to a `float`."
+  - type: LinAlgError
+    desc: "If `ord` is `2`, `-2` or `'nuc'` and the singular value decomposition does not converge. For a stack, the message gives the index of the first matrix that failed."
+seeAlso: [matrix_norm, svd, matrix_rank, solve, inv, det]
+---
+
+The condition number of a matrix $A$, $\kappa(A) = \lVert A \rVert \, \lVert A^{-1} \rVert$, bounds how much the
+solution of $A x = b$ can change relative to a change in $b$ or $A$. A condition number near 1 means the problem is
+well conditioned. A large condition number means small errors in the data, including the rounding errors of
+`float64`, can produce large errors in the solution: as a rule of thumb, a solution computed in `float64` loses about
+$\log_{10} \kappa$ of its roughly 16 significant digits.
+
+The default `ord=2` measures in the Euclidean norm, where the condition number is the ratio of the largest to the
+smallest singular value. This form is defined for matrices of any shape. The other values of `ord` multiply the norm
+of `x` by the norm of its inverse, and need a square matrix.
+
+A singular matrix has an infinite condition number. For a matrix that it detects as exactly singular, the function
+returns `inf` instead of raising `LinAlgError` (see Notes).
+
+## Examples
+
+The identity matrix has condition number 1. A matrix close to a singular one has a large condition number:
+
+```python
+>>> import stardust as sd
+>>> sd.linalg.cond(sd.eye(3))
+1.0
+>>> a = sd.asarray([[1.0, 2.0], [3.0, 4.0]])
+>>> sd.linalg.cond(a)
+14.933034373659263
+>>> b = sd.asarray([[1.0, 1.0], [1.0, 1.0 + 1e-10]])
+>>> sd.linalg.cond(b)
+39999965677.40396
+```
+
+With a condition number of about $4 \times 10^{10}$, a change of $10^{-10}$ in the right-hand side moves the solution
+by about 1:
+
+```python
+>>> sd.linalg.solve(b, sd.asarray([2.0, 2.0 + 1e-10]))
+array([1.0, 1.0], dtype=float64)
+>>> sd.linalg.solve(b, sd.asarray([2.0, 2.0 + 2e-10]))
+array([0.0, 2.0], dtype=float64)
+```
+
+Other norms. For `ord` other than 2 and -2 the value is the product of two matrix norms:
+
+```python
+>>> sd.linalg.cond(a, ord=1)
+20.999999999999996
+>>> sd.linalg.matrix_norm(a, ord=1) * sd.linalg.matrix_norm(sd.linalg.inv(a), ord=1)
+20.999999999999996
+>>> sd.linalg.cond(a, ord=sd.inf), sd.linalg.cond(a, ord="fro")
+(21.0, 14.999999999999998)
+```
+
+A matrix that is singular in exact arithmetic gives a huge finite value or `inf`, depending on whether rounding
+leaves its smallest singular value or its LU pivot exactly zero. A stack gives one value per matrix:
+
+```python
+>>> s = sd.asarray([[1.0, 2.0], [2.0, 4.0]])
+>>> sd.linalg.cond(s), sd.linalg.cond(s, ord=1)
+(2.7556760105735884e+16, inf)
+>>> sd.linalg.cond(sd.zeros((2, 2))), sd.linalg.cond(sd.zeros((2, 2)), ord=-2)
+(inf, 0.0)
+>>> sd.linalg.cond(sd.stack([a, s]), ord=1)
+array([20.999999999999996,                inf], dtype=float64)
+```
+
+A matrix that is not square has a condition number in the 2-norm only:
+
+```python
+>>> sd.linalg.cond(sd.asarray([[1.0, 0.0], [0.0, 2.0], [0.0, 0.0]]))
+2.0
+>>> sd.linalg.cond(sd.ones((2, 3)), ord=1)
+Traceback (most recent call last):
+    ...
+ValueError: cond(): 'x' must be square in its last two dimensions, got 2x3
+```
+
+<Reference />
+
+## Notes
+
+For a norm $\lVert \cdot \rVert$ and a nonsingular square matrix $A$, the condition number
+$\kappa(A) = \lVert A \rVert \, \lVert A^{-1} \rVert$ satisfies
+
+$$
+\frac{\lVert \delta x \rVert}{\lVert x \rVert} \le \kappa(A) \, \frac{\lVert \delta b \rVert}{\lVert b \rVert}
+\qquad \text{for } A x = b, \; A (x + \delta x) = b + \delta b .
+$$
+
+In the 2-norm, $\kappa_2(A) = \sigma_1 / \sigma_k$, the ratio of the largest to the smallest of the
+$k = \min(m, n)$ singular values; this is the definition used for every shape. `ord=-2` gives
+$\sigma_k / \sigma_1$, a number between 0 and 1. For `ord` 2, 1 and `sd.inf` the condition number is at least 1.
+
+Two tests decide that a matrix is singular, each exact (see [singular matrices](/api/linalg/#singular-matrices)):
+
+- With `ord` 2 or -2, the smallest singular value is exactly zero. The result is `inf` for 2 and `0.0` for -2.
+- With the other values, the LU factorization of `x` has an exact zero pivot. The result is `inf`. It is also `inf`
+  when `x` is nonsingular but its inverse has entries too large for `float64`, as for
+  `sd.asarray([[1.0, 0.0], [0.0, 5e-324]])`.
+
+A matrix that is singular in exact arithmetic usually has a smallest singular value of the order of the rounding error
+times $\sigma_1$, so `cond(x)` comes out near $10^{16}$ rather than `inf`.
+
+With `ord` 2 or -2, the result equals the ratio of the first and last values of [`svdvals`](/api/linalg/svd/) bit for
+bit. With the other values, the inverse is computed as [`inv`](/api/linalg/inv/) computes it, and the result agrees
+with `matrix_norm(x, ord=ord) * matrix_norm(inv(x), ord=ord)` up to rounding.
+
+The condition number of a matrix with no rows or no columns is not defined and raises `ValueError`. A stack of zero
+matrices gives an empty array.
+
+## Comparison with other libraries
+
+The nearest equivalent is `numpy.linalg.cond`.
+
+- The argument is called `ord`; `numpy.linalg.cond` calls it `p`. Both default to the 2-norm.
+- NaN or infinity in `x` raises `ValueError`. `numpy.linalg.cond` returns `nan`.
+- With `ord=-2`, a matrix whose smallest singular value is exactly zero gives `0.0`. `numpy.linalg.cond` gives `inf`.
+- A matrix that is not square with an `ord` other than 2 or -2, and an empty matrix, raise `ValueError`.
+  `numpy.linalg.cond` raises `LinAlgError` for both.
+- Results agree with NumPy's only up to rounding. For `ord` other than 2 and -2, both compute an inverse, and the
+  difference grows with the condition number.

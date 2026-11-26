@@ -176,7 +176,7 @@ array([0, 1, 3, 5, 7], dtype=int64)
 array([4, 4, 4, 4, 4], dtype=int64)
 ```
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
 Views, `base` and `copy=` behave as in NumPy, with these differences and additions:
 
@@ -184,5 +184,3 @@ Views, `base` and `copy=` behave as in NumPy, with these differences and additio
 - An `sd.ndarray` and a NumPy array can share memory in both directions: `numpy.asarray(x)` gives a NumPy view of `x`,
   and `sd.asarray(a)` gives an `sd.ndarray` that shares the memory of a NumPy array `a` of type `bool`, `int64`,
   `float64` or `complex128`. A read-only array stays read-only on the other side.
-- R has no views: assigning to an element of a copy, as in `y <- x; y[1] <- 0`, never changes `x`. Here a slice is a
-  view, and writing to it changes the original.

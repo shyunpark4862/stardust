@@ -92,9 +92,9 @@ The sign of a NaN carries no numerical meaning, and operations that produce NaN 
 `signbit` only reports the bit that is stored. For a complex number, apply `signbit` to its
 [real or imaginary part](/api/array/complex/).
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalent is `numpy.signbit`. Base R has no such function; `1 / x < 0` tells the sign of a zero.
+The nearest equivalent is `numpy.signbit`.
 
 - The results agree with NumPy's, for `bool` and `int64` input as well.
 - Complex input raises `TypeError`, as in NumPy.

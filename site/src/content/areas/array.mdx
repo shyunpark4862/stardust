@@ -58,28 +58,30 @@ original array, so writing to a view changes the original; other operations retu
 
 <FunctionTables />
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-| stardust | NumPy | R |
-|---|---|---|
-| `asarray(obj)` | `numpy.asarray` | `c(...)`, `array(data, dim)` |
-| `zeros(shape)`, `full(shape, v)` | `numpy.zeros`, `numpy.full` | `numeric(n)`, `rep(v, n)`, `matrix(v, m, n)` |
-| `arange(start, stop, step)` | `numpy.arange` | `seq(from, to, by)` |
-| `linspace(start, stop, num)` | `numpy.linspace` | `seq(from, to, length.out = n)` |
-| `reshape(x, shape)` | `numpy.reshape` | `dim(x) <- c(m, n)` |
-| `permute_dims(x, axes)` | `numpy.permute_dims`, `numpy.transpose` | `aperm(x, perm)`, `t(x)` |
-| `concat(arrays, axis=0)` | `numpy.concat`, `numpy.concatenate` | `c(...)`, `rbind`, `cbind` |
-| `sum(x, axis=0)` | `numpy.sum` | `sum(x)`, `colSums(x)` |
-| `mean(x)`, `var(x, correction=1)` | `numpy.mean`, `numpy.var(x, ddof=1)` | `mean(x)`, `var(x)` |
-| `quantile(x, q)` | `numpy.quantile` | `quantile(x, q)` |
-| `cumulative_sum(x)` | `numpy.cumulative_sum`, `numpy.cumsum` | `cumsum(x)` |
-| `nansum(x)` | `numpy.nansum` | `sum(x, na.rm = TRUE)` |
-| `sort(x)`, `argsort(x)` | `numpy.sort`, `numpy.argsort` | `sort(x)`, `order(x)` |
-| `unique_values(x)` | `numpy.unique_values`, `numpy.unique` | `sort(unique(x))` |
-| `diff(x)` | `numpy.diff` | `diff(x)` |
-| `interp(x, xp, fp)` | `numpy.interp` | `approx(xp, fp, xout = x, rule = 2)$y` |
-| `where(c, a, b)` | `numpy.where` | `ifelse(c, a, b)` |
-| `matmul(a, b)`, `a @ b` | `numpy.matmul`, `a @ b` | `a %*% b` |
+The table lists the nearest NumPy equivalents of the main functions; the list after it gives the main differences.
+
+| stardust | NumPy |
+|---|---|
+| `asarray(obj)` | `numpy.asarray` |
+| `zeros(shape)`, `full(shape, v)` | `numpy.zeros`, `numpy.full` |
+| `arange(start, stop, step)` | `numpy.arange` |
+| `linspace(start, stop, num)` | `numpy.linspace` |
+| `reshape(x, shape)` | `numpy.reshape` |
+| `permute_dims(x, axes)` | `numpy.permute_dims`, `numpy.transpose` |
+| `concat(arrays, axis=0)` | `numpy.concat`, `numpy.concatenate` |
+| `sum(x, axis=0)` | `numpy.sum` |
+| `mean(x)`, `var(x, correction=1)` | `numpy.mean`, `numpy.var(x, ddof=1)` |
+| `quantile(x, q)` | `numpy.quantile` |
+| `cumulative_sum(x)` | `numpy.cumulative_sum`, `numpy.cumsum` |
+| `nansum(x)` | `numpy.nansum` |
+| `sort(x)`, `argsort(x)` | `numpy.sort`, `numpy.argsort` |
+| `unique_values(x)` | `numpy.unique_values`, `numpy.unique` |
+| `diff(x)` | `numpy.diff` |
+| `interp(x, xp, fp)` | `numpy.interp` |
+| `where(c, a, b)` | `numpy.where` |
+| `matmul(a, b)`, `a @ b` | `numpy.matmul`, `a @ b` |
 
 - Function names are those of the Python array API standard (`concat`, `permute_dims`, `pow`, `acos`,
   `cumulative_sum`), which recent NumPy versions also provide. Each function has one name: the older NumPy names
@@ -94,9 +96,7 @@ original array, so writing to a view changes the original; other operations retu
   `unique_*` functions do not. Complex arrays cannot be sorted.
 - No function issues warnings. `sd.log` of 0 returns `-inf` silently, and integer `x // 0` is 0 and `x % 0` is `x`;
   NumPy returns 0 for both and warns.
-- `var` and `std` divide by $n$ by default (`correction=0`), as NumPy does with `ddof=0`. R's `var` and `sd` divide by
-  $n - 1$; pass `correction=1` for the same result.
-- `reshape` and `ravel` read and place elements in row-major order (the last axis varies fastest), so a new shape is
-  filled row by row. R's `matrix` and `dim<-` fill column by column.
-- Indexing follows NumPy's rules except for a few cases listed on the [Indexing](/api/array/indexing/) page; R counts
-  positions from 1.
+- `var` and `std` divide by $n$ by default (`correction=0`), as NumPy does with `ddof=0`.
+- `reshape` and `ravel` always read and place elements in row-major order (the last axis varies fastest), the NumPy
+  default `order="C"`; there is no `order=` argument.
+- Indexing follows NumPy's rules except for a few cases listed on the [Indexing](/api/array/indexing/) page.

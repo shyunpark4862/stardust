@@ -108,9 +108,9 @@ the first value becomes NaN even when `start` is finite: `linspace(0, inf, 3)` i
 
 A `dtype` of `int64` truncates the computed values toward zero: `linspace(-1, 0, 3, dtype=sd.int64)` is `[-1, 0, 0]`.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.linspace` and R's `seq(from, to, length.out = n)`.
+The nearest equivalent is `numpy.linspace`.
 
 - `num` is required; NumPy defaults to 50. All three main arguments are positional-only.
 - `start` and `stop` must be scalars. NumPy also accepts arrays and has `axis=` and `retstep=` arguments.

@@ -1,0 +1,143 @@
+---
+kind: function
+title: solve_sylvester
+names: [solve_sylvester]
+group: Structured matrices
+order: 3
+signatures:
+  - "sd.linalg.solve_sylvester(a, b, c, /)"
+summary: Solve the Sylvester equation a @ x + x @ b = c for x.
+params:
+  - name: a
+    type: array of shape (..., m, m)
+    kind: positional-only
+    desc: "Square matrix that multiplies `x` from the left, of any dtype, or a stack of them (see [matrices and stacks](/api/linalg/#matrices-and-stacks))."
+  - name: b
+    type: array of shape (..., n, n)
+    kind: positional-only
+    desc: "Square matrix that multiplies `x` from the right, in the same forms as `a`. Its size `n` may differ from that of `a`."
+  - name: c
+    type: array of shape (..., m, n)
+    kind: positional-only
+    desc: "Right-hand side, in the same forms as `a`. Always a matrix: a 1-D `c` is rejected. The leading axes of `a`, `b` and `c` broadcast against each other."
+returns:
+  - type: ndarray of shape (..., m, n)
+    desc: "Solution `x`, with the shape of `c` after broadcasting. `float64`, or `complex128` when `a`, `b` or `c` is complex (see [result types](/api/linalg/#result-types))."
+raises:
+  - type: TypeError
+    desc: "If `a`, `b` or `c` is not an `sd.ndarray`."
+  - type: ValueError
+    desc: "If `a` or `b` has fewer than two dimensions or is not square, if `c` has fewer than two dimensions or is not `m` by `n`, if the leading axes do not broadcast, or if `a`, `b` or `c` contains NaN or infinity."
+  - type: LinAlgError
+    desc: "If an eigenvalue of `a` and the negative of an eigenvalue of `b`, as computed, are equal or too close to tell apart (see [Notes](#notes)), or if the eigenvalue computation for `a` or `b` does not converge. For a stack, the message gives the index of the first matrix that failed."
+seeAlso: [solve, schur, eig, kron, expm]
+---
+
+`solve_sylvester` finds the matrix `x` with `a @ x + x @ b = c`, where `a` is $m \times m$, `b` is $n \times n$ and
+`x` and `c` are $m \times n$. This is the Sylvester equation, a linear system in the $m n$ unknown elements of `x`. It
+has exactly one solution when no eigenvalue of `a` is the negative of an eigenvalue of `b`. When the computed
+eigenvalues come too close to such a pair, the function raises `LinAlgError` (see [Notes](#notes)).
+
+With `b = sd.conj(a.mT)` the equation is the continuous Lyapunov equation $A X + X A^H = C$, which appears in
+stability analysis and control. The function works with the $m \times m$ and $n \times n$ matrices themselves; the
+equivalent $m n \times m n$ linear system (see [Notes](#notes)) is never formed.
+
+## Examples
+
+A 2-by-2 equation, and a check that the solution satisfies it:
+
+```python
+>>> import stardust as sd
+>>> a = sd.asarray([[3.0, 1.0], [0.0, 2.0]])
+>>> b = sd.asarray([[1.0, 0.0], [1.0, 4.0]])
+>>> c = sd.asarray([[9.0, 18.0], [13.0, 24.0]])
+>>> x = sd.linalg.solve_sylvester(a, b, c)
+>>> x
+array([[1.0, 2.0],
+       [3.0, 4.0]], dtype=float64)
+>>> a @ x + x @ b
+array([[ 9.0, 18.0],
+       [13.0, 24.0]], dtype=float64)
+```
+
+`a` and `b` may have different sizes; `c` and the solution are then not square:
+
+```python
+>>> sd.linalg.solve_sylvester(sd.asarray([[1.0, 2.0], [0.0, 3.0]]), sd.asarray([[4.0]]), sd.asarray([[9.0], [14.0]]))
+array([[1.0],
+       [2.0]], dtype=float64)
+```
+
+A Lyapunov equation `a @ x + x @ a.mT = -I` for a matrix whose eigenvalues have negative real parts. The solution is
+symmetric:
+
+```python
+>>> s = sd.asarray([[-2.0, 1.0], [0.0, -3.0]])
+>>> p = sd.linalg.solve_sylvester(s, s.mT, -sd.eye(2))
+>>> p
+array([[0.26666666666666666, 0.03333333333333333],
+       [0.03333333333333333, 0.16666666666666666]], dtype=float64)
+>>> bool(sd.all(p == p.mT))
+True
+```
+
+When `a` and `-b` share an eigenvalue, there is no unique solution and the function raises `LinAlgError`. A 1-D `c`
+raises `ValueError`:
+
+```python
+>>> sd.linalg.solve_sylvester(sd.eye(2), -sd.eye(2), sd.ones((2, 2)))
+Traceback (most recent call last):
+    ...
+stardust.linalg.LinAlgError: solve_sylvester(): a and -b have a common or close eigenvalue
+>>> sd.linalg.solve_sylvester(a, b, sd.asarray([9.0, 18.0]))
+Traceback (most recent call last):
+    ...
+ValueError: solve_sylvester(): 'c' must have at least 2 dimensions, got 1
+```
+
+<Reference />
+
+## Notes
+
+Stacking the columns of $X$ and $C$ into vectors turns the equation $A X + X B = C$ into the linear system
+
+$$
+\big( I_n \otimes A + B^T \otimes I_m \big) \operatorname{vec}(X) = \operatorname{vec}(C) ,
+$$
+
+where $\otimes$ is the Kronecker product. The eigenvalues of this $m n \times m n$ matrix are the sums
+$\lambda_i + \mu_j$ of an eigenvalue $\lambda_i$ of $A$ and an eigenvalue $\mu_j$ of $B$. The solution is therefore
+unique exactly when $\lambda_i + \mu_j \ne 0$ for all $i$ and $j$, that is, when $A$ and $-B$ have no eigenvalue in
+common.
+
+The function uses the Bartels–Stewart method [1]. It reduces `a` and `b` to Schur form (see
+[`schur`](/api/linalg/schur/)), solves the resulting triangular Sylvester equation and transforms the solution back.
+Real `a`, `b` and `c` are solved in real arithmetic, even when `a` or `b` has complex eigenvalues. When any of the
+three is complex, the whole computation is complex.
+
+The other solvers raise `LinAlgError` only for an exact zero pivot. `solve_sylvester` raises it when a sum
+$\lambda_i + \mu_j$ of computed eigenvalues is zero or no larger than about $2^{-52}$ times the largest element of `a`
+and `b` in magnitude, the level at which it cannot be told apart from zero. A sum below about $10^{-292}$ also raises
+it, even when every element of `a` and `b` is as small (`a = b = c = [[1e-295]]`, with solution `0.5`). The eigenvalues
+carry rounding errors, so an equation that has no unique solution in exact arithmetic does not always reach this level,
+even for integer `a` and `b`. The function then returns a solution with very large elements and no warning, as
+[`solve`](/api/linalg/solve/) does for a matrix that is singular in exact arithmetic but not after rounding. A sum just
+above the level gives very large elements without a warning as well.
+
+## References
+
+1. R. H. Bartels and G. W. Stewart, "Algorithm 432: Solution of the matrix equation AX + XB = C", *Communications of
+   the ACM* 15(9), 820–826, 1972.
+
+## Comparison with other libraries
+
+The nearest equivalent is `scipy.linalg.solve_sylvester(a, b, q)`, which solves the same equation. NumPy has no
+Sylvester solver.
+
+- For `a = [[1.0]]`, `b = [[-1.0]]`, `c = [[1.0]]`, where `a` and `-b` share an eigenvalue exactly,
+  `scipy.linalg.solve_sylvester` returns about `4.5e15` without an error or a warning. Here the case raises
+  `LinAlgError`.
+- When the arguments mix real and complex dtypes and a real `a` or `b` has complex eigenvalues, the result of
+  `scipy.linalg.solve_sylvester` does not satisfy the equation; for `a = [[0.0, -1.0], [1.0, 0.0]]`, `b = [[2j]]`,
+  `c = [[1.0], [0.0]]` the residual `a @ x + x @ b - c` has elements of size `0.5`. Here all three arguments are then
+  converted to `complex128`, and the result satisfies the equation up to rounding.

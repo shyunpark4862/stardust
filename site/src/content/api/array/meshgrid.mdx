@@ -96,11 +96,9 @@ order. Each result has the dtype of its own argument; the dtypes are not promote
 [Broadcasting](/api/array/broadcasting/) gives the same values without building the full grids: with `x` reshaped to
 shape `(1, 3)` and `y` to shape `(2, 1)`, `x * y` equals `X * Y` above.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.meshgrid` and R's `outer(x, y, FUN)` and `expand.grid(x, y)`.
+The nearest equivalent is `numpy.meshgrid`.
 
 - Every argument must be a 1-D `sd.ndarray`; NumPy also accepts lists and flattens arrays of higher dimension.
 - There are no `sparse=` and `copy=` arguments. The results are always full, independent arrays.
-- R's `outer(x, y, FUN)` evaluates `FUN` on the grid directly, with `x` along the rows, as `indexing="ij"` arranges
-  it. `expand.grid` returns a data frame with one row per grid point.

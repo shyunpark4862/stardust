@@ -113,14 +113,12 @@ would give a finite value.
 For a product of many positive values, the sum of their logarithms, `sd.sum(sd.log(x))`, stays in range where the
 product itself would overflow or underflow.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.prod`, the method `numpy.ndarray.prod`, and R's `prod`.
+The nearest equivalents are `numpy.prod` and the method `numpy.ndarray.prod`.
 
 - The multiplications are done in a different order from NumPy's, so results for `float64` and `complex128` input
   can differ from NumPy's in the last digit. When partial products overflow, the results can differ completely:
   `sd.prod(sd.asarray([1e200, 1e-200] * 8))` is `nan`, while NumPy returns `1.0`.
 - Overflow to infinity and the NaN of `0 * inf` occur without a warning. NumPy issues a `RuntimeWarning`.
 - There are no `out=`, `initial=` or `where=` arguments, and `dtype=sd.bool` raises `TypeError`.
-- R's `prod` returns a single number for any array, and a `double` for integer input, so `prod(1:21)` does not wrap
-  around.

@@ -110,13 +110,11 @@ branch cut of a complex function, this sign selects the other side (see
 
 With `out`, every function writes into `out` and returns it, as other element-wise functions do; no view is created.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.real`, `numpy.imag` and `numpy.conj` (also `numpy.conjugate`), and R's `Re`, `Im`
-and `Conj`.
+The nearest equivalents are `numpy.real`, `numpy.imag` and `numpy.conj` (also `numpy.conjugate`).
 
 - There are no `x.real` and `x.imag` attributes and no `x.conj()` method, which NumPy arrays have.
 - As in NumPy, `real` of a complex array is a writable view, `real` of a real array is the array itself, and `imag`
   of a real array is read-only.
-- There is no `conjugate` alias and no `angle` function. R's `Mod` and `Arg` correspond to `abs(z)` and
-  `atan2(imag(z), real(z))`.
+- There is no `conjugate` alias and no `angle` function; `atan2(imag(z), real(z))` gives the angle.

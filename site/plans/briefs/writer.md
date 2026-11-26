@@ -5,7 +5,8 @@ You write reference pages for the English documentation site of the Python libra
 
 Read first, in full, before writing anything:
 1. site/WRITING.md — binding rules. §2 (voice: professional library reference, imperative summaries, impersonal,
-   no "you") and §4 (page anatomy) matter most. Re-read §2 before your final pass.
+   no "you"), §4 (page anatomy) and §10 (which libraries the comparison section names, and its format) matter most.
+   Re-read §2 before your final pass.
 2. site/plans/<area>.md — the outline and the "공통 결정" (shared decisions) section. The shared decisions are binding:
    other agents write sibling pages in parallel and all pages must agree in terms, type notation, group names and slugs.
 3. The model pages named in the shared decisions. Match their frontmatter shape, tone, and example style.

@@ -26,7 +26,7 @@ raises:
   - type: ValueError
     desc: "If `x` has fewer than two dimensions or is not square, or if its lower triangle contains NaN or infinity."
   - type: LinAlgError
-    desc: "If a matrix in `x` is not positive definite to working precision: a pivot of its factorization is zero or negative. For a stack, the message gives the index of the first such matrix."
+    desc: "If a matrix in `x` is not positive definite to working precision (a pivot of its factorization is zero or negative). For a stack, the message gives the index of the first such matrix."
 seeAlso: [cholesky_solve, ldl, eigh, lu, solve]
 ---
 
@@ -40,8 +40,8 @@ structure of `x`. Since the factorization exists exactly when the matrix is posi
 also serves as a test for positive definiteness: it raises `LinAlgError` otherwise. For symmetric
 matrices that are not positive definite, [`ldl`](/api/linalg/ldl/) gives a factorization that always exists.
 
-Only the lower triangle of `x` is read, also when `upper` is `True` (see [symmetric and Hermitian input](/api/linalg/#symmetric-and-hermitian-input)). The
-function does not check that `x` is symmetric.
+Only the lower triangle of `x` is read, also when `upper` is `True` (see [symmetric and Hermitian
+input](/api/linalg/#symmetric-and-hermitian-input)). The function does not check that `x` is symmetric.
 
 ## Examples
 
@@ -143,14 +143,18 @@ from a `b` with fewer columns than rows is sometimes factored without an error.
 The factor of a positive-definite matrix exists without pivoting, so `cholesky` returns no permutation. A matrix
 with `n` equal to 0 gives an empty factor.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.linalg.cholesky`, `scipy.linalg.cholesky` and R's `chol`.
+**NumPy.** The nearest equivalent is `numpy.linalg.cholesky`.
 
-- The default is the lower factor, as in NumPy. `scipy.linalg.cholesky` returns the upper factor by default
-  (`lower=False`), and so does R's `chol`.
-- With `upper=True` the lower triangle is still the one read. `numpy.linalg.cholesky(a, upper=True)` and the default
-  `scipy.linalg.cholesky` read the upper triangle, and R's `chol` reads the upper triangle too.
+- The default is the lower factor, as in `numpy.linalg.cholesky`.
+- With `upper=True` the lower triangle is still the one read. `numpy.linalg.cholesky(a, upper=True)` reads the upper
+  triangle.
 - NaN or infinity in the lower triangle raises `ValueError`. `numpy.linalg.cholesky` raises `LinAlgError` for NaN,
   and returns an infinite factor for an infinite diagonal entry.
 - `upper` accepts only `True` or `False`; NumPy also accepts other values, such as `1`, by their truth value.
+
+**SciPy.** The nearest equivalent is `scipy.linalg.cholesky`.
+
+- `scipy.linalg.cholesky` returns the upper factor by default (`lower=False`) and then reads the upper triangle. Here
+  the lower triangle is read for both factors.

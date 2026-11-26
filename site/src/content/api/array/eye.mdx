@@ -98,11 +98,10 @@ Invoked with types: int, int, int
 
 <Reference />
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.eye` and R's `diag(n)`.
+The nearest equivalent is `numpy.eye`.
 
 - `k` is keyword-only; `numpy.eye(3, 3, 1)` must be written `sd.eye(3, 3, k=1)`. The sizes are named `n_rows` and
   `n_cols` instead of `N` and `M`, and are positional-only.
 - There is no `order=` argument. The result is laid out in row-major order.
-- R's `diag(1, nrow, ncol)` gives a rectangular identity; R has no offset argument like `k`.

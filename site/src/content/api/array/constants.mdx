@@ -82,9 +82,7 @@ Both values exist only in floating-point types. Assigning them to an element of 
 `newaxis` is `None`, so `x[:, None]` is the same as `x[:, sd.newaxis]`. [Indexing](/api/array/indexing/) describes
 where it may appear; [`expand_dims`](/api/array/squeeze-expand_dims/) inserts axes by position.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
 The values are equal to `numpy.e`, `numpy.pi`, `numpy.inf` and `numpy.nan`, and `numpy.newaxis` is also `None`.
 
-- In R, `pi`, `exp(1)`, `Inf` and `NaN` are the same numbers. R also has `NA`, a missing value distinct from `NaN`;
-  stardust arrays use NaN for missing values.

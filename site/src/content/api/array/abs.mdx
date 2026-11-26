@@ -85,9 +85,9 @@ is NaN when either part is NaN. The computation avoids overflow and underflow in
 result is finite whenever the magnitude itself is a finite `float64`. The results are within a few units in the last
 place of the exact value. [`hypot`](/api/array/hypot/) computes the same quantity from two real arrays.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.abs` (`numpy.absolute`) and R's `abs` and `Mod`.
+The nearest equivalent is `numpy.abs` (`numpy.absolute`).
 
 - Booleans give `int64`. `numpy.abs` of a Boolean array returns `bool`.
 - The magnitude of complex numbers may differ from NumPy's in the last bit.

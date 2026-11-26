@@ -143,9 +143,9 @@ Buffers in big-endian byte order are copied. A shared buffer keeps its strides, 
 `base` is the source object. A read-only buffer gives a read-only array. Bool bytes other than 0 and 1 are normalized
 in a copy.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.asarray` and R's `c()`, `matrix()` and `array()`.
+The nearest equivalent is `numpy.asarray`.
 
 - A scalar or a 0-D NumPy array raises `ValueError`; `numpy.asarray(5)` returns a 0-D array.
 - Strings, `None`, generators and sets raise `TypeError` instead of giving string or object arrays. Python integers
@@ -153,4 +153,3 @@ The nearest equivalents are `numpy.asarray` and R's `c()`, `matrix()` and `array
 - `dtype` takes only the four array dtypes or their names. Python types such as `float` and NumPy dtypes such as
   `numpy.float32` raise `TypeError`. NumPy arrays of unsigned 64-bit integers are refused.
 - There are no `order=`, `device=` or `like=` arguments.
-- R's `matrix(data, nrow)` fills column by column unless `byrow = TRUE`. Nested lists in `asarray` are read row by row.

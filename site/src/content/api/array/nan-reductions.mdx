@@ -176,11 +176,10 @@ extreme value. When that value is itself infinite and a NaN comes before it, the
 0
 ```
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
 The nearest equivalents are `numpy.nansum`, `numpy.nanprod`, `numpy.nanmin`, `numpy.nanmax`, `numpy.nanmean`,
-`numpy.nanvar`, `numpy.nanstd`, `numpy.nanargmin` and `numpy.nanargmax`, and R's `sum`, `prod`, `min`, `max`, `mean`,
-`var` and `sd` with `na.rm = TRUE`, and `which.min` and `which.max`.
+`numpy.nanvar`, `numpy.nanstd`, `numpy.nanargmin` and `numpy.nanargmax`.
 
 - An output element with only NaN gives NaN (or 0 and 1 for sums and products) without a warning. NumPy issues a
   `RuntimeWarning` ("All-NaN slice encountered", "Mean of empty slice").
@@ -188,5 +187,3 @@ The nearest equivalents are `numpy.nansum`, `numpy.nanprod`, `numpy.nanmin`, `nu
 - There is no `ddof=` argument; `correction` takes its place, with NumPy's default 0.
 - There are no `out=`, `initial=`, `where=` or `mean=` arguments, `dtype=` exists for `nansum` and `nanprod` only, and
   there are no methods: `x.nansum()` does not exist.
-- R's `min` and `max` with `na.rm = TRUE` return `Inf` and `-Inf` with a warning when nothing remains; here the result
-  is NaN. R's `var` and `sd` divide by $m - 1$, which is `correction=1`.

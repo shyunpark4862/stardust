@@ -65,11 +65,10 @@ array([[10,  2,  3],
 
 <Reference />
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.ravel` and R's `as.vector(x)` or `c(x)`.
+The nearest equivalent is `numpy.ravel`.
 
-- There is no `order` argument: the order is always row-major. R reads arrays in column-major order, so `c(x)` of a
-  matrix lists its columns one after another.
+- There is no `order` argument: the order is always row-major.
 - There is no `flatten` method. `reshape(x, -1, copy=True)` always returns a copy.
 - `x` must be an `sd.ndarray`; lists raise `TypeError`.

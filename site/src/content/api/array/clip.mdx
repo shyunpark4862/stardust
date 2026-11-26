@@ -109,9 +109,9 @@ With `min` greater than `max`, the upper bound is applied last:
 array([4, 4, 4], dtype=int64)
 ```
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalent is `numpy.clip`. R has no single function; `pmin(pmax(x, lo), hi)` does the same.
+The nearest equivalent is `numpy.clip`.
 
 - The bounds are keyword-only: `clip(x, min=0, max=1)`. `numpy.clip` also takes them by position.
 - The result keeps the dtype of `x`, and a bound of a wider dtype raises `TypeError`. `numpy.clip` promotes:

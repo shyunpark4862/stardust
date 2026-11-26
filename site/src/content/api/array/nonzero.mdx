@@ -75,12 +75,9 @@ The result is the same for any memory layout of `x`: for the transpose `x.T`, th
 elements of `x.T` in its own row-major order. An array without nonzero elements gives empty arrays, one per axis.
 The arrays of the result are new and writable.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.nonzero` (also `numpy.where` with one argument) and R's
-`which(x != 0, arr.ind = TRUE)`.
+The nearest equivalent is `numpy.nonzero` (also `numpy.where` with one argument).
 
 - [`where`](/api/array/where/) always takes three arguments; the one-argument form `numpy.where(c)` is `nonzero(c)`.
 - `x` must be an `sd.ndarray`; lists and Python scalars raise `TypeError`.
-- R's `which` gives positions starting at 1. For a matrix, `arr.ind = TRUE` gives one row per element, in
-  column-major order; `which` without it gives positions in the flattened, column-major vector.

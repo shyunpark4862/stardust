@@ -1,0 +1,134 @@
+---
+kind: function
+title: trace
+names: [trace]
+group: Products and powers
+order: 6
+signatures:
+  - "sd.linalg.trace(x, /, *, k=0, dtype=None)"
+summary: Compute the sum along a diagonal of a matrix.
+params:
+  - name: x
+    type: array of shape (..., m, n)
+    kind: positional-only
+    desc: "Matrix, of any dtype, or a stack of them (see [matrices and stacks](/api/linalg/#matrices-and-stacks)). Need not be square."
+  - name: k
+    type: int
+    kind: keyword-only
+    default: "0"
+    desc: "Offset of the diagonal: 0 is the main diagonal, a positive value a diagonal above it, a negative value one below it. An offset outside the matrix selects an empty diagonal."
+  - name: dtype
+    type: dtype, str or None
+    kind: keyword-only
+    default: None
+    desc: "Data type of the result: `sd.int64`, `sd.float64` or `sd.complex128`, or its name as a string. The diagonal is converted to it before it is summed (see [explicit conversion](/api/array/dtypes/#explicit-conversion)). `None` sums in `float64`, or in `complex128` when `x` is complex."
+returns:
+  - type: ndarray, float, complex or int
+    desc: "Sum of the diagonal of each matrix, with the shape of the leading axes of `x`. `float64`, or `complex128` when `x` is complex (see [result types](/api/linalg/#result-types)); the dtype given by `dtype` when it is not `None`. A Python `float`, `complex` or `int` when `x` is 2-D."
+raises:
+  - type: TypeError
+    desc: "If `x` is complex and `dtype` is `sd.int64` or `sd.float64`, if `x` is not an `sd.ndarray`, if `k` is not an `int`, or if `dtype` is not `sd.int64`, `sd.float64`, `sd.complex128` or the name of one of them."
+  - type: ValueError
+    desc: "If `x` has fewer than two dimensions."
+  - type: OverflowError
+    desc: "If `k` is an `int` outside the `int64` range."
+seeAlso: [diagonal, det, eig, eigh, array/sum]
+---
+
+`trace` adds up the elements on one diagonal of a matrix. With `k=0` it is the main diagonal, the elements
+`x[i, i]`; with another `k` it is the diagonal `k` places above (positive `k`) or below (negative `k`) it, as selected
+by [`diagonal`](/api/linalg/diagonal/). The matrix need not be square, and a diagonal that lies outside the matrix is
+empty and sums to 0.
+
+The trace of a square matrix equals the sum of its eigenvalues, counted with multiplicity, and is unchanged by a
+change of basis. `trace(a @ b)` equals `trace(b @ a)` up to rounding.
+
+Without `dtype`, the sum is computed in `float64` (see [result types](/api/linalg/#result-types)), so the trace of an
+integer matrix is a `float`. The `dtype` argument chooses the dtype of the sum instead. The diagonal is converted to it
+first, as by `astype`: with `sd.int64`, floating-point elements are truncated toward zero and the integer sum wraps
+around outside the `int64` range (see [integer overflow](/api/array/dtypes/#integer-overflow)). A complex matrix only
+accepts `sd.complex128`; the trace of its real part is `trace(sd.real(x), dtype=...)`.
+
+## Examples
+
+The trace of a square matrix. Integer input gives a `float`:
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([[4, 1, 0], [2, 5, 7], [1, 1, 6]])
+>>> sd.linalg.trace(x)
+15.0
+>>> sd.linalg.trace(x, dtype=sd.int64)
+15
+```
+
+Other diagonals of a matrix that is not square. An offset past the matrix gives 0:
+
+```python
+>>> y = sd.reshape(sd.arange(12), (3, 4))
+>>> y
+array([[ 0,  1,  2,  3],
+       [ 4,  5,  6,  7],
+       [ 8,  9, 10, 11]], dtype=int64)
+>>> sd.linalg.trace(y, k=1)
+18.0
+>>> sd.linalg.trace(y, k=-2)
+8.0
+>>> sd.linalg.trace(y, k=4)
+0.0
+```
+
+A stack gives one trace per matrix. The trace equals the sum of the eigenvalues:
+
+```python
+>>> sd.linalg.trace(sd.reshape(sd.arange(8), (2, 2, 2)))
+array([ 3.0, 11.0], dtype=float64)
+>>> m = sd.asarray([[2.0, 1.0], [1.0, 3.0]])
+>>> sd.linalg.trace(m), sd.sum(sd.linalg.eigvalsh(m))
+(5.0, 5.0)
+```
+
+`dtype=sd.int64` truncates each element before summing. A complex matrix needs its real part taken explicitly:
+
+```python
+>>> sd.linalg.trace(sd.asarray([[1.5, 0.0], [0.0, 2.7]]), dtype=sd.int64)
+3
+>>> z = sd.asarray([[1 + 2j, 5j], [3, 4 - 1j]])
+>>> sd.linalg.trace(z)
+(5+1j)
+>>> sd.linalg.trace(z, dtype=sd.float64)
+Traceback (most recent call last):
+    ...
+TypeError: trace(): cannot convert complex128 to float64: the imaginary part would be lost (take the real part explicitly)
+>>> sd.linalg.trace(sd.real(z), dtype=sd.int64)
+5
+```
+
+<Reference />
+
+## Notes
+
+For an $m \times n$ matrix $A$ and offset $k$, the trace is
+
+$$
+\operatorname{tr}_k(A) = \sum_{i} a_{i,\, i + k} ,
+$$
+
+over the rows $i$ for which $0 \le i \lt m$ and $0 \le i + k \lt n$. For a square matrix and $k = 0$,
+$\operatorname{tr}(A) = \sum_i \lambda_i$, the sum of the eigenvalues.
+
+For `float64` and `complex128` input, the result equals `sd.sum(diagonal(x, k=k), axis=-1)` bit for bit, so the
+elements are added by the pairwise summation of [`sum`](/api/array/sum/). NaN and infinity are not rejected; they
+propagate into the sum (see [finite values](/api/linalg/#finite-values)). An empty matrix has trace 0.
+
+`dtype=sd.bool` raises `TypeError` with the message "cannot accumulate in bool".
+
+## Comparison with other libraries
+
+The nearest equivalents are `numpy.linalg.trace` and `numpy.trace`.
+
+- Without `dtype`, an integer or boolean matrix gives a `float`. NumPy keeps `int64`.
+- The offset is called `k`; NumPy calls it `offset`.
+- For a stack, the matrices are the last two axes, as in `numpy.linalg.trace`. `numpy.trace` uses the first two axes
+  by default.
+- A complex matrix with a real `dtype` raises `TypeError`. NumPy discards the imaginary part with a `ComplexWarning`.

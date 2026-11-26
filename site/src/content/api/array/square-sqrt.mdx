@@ -103,10 +103,9 @@ special values follow the C function `csqrt`.
 `x ** 0.5` computes the square root too, but it differs from `sqrt` at `-0.0` and $-\infty$; see
 [`pow`](/api/array/pow/).
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.square` and `numpy.sqrt`, and R's `x^2` and `sqrt`.
+The nearest equivalents are `numpy.square` and `numpy.sqrt`.
 
 - `square` of a Boolean array gives `int64`. NumPy returns `int8`.
-- The square root of a negative number is NaN without a warning. NumPy issues a `RuntimeWarning`, and R warns "NaNs produced".
-- In R, `sqrt(as.complex(-1))` gives the complex root, as `sqrt(x.astype(sd.complex128))` does here.
+- The square root of a negative number is NaN without a warning. NumPy issues a `RuntimeWarning`.

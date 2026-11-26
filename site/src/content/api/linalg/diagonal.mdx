@@ -1,0 +1,119 @@
+---
+kind: function
+title: diagonal
+names: [diagonal]
+group: Products and powers
+order: 7
+signatures:
+  - "sd.linalg.diagonal(x, /, *, k=0)"
+summary: Return the elements on a diagonal of a matrix.
+params:
+  - name: x
+    type: array of shape (..., m, n)
+    kind: positional-only
+    desc: "Matrix, of any dtype, or a stack of them (see [matrices and stacks](/api/linalg/#matrices-and-stacks)). Need not be square."
+  - name: k
+    type: int
+    kind: keyword-only
+    default: "0"
+    desc: "Offset of the diagonal: 0 is the main diagonal, a positive value a diagonal above it, a negative value one below it. An offset outside the matrix selects an empty diagonal."
+returns:
+  - type: ndarray of shape (..., l)
+    desc: "Elements `x[..., i, i + k]` of the diagonal, in order of increasing row `i`. Its length `l` is `min(m, n - k)` for `k >= 0` and `min(m + k, n)` for `k < 0`, or 0 when the diagonal lies outside the matrix. Same dtype as `x`. A new, writable array that shares no memory with `x`."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`, or if `k` is not an `int`."
+  - type: ValueError
+    desc: "If `x` has fewer than two dimensions."
+  - type: OverflowError
+    desc: "If `k` is an `int` outside the `int64` range."
+seeAlso: [trace, block_diag, array/diag, array/tril-triu, array/views]
+---
+
+`diagonal` returns the elements on one diagonal of a matrix as a vector. With `k=0` it is the main diagonal, the
+elements `x[i, i]`; with another `k` it is the diagonal `k` places above (positive `k`) or below (negative `k`) it.
+The matrix need not be square, and a diagonal that lies outside the matrix is empty. For a stack, each matrix gives
+one row of the result.
+
+The result is a copy, not a view (see [Views and copies](/api/array/views/)): writing into it leaves `x` unchanged,
+and later changes to `x` do not show in it. Unlike the other functions of this area, `diagonal` keeps the dtype of
+its input, since it only copies elements (see [result types](/api/linalg/#result-types)).
+
+`diagonal` and [`sd.diag`](/api/array/diag/) work in opposite directions. `sd.diag` builds a square matrix with a
+given vector on one diagonal and zeros elsewhere; it accepts only 1-D arrays. `sd.diag(diagonal(x))` therefore keeps
+the main diagonal of a square `x` and sets every other element to zero. Writing values onto the diagonal of an
+existing matrix is index assignment with two index arrays (see [`sd.diag`](/api/array/diag/)).
+
+## Examples
+
+The main diagonal and two other diagonals of a matrix that is not square:
+
+```python
+>>> import stardust as sd
+>>> x = sd.reshape(sd.arange(12), (3, 4))
+>>> x
+array([[ 0,  1,  2,  3],
+       [ 4,  5,  6,  7],
+       [ 8,  9, 10, 11]], dtype=int64)
+>>> sd.linalg.diagonal(x)
+array([ 0,  5, 10], dtype=int64)
+>>> sd.linalg.diagonal(x, k=1)
+array([ 1,  6, 11], dtype=int64)
+>>> sd.linalg.diagonal(x, k=-1)
+array([4, 9], dtype=int64)
+>>> sd.linalg.diagonal(x, k=5)
+array([], dtype=int64)
+```
+
+The dtype is kept, and a stack gives one diagonal per matrix:
+
+```python
+>>> sd.linalg.diagonal(sd.asarray([[True, False], [False, True]]))
+array([True, True], dtype=bool)
+>>> sd.linalg.diagonal(sd.reshape(sd.arange(8), (2, 2, 2)))
+array([[0, 3],
+       [4, 7]], dtype=int64)
+```
+
+The result is a copy. Writing into it does not change `x`:
+
+```python
+>>> d = sd.linalg.diagonal(x)
+>>> d[0] = 99
+>>> d
+array([99,  5, 10], dtype=int64)
+>>> x[0, 0]
+0
+```
+
+`sd.diag` turns the diagonal back into a matrix, and refuses a 2-D argument:
+
+```python
+>>> a = sd.asarray([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+>>> sd.diag(sd.linalg.diagonal(a))
+array([[1, 0, 0],
+       [0, 5, 0],
+       [0, 0, 9]], dtype=int64)
+>>> sd.diag(a)
+Traceback (most recent call last):
+    ...
+ValueError: diag(): 'x' must have 1 dimension, got 2; for the diagonal of a matrix use sd.linalg.diagonal
+```
+
+<Reference />
+
+## Notes
+
+For an $m \times n$ matrix and offset $k$, the diagonal holds the elements $a_{i,\, i + k}$ for the rows $i$ with
+$0 \le i \lt m$ and $0 \le i + k \lt n$. Its sum is [`trace(x, k=k)`](/api/linalg/trace/).
+
+The values are copied as they are, NaN, infinity and the sign of zero included.
+
+## Comparison with other libraries
+
+The nearest equivalents are `numpy.linalg.diagonal` and `numpy.diagonal`.
+
+- The result is a new, writable copy. NumPy returns a read-only view of the input.
+- The offset is called `k`; NumPy calls it `offset`.
+- For a stack, the matrices are the last two axes, as in `numpy.linalg.diagonal`. `numpy.diagonal` uses the first two
+  axes by default.

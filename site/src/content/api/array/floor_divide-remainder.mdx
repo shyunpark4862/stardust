@@ -135,13 +135,11 @@ remainder has the sign of the divisor, for example `remainder(2.0, -2.0)` is `-0
 
 The last two rows follow Python: `-1.0 % float("inf")` is `inf`, as here.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.floor_divide` and `numpy.remainder`, and R's `%/%` and `%%`.
+The nearest equivalents are `numpy.floor_divide` and `numpy.remainder`.
 
 - An integer remainder by zero is `x1`. NumPy returns 0 with a `RuntimeWarning`; both give 0 for the quotient.
 - Booleans count as 0 and 1 and give `int64`. NumPy returns `int8` for two Boolean arrays.
 - `divmod(x1, x2)` and `numpy.divmod` have no counterpart: `divmod` on an array raises `TypeError`. Call both
   functions instead.
-- In R, an integer division by zero gives `NA` for both `%/%` and `%%`. For doubles, R gives `Inf` and `NaN`, as
-  here.

@@ -129,16 +129,11 @@ On a cut, the sign of the zero part chooses the side: `asin(complex(2, 0.0))` is
 **Accuracy.** For `float64` input, the results are within a few units in the last place of the exact value, and the
 special values are exact.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
 The nearest equivalents are `numpy.sin`, `numpy.cos`, `numpy.tan`, `numpy.asin` (also `numpy.arcsin`), `numpy.acos`
-and `numpy.atan`, and R's `sin`, `cos`, `tan`, `asin`, `acos` and `atan`.
+and `numpy.atan`.
 
 - The inverse functions are named `asin`, `acos` and `atan`; there are no `arcsin`, `arccos` and `arctan` aliases.
 - Results for `float64` input can differ from NumPy's in the last digit.
-- No warning is issued for an argument outside the domain. NumPy issues a `RuntimeWarning`, and R warns "NaNs
-  produced".
-- On the branch cuts, R chooses the other side for a zero imaginary part: R's `asin(2+0i)` is `1.570796-1.316958i`,
-  while `sd.asin(2 + 0j)` is `(1.5707963267948966+1.3169578969248166j)`, the value NumPy also gives.
-- R has `sinpi`, `cospi` and `tanpi`, which compute `sin(pi * x)` and the others without rounding `pi * x` first,
-  so `sinpi(1)` is exactly 0; stardust has no such functions.
+- No warning is issued for an argument outside the domain. NumPy issues a `RuntimeWarning`.

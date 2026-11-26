@@ -1,0 +1,144 @@
+---
+kind: function
+title: det, slogdet
+names: [det, slogdet]
+group: Norms and scalar measures
+order: 4
+signatures:
+  - "sd.linalg.det(x, /)"
+  - "sd.linalg.slogdet(x, /)"
+summary: Compute the determinant of a square matrix, or its sign and the logarithm of its absolute value.
+params:
+  - name: x
+    type: array of shape (..., n, n)
+    kind: positional-only
+    desc: "Square matrix, of any dtype, or a stack of them (see [matrices and stacks](/api/linalg/#matrices-and-stacks)). May be singular."
+returns:
+  - name: det
+    type: float, complex or ndarray of shape (...)
+    desc: "`det` only. Determinant of each matrix. `float64`, or `complex128` when `x` is complex (see [result types](/api/linalg/#result-types)). A Python `float` or `complex` for a single matrix."
+  - name: sign
+    type: float, complex or ndarray of shape (...)
+    desc: "`slogdet` only. Sign of the determinant: `1.0`, `-1.0`, or `0.0` for a singular matrix. For complex input, the determinant divided by its absolute value, or `0` for a singular matrix. `float64`, or `complex128` when `x` is complex."
+  - name: logabsdet
+    type: float or ndarray of shape (...)
+    desc: "`slogdet` only. Natural logarithm of the absolute value of the determinant, `-inf` for a singular matrix. Always `float64`."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`."
+  - type: ValueError
+    desc: "If `x` has fewer than two dimensions or is not square, or if `x` contains NaN or infinity."
+seeAlso: [lu, cond, matrix_rank, inv, solve]
+---
+
+`det` returns the determinant of a square matrix. The determinant is zero exactly when the matrix is singular, its
+absolute value is the factor by which the matrix scales volumes, and its sign tells whether the matrix preserves or
+reverses orientation.
+
+`slogdet` returns the same information in a form that does not overflow or underflow: the sign of the determinant and
+the natural logarithm of its absolute value, with `sign * sd.exp(logabsdet)` equal to the determinant up to rounding.
+The determinant of a large matrix easily falls outside the range of `float64`, for example $0.1^{400}$ for 0.1 times
+the 400-by-400 identity, while its logarithm does not. Log-likelihoods and other formulas that need $\log \det A$ use
+`slogdet`.
+
+`slogdet` returns a named tuple `SlogdetResult(sign, logabsdet)`. Its fields are read by name or by position, and its
+arrays are read-only (see [named tuples](/api/linalg/#named-tuples)). For a single matrix both fields are Python
+scalars. `det` returns a Python scalar for a single matrix and a writable array for a stack.
+
+A singular matrix raises no error: `det` returns `0.0` and `slogdet` returns `(0.0, -inf)`.
+
+## Examples
+
+The determinant of a 2-by-2 matrix, $1 \cdot 4 - 2 \cdot 3$. Integer input gives a `float`:
+
+```python
+>>> import stardust as sd
+>>> x = sd.asarray([[1, 2], [3, 4]])
+>>> sd.linalg.det(x)
+-2.0
+>>> sd.linalg.slogdet(x)
+SlogdetResult(sign=-1.0, logabsdet=0.6931471805599455)
+```
+
+A stack gives one value per matrix:
+
+```python
+>>> stack = sd.stack([sd.asarray([[2.0, 1.0], [1.0, 3.0]]), 3 * sd.eye(2)])
+>>> sd.linalg.det(stack)
+array([5.0, 9.0], dtype=float64)
+>>> sign, logabsdet = sd.linalg.slogdet(stack)
+>>> sign
+array([1.0, 1.0], dtype=float64)
+```
+
+The determinant of 0.1 times the 400-by-400 identity, $10^{-400}$, underflows to zero; its logarithm, $400 \log 0.1$,
+is representable:
+
+```python
+>>> big = 0.1 * sd.eye(400)
+>>> sd.linalg.det(big)
+0.0
+>>> sd.linalg.slogdet(big).logabsdet
+-921.0340371976151
+```
+
+For complex input, `sign` is a complex number of absolute value 1:
+
+```python
+>>> c = sd.asarray([[1j, 2.0], [3.0, 4.0]])
+>>> sd.linalg.det(c)
+(-6+4j)
+>>> sd.linalg.slogdet(c)
+SlogdetResult(sign=(-0.8320502943378437+0.554700196225229j), logabsdet=1.9756218592907138)
+```
+
+A singular matrix gives zero without an error, but only when rounding leaves an exact zero pivot. A matrix that is
+singular in exact arithmetic often gives a tiny nonzero determinant instead:
+
+```python
+>>> sd.linalg.det(sd.asarray([[1.0, 2.0], [2.0, 4.0]]))
+0.0
+>>> sd.linalg.slogdet(sd.asarray([[1.0, 2.0], [2.0, 4.0]]))
+SlogdetResult(sign=0.0, logabsdet=-inf)
+>>> sd.linalg.det(sd.asarray([[1.0, 2.0, 3.0], [4.0, 5.0, 6.0], [7.0, 8.0, 9.0]]))
+-9.516197353929915e-16
+```
+
+<Reference />
+
+## Notes
+
+Both functions compute the LU factorization with partial pivoting, $P A = L U$, as [`lu`](/api/linalg/lu/) does. With
+$s$ the number of row interchanges,
+
+$$
+\det A = (-1)^s \prod_{i=1}^{n} u_{ii}, \qquad
+\log \lvert \det A \rvert = \sum_{i=1}^{n} \log \lvert u_{ii} \rvert .
+$$
+
+For complex input, `sign` is $(-1)^s \prod_i u_{ii} / \lvert u_{ii} \rvert$.
+
+The matrix counts as singular only when a pivot $u_{ii}$ is exactly zero (see
+[singular matrices](/api/linalg/#singular-matrices)); then `det` is `0.0` and `slogdet` is `(0.0, -inf)`. The size of
+a nonzero determinant says little about how close a matrix is to singular: 0.1 times the identity has a tiny
+determinant and is perfectly conditioned. [`cond`](/api/linalg/cond/) and [`matrix_rank`](/api/linalg/matrix_rank/)
+measure that instead.
+
+`det` forms the product so that intermediate products do not overflow or underflow when the determinant itself is
+within the range of `float64`: the determinant of a diagonal matrix with entries $10^{200}$, $10^{200}$ and
+$10^{-300}$ is returned as `1e+100`. A determinant outside the range becomes `inf` or `0.0` without a warning.
+
+The determinant of a 0-by-0 matrix is `1.0`, and its `slogdet` is `(1.0, 0.0)`.
+
+## Comparison with other libraries
+
+**NumPy.** The nearest equivalents are `numpy.linalg.det` and `numpy.linalg.slogdet`.
+
+- `x` must be an `sd.ndarray`; lists raise `TypeError`.
+- NaN or infinity in `x` raises `ValueError`. `numpy.linalg.det` returns `nan` with a `RuntimeWarning`.
+- The result of `slogdet` has the fields `sign` and `logabsdet`, as in NumPy.
+- Results agree with NumPy's only up to rounding; for larger matrices the difference can exceed the last digit.
+
+**SciPy.** The nearest equivalent is `scipy.linalg.det`.
+
+- NaN or infinity in `x` raises `ValueError`, as in `scipy.linalg.det` by default.

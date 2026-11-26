@@ -110,12 +110,13 @@ computes. Entries too large for `float64` become infinite without an error, as f
 
 A 0-by-0 matrix has a 0-by-0 inverse. The result is a new, writable array.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.linalg.inv`, `scipy.linalg.inv` and R's `solve(a)`.
+**NumPy.** The nearest equivalent is `numpy.linalg.inv`.
 
 - `x` must be an `sd.ndarray`; lists raise `TypeError`.
-- NaN or infinity in `x` raises `ValueError`. `numpy.linalg.inv` returns an array of NaN; `scipy.linalg.inv` raises
-  `ValueError` by default, as here.
-- R's `solve` also stops when the reciprocal condition number is below `tol` (by default the machine epsilon), so it
-  rejects `diag(c(1e-17, 1))`. `inv` raises only for an exact zero pivot and returns the inverse of that matrix.
+- NaN or infinity in `x` raises `ValueError`. `numpy.linalg.inv` returns an array of NaN.
+
+**SciPy.** The nearest equivalent is `scipy.linalg.inv`.
+
+- NaN or infinity in `x` raises `ValueError`, as in `scipy.linalg.inv` by default.

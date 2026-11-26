@@ -48,8 +48,8 @@ equations than unknowns and no exact solution exists, typically when fitting a m
 `a` is rank deficient or has fewer rows than columns: among all minimizers, the function returns the one with the
 smallest norm.
 
-The result is a named tuple `LstsqResult(solution, rank, singular_values)`. Its fields are read by name or by
-position, and its arrays are read-only (see [named tuples](/api/linalg/#named-tuples)). For a square, nonsingular system,
+The result is a named tuple `LstsqResult(solution, rank, singular_values)`. Its fields are read by name or by position,
+and its arrays are read-only (see [named tuples](/api/linalg/#named-tuples)). For a square, nonsingular system,
 [`solve`](/api/linalg/solve/) gives the same solution up to rounding. The same solution is `pinv(a) @ b` in exact
 arithmetic (see [`pinv`](/api/linalg/pinv/)).
 
@@ -122,9 +122,9 @@ singular values separately and can disagree when a singular value lies very clos
 
 The residuals $\lVert A x - b \rVert_2^2$ are not returned; compute them from `a @ solution - b`.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.linalg.lstsq` and R's `qr.solve(a, b)`.
+The nearest equivalent is `numpy.linalg.lstsq`.
 
 - The result has three fields, `(solution, rank, singular_values)`. `numpy.linalg.lstsq` returns four, with the
   residuals second.
@@ -132,4 +132,3 @@ The nearest equivalents are `numpy.linalg.lstsq` and R's `qr.solve(a, b)`.
 - With `rtol` of 1 or more, every singular value counts as zero: `rank` is 0 and `solution` is zero.
   `numpy.linalg.lstsq` with `rcond=1` ignores the cutoff instead and reports rank 2 for `[[1, 0], [0, 0.5]]`.
 - `a` and `b` must be `sd.ndarray`, and NaN or infinity raises `ValueError`.
-- R's `qr.solve` stops with an error for a rank-deficient `a`. `lstsq` returns the minimum-norm solution.

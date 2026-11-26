@@ -116,9 +116,9 @@ The bar over the second factor is the complex conjugate; it has no effect for re
 - `cov` is exactly symmetric; for complex data it is Hermitian with a real diagonal. In `corrcoef`, the mirror
   entries $R_{ij}$ and $R_{ji}$ can differ in the last digit, as in the example above.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.cov` and `numpy.corrcoef`, and R's `cov(x)` and `cor(x)`.
+The nearest equivalents are `numpy.cov` and `numpy.corrcoef`.
 
 - The default divisor is $n$. `numpy.cov` divides by $n - 1$ by default; `correction=1` gives its result.
 - `correction` may be a non-integer `float`. NumPy's `ddof=` must be an integer.
@@ -126,5 +126,4 @@ The nearest equivalents are `numpy.cov` and `numpy.corrcoef`, and R's `cov(x)` a
   array with [`stack`](/api/array/stack-unstack/) instead of passing `y=`.
 - A constant variable gives NaN in `corrcoef`, and a divisor $n - c \le 0$ gives NaN in every entry of `cov`, both
   without a warning. NumPy issues a `RuntimeWarning` in both cases, and its `cov` then gives `inf` for the nonzero
-  entries. R's `cor` warns, returns `NA` for the pairs of a constant variable and keeps 1 on the diagonal.
-- R's `cov` and `cor` take one variable per column, as `rowvar=False` here, and `cov` divides by $n - 1$.
+  entries.

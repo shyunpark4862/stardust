@@ -135,10 +135,10 @@ elements of `x`, and `indices[j]` is the smallest position $i$ in the row-major 
 To count small nonnegative integers, including values that do not occur, [`bincount`](/api/array/bincount/) returns
 one count for every integer from 0 to the largest value.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
 The nearest equivalents are `numpy.unique_values`, `numpy.unique_counts`, `numpy.unique_inverse`,
-`numpy.unique_all` and `numpy.unique`, and R's `unique` and `table`.
+`numpy.unique_all` and `numpy.unique`.
 
 - All NaN elements form one value. NumPy's `unique_values`, `unique_counts`, `unique_inverse` and `unique_all`
   return every NaN separately; `numpy.unique` (with its default `equal_nan=True`) groups them, as here.
@@ -146,5 +146,3 @@ The nearest equivalents are `numpy.unique_values`, `numpy.unique_counts`, `numpy
   integers unsorted.
 - Of `-0.0` and `0.0`, the value shown is the one that occurs first. NumPy returns `-0.0` for both
   `[0.0, -0.0]` and `[-0.0, 0.0]`.
-- R's `unique` keeps the order of first occurrence and does not sort. For data without NaN, `sort(unique(x))` gives
-  `values`, `table(x)` gives the counts, and `match(x, sort(unique(x)))` gives the inverse indices, counted from 1.

@@ -153,13 +153,12 @@ equal.
 two whole arrays are equal, combine `equal` with `all`. To test for NaN, use
 [`isnan`](/api/array/isnan-isinf-isfinite/); `x == sd.nan` is always `False`.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
 The nearest equivalents are `numpy.equal`, `numpy.not_equal`, `numpy.less`, `numpy.less_equal`, `numpy.greater` and
-`numpy.greater_equal`, and R's operators `==`, `!=`, `<`, `<=`, `>` and `>=`.
+`numpy.greater_equal`.
 
 - `x == [1, 2]` and `x == None` raise `TypeError`. NumPy compares a list element by element, and `x == None`
   gives an array of `False`.
 - The order comparisons raise `TypeError` for complex numbers. NumPy orders complex numbers by their real parts first,
   then by their imaginary parts.
-- R gives `NA` for a comparison with `NA` or `NaN`; here a comparison with NaN is `False` (`True` for `!=`).

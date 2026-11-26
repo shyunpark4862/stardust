@@ -34,8 +34,9 @@ seeAlso: [eye, tril-triu, filled, indexing]
 `k` they run along the diagonal `k` places above (positive `k`) or below (negative `k`) it, and the matrix grows by
 `abs(k)` rows and columns so that every value fits.
 
-`diag` only builds matrices. Reading the diagonal of an existing matrix is `sd.linalg.diagonal`, and a 2-D `x` raises
-`ValueError`. Writing values onto the diagonal of an existing matrix is index assignment (see the last example).
+`diag` only builds matrices. Reading the diagonal of an existing matrix is
+[`sd.linalg.diagonal`](/api/linalg/diagonal/), and a 2-D `x` raises `ValueError`. Writing values onto the diagonal of
+an existing matrix is index assignment (see the last example).
 
 ## Examples
 
@@ -96,12 +97,12 @@ ValueError: diag(): 'x' must have 1 dimension, got 2; for the diagonal of a matr
 The values are copied unchanged, including `-0.0` and NaN. For a diagonal at offset `k` in a matrix that already
 exists, assign with the index arrays `i + max(-k, 0)` and `i + max(k, 0)`, where `i = sd.arange(len(v))`.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.diag` and R's `diag(x)`.
+The nearest equivalent is `numpy.diag`.
 
-- `numpy.diag` and R's `diag` also read the diagonal when given a matrix. Here a 2-D argument raises `ValueError`;
-  `sd.linalg.diagonal` reads diagonals.
+- `numpy.diag` also reads the diagonal when given a matrix. Here a 2-D argument raises `ValueError`;
+  [`sd.linalg.diagonal`](/api/linalg/diagonal/) reads diagonals.
 - `k` is keyword-only: `numpy.diag(v, 1)` is `sd.diag(v, k=1)`.
 - `x` must be an `sd.ndarray`; lists raise `TypeError`.
 - There is no counterpart of `numpy.fill_diagonal`. Index assignment writes a diagonal in place.

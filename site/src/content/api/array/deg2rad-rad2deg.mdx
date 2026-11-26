@@ -74,10 +74,9 @@ The functions compute $x \cdot c$ in one multiplication, with the constant $c = 
 `float64` first. The results are within a few units in the last place of the exact conversion. `deg2rad(180)` is
 exactly `sd.pi`.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.deg2rad` and `numpy.rad2deg` (also `numpy.radians` and `numpy.degrees`). Base R
-has no conversion functions; multiply by `pi / 180` or `180 / pi`.
+The nearest equivalents are `numpy.deg2rad` and `numpy.rad2deg` (also `numpy.radians` and `numpy.degrees`).
 
 - The results agree with NumPy's, which uses the same formula.
 - Complex input raises `TypeError`, as in NumPy.

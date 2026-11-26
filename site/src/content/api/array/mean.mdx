@@ -114,15 +114,12 @@ is lost before that rounding, even when the sum exceeds $2^{53}$:
 Along an axis, the elements can be converted to `float64` before they are added, so integer means whose sums exceed
 $2^{53}$ in magnitude can differ in the last digits from the exact value.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.mean`, the method `numpy.ndarray.mean`, and R's `mean`, `colMeans` and
-`rowMeans`.
+The nearest equivalents are `numpy.mean` and the method `numpy.ndarray.mean`.
 
 - There is no `dtype=` argument: the mean is always computed in `float64` or `complex128`.
 - An empty mean is NaN without a warning. NumPy issues a `RuntimeWarning`.
 - `int64` means over all elements add the integers exactly. NumPy converts them to `float64` first, so for large
   integers the results can differ: for `[2**53, 1, 1, 0]`, NumPy gives `2251799813685248.0`.
 - Results for `float64` input can differ from NumPy's in the last digit.
-- R's `mean` returns a single number for any array and takes `trim=` and `na.rm=`. Means of the rows or columns of
-  a matrix are `rowMeans` and `colMeans`.

@@ -1,0 +1,170 @@
+---
+kind: function
+title: kron, kronsum
+names: [kron, kronsum]
+group: Products and powers
+order: 4
+signatures:
+  - "sd.linalg.kron(x1, x2, /)"
+  - "sd.linalg.kronsum(x1, x2, /)"
+summary: Compute the Kronecker product or the Kronecker sum of two matrices.
+params:
+  - name: x1
+    type: array of shape (..., m, n) or (n,)
+    kind: positional-only
+    desc: "Left matrix, of any dtype, or a stack of them (see [matrices and stacks](/api/linalg/#matrices-and-stacks)). For `kron`, a 1-D array acts as a matrix with one row. For `kronsum`, each matrix must be square, of shape `(..., m, m)`."
+  - name: x2
+    type: array of shape (..., p, q) or (q,)
+    kind: positional-only
+    desc: "Right matrix, in the same forms as `x1`; for `kronsum`, square of shape `(..., p, p)`. Leading axes broadcast against those of `x1`."
+returns:
+  - type: ndarray of shape (..., m*p, n*q) or (..., m*p, m*p)
+    desc: "`kron`: the Kronecker product, of shape `(..., m*p, n*q)`, or 1-D of shape `(n*q,)` when both arguments are 1-D. `kronsum`: the Kronecker sum, of shape `(..., m*p, m*p)`. The leading axes are the broadcast leading axes of `x1` and `x2`. `float64`, or `complex128` when `x1` or `x2` is complex (see [result types](/api/linalg/#result-types))."
+raises:
+  - type: TypeError
+    desc: "If `x1` or `x2` is not an `sd.ndarray`."
+  - type: ValueError
+    desc: "If the leading axes of `x1` and `x2` do not broadcast, or, for `kronsum`, if `x1` or `x2` has fewer than two dimensions or is not square."
+seeAlso: [outer, block_diag, solve_sylvester, matrix_power]
+---
+
+`kron` computes the Kronecker product of two matrices. For `x1` of shape $(m, n)$ and `x2` of shape $(p, q)$, the
+result is the $(mp) \times (nq)$ block matrix made of $m \times n$ blocks of the size of `x2`: block `(i, j)` is
+`x1[i, j] * x2`. A 1-D argument acts as a matrix with one row; when both are 1-D the result is 1-D as well, the
+vector of all products `x1[j] * x2[l]` with `l` varying fastest.
+
+`kronsum` computes the Kronecker sum of two square matrices, `x1` of size $m$ and `x2` of size $p$:
+
+$$
+x_1 \oplus x_2 = I_p \otimes x_1 + x_2 \otimes I_m ,
+$$
+
+a square matrix of size $mp$, where $\otimes$ is the Kronecker product and $I_k$ the $k \times k$ identity matrix. It
+is a $p \times p$ grid of $m \times m$ blocks: each diagonal block is `x1`, and block `(i, j)` also carries
+`x2[i, j]` on its diagonal. Kronecker sums describe operators on grids, such as the discrete Laplacian of a 2-D grid
+built from the 1-D one, and appear in matrix equations such as the Sylvester equation (see Notes).
+
+Both functions treat the last two axes as the matrix. Leading axes index a stack of matrices and broadcast between
+the two arguments, as for every other function of this area.
+
+## Examples
+
+The Kronecker product with a permutation matrix on either side. On the right, it permutes inside each block; on the
+left, it permutes the blocks:
+
+```python
+>>> import stardust as sd
+>>> a = sd.asarray([[1.0, 2.0], [3.0, 4.0]])
+>>> s = sd.asarray([[0, 1], [1, 0]])
+>>> sd.linalg.kron(a, s)
+array([[0.0, 1.0, 0.0, 2.0],
+       [1.0, 0.0, 2.0, 0.0],
+       [0.0, 3.0, 0.0, 4.0],
+       [3.0, 0.0, 4.0, 0.0]], dtype=float64)
+>>> sd.linalg.kron(s, a)
+array([[0.0, 0.0, 1.0, 2.0],
+       [0.0, 0.0, 3.0, 4.0],
+       [1.0, 2.0, 0.0, 0.0],
+       [3.0, 4.0, 0.0, 0.0]], dtype=float64)
+```
+
+Two 1-D arguments give a 1-D result; a 1-D argument beside a matrix acts as one row:
+
+```python
+>>> sd.linalg.kron(sd.asarray([1, 2]), sd.asarray([1, 10, 100]))
+array([  1.0,  10.0, 100.0,   2.0,  20.0, 200.0], dtype=float64)
+>>> sd.linalg.kron(sd.asarray([1, 2]), a)
+array([[1.0, 2.0, 2.0, 4.0],
+       [3.0, 4.0, 6.0, 8.0]], dtype=float64)
+```
+
+The Kronecker sum of the 1-D second-difference matrix with itself is the discrete Laplacian of a 2-by-2 grid. It
+equals the sum of two Kronecker products with identity matrices:
+
+```python
+>>> d = sd.asarray([[-2.0, 1.0], [1.0, -2.0]])
+>>> sd.linalg.kronsum(d, d)
+array([[-4.0,  1.0,  1.0,  0.0],
+       [ 1.0, -4.0,  0.0,  1.0],
+       [ 1.0,  0.0, -4.0,  1.0],
+       [ 0.0,  1.0,  1.0, -4.0]], dtype=float64)
+>>> b = sd.asarray([[10.0, 20.0], [30.0, 40.0]])
+>>> bool(sd.all(sd.linalg.kronsum(a, b) == sd.linalg.kron(sd.eye(2), a) + sd.linalg.kron(b, sd.eye(2))))
+True
+```
+
+Leading axes broadcast: a stack of three matrices with one matrix, and with a stack of shape `(4, 1)`:
+
+```python
+>>> sd.linalg.kron(sd.ones((3, 2, 2)), sd.ones((2, 3))).shape
+(3, 4, 6)
+>>> sd.linalg.kron(sd.ones((3, 2, 2)), sd.ones((4, 1, 2, 3))).shape
+(4, 3, 4, 6)
+```
+
+Infinity in `kron` meets the zeros of the identity and gives NaN. `kronsum` places each value without multiplying,
+so infinity stays where it is:
+
+```python
+>>> w = sd.asarray([[float("inf"), 0.0], [0.0, 1.0]])
+>>> sd.linalg.kron(sd.eye(2), w)
+array([[inf, 0.0, nan, 0.0],
+       [0.0, 1.0, 0.0, 0.0],
+       [nan, 0.0, inf, 0.0],
+       [0.0, 0.0, 0.0, 1.0]], dtype=float64)
+>>> sd.linalg.kronsum(w, sd.eye(2))
+array([[inf, 0.0, 0.0, 0.0],
+       [0.0, 2.0, 0.0, 0.0],
+       [0.0, 0.0, inf, 0.0],
+       [0.0, 0.0, 0.0, 2.0]], dtype=float64)
+```
+
+<Reference />
+
+## Notes
+
+For $A$ of shape $(m, n)$ and $B$ of shape $(p, q)$, the Kronecker product is
+
+$$
+A \otimes B =
+\begin{pmatrix}
+a_{00} B & \cdots & a_{0,n-1} B \\
+\vdots & \ddots & \vdots \\
+a_{m-1,0} B & \cdots & a_{m-1,n-1} B
+\end{pmatrix},
+\qquad
+(A \otimes B)_{ip + k,\; jq + l} = a_{ij} \, b_{kl} .
+$$
+
+Each element of `kron` is one product, rounded once. NaN and infinity are not rejected; they follow the arithmetic of
+the products (see [finite values](/api/linalg/#finite-values)).
+
+Each element of `kronsum` is an element of `x1`, an element of `x2`, or, on the main diagonal, the sum
+`x1[k, k] + x2[i, i]`, rounded once; all other elements are zero. For finite input the result equals
+`kron(sd.eye(p), x1) + kron(x2, sd.eye(m))`, except that a zero can differ in sign. Since no element is multiplied by
+an entry of an identity matrix, NaN and infinity stay at their own positions.
+
+With $\operatorname{vec}(X)$ the vector of the columns of $X$ stacked one after the other, the Sylvester operator
+$X \mapsto A X + X B$ for $A$ of size $m$ and $B$ of size $p$ has the matrix
+
+$$
+\operatorname{vec}(A X + X B) = (A \oplus B^T) \operatorname{vec}(X),
+$$
+
+that is, `kronsum(A, B.mT)`. Solving the matrix equation through this $mp \times mp$ matrix is expensive;
+[`solve_sylvester`](/api/linalg/solve_sylvester/) solves it directly.
+
+## Comparison with other libraries
+
+**NumPy.** The nearest equivalent of `kron` is `numpy.kron`. NumPy has no Kronecker sum.
+
+- `kron` treats leading axes as a stack that broadcasts. For arrays with more than two dimensions, `numpy.kron`
+  multiplies the leading axes as well: two arrays of shape `(3, 2, 2)` give `(9, 4, 4)` there and `(3, 4, 4)` here.
+- For 1-D and 2-D `float64` and `complex128` input, `kron` equals `numpy.kron` bit for bit.
+- `bool` and `int64` input gives `float64`. `numpy.kron` keeps `int64`.
+
+**SciPy.** The nearest equivalent of `kronsum` is `scipy.sparse.kronsum`, for sparse matrices.
+
+- `kronsum(x1, x2)` takes its arguments in the same order as `scipy.sparse.kronsum(A, B)`, which also computes
+  $I \otimes A + B \otimes I$.
+- `bool` and `int64` input gives `float64`. `scipy.sparse.kronsum` keeps `int64`.

@@ -224,18 +224,13 @@ with `quantile(x, 0.5)` up to rounding in the last digit.
 1. R. J. Hyndman and Y. Fan, "Sample quantiles in statistical packages," *The American Statistician* 50(4),
    361–365, 1996.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.quantile` and `numpy.nanquantile`, and R's `quantile(x, probs, type = 7)`.
+The nearest equivalents are `numpy.quantile` and `numpy.nanquantile`.
 
-- The thirteen `method` names are NumPy's. The default `"linear"` is R's default `type = 7`, and the methods of types
-  1 to 9 above follow R's definitions. R's types 2 and 3 treat a value of $nq$ within rounding error of an integer
-  (type 2) or of a half-integer (type 3) as exact, so for such $q$ the results can differ: for the integers 1 to 22
-  and `q = 15/22`, `"averaged_inverted_cdf"` gives 15.0 and R's type 2 gives 15.5.
+- The thirteen `method` names are NumPy's.
 - The result is always `float64`. NumPy keeps an integer dtype for `"lower"`, `"higher"`, `"nearest"`,
   `"inverted_cdf"` and `"closest_observation"`.
 - `q` must be a Python number or an `sd.ndarray`; NumPy also accepts a list.
 - An empty input gives NaN. `numpy.quantile` raises `IndexError` for it.
 - There are no `out=`, `overwrite_input=` or `weights=` arguments, and no `percentile` function: pass `q / 100`.
-- R's `quantile` stops with an error when `x` contains `NA`, unless `na.rm = TRUE`, which corresponds to
-  `nanquantile`.

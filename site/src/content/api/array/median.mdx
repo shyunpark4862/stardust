@@ -118,12 +118,11 @@ inf
 (inf, nan)
 ```
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.median` and `numpy.nanmedian`, and R's `median(x, na.rm = FALSE)`.
+The nearest equivalents are `numpy.median` and `numpy.nanmedian`.
 
 - An empty input, or an all-NaN input for `nanmedian`, gives NaN without a warning. NumPy issues a
   `RuntimeWarning`.
 - Complex input raises `TypeError`; `numpy.median` accepts it.
 - There are no `out=` or `overwrite_input=` arguments.
-- R's `median` returns `NA` when `x` contains `NA`; `na.rm = TRUE` corresponds to `nanmedian`.

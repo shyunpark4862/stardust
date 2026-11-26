@@ -100,11 +100,9 @@ array([True, True], dtype=bool)
 
 <Reference />
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.any` and `numpy.all`, the methods of `numpy.ndarray`, and R's `any` and `all`.
+The nearest equivalents are `numpy.any` and `numpy.all`, and the methods of `numpy.ndarray`.
 
 - The results agree with NumPy's, including NaN counting as true. There are no `out=` or `where=` arguments, and a
   result over all axes is a Python `bool`, not a NumPy scalar.
-- R's `any` and `all` return a single value for any array and expect logical values. For numbers they warn, and a
-  `NaN` element becomes `NA`, so `any(c(0, NaN))` is `NA`.

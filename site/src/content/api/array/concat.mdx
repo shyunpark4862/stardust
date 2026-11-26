@@ -86,10 +86,9 @@ array([[1, 2],
 
 <Reference />
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.concat` (also `numpy.concatenate`), and R's `c()` for vectors and `rbind` and
-`cbind` for matrices.
+The nearest equivalent is `numpy.concat` (also `numpy.concatenate`).
 
 - Every element of `arrays` must be an `sd.ndarray`; NumPy also accepts lists there.
 - There are no `out`, `dtype` or `casting` arguments: the result dtype is always the promoted dtype.

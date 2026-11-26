@@ -100,10 +100,9 @@ TypeError: repeat(): 'repeats' must be an int or an int64 array, not list
 
 <Reference />
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.repeat` and R's `rep(x, each = n)` (one count for all) or `rep(x, times = counts)`
-(one count per element).
+The nearest equivalent is `numpy.repeat`.
 
 - `repeats` must be an `int` or an `int64` `sd.ndarray`. NumPy also accepts lists and tuples of counts.
 - `x` must be an `sd.ndarray`; lists raise `TypeError`.

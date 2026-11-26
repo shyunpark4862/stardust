@@ -31,7 +31,7 @@ raises:
     desc: "If `axis` is out of range, if `x1` and `x2` differ in length along `axis`, or if their other axes do not broadcast."
   - type: OverflowError
     desc: "If `axis` is an `int` outside the `int64` range."
-seeAlso: [matmul, tensordot, arithmetic, complex, sum]
+seeAlso: [matmul, tensordot, linalg/vecdot, arithmetic, complex, sum]
 ---
 
 `vecdot` computes the dot product of the vectors that lie along `axis`, the last axis by default: for each position
@@ -102,17 +102,15 @@ $$
 where $\overline{x_i}$ is the complex conjugate (the number itself for real input). With $n = 0$, it is the empty sum
 0. NaN and infinity follow the arithmetic of each product and sum, so `nan * 0.0` contributes NaN.
 
-`sd.linalg.vecdot` is a separate function with the same signature. It computes `bool` and `int64` input in `float64`,
+[`sd.linalg.vecdot`](/api/linalg/vecdot/) is a separate function with the same signature. It computes `bool` and `int64` input in `float64`,
 so for the integers above it returns `11.0`; for `float64` and `complex128` input both functions give the same bits.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.vecdot` and, for 1-D arrays, `numpy.vdot`. R's `crossprod(x, y)` and `sum(x * y)`
-compute the real dot product.
+The nearest equivalents are `numpy.vecdot` and, for 1-D arrays, `numpy.vdot`.
 
 - `axis` counts in the broadcast shape of the two arrays. NumPy's `axis` selects that axis in each array before
   broadcasting, so `numpy.vecdot(numpy.ones(3), numpy.ones((3, 3)), axis=0)` is valid, while here a 1-D `x1` has
   length 1 along axis 0 of the broadcast shape and raises `ValueError`.
 - Two `bool` arrays give `int64`. NumPy returns `bool`.
 - The dot product of two 1-D arrays is a Python scalar, not a NumPy scalar.
-- R's `crossprod` returns a 1-by-1 matrix and does not conjugate complex input.

@@ -110,13 +110,11 @@ TypeError: min(): not supported for complex128
 The results are exact: each one is an element of `x`. `-inf` and `inf` are ordinary values. `-0.0` counts as smaller
 than `0.0`, so the minimum of `0.0` and `-0.0` is `-0.0` and their maximum is `0.0`, whatever their order in `x`.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
 The nearest equivalents are `numpy.min` and `numpy.max` (also called `numpy.amin` and `numpy.amax`), the methods
-`numpy.ndarray.min` and `numpy.ndarray.max`, and R's `min`, `max` and `range`.
+`numpy.ndarray.min` and `numpy.ndarray.max`.
 
 - Complex input raises `TypeError`. NumPy orders complex numbers by real part, then imaginary part.
 - There are no `out=`, `initial=` or `where=` arguments, so an empty reduction always raises `ValueError`.
 - A reduction over all axes is a Python `bool`, `int` or `float`, not a NumPy scalar.
-- R's `min` and `max` return a single number for any array. For an empty argument they return `Inf` and `-Inf` with
-  a warning; here they raise `ValueError`.

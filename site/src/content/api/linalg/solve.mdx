@@ -96,22 +96,23 @@ The function computes the LU factorization with partial pivoting, $P A = L U$, w
 is unit lower triangular and $U$ is upper triangular, and then solves the two triangular systems $L y = P b$ and
 $U x = y$.
 
-A matrix counts as singular only when a pivot is exactly zero (see [singular matrices](/api/linalg/#singular-matrices)). A
-matrix that is singular in exact arithmetic often produces small nonzero pivots after rounding; `solve` then returns a
+A matrix counts as singular only when a pivot is exactly zero (see [singular matrices](/api/linalg/#singular-matrices)).
+A matrix that is singular in exact arithmetic often produces small nonzero pivots after rounding; `solve` then returns a
 solution with large errors and raises no error. The error of the computed solution grows with the condition number of
 `a`, which [`cond`](/api/linalg/cond/) computes.
 
 `solve(a, b)` equals `lu_solve(*lu(a), b)` bit for bit, except when `a` is real and `b` is complex; the two then
 agree only up to rounding. `inv(a)` equals `solve(a, sd.eye(n))` bit for bit. The result is a new, writable array.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.linalg.solve`, `scipy.linalg.solve` and R's `solve(a, b)`.
+**NumPy.** The nearest equivalent is `numpy.linalg.solve`.
 
 - `a` and `b` must be `sd.ndarray`; lists raise `TypeError`.
-- NaN or infinity in `a` or `b` raises `ValueError`. `numpy.linalg.solve` returns NaN; `scipy.linalg.solve` raises
-  `ValueError` by default, as here.
+- NaN or infinity in `a` or `b` raises `ValueError`. `numpy.linalg.solve` returns NaN.
+
+**SciPy.** The nearest equivalent is `scipy.linalg.solve`.
+
+- NaN or infinity in `a` or `b` raises `ValueError`, as in `scipy.linalg.solve` by default.
 - There is no `assume_a=` option: the factorization is always the general LU. Triangular and positive definite
   matrices have their own functions, `solve_triangular` and `cholesky_solve`.
-- R's `solve` also stops when the reciprocal condition number is below `tol`. `solve` raises only for an exact zero
-  pivot.

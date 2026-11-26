@@ -109,12 +109,11 @@ are accepted: all arguments are then rounded to `float64` and the values are com
 NaN or infinite arguments raise `ValueError`, because the length is undefined. `bool` arguments count as the
 integers 0 and 1.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.arange`, Python's `range`, and R's `seq(from, to, by)` and `from:to`.
+The nearest equivalents are `numpy.arange` and Python's `range`.
 
 - The arguments are positional-only: `numpy.arange(start=1, stop=3)` has no counterpart here.
 - Complex arguments raise `TypeError`, and NaN or infinite arguments raise `ValueError`.
 - The values of a floating-point range are computed as `start + i * step`. They can differ slightly from those of
   `numpy.arange`, most visibly for values close to zero.
-- R's `seq` and `:` include `to` when the sequence reaches it; `arange` always stops before `stop`.

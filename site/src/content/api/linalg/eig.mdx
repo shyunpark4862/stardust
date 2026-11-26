@@ -38,8 +38,8 @@ Hermitian matrices, [`eigh`](/api/linalg/eigh/) uses the symmetry and returns re
 eigenvectors.
 
 `eig` returns a named tuple `EigResult(eigenvalues, eigenvectors)`. Its fields are read by name or by position, and its
-arrays are read-only (see [named tuples](/api/linalg/#named-tuples)). `eigvals` returns the eigenvalues as one writable array.
-Column `i` of `eigenvectors` belongs to `eigenvalues[..., i]`.
+arrays are read-only (see [named tuples](/api/linalg/#named-tuples)). `eigvals` returns the eigenvalues as one writable
+array. Column `i` of `eigenvectors` belongs to `eigenvalues[..., i]`.
 
 The eigenvalues are sorted by real part, and eigenvalues with equal real parts by imaginary part. The eigenvectors are
 reordered with them. For a real matrix, complex eigenvalues come in conjugate pairs $a \pm b i$; the one with the
@@ -129,15 +129,17 @@ which they were computed. `-0.0` and `0.0` compare equal.
 An empty matrix ($n = 0$) gives empty results. `eigvals` does not compute the eigenvectors, and its eigenvalues can
 differ from those of `eig` in the last digits.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.linalg.eig`, `scipy.linalg.eig` and R's `eigen(x)`.
+**NumPy.** The nearest equivalent is `numpy.linalg.eig`.
 
 - The eigenvalues are sorted by real part, then by imaginary part. `numpy.linalg.eig` leaves the order unspecified
-  (for the first example it returns 5 before 2); R's `eigen` sorts a matrix that is not
-  symmetric by decreasing absolute value.
+  (for the first example it returns 5 before 2).
+- NaN or infinity raises `ValueError`. `numpy.linalg.eig` raises `LinAlgError` for it.
+- The vectors are normalized as in NumPy: 2-norm 1 with a real component of largest absolute value.
+
+**SciPy.** The nearest equivalent is `scipy.linalg.eig`.
+
 - There is no generalized problem $A v = \lambda B v$ for general matrices and there are no left eigenvectors;
   `scipy.linalg.eig` offers both. [`eigh`](/api/linalg/eigh/) solves the generalized problem for symmetric `a` and
   positive definite `b`.
-- NaN or infinity raises `ValueError`. `numpy.linalg.eig` raises `LinAlgError` for it.
-- The vectors are normalized as in NumPy: 2-norm 1 with a real component of largest absolute value.

@@ -169,10 +169,10 @@ array([(nan+nanj)], dtype=complex128)
 array([(inf+nanj)], dtype=complex128)
 ```
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
 The nearest equivalents are `numpy.add`, `numpy.subtract`, `numpy.multiply`, `numpy.divide`, `numpy.negative` and
-`numpy.positive`, and R's `+`, `-`, `*` and `/`.
+`numpy.positive`.
 
 - Booleans count as 0 and 1 and give `int64`. In NumPy, `+` and `*` on two Boolean arrays give `bool` (logical or and
   and), and `-` and unary minus raise `TypeError`.
@@ -181,5 +181,3 @@ The nearest equivalents are `numpy.add`, `numpy.subtract`, `numpy.multiply`, `nu
 - Division by zero and invalid operations give infinity or NaN without a warning. NumPy issues a `RuntimeWarning`.
 - There are no `where=`, `dtype=` or `casting=` arguments, and no methods such as `add.reduce`; use
   [`sum`](/api/array/sum/) and [`cumulative_sum`](/api/array/cumulative/) instead.
-- R recycles the shorter operand to the length of the longer one. Here the shapes must broadcast, and arrays of
-  lengths 2 and 4 raise `ValueError`.

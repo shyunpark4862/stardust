@@ -1,0 +1,131 @@
+---
+kind: function
+title: solve_tridiagonal
+names: [solve_tridiagonal]
+group: Structured matrices
+order: 1
+signatures:
+  - "sd.linalg.solve_tridiagonal(dl, d, du, b, /)"
+summary: Solve a linear system whose matrix is tridiagonal, given by its three diagonals.
+params:
+  - name: dl
+    type: array of shape (..., n - 1)
+    kind: positional-only
+    desc: "Subdiagonal, the elements just below the main diagonal, of any dtype, or a stack of them: `dl[i]` is the element in row `i + 1` and column `i`."
+  - name: d
+    type: array of shape (..., n)
+    kind: positional-only
+    desc: "Main diagonal, in the same forms as `dl`. Its length `n` is the size of the matrix."
+  - name: du
+    type: array of shape (..., n - 1)
+    kind: positional-only
+    desc: "Superdiagonal, the elements just above the main diagonal, in the same forms as `dl`: `du[i]` is the element in row `i` and column `i + 1`."
+  - name: b
+    type: array of shape (n,) or (..., n, k)
+    kind: positional-only
+    desc: "Right-hand side: one vector, or `k` vectors as columns (see [right-hand sides](/api/linalg/#right-hand-sides)). The leading axes of `dl`, `d`, `du` and `b` broadcast against each other (see [matrices and stacks](/api/linalg/#matrices-and-stacks))."
+returns:
+  - type: ndarray of shape (..., n) or (..., n, k)
+    desc: "Solution `x`, with the shape of `b` after broadcasting. `float64`, or `complex128` when any argument is complex (see [result types](/api/linalg/#result-types))."
+raises:
+  - type: TypeError
+    desc: "If `dl`, `d`, `du` or `b` is not an `sd.ndarray`."
+  - type: ValueError
+    desc: "If `dl` or `du` does not have length `n - 1`, if `b` does not have `n` rows, if the leading axes do not broadcast, or if `dl`, `d`, `du` or `b` contains NaN or infinity."
+  - type: LinAlgError
+    desc: "If a tridiagonal matrix is singular (its elimination meets an exact zero pivot). For a stack, the message gives the index of the first such matrix."
+seeAlso: [solve_banded, solve, solve_triangular, bandwidth, array/diag]
+---
+
+`solve_tridiagonal` solves `a @ x = b` when the square matrix `a` is tridiagonal: its only nonzero elements lie on
+the main diagonal and on the diagonals just below and just above it. The matrix is given by these three diagonals,
+not as an `n`-by-`n` array, so no zeros are stored and the work grows only linearly with `n`. Tridiagonal systems
+arise from finite differences of second derivatives and from cubic spline interpolation.
+
+The matrix need not be symmetric or diagonally dominant. Rows are exchanged during the elimination when that keeps it
+stable, so a zero on the main diagonal is no obstacle as long as the matrix is nonsingular. For a matrix with more
+nonzero diagonals, use [`solve_banded`](/api/linalg/solve_banded/).
+
+## Examples
+
+A 4-by-4 system with 4 on the main diagonal and -1 on the two diagonals next to it:
+
+```python
+>>> import stardust as sd
+>>> dl = sd.asarray([-1.0, -1.0, -1.0])
+>>> d = sd.asarray([4.0, 4.0, 4.0, 4.0])
+>>> du = sd.asarray([-1.0, -1.0, -1.0])
+>>> x = sd.linalg.solve_tridiagonal(dl, d, du, sd.asarray([3.0, 2.0, 2.0, 3.0]))
+>>> x
+array([1.0, 1.0, 1.0, 1.0], dtype=float64)
+```
+
+The full matrix that the three diagonals describe, built with [`sd.diag`](/api/array/diag/):
+
+```python
+>>> a = sd.diag(d) + sd.diag(dl, k=-1) + sd.diag(du, k=1)
+>>> a
+array([[ 4.0, -1.0,  0.0,  0.0],
+       [-1.0,  4.0, -1.0,  0.0],
+       [ 0.0, -1.0,  4.0, -1.0],
+       [ 0.0,  0.0, -1.0,  4.0]], dtype=float64)
+>>> a @ x
+array([3.0, 2.0, 2.0, 3.0], dtype=float64)
+```
+
+Two right-hand sides as the columns of `b`, and a stack of two matrices that share their off-diagonals:
+
+```python
+>>> b = sd.asarray([[3.0, 13.0], [2.0, 6.0], [2.0, 4.0], [3.0, 2.0]])
+>>> sd.linalg.solve_tridiagonal(dl, d, du, b)
+array([[1.0, 4.0],
+       [1.0, 3.0],
+       [1.0, 2.0],
+       [1.0, 1.0]], dtype=float64)
+>>> sd.linalg.solve_tridiagonal(dl, sd.stack([d, d + 1.0]), du, sd.asarray([3.0, 2.0, 2.0, 3.0])).shape
+(2, 4)
+```
+
+Zeros on the main diagonal are handled by exchanging rows. A singular matrix raises `LinAlgError`, and diagonals of
+the wrong length raise `ValueError`:
+
+```python
+>>> sd.linalg.solve_tridiagonal(sd.asarray([1.0]), sd.asarray([0.0, 0.0]), sd.asarray([1.0]), sd.asarray([2.0, 3.0]))
+array([3.0, 2.0], dtype=float64)
+>>> sd.linalg.solve_tridiagonal(sd.asarray([1.0]), sd.asarray([1.0, 1.0]), sd.asarray([1.0]), sd.asarray([2.0, 3.0]))
+Traceback (most recent call last):
+    ...
+stardust.linalg.LinAlgError: solve_tridiagonal(): singular matrix
+>>> sd.linalg.solve_tridiagonal(d, d, du, sd.asarray([3.0, 2.0, 2.0, 3.0]))
+Traceback (most recent call last):
+    ...
+ValueError: solve_tridiagonal(): 'dl' must have length 3 (one less than 'd'), got 4
+```
+
+<Reference />
+
+## Notes
+
+The three diagonals define the $n \times n$ matrix $A$ with
+
+$$
+A_{ii} = d_i, \qquad A_{i+1,\,i} = \mathit{dl}_i, \qquad A_{i,\,i+1} = \mathit{du}_i ,
+$$
+
+and zeros everywhere else. The function solves $A x = b$ by Gaussian elimination with partial pivoting, adapted to
+the tridiagonal structure: at each step the row with the larger element in the current column becomes the pivot row.
+Only an exact zero pivot raises `LinAlgError`. A matrix that is nearly singular gives a solution with large errors and
+no warning; [`cond`](/api/linalg/cond/) of the full matrix measures how close it is to singular.
+
+`solve_tridiagonal(dl, d, du, b)` equals [`solve_banded`](/api/linalg/solve_banded/) with both bandwidths 1 bit for
+bit, for real and complex input. The results of [`solve`](/api/linalg/solve/) on the full matrix agree with it only up
+to rounding.
+
+## Comparison with other libraries
+
+`numpy.linalg` and `scipy.linalg` have no function that takes the three diagonals. The nearest equivalent is
+`scipy.linalg.solve_banded((1, 1), ab, b)`, which needs the diagonals packed into one band array `ab` first (see
+[`solve_banded`](/api/linalg/solve_banded/)).
+
+- The diagonals are separate arguments, so there are no unused corner elements to fill.
+- `scipy.linalg.solve_banded` raises `ValueError` for NaN anywhere in `ab`, including its two unused corners.

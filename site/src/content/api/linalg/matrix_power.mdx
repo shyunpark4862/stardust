@@ -1,0 +1,127 @@
+---
+kind: function
+title: matrix_power
+names: [matrix_power]
+group: Products and powers
+order: 5
+signatures:
+  - "sd.linalg.matrix_power(x, n, /)"
+summary: Raise a square matrix to an integer power.
+params:
+  - name: x
+    type: array of shape (..., m, m)
+    kind: positional-only
+    desc: "Square matrix, of any dtype, or a stack of them (see [matrices and stacks](/api/linalg/#matrices-and-stacks)). Must be nonsingular when `n` is negative."
+  - name: n
+    type: int
+    kind: positional-only
+    desc: "Exponent: positive, zero or negative. A negative exponent raises the inverse of `x` to the power `-n`."
+returns:
+  - type: ndarray of shape (..., m, m)
+    desc: "`x` to the power `n`, with the shape of `x`; the identity matrix for `n = 0`. `float64`, or `complex128` when `x` is complex (see [result types](/api/linalg/#result-types))."
+raises:
+  - type: TypeError
+    desc: "If `x` is not an `sd.ndarray`, or if `n` is not an `int`."
+  - type: ValueError
+    desc: "If `x` has fewer than two dimensions or is not square, or if `n` is negative and `x` contains NaN or infinity."
+  - type: OverflowError
+    desc: "If `n` is an `int` outside the `int64` range."
+  - type: LinAlgError
+    desc: "If `n` is negative and a matrix in `x` is singular (its LU factorization has an exact zero pivot). For a stack, the message gives the index of the first such matrix."
+seeAlso: [inv, expm, array/matmul, eig]
+---
+
+`matrix_power` multiplies a square matrix by itself: for a positive `n`, the result is the matrix product of `n`
+copies of `x`. For `n = 0` it is the identity matrix, whatever `x` holds. For a negative `n` it is the inverse of `x`
+raised to the power `-n`, so `matrix_power(x, -1)` is the inverse of `x` and equals [`inv(x)`](/api/linalg/inv/) bit
+for bit.
+
+A positive or zero power only multiplies and adds: NaN and infinity in `x` are not rejected and propagate through the
+products (see [finite values](/api/linalg/#finite-values)). A negative power inverts `x` first, with the same checks
+as `inv`: NaN or infinity raises `ValueError`, and a singular matrix raises `LinAlgError`.
+
+The powers of an integer matrix are floating point (see [result types](/api/linalg/#result-types)). They are exact
+as long as every intermediate value is an integer below $2^{53}$ in magnitude. Values beyond the range of
+`float64` become infinity without a warning.
+
+## Examples
+
+The powers of the Fibonacci matrix hold consecutive Fibonacci numbers. Integer input gives a `float64` result:
+
+```python
+>>> import stardust as sd
+>>> f = sd.asarray([[1, 1], [1, 0]])
+>>> sd.linalg.matrix_power(f, 10)
+array([[89.0, 55.0],
+       [55.0, 34.0]], dtype=float64)
+```
+
+The power 0 is the identity matrix, and negative powers are powers of the inverse:
+
+```python
+>>> sd.linalg.matrix_power(f, 0)
+array([[1.0, 0.0],
+       [0.0, 1.0]], dtype=float64)
+>>> sd.linalg.matrix_power(f, -1)
+array([[ 0.0,  1.0],
+       [ 1.0, -1.0]], dtype=float64)
+>>> sd.linalg.matrix_power(f, -3)
+array([[-1.0,  2.0],
+       [ 2.0, -3.0]], dtype=float64)
+>>> x = sd.asarray([[2.0, 1.0], [1.0, 1.0]])
+>>> bool(sd.all(sd.linalg.matrix_power(x, -1) == sd.linalg.inv(x)))
+True
+```
+
+NaN propagates through positive powers and is ignored by the power 0. A negative power rejects it:
+
+```python
+>>> w = sd.asarray([[float("nan"), 1.0], [0.0, 1.0]])
+>>> sd.linalg.matrix_power(w, 2)
+array([[nan, nan],
+       [nan, 1.0]], dtype=float64)
+>>> sd.linalg.matrix_power(w, 0)
+array([[1.0, 0.0],
+       [0.0, 1.0]], dtype=float64)
+>>> sd.linalg.matrix_power(w, -1)
+Traceback (most recent call last):
+    ...
+ValueError: matrix_power(): 'x' contains NaN or infinity
+```
+
+A negative power of a singular matrix raises `LinAlgError`. In a stack, the message names the failing matrix:
+
+```python
+>>> s = sd.asarray([[1.0, 2.0], [2.0, 4.0]])
+>>> sd.linalg.matrix_power(sd.stack([x, s]), -1)
+Traceback (most recent call last):
+    ...
+stardust.linalg.LinAlgError: matrix_power(): singular matrix (at batch index (1,))
+```
+
+<Reference />
+
+## Notes
+
+For a square matrix $A$ and an integer $n$,
+
+$$
+A^n = \underbrace{A A \cdots A}_{n}, \qquad A^0 = I, \qquad A^{-n} = (A^{-1})^n .
+$$
+
+The power is computed by repeated squaring: the bits of $\lvert n \rvert$ are read from the most significant one, and
+each step squares the running product and multiplies it by the base when the bit is set. This takes about
+$2 \log_2 \lvert n \rvert$ matrix products instead of $\lvert n \rvert - 1$. The products are grouped differently from
+multiplying `x` by itself in order, so the last digits can differ from those of `x @ x @ x @ x`.
+
+A 0-by-0 matrix gives a 0-by-0 result for every `n`.
+
+## Comparison with other libraries
+
+The nearest equivalent is `numpy.linalg.matrix_power`.
+
+- The result is always `float64` or `complex128`. For an integer matrix and `n >= 0`, NumPy keeps `int64`, and its
+  products wrap around: `numpy.linalg.matrix_power(numpy.array([[2**40]]), 2)` is `[[0]]`, here
+  `1.2089258196146292e+24`.
+- A negative power of a matrix with NaN or infinity raises `ValueError`. NumPy returns a matrix of NaN.
+- `n` must be an `int`. NumPy also accepts `True` and `False` as 1 and 0; here they raise `TypeError`.

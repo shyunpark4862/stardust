@@ -142,9 +142,9 @@ the shape and memory layout, so the same input gives the same bits on every run 
 
 A floating-point sum starts from `0.0`, so the sum of `-0.0` elements is `0.0`.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.sum`, the method `numpy.ndarray.sum`, and R's `sum`, `colSums` and `rowSums`.
+The nearest equivalents are `numpy.sum` and the method `numpy.ndarray.sum`.
 
 - The additions are done in a different order from NumPy's, so results for `float64` and `complex128` input can
   differ from NumPy's in the last digit.
@@ -152,5 +152,3 @@ The nearest equivalents are `numpy.sum`, the method `numpy.ndarray.sum`, and R's
 - There are no `out=`, `initial=` or `where=` arguments, and `dtype=sd.bool` raises `TypeError`. NumPy's
   `dtype=bool` gives the logical or; use [`any`](/api/array/any-all/) for that.
 - `x` must be an `sd.ndarray`; lists raise `TypeError`.
-- R's `sum` returns a single number for any array; per-axis sums of a matrix are `colSums` and `rowSums`. R's
-  integer sums do not wrap around.

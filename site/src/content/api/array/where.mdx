@@ -104,13 +104,10 @@ all inputs are read before the result is written (see [Overlapping memory](/api/
 To find the positions where a condition holds, use [`nonzero`](/api/array/nonzero/). To limit values to a range,
 [`clip`](/api/array/clip/) is shorter than two nested `where` calls.
 
-## For NumPy, SciPy and R users
+## Comparison with other libraries
 
-The nearest equivalents are `numpy.where(condition, x, y)` and R's `ifelse(test, yes, no)`.
+The nearest equivalent is `numpy.where(condition, x, y)`.
 
-- `condition` must be `bool`. NumPy and R treat nonzero numbers as true.
+- `condition` must be `bool`. NumPy treats nonzero numbers as true.
 - There is no one-argument form. `numpy.where(condition)` returns the indices where `condition` is true; here
   that is `nonzero(condition)`.
-- R's `ifelse` takes the shape of `test` and recycles `yes` and `no`. Here all three arguments broadcast, and the
-  result can be larger than `condition`.
-- R's `ifelse` gives `NA` where `test` is `NA`. A `bool` array has no missing values.
