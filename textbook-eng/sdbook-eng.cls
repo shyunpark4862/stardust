@@ -366,6 +366,53 @@
   \ifx\@date\@empty\else{\large \@date}\par\vskip 1.5em\fi
   \vfill
 \endgroup}
+% Background (2026-11-26, chosen by the user from a set of alternates; the lettering above is
+% unchanged): in the lower outer corner, a lattice of dots 14pt apart fading in three flat
+% steps and running off the edges; over it 150 points drawn (seed 20261126) from the normal
+% distribution with unit variances and correlation 0.7, 34pt to the unit, as small open
+% circles, with the concentration ellipses at Mahalanobis distance 1 and 2 (semi-axes
+% sqrt(1.7) and sqrt(0.3)) and the two principal axes. Greyscale only, thin lines.
+% It is drawn in page coordinates (origin at the lower left corner of the page, unit 1pt,
+% anchored to the page, not to the text block) on the title page only, and only when that
+% page is a right-hand page. A volume can put its own motif in its preamble with
+%   \renewcommand\sdcoverbackground{<TikZ code in page coordinates>}
+% (\sd@coverW and \sd@coverH are the page width and height), or none with
+% \renewcommand\sdcoverbackground{}.
+\newcommand\sd@coverlattice[2]{% dots through (#1,#2), inside an ellipse about the corner
+  \foreach \sd@i in {-24,...,23}{\foreach \sd@j in {-7,...,30}{%
+    \pgfmathsetmacro\sd@x{#1+14*\sd@i}\pgfmathsetmacro\sd@y{#2+14*\sd@j}%
+    \pgfmathsetmacro\sd@r{sqrt(((\sd@coverW-\sd@x)/410)^2+(\sd@y/400)^2)}%
+    \ifdim\sd@r\p@<\p@
+      \pgfmathsetmacro\sd@t{\sd@r<0.62 ? 30 : (\sd@r<0.82 ? 21 : 13)}%
+      \fill[black!\sd@t] (\sd@x,\sd@y) circle (0.8);
+    \fi}}}
+\newcommand\sd@coverpoints{%
+\foreach \sd@p in {{(425.5,149.0)},{(427.4,140.6)},{(421.5,178.8)},{(414.9,125.6)},{(412.6,149.0)},{(444.0,131.8)},{(498.1,185.7)},{(408.4,150.5)},{(406.6,155.3)},{(482.8,205.9)},{(419.8,102.3)},{(406.5,161.2)},{(400.7,148.4)},{(431.7,177.6)},{(471.1,184.7)},{(441.7,171.3)},{(462.7,165.6)},{(479.1,158.3)},{(411.6,123.1)},{(350.4,49.0)},{(441.2,133.8)},{(460.7,139.6)},{(452.4,166.9)},{(428.1,144.3)},{(455.0,216.0)},{(476.1,201.0)},{(425.8,180.2)},{(441.4,148.3)},{(410.5,110.9)},{(398.9,148.1)},{(432.3,141.5)},{(428.3,164.6)},{(439.9,140.1)},{(387.3,102.7)},{(487.0,256.6)},{(445.2,194.6)},{(462.6,161.5)},{(453.3,169.7)},{(395.4,160.7)},{(399.9,121.8)},{(431.5,163.4)},{(375.4,144.4)},{(389.1,96.7)},{(371.1,70.6)},{(415.6,139.5)},{(419.0,151.7)},{(419.8,147.3)},{(490.1,223.6)},{(454.6,125.1)},{(480.5,194.5)},{(450.8,141.6)},{(439.5,157.1)},{(491.3,210.5)},{(453.8,199.3)},{(392.3,122.1)},{(506.9,228.1)},{(431.9,171.7)},{(465.2,180.0)},{(392.1,119.5)},{(522.4,223.0)},{(491.6,185.7)},{(426.3,140.8)},{(435.7,136.7)},{(413.4,159.0)},{(450.4,183.5)},{(450.2,140.0)},{(412.0,138.1)},{(433.9,153.9)},{(426.5,147.5)},{(397.9,101.9)},{(390.9,83.6)},{(400.3,122.7)},{(432.1,134.4)},{(445.5,180.8)},{(476.8,178.8)},{(460.6,164.9)},{(405.5,152.0)},{(448.8,192.7)},{(470.9,159.7)},{(379.1,84.4)},{(447.9,153.3)},{(481.8,142.0)},{(372.0,128.3)},{(444.3,141.4)},{(481.5,174.2)},{(448.6,150.6)},{(414.2,163.3)},{(443.9,173.5)},{(465.8,189.0)},{(535.8,244.7)},{(472.9,181.5)},{(463.4,145.1)},{(449.9,161.2)},{(484.9,205.0)},{(412.4,118.7)},{(461.2,203.0)},{(389.5,87.8)},{(449.9,157.0)},{(385.5,107.9)},{(433.4,150.3)},{(506.7,199.3)},{(386.0,102.3)},{(461.9,184.2)},{(471.7,157.1)},{(378.4,117.7)},{(384.5,92.3)},{(490.8,188.9)},{(394.7,113.4)},{(382.2,132.8)},{(419.1,123.6)},{(484.4,198.8)},{(444.9,180.8)},{(448.6,139.8)},{(418.0,136.8)},{(447.9,108.4)},{(405.0,138.8)},{(446.0,200.9)},{(431.4,172.8)},{(456.3,167.7)},{(431.2,146.1)},{(379.0,142.7)},{(393.6,165.9)},{(424.4,176.6)},{(450.1,139.6)},{(461.4,145.9)},{(440.3,154.6)},{(433.2,124.1)},{(390.6,88.1)},{(446.3,136.2)},{(467.6,215.6)},{(379.8,78.0)},{(469.7,193.6)},{(449.0,137.4)},{(473.3,192.3)},{(424.6,128.9)},{(346.7,85.2)},{(479.8,133.4)},{(414.3,141.5)},{(474.2,165.3)},{(384.7,134.2)},{(417.6,133.4)},{(442.7,165.5)},{(420.0,103.6)},{(397.0,109.2)},{(415.4,141.3)},{(413.2,155.5)},{(328.3,114.6)},{(391.5,90.2)},{(410.3,157.8)},{(476.4,205.6)}}{\draw \sd@p circle (1.5);}}
+\newcommand\sd@coverbivariate{%
+  \def\sd@cx{434}\def\sd@cy{154}\def\sd@sc{34}%
+  \sd@coverlattice{\sd@cx}{\sd@cy}%
+  \begin{scope}[line width=0.3pt]
+  \begin{scope}[rotate around={45:(\sd@cx,\sd@cy)}]
+    \draw[black!22] (\sd@cx-2.6*\sd@sc*1.3038,\sd@cy) -- (\sd@cx+2.6*\sd@sc*1.3038,\sd@cy);
+    \draw[black!22] (\sd@cx,\sd@cy-2.6*\sd@sc*0.5477) -- (\sd@cx,\sd@cy+2.6*\sd@sc*0.5477);
+    \draw[black!38, line width=0.4pt] (\sd@cx,\sd@cy) ellipse ({\sd@sc*1.3038} and {\sd@sc*0.5477});
+    \draw[black!38, line width=0.4pt] (\sd@cx,\sd@cy) ellipse ({2*\sd@sc*1.3038} and {2*\sd@sc*0.5477});
+  \end{scope}
+  \begin{scope}[black!45]\sd@coverpoints\end{scope}
+  \end{scope}}
+\newcommand\sdcoverbackground{\sd@coverbivariate}
+\newcommand\sd@drawcover{%
+  \if@twoside\ifodd\c@page\else\let\sdcoverbackground\relax\fi\fi
+  \ifx\sdcoverbackground\relax\else
+    \pgfmathsetmacro\sd@coverW{\paperwidth/1pt}\pgfmathsetmacro\sd@coverH{\paperheight/1pt}%
+    \begin{tikzpicture}[remember picture, overlay, x=1pt, y=1pt]
+    \begin{scope}[shift={(current page.south west)}]
+    \clip (0,0) rectangle (\sd@coverW,\sd@coverH);
+    \sdcoverbackground
+    \end{scope}\end{tikzpicture}%
+  \fi}
+\let\sd@maketitle@lettering\@maketitle
+\def\@maketitle{\AddToHookNext{shipout/background}{\sd@drawcover}\sd@maketitle@lettering}
 
 % ---------------------------------------------------------------------------
 % 9. Small things
