@@ -429,13 +429,14 @@ Part II Graphics
 
 ### Part E — Great Questions
 22. The Collatz Conjecture
-23. The Riemann Hypothesis
-24. Fermat's Last Theorem
-25. The Poincaré Conjecture
-26. P versus NP
-27. (추가) Proofs by Computer — 4색 정리와 Kepler 추측
-28. (추가) The Limits of Proof and Computation — Gödel 불완전성과 정지 문제
-29. The Continuum Hypothesis — Cantor의 물음(1권 2장의 대각선 논법에서 이어짐), Hilbert의 첫째 문제, Gödel(1940)의 무모순성과 Cohen(1963)의 독립성, "참도 거짓도 증명할 수 없다"는 것의 뜻(28장의 불완전성 바로 뒤에 둔다; 2026-11-26 사용자 추가)
+23. The Goldbach Conjecture — 진술과 수치 검증, 약한 Goldbach(Vinogradov, Helfgott), Chen의 정리, 원 방법과 체 방법의 생각, 곁이야기로 쌍둥이 소수(Zhang, Maynard)(2026-11-26 사용자 추가; 24장 Riemann 가설 앞에 두어 소수의 분포로 이어지게 한다)
+24. The Riemann Hypothesis
+25. Fermat's Last Theorem
+26. The Poincaré Conjecture
+27. P versus NP
+28. (추가) Proofs by Computer — 4색 정리와 Kepler 추측
+29. (추가) The Limits of Proof and Computation — Gödel 불완전성과 정지 문제
+30. The Continuum Hypothesis — Cantor의 물음(1권 2장의 대각선 논법에서 이어짐), Hilbert의 첫째 문제, Gödel(1940)의 무모순성과 Cohen(1963)의 독립성, "참도 거짓도 증명할 수 없다"는 것의 뜻(29장의 불완전성 바로 뒤에 둔다; 2026-11-26 사용자 추가)
 
 ## 아직 정하지 않은 것
 - 1–16권 장 목차의 세부(초안 확인 대기). 주제 권은 공용 빌드의 공개 API 목록과 대조가 남았다.
