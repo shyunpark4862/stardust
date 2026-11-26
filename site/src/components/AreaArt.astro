@@ -1,7 +1,7 @@
 ---
 /**
  * A small line drawing for an area card on the landing page: what the area
- * works with, in the area's colour. Decorative only.
+ * works with, in the area's color. Decorative only.
  */
 interface Props {
   area: string;
@@ -53,7 +53,7 @@ const poleX = 96;
 const branchF = (x: number) => 32 - 9 / ((x - poleX) / 18);
 const branchL = pts(branchF, 30, poleX - 3, 40).filter(([, y]) => y > 4 && y < 56);
 const branchR = pts(branchF, poleX + 3, 156, 40).filter(([, y]) => y > 4 && y < 56);
-// Points, a query point, the radius around it and the neighbours inside it.
+// Points, a query point, the radius around it and the neighbors inside it.
 const r4 = rand(19);
 const nnPts = Array.from({ length: 30 }, () => [18 + r4() * 134, 8 + r4() * 50] as const);
 const nnQ = [86, 33] as const;

@@ -106,6 +106,39 @@ export function isSingle(entry: ApiEntry): boolean {
   return names.length <= 1 || names.every((n) => n === title || n.endsWith(`.${title}`) || n.startsWith(`${title}.`));
 }
 
+/**
+ * The names a family page's title lists ("zeros, ones, empty, full"), when
+ * every one of them is a name the page documents; otherwise undefined.
+ */
+function titleList(entry: ApiEntry): string[] | undefined {
+  const { kind, names, title } = entry.data;
+  if (kind === 'concept') return undefined;
+  const parts = title.split(', ');
+  if (parts.length < 2) return undefined;
+  const known = (p: string) => /^[A-Za-z_][\w.]*$/.test(p) && names.some((n) => n === p || n.endsWith(`.${p}`));
+  return parts.every(known) ? parts : undefined;
+}
+
+/**
+ * Show the title in the code font: a single name's page, or a family page
+ * whose title is the list of its names (the commas stay in the text font,
+ * see <ApiTitle />).
+ */
+export function isCodeTitle(entry: ApiEntry): boolean {
+  return isSingle(entry) || titleList(entry) !== undefined;
+}
+
+/**
+ * The names to list under a title in the sidebar and the area tables: the
+ * page's names that its title does not already show, or undefined.
+ */
+export function namesUnder(entry: ApiEntry): string[] | undefined {
+  if (isSingle(entry)) return undefined;
+  const shown = titleList(entry) ?? [];
+  const rest = entry.data.names.filter((n) => !shown.includes(n));
+  return rest.length > 0 ? rest : undefined;
+}
+
 /** Sidebar groups for every page under /api/<area>/. Empty groups are left out. */
 export async function areaSidebar(area: string): Promise<NavGroup[]> {
   return (await groupsOf(area))
@@ -115,8 +148,8 @@ export async function areaSidebar(area: string): Promise<NavGroup[]> {
       items: g.entries.map((e) => ({
         label: e.data.title,
         href: hrefOf(e),
-        mono: isSingle(e),
-        names: isSingle(e) || e.data.names.length === 0 ? undefined : e.data.names,
+        mono: isCodeTitle(e),
+        names: namesUnder(e),
       })),
     }));
 }

@@ -13,14 +13,14 @@
  * winding up. Young blue stars and pink gas clouds show only inside the arms;
  * the old, yellower disc dims between them; dark dust lines the inner edge.
  *
- * Two thin jets leave the centre along the axis of the disc, as they do from
+ * Two thin jets leave the center along the axis of the disc, as they do from
  * the black hole of an active galaxy: narrow at the base, widening and
  * fading as the matter streams outward.
  */
 
 /**
  * What a galaxy looks like, whichever way its particles are moved: the
- * spiral pattern, the jets and the colours.
+ * spiral pattern, the jets and the colors.
  */
 export const GALAXY_GLSL = /* glsl */ `
 const float CAMERA = 3.4;
@@ -66,7 +66,7 @@ vec3 jetPoint(float across, float along, float turn, float time, float grow, out
   return vec3(cos(a) * wide + kink.x, side * (0.02 + len), sin(a) * wide + kink.y);
 }
 
-// Colour runs from young blue through white to the warm light of old
+// Color runs from young blue through white to the warm light of old
 // stars; 2 is the pink of glowing gas, below 0 is dust (no light at all).
 vec3 tint(float t) {
   vec3 cool = vec3(0.30, 0.50, 1.00);
@@ -83,7 +83,7 @@ vec3 tint(float t) {
 
 const VERT = /* glsl */ `
 attribute vec4 aOrbit; // radius, start angle, height, kind (0 disc, 1 field, 2 jet)
-attribute vec4 aLook;  // size, brightness, twinkle phase, colour
+attribute vec4 aLook;  // size, brightness, twinkle phase, color
 attribute vec4 aWave;  // arm contrast, arm sharpness, phase offset, twinkle amount
 
 uniform float uTime;
@@ -190,11 +190,11 @@ export function buildParticles(total: number, jets = true): Particles {
   const wave: number[] = [];
   const add = (
     r: number, h: number, kind: number,
-    size: number, bright: number, colour: number,
+    size: number, bright: number, color: number,
     contrast = 0, sharp = 1, offset = 0, twinkle = 0.22,
   ) => {
     orbit.push(r, rand() * Math.PI * 2, h, kind);
-    look.push(size, bright, rand(), colour);
+    look.push(size, bright, rand(), color);
     wave.push(contrast, sharp, offset, twinkle);
   };
   const n = (share: number) => Math.round(total * share);
@@ -204,7 +204,7 @@ export function buildParticles(total: number, jets = true): Particles {
     add(1.2 + rand() * 1.9, (rand() * 2 - 1) * 2.6, 1, 1.0 + Math.pow(rand(), 6) * 2.6, 0.25 + rand() * 0.55, rand());
   }
   // Unresolved starlight: large, very faint sprites that add up to the glow
-  // of the disc, warm at the centre and blue outside.
+  // of the disc, warm at the center and blue outside.
   for (let i = n(0.08); i > 0; i--) {
     const r = disc(0.36, 0.04, 1.9);
     add(r, gauss() * 0.01, 0, 18 + rand() * 22, 0.017 + rand() * 0.014, clamp(0.76 - 0.85 * r), 0.9, 2.2, gauss() * 0.25, 0);
@@ -214,7 +214,7 @@ export function buildParticles(total: number, jets = true): Particles {
     const c = rand() * 2 - 1;
     add(r3 * Math.sqrt(1 - c * c), r3 * c * 0.65, 0, 20 + rand() * 20, 0.008 + rand() * 0.008, 0.86 + rand() * 0.1, 0, 1, 0, 0);
   }
-  // Bulge: old, warm stars in a flattened ball, dense at the centre with
+  // Bulge: old, warm stars in a flattened ball, dense at the center with
   // long faint wings.
   for (let i = n(0.1); i > 0; i--) {
     const q = Math.sqrt(rand());
@@ -225,15 +225,15 @@ export function buildParticles(total: number, jets = true): Particles {
   // Old disc: dims between the arms but never goes dark.
   for (let i = n(0.32); i > 0; i--) {
     const r = disc(0.32, 0.06, 2.0);
-    const colour = clamp(0.84 - r * 0.3 + (rand() - 0.5) * 0.3);
-    add(r, gauss() * 0.014 * (0.6 + r), 0, 0.8 + Math.pow(rand(), 5) * 1.4, 0.18 + rand() * 0.3, colour, 0.66, 1.8);
+    const color = clamp(0.84 - r * 0.3 + (rand() - 0.5) * 0.3);
+    add(r, gauss() * 0.014 * (0.6 + r), 0, 0.8 + Math.pow(rand(), 5) * 1.4, 0.18 + rand() * 0.3, color, 0.66, 1.8);
   }
   // Young stars: blue, bright, and seen only inside the arms.
   const young = () => {
     const r = disc(0.44, 0.2, 2.0);
-    let colour = 0.05 + rand() * 0.4;
-    if (rand() < 0.012) colour = 0.92 + rand() * 0.08; // a rare red giant
-    add(r, gauss() * 0.009 * (0.6 + r), 0, 0.9 + Math.pow(rand(), 6) * 2.8, 0.45 + rand() * 0.55, colour, 1, 3.2, gauss() * 0.3);
+    let color = 0.05 + rand() * 0.4;
+    if (rand() < 0.012) color = 0.92 + rand() * 0.08; // a rare red giant
+    add(r, gauss() * 0.009 * (0.6 + r), 0, 0.9 + Math.pow(rand(), 6) * 2.8, 0.45 + rand() * 0.55, color, 1, 3.2, gauss() * 0.3);
   };
   for (let i = n(0.27); i > 0; i--) young();
   // Jets: fine grains and a little soft light around them. The side that
@@ -335,7 +335,7 @@ export function mountStardust(canvas: HTMLCanvasElement, host: HTMLElement, jets
     gl.uniform2f(u.res, canvas.width, canvas.height);
     gl.uniform2f(u.center, center[0], center[1]);
     gl.uniform1f(u.scale, portrait ? 0.6 : 0.95);
-    // The CSS glow behind the core follows the same centre.
+    // The CSS glow behind the core follows the same center.
     host.style.setProperty('--core-x', `${(center[0] * 0.5 + 0.5) * 100}%`);
     host.style.setProperty('--core-y', `${(0.5 - center[1] * 0.5) * 100}%`);
   };

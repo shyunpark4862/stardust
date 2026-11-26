@@ -186,6 +186,17 @@ const eyebrow = 'Array · Linear algebra · Sparse · DataFrame · Special · St
       background: linear-gradient(180deg, rgb(4 8 22 / 0.7), rgb(4 8 22 / 0.2) 55%, rgb(4 8 22 / 0.5));
     }
   }
+  /* On a phone the area list runs to five lines above the title; the areas
+     are one scroll away in the cards below, so the hero starts with the
+     title. */
+  @media (max-width: 640px) {
+    .hero__eyebrow {
+      display: none;
+    }
+    .hero__title {
+      margin-top: 0;
+    }
+  }
   @media (prefers-reduced-motion: reduce) {
     .hero__eyebrow,
     .hero__line,

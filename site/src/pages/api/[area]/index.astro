@@ -8,6 +8,7 @@ import { getCollection, render } from 'astro:content';
 import Docs from '../../../layouts/Docs.astro';
 import FunctionTables from '../../../components/api/FunctionTables.astro';
 import ResultTable from '../../../components/api/ResultTable.astro';
+import ApiTitle from '../../../components/docs/ApiTitle.astro';
 import { inlineHtml } from '../../../data/inline';
 import { url } from '../../../lib/url';
 import {
@@ -19,7 +20,7 @@ import {
   groupsOf,
   headingsBefore,
   hrefOf,
-  isSingle,
+  isCodeTitle,
   resolveRef,
 } from '../../../data/api';
 
@@ -69,7 +70,9 @@ const headings = [
             <li>
               {e ? (
                 <a class="glance__card" href={url(hrefOf(e))}>
-                  <span class:list={['glance__title', isSingle(e) && 'glance__title--mono']}>{e.data.title}</span>
+                  <span class:list={['glance__title', isCodeTitle(e) && 'glance__title--mono']}>
+                    <ApiTitle text={e.data.title} code={isCodeTitle(e)} />
+                  </span>
                   <span class="glance__summary" set:html={inlineHtml(e.data.summary)} />
                 </a>
               ) : (

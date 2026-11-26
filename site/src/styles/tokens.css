@@ -1,9 +1,9 @@
 /*
- * Design tokens. Every colour, size and space on the site comes from here;
+ * Design tokens. Every color, size and space on the site comes from here;
  * components never hard-code a value.
  */
 :root {
-  /* ---- Colour: blue scale ---- */
+  /* ---- Color: blue scale ---- */
   --blue-50: #f3f7ff;
   --blue-100: #e6eeff;
   --blue-200: #cbdcff;
@@ -15,14 +15,14 @@
   --blue-800: #17378f;
   --blue-900: #122868;
 
-  /* ---- Colour: night (dark surfaces) ---- */
+  /* ---- Color: night (dark surfaces) ---- */
   --night-950: #040816;
   --night-900: #060b1c;
   --night-800: #0b1329;
   --night-700: #121c3a;
   --night-600: #1c294f;
 
-  /* ---- Colour: slate (text and lines, blue-tinted neutral) ---- */
+  /* ---- Color: slate (text and lines, blue-tinted neutral) ---- */
   --slate-25: #fbfcfe;
   --slate-50: #f6f8fc;
   --slate-100: #eef1f7;
@@ -162,7 +162,7 @@
   --btn-secondary-bg-hover: rgb(255 255 255 / 0.1);
 }
 
-/* ---- Area colours ----
+/* ---- Area colors ----
  * Each area has one hue for wayfinding: the area name in the sidebar, the
  * current page, the path above the title, the table of contents and the
  * cards that lead to it. Text stops are 4.5:1 or better on white. Anything

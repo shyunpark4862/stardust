@@ -39,7 +39,7 @@
 }
 
 /* Direct children only: headings inside components (an API entry's name next
-   to its badge) lay out their own neighbours. */
+   to its badge) lay out their own neighbors. */
 .prose > h2 + *,
 .prose > h3 + *,
 .prose > h4 + * {

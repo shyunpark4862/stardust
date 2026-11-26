@@ -4,7 +4,8 @@
  * frontmatter, in that order, as a heading, its one-sentence description and
  * a table of its pages (name | summary).
  */
-import { groupId, groupsOf, hrefOf, isSingle } from '../../data/api';
+import { groupId, groupsOf, hrefOf, isCodeTitle, namesUnder } from '../../data/api';
+import ApiTitle from '../docs/ApiTitle.astro';
 import { inlineHtml } from '../../data/inline';
 import { url } from '../../lib/url';
 
@@ -24,10 +25,10 @@ const groups = await groupsOf(area);
             {g.entries.map((e) => (
               <tr>
                 <th scope="row">
-                  <a href={url(hrefOf(e))} class:list={[isSingle(e) && 'ftable__mono']}>
-                    {e.data.title}
+                  <a href={url(hrefOf(e))} class:list={[isCodeTitle(e) && 'ftable__mono']}>
+                    <ApiTitle text={e.data.title} code={isCodeTitle(e)} />
                   </a>
-                  {!isSingle(e) && e.data.names.length > 0 && <span class="ftable__names">{e.data.names.join(' ')}</span>}
+                  {namesUnder(e) && <span class="ftable__names">{namesUnder(e)!.join(' ')}</span>}
                 </th>
                 <td set:html={inlineHtml(e.data.summary)} />
               </tr>

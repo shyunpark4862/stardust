@@ -1,6 +1,7 @@
 ---
 import Base from './Base.astro';
 import Badge from '../components/Badge.astro';
+import ApiTitle from '../components/docs/ApiTitle.astro';
 import { mathCss, renderTex } from '../lib/mathjax.mjs';
 import '../styles/prose.css';
 import { inlineHtml, plainText } from '../data/inline';
@@ -120,7 +121,9 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
                           aria-current={path === item.href ? 'page' : undefined}
                         >
                           <span class="side__label">
-                            <span class:list={[item.mono && 'side__mono']}>{item.label}</span>
+                            <span class:list={[item.mono && 'side__mono']}>
+                              <ApiTitle text={item.label} code={item.mono} />
+                            </span>
                             {item.names && <span class="side__names">{item.names.join(' ')}</span>}
                           </span>
                           {item.badge && <Badge>{item.badge}</Badge>}
@@ -136,7 +139,9 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
                     {g.items.map((item) => (
                       <li>
                         <a class="side__link" href={url(item.href)} aria-current={path === item.href ? 'page' : undefined}>
-                          <span class:list={[item.mono && 'side__mono']}>{item.label}</span>
+                          <span class:list={[item.mono && 'side__mono']}>
+                            <ApiTitle text={item.label} code={item.mono} />
+                          </span>
                           {item.badge && <Badge>{item.badge}</Badge>}
                         </a>
                       </li>
@@ -169,7 +174,9 @@ const isCurrentGroup = (g: NavGroup) => g.items.some((i) => i.href === path);
             {area && <code class="page-head__kind-ns">{area.current.ns}</code>}
           </p>
         )}
-        <h1 class:list={['page-head__title', monoTitle && 'page-head__title--mono', kind && 'page-head__title--kind']}>{title}</h1>
+        <h1 class:list={['page-head__title', monoTitle && 'page-head__title--mono', kind && 'page-head__title--kind']}>
+          <ApiTitle text={title} code={monoTitle} />
+        </h1>
         {description && <p class="page-head__lead" set:html={inlineHtml(description)} />}
         {
           meta.length > 0 && (

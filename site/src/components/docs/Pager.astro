@@ -1,10 +1,11 @@
 ---
+import ApiTitle from './ApiTitle.astro';
 import { url } from '../../lib/url';
 /** Previous and next page at the end of a reference page or an article. */
 interface Link {
   href: string;
   title: string;
-  /** Show the title in the code font (a single function's page). */
+  /** Show the title in the code font (a name, or a family's list of names). */
   mono?: boolean;
 }
 interface Props {
@@ -27,7 +28,7 @@ const { prev, next, label } = Astro.props;
         </span>
         <span class="pager__text">
           <span class="pager__dir">Previous</span>
-          <span class:list={['pager__name', prev.mono && 'pager__name--mono']}>{prev.title}</span>
+          <span class:list={['pager__name', prev.mono && 'pager__name--mono']}><ApiTitle text={prev.title} code={prev.mono} /></span>
         </span>
       </a>
     ) : (
@@ -39,7 +40,7 @@ const { prev, next, label } = Astro.props;
       <a class="pager__link pager__link--next" href={url(next.href)} rel="next">
         <span class="pager__text">
           <span class="pager__dir">Next</span>
-          <span class:list={['pager__name', next.mono && 'pager__name--mono']}>{next.title}</span>
+          <span class:list={['pager__name', next.mono && 'pager__name--mono']}><ApiTitle text={next.title} code={next.mono} /></span>
         </span>
         <span class="pager__arrow" aria-hidden="true">
           <svg width="14" height="14" viewBox="0 0 14 14" fill="none">

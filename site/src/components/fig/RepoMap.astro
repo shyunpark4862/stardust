@@ -2,11 +2,11 @@
 /**
  * The repository at a glance: the top-level entries as a short list, then
  * the C++ folders as cards in groups. Each area's card carries the area's
- * colour; file names are plain text that wraps.
+ * color; file names are plain text that wraps.
  *
  *   top     [{ name, note }]                       entries at the top level
  *   groups  [{ title, note?, cards: [{ name, area?, files?, subs? }] }]
- *             area   key of the area colour ('array', 'stats', ...)
+ *             area   key of the area color ('array', 'stats', ...)
  *             files  file names in the folder
  *             subs   sub-folders: [{ name, files?, note? }]
  */
@@ -139,7 +139,7 @@ const { top, groups } = Astro.props;
     font-size: var(--text-xs);
     color: var(--fg-subtle);
   }
-  /* Two flowing columns: a short card does not stretch to its neighbour. */
+  /* Two flowing columns: a short card does not stretch to its neighbor. */
   .repo__cards {
     columns: 2;
     column-gap: var(--space-3);

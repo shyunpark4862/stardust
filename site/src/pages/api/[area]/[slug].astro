@@ -21,7 +21,7 @@ import {
   areaSidebar,
   headingsBefore,
   hrefOf,
-  isSingle,
+  isCodeTitle,
   orderedEntries,
   resolveRef,
   splitId,
@@ -42,7 +42,7 @@ const { data } = entry;
 const { Content, headings: rawHeadings, remarkPluginFrontmatter } = await render(entry);
 
 // A reference to a page that does not exist is left out of the page (the
-// link check reports it), so a page can be written before its neighbours.
+// link check reports it), so a page can be written before its neighbors.
 async function resolveAll(refs: string[], what: string): Promise<{ ref: string; entry?: ApiEntry }[]> {
   return Promise.all(
     refs.map(async (ref) => {
@@ -53,12 +53,12 @@ async function resolveAll(refs: string[], what: string): Promise<{ ref: string; 
   );
 }
 
-// Neighbours inside the area, in sidebar order.
+// Neighbors inside the area, in sidebar order.
 const ordered = await orderedEntries(area);
 const at = ordered.findIndex((e) => e.id === entry.id);
 const prev = ordered[at - 1];
 const next = ordered[at + 1];
-const link = (e: ApiEntry) => ({ href: hrefOf(e), title: e.data.title, mono: isSingle(e) });
+const link = (e: ApiEntry) => ({ href: hrefOf(e), title: e.data.title, mono: isCodeTitle(e) });
 
 const related = (await resolveAll(data.seeAlso, 'seeAlso')).flatMap((r) => (r.entry ? [r.entry] : []));
 const returnedBy = data.kind === 'class' ? await resolveAll(data.returnedBy, 'returnedBy') : [];
@@ -115,7 +115,7 @@ const tag = (e: ApiEntry) => {
   description={data.summary}
   section="api"
   crumbs={areaCrumbs(area, data.group)}
-  monoTitle={isSingle(entry)}
+  monoTitle={isCodeTitle(entry)}
   kind={data.kind}
   groups={await areaSidebar(area)}
   area={await areaNav(area)}

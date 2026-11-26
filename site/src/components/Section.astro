@@ -1,8 +1,11 @@
 ---
+import { inlineHtml } from '../data/inline';
+
 interface Props {
   id?: string;
   eyebrow?: string;
   title: string;
+  /** One or two sentences; `code` in backticks is set as inline code. */
   lead?: string;
   tone?: 'default' | 'subtle' | 'dark';
   /** Put the heading and the body side by side on wide screens. */
@@ -16,7 +19,7 @@ const { id, eyebrow, title, lead, tone = 'default', split = false } = Astro.prop
     <header class="section__head" data-reveal>
       {eyebrow && <p class="eyebrow">{eyebrow}</p>}
       <h2 class="section__title">{title}</h2>
-      {lead && <p class="section__lead">{lead}</p>}
+      {lead && <p class="section__lead" set:html={inlineHtml(lead)} />}
     </header>
     <div class="section__body"><slot /></div>
   </div>
@@ -51,6 +54,21 @@ const { id, eyebrow, title, lead, tone = 'default', split = false } = Astro.prop
     font-size: var(--text-lg);
     line-height: 1.7;
     color: var(--fg-muted);
+  }
+  .section__lead :global(code) {
+    padding: 0.1em 0.3em;
+    border-radius: 5px;
+    background: var(--slate-100);
+    font-size: var(--text-code-inline);
+    color: var(--blue-800);
+    white-space: nowrap;
+  }
+  .section--subtle .section__lead :global(code) {
+    background: var(--slate-200);
+  }
+  .section--dark .section__lead :global(code) {
+    background: rgb(255 255 255 / 0.08);
+    color: var(--blue-200);
   }
   .section__body {
     margin-top: var(--space-16);

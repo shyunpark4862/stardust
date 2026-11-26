@@ -4,6 +4,7 @@
  * cards, two to a row. Each card names the page's group, then the page, then
  * the start of its summary (two lines); the whole card is the link.
  */
+import ApiTitle from './ApiTitle.astro';
 import { inlineHtml } from '../../data/inline';
 import { url } from '../../lib/url';
 
@@ -11,7 +12,7 @@ interface Item {
   href: string;
   title: string;
   summary: string;
-  /** Show the title in the code font (a single function's page). */
+  /** Show the title in the code font (a name, or a family's list of names). */
   mono?: boolean;
   /** The group the page sits in on its area page ("Linear systems"). */
   tag?: string;
@@ -32,7 +33,7 @@ const { items } = Astro.props;
             <a class="related__card" href={url(item.href)}>
               {item.tag && <span class="related__tag">{item.tag}</span>}
               <span class:list={['related__name', item.mono && 'related__name--mono']}>
-                {item.title}
+                <ApiTitle text={item.title} code={item.mono} />
                 <svg class="related__arrow" width="12" height="12" viewBox="0 0 12 12" fill="none" aria-hidden="true">
                   <path d="M2.5 6h7M6.5 3l3 3-3 3" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" />
                 </svg>

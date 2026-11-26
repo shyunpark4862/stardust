@@ -131,9 +131,11 @@ const groups: NavGroup[] = [
     list-style: none;
     border-top: 1px solid var(--line);
   }
+  /* The area column fits the longest namespace (sd.differentiate, about
+     127px with its dot) and leaves the rest to the summary. */
   .names li {
     display: grid;
-    grid-template-columns: minmax(0, 15rem) 9rem minmax(0, 1fr);
+    grid-template-columns: minmax(0, 15rem) 8.5rem minmax(0, 1fr);
     gap: var(--space-4);
     align-items: baseline;
     margin: 0;

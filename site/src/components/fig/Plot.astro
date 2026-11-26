@@ -92,7 +92,7 @@ const thin = (pts: [number, number][]) => {
   const step = Math.max(1, Math.floor(pts.length / 160));
   return pts.filter((_, i) => i % step === 0 || i === pts.length - 1).map(([x, y]) => [+x.toPrecision(6), Number.isFinite(y) ? +y.toPrecision(6) : null]);
 };
-// A log axis is drawn in exponents with ticks labelled 10^v ("0.001", "1e6"):
+// A log axis is drawn in exponents with ticks labeled 10^v ("0.001", "1e6"):
 // read such an axis back as 10^x so the readout speaks in the plot's units.
 const isLog = (ticks: Tick[]) =>
   ticks.length >= 2 &&
@@ -309,8 +309,8 @@ const zeroY = range[0] <= 0 && range[1] >= 0;
 
 <script>
   // Hover readout for every plot on the page. Values are read off the sampled
-  // points (linear between neighbours), so they match the drawn lines.
-  const colours = ['var(--blue-600)', 'var(--blue-300)', 'var(--slate-400)'];
+  // points (linear between neighbors), so they match the drawn lines.
+  const colors = ['var(--blue-600)', 'var(--blue-300)', 'var(--slate-400)'];
   const fmt = (v: number) => {
     if (v === 0) return '0';
     const a = Math.abs(v);
@@ -358,7 +358,7 @@ const zeroY = range[0] <= 0 && range[1] >= 0;
           dots[i].setAttribute('cx', String(p.x));
           dots[i].setAttribute('cy', String(sy(y!)));
         }
-        if (y !== null) rows.push(`<i style="background:${colours[i]}"></i>${label} ${showY(y)}`);
+        if (y !== null) rows.push(`<i style="background:${colors[i]}"></i>${label} ${showY(y)}`);
       });
       tip.innerHTML = rows.join('<br>');
       box.classList.add('is-reading');

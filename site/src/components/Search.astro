@@ -48,7 +48,7 @@
     h: string; // href from the site root
     a: string; // area key
     p: string; // place: "API · Statistics · Continuous distributions"
-    m: number; // 1: title in the code font
+    m: number; // 1: title in the code font (a name, or a family's list of names)
   }
 
   const dialog = document.querySelector<HTMLDialogElement>('.search')!;
@@ -113,7 +113,7 @@
           .map(
             (it, i) => `<li role="option" id="search-opt-${i}" aria-selected="${i === 0}" data-area="${it.a}">
               <a class="search__item" href="${url(it.h)}" tabindex="-1">
-                <span class="search__top"><i class="search__dot" aria-hidden="true"></i><span class="search__title${it.m ? ' search__title--mono' : ''}">${escape(it.t)}</span><span class="search__place">${escape(it.p)}</span></span>
+                <span class="search__top"><i class="search__dot" aria-hidden="true"></i><span class="search__title${it.m ? ' search__title--mono' : ''}">${it.m ? escape(it.t).split(', ').join('<span class="list-sep">, </span>') : escape(it.t)}</span><span class="search__place">${escape(it.p)}</span></span>
                 <span class="search__sum">${escape(it.s)}</span>
               </a></li>`,
           )

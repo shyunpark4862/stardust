@@ -64,7 +64,7 @@ export const areas = [
   { key: 'integrate', name: 'Integration', ns: 'sd.integrate', desc: 'Adaptive quadrature, nested and multidimensional integrals, fixed and sampled rules', status: 'done' },
   { key: 'differentiate', name: 'Differentiation', ns: 'sd.differentiate', desc: 'Numerical derivatives, Jacobians and Hessians', status: 'done' },
   { key: 'random', name: 'Random numbers', ns: 'sd.random', desc: 'Counter-based generators, reproducible streams, sampling from distributions', status: 'done' },
-  { key: 'spatial', name: 'Spatial', ns: 'sd.spatial', desc: 'Distance matrices, nearest neighbours, k-d trees, Delaunay triangulation, convex hulls, Voronoi diagrams', status: 'done' },
+  { key: 'spatial', name: 'Spatial', ns: 'sd.spatial', desc: 'Distance matrices, nearest neighbors, k-d trees, Delaunay triangulation, convex hulls, Voronoi diagrams', status: 'done' },
   { key: 'fft', name: 'Fourier transforms', ns: 'sd.fft', desc: 'Complex, real and Hermitian FFTs, DCT and DST, multidimensional transforms, FFTLog', status: 'done' },
   { key: 'interpolate', name: 'Interpolation', ns: 'sd.interpolate', desc: 'Piecewise polynomials and splines, barycentric and rational interpolation, gridded and scattered data', status: 'done' },
   { key: 'smooth', name: 'Smoothing', ns: 'sd.smooth', desc: 'LOWESS and LOESS, smoothing splines, kernel regression, kernel density estimation, Savitzky–Golay filters', status: 'done' },

@@ -1,0 +1,16 @@
+---
+/**
+ * A page title as text. With `code`, the title is a name or a list of names
+ * ("zeros, ones, empty, full") set in the code font by the caller; the
+ * commas between names stay in the text font (.list-sep in global.css), so
+ * the list reads as names separated by punctuation, not as one code string.
+ */
+interface Props {
+  text: string;
+  code?: boolean;
+}
+const { text, code = false } = Astro.props;
+const parts = code ? text.split(', ') : [text];
+---
+
+{parts.map((p, i) => (i === 0 ? p : <Fragment><span class="list-sep">, </span>{p}</Fragment>))}

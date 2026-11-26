@@ -4,7 +4,7 @@
  * Built once with the site.
  */
 import { getCollection } from 'astro:content';
-import { areaOf, hrefOf, isSingle, splitId } from '../data/api';
+import { areaOf, hrefOf, isCodeTitle, splitId } from '../data/api';
 import { plainText } from '../data/inline';
 import { startHref } from '../data/start';
 
@@ -18,7 +18,7 @@ export async function GET() {
       h: hrefOf(e),
       a: area,
       p: `${areaOf(area).name} · ${e.data.group}`,
-      m: isSingle(e) ? 1 : 0,
+      m: isCodeTitle(e) ? 1 : 0,
     };
   });
   const areas = (await getCollection('areas')).map((e) => ({

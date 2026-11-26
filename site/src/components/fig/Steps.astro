@@ -47,7 +47,7 @@ const { steps } = Astro.props;
     padding: 0;
     list-style: none;
   }
-  /* Geometry. Every dot is centred on the rail (x = 6px) and on the first
+  /* Geometry. Every dot is centered on the rail (x = 6px) and on the first
      line of its box: border 1px + padding 8px + half of a 20.8px line. */
   .steps {
     --rail-x: 6px;
@@ -65,7 +65,7 @@ const { steps } = Astro.props;
     padding-bottom: 0;
   }
   /* The rail: each step draws its own stretch, edge to edge, so the pieces
-     meet without gaps; the first starts and the last ends at a dot's centre.
+     meet without gaps; the first starts and the last ends at a dot's center.
      The dots sit on top and hide the line where it passes through them.
      Sub-steps stay on the same rail; only their box is indented. */
   .step::before {

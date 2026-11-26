@@ -5,7 +5,7 @@
  * themselves never need to know where the site is served.
  *
  * Left alone: #anchors, relative paths, other hosts ("//host", "https:"), and
- * the props of MDX components (capitalised tags), which apply the base
+ * the props of MDX components (capitalized tags), which apply the base
  * themselves through src/lib/url.ts.
  */
 

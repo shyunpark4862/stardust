@@ -1,7 +1,7 @@
 ---
 /**
  * A framed diagram inside a document. Lay ArrayFig, Op and Plot inside it;
- * children sit in a centred row that wraps on narrow screens.
+ * children sit in a centered row that wraps on narrow screens.
  */
 interface Props {
   caption?: string;
@@ -26,7 +26,7 @@ const { caption, column = false } = Astro.props;
   const wraps = (chain: HTMLElement) => {
     const kids = [...chain.children] as HTMLElement[];
     if (kids.length < 2) return false;
-    // Items on one line overlap vertically (they are centred on each other);
+    // Items on one line overlap vertically (they are centered on each other);
     // an item that starts below everything before it began a new line.
     let bottom = kids[0].getBoundingClientRect().bottom;
     for (const k of kids.slice(1)) {

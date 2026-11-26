@@ -84,6 +84,14 @@ samp {
   font-variant-ligatures: contextual;
 }
 
+/* The comma between names in a family title set in the code font
+   ("zeros, ones, empty, full"): punctuation, so it takes the text font
+   (see ApiTitle.astro and the search palette). */
+.list-sep {
+  font-family: var(--font-sans);
+  letter-spacing: normal;
+}
+
 ::selection {
   background: var(--blue-200);
   color: var(--slate-900);

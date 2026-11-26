@@ -1,7 +1,7 @@
 ---
 /**
  * Points and shapes on a plane, drawn at build time: scatter plots, circles
- * around a query, links between neighbours, boxes of a tree. Same look as
+ * around a query, links between neighbors, boxes of a tree. Same look as
  * Plot (grid, mono ticks, blue and slate), for pictures that are not curves
  * of a function.
  *
@@ -19,7 +19,7 @@
  *     { kind: 'vline', x, dashed? }   { kind: 'hline', y, dashed? }
  *     { kind: 'text', at: [x, y], text, dx?, dy?, anchor? }
  *   tone   'main' (blue-600), 'soft' (blue-300), 'base' (slate-400),
- *          'faint' (slate-300), 'ink' (the text colour)
+ *          'faint' (slate-300), 'ink' (the text color)
  *   legend [{ label, tone, shape: 'dot' | 'square' | 'cross' | 'diamond' | 'line' | 'dash' | 'box' }]
  */
 type Tone = 'main' | 'soft' | 'base' | 'faint' | 'ink';
