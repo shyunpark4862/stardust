@@ -1,6 +1,6 @@
 # 사이트 작업 계획
 
-작성 지침은 `WRITING.md`, 기준 빌드는 `README.md`. 마일스톤은 한 번에 하나만 진행한다(여러 마일스톤을 동시에 돌리지 않음, 2026-11-27 사용자). 한 마일스톤 안에서는 페이지 묶음을 나눠 작성 에이전트 여럿을 병렬로 돌려도 되고(맡은 파일이 겹치지 않게, 영역 개요 파일은 한 에이전트만), 검증도 같은 방식. 에이전트는 Opus 5.5, effort medium. 작성 → 검증 → 메인 확인 → 커밋·push → Project Logger1 알림. 영역별 얼개는 `plans/<area>.md`.
+작성 지침은 `WRITING.md`, 기준 빌드는 `README.md`. 마일스톤은 한 번에 하나만 진행한다(여러 마일스톤을 동시에 돌리지 않음, 2026-11-27 사용자). 한 마일스톤 안에서는 페이지 묶음을 나눠 작성 에이전트 여럿을 병렬로 돌려도 되고(맡은 파일이 겹치지 않게, 영역 개요 파일은 한 에이전트만), 검증도 같은 방식. 병렬 에이전트는 최대 3개. 에이전트는 Opus 5.5, effort high(2026-11-27 사용자 수정). 메인(Fable)은 조율자: 얼개·브리프·일관성 관리·확인만 하고, 토큰이 많이 드는 일(작성, 검증, 긴 파일 읽기, 브라우저 점검)은 에이전트에 맡긴다. 일관성: 병렬 작성 전에 메인이 그 마일스톤의 공통 결정(용어, 타입 표기, 그룹 이름, slug 목록, 공통 문구, 본보기 페이지)을 `plans/<area>.md`에 적어 모든 브리프에 넣고, 작성 뒤 검증 에이전트 하나가 묶음 사이 일관성(용어·표기·교차 링크·중복 설명)을 따로 본다. 작성 → 검증 → 메인 확인 → 커밋·push → Project Logger1 알림. 영역별 얼개는 `plans/<area>.md`.
 
 ## 순서
 common(Install·Conventions 첫판은 템플릿 작업과 함께) → array → linalg → frame → special → stats → random → regression → htest → optimize → integrate → differentiate → sparse → spatial → graph → interpolate → fft → smooth → plot → common 마무리. `sd.cluster`는 기준 빌드에 일부만 있어 뺀다.
