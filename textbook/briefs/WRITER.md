@@ -42,3 +42,5 @@ Work only inside /Users/sanghyunpark/Desktop/stardust/textbook/. The rest of the
 
 ## Report (Korean, concise)
 Files written; page count; numbers of sections, results, proofs, figures, tables, algorithms, note boxes; build result; what you checked on the rendered pages; "서지 확인 필요" list; conventions you introduced; any rule you could not fully satisfy; anything you are unsure of. Do not commit.
+
+- If the stardust library behaves in a way that looks wrong or surprising during your experiments (a wrong value, an error, an ignored setting), do not work around it silently and do not try to fix or report it elsewhere: describe it in one or two lines in your hand-back report under a heading "Library observations" (what you called, what you expected, what you got). The manager records it.

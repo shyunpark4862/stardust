@@ -22,3 +22,5 @@ Four passes.
 Then `tools/build.sh volN` until warnings 0, render every page with a figure, table, algorithm or box (pdftoppm -r 80 into a temp directory outside the repository, deleted afterwards) and confirm margins, placement, overlaps, fills and axes on top.
 
 Report (Korean, concise): errors found and fixed with locations; judgment calls; bibliography changes and anything unverifiable; guideline violations fixed; scale of prose edits; build result; what remains unresolved. Do not commit.
+
+- If the stardust library behaves in a way that looks wrong or surprising while you re-run experiments, add one or two lines under "Library observations" in your report (what you called, what you expected, what you got). Do not fix or report it elsewhere.
