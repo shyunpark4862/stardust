@@ -58,6 +58,13 @@
 - **역할 분담** (2026-11-25): 메인 세션(Fable)은 전반을 관리한다. 각 장의 목차와 들어갈 내용 등 얼개를 짜고, 지침 준수와 결과를 점검한다. 토큰이 많이 드는 실제 집필은 Opus 5.5(effort 높음) 에이전트에게 시킨다. 검증, 윤문, 필요한 stardust 실행(벤치, 정확도 측정 등)도 같은 수준의 에이전트에게 맡긴다. 에이전트 브리프에는 이 지침(GUIDE.md)과 해당 장의 얼개를 반드시 읽게 한다. 브리프의 본문은 briefs/WRITER.md와 briefs/REVIEWER.md에 있다(장마다 집필 에이전트 하나, 이어서 서지 검증·수학 검토·지침 점검·윤문을 한 번에 하는 검토 에이전트 하나). 지침이 바뀌면 브리프도 함께 고친다. 사용자가 "죽 진행해"라고 했으므로(2026-11-25) 장마다 묻지 않고 1권 2장부터 이어 간다. 철자는 영국식. 메인의 점검도 최소화한다: 세부 검수와 쪽 확인은 에이전트가 하고 메인은 요약 보고만 읽는다.
 - 작업이 반복되어도 이 지침이 흐려지지 않게 한다: 장마다 이 문서를 다시 읽고, 장을 마칠 때 지침별로 점검한다.
 - 애매한 것은 묻는다.
+- **노션 현황판** (2026-11-27 사용자 지시): 진행 상황을 노션 워크스페이스 "Stardust"의 "Stardust Project Status" 페이지(https://app.notion.com/p/3f230fceadd18063a710e0f48deb90b7)에 적는다. 작성자 이름은 "Textbook Scribe", 노션에 쓰는 글은 영어로만.
+  - Milestones(`collection://42430fce-add1-81e1-88e3-000bb890e882`)에 장 하나가 행 하나다. Name은 "Ch. 23 — First-Order Equations" 꼴, Unit은 그 권의 행(Units `collection://42430fce-add1-81c6-94c7-000b6675ed08`, Track = Textbook; 권 행은 새로 만들지 않는다), Summary는 그 장에서 다루는 것 한 줄, Author = Textbook Scribe, Order = 장 번호. Units의 State·Progress·Last done은 자동 계산이니 건드리지 않는다.
+  - **Done의 기준**: 초고 커밋과 검토(서지 검증 포함) 커밋이 모두 main에 들어간 장. Done on은 검토 커밋 날짜, Commits는 그 장의 초고·검토 커밋(그 장만 다룬 후속 커밋이 있으면 함께)의 짧은 해시를 `[abc12345](https://github.com/shyunpark4862/stardust/commit/abc12345)` 꼴로 공백으로 이어 쓴다. 여러 장을 한꺼번에 손본 정리 커밋은 넣지 않는다.
+  - 갱신: 장을 시작하면(얼개를 짜거나 집필 에이전트를 띄우면) 그 행을 In progress로, 검토 커밋을 push하면 Done + Done on + Commits로 바꾼다. 얼개가 바뀌어 장이 늘거나 줄면 Planned 행을 더하거나 지우고 Order를 맞춘다.
+  - 상태·날짜·커밋의 진실 기준은 md 기록이 아니라 git 이력이다(`git log --format='%h %ad %s' --date=short -- textbook/`; 2026-11-26 이름 바꾸기 전 기록은 `-- textbook-eng/`). 장 본문은 읽지 않아도 된다.
+  - 라이브러리·홈페이지 행과 Runs는 건드리지 않는다. 별권 Excursions는 Units에 행이 없어 아직 넣지 않았다(행이 생기면 같은 규칙으로 채운다).
+  - 처음 채움(2026-11-27): OUTLINE.md의 16권 235장. 1권 1–23장 Done, 24장 In progress, 나머지 Planned.
 
 ## 7. 디자인 (2026-11-25 확정, 구현은 sdbook-eng.cls)
 - 바탕: Springer SNmono 그대로(판형, 장·절 머리, 정리 꼴, 10/12pt Times). pdfLaTeX.
