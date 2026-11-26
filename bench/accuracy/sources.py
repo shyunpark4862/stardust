@@ -385,6 +385,7 @@ def sweeps(areas=None):
         "interpolate": lambda: _module("interpolate").sweeps(),
         "fft": lambda: _module("fft").sweeps(),
         "smooth": lambda: _module("smooth").sweeps(),
+        "cluster": lambda: _module("cluster").sweeps(),
     }
     out = []
     for a in check_areas(areas):

@@ -1,6 +1,6 @@
 # stardust 로드맵
 
-> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6 완료·승인, G7a 완료·승인, G7b 완료·승인), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0 완료·승인, O1 완료·승인, O2 완료·승인, O3 완료·승인, O4 완료·승인, O5 완료·승인, O6 완료·승인), 그 뒤 [가설검정 (sd.htest)](#가설검정-영역-sdhtest)(H0 완료·승인, H1 완료·승인, H2 완료·승인, H3 완료·승인, H4 완료·승인, H5 완료·승인, H6 완료·승인(위임), H7 완료·승인(위임), H8 완료·승인(위임), H9 완료·승인(위임), H10 완료·승인(위임)), 그 뒤 [희소 (sd.sparse)](#희소-영역-sdsparse)(SP0 완료·승인, SP1 완료·승인, SP2 완료·승인, SP3 완료·승인, SP4 완료·승인(위임), SP5 완료·승인(위임), SP6 완료·승인(위임), SP7 완료·승인(위임), SP8 완료·승인(위임)), 그 뒤 [수치 미적분 (sd.integrate, sd.differentiate)](#수치-미적분-영역-sdintegrate-sddifferentiate)(C0 완료·승인(위임), C1 완료·승인(위임), C2 완료·승인(위임), C3 완료·승인(위임), C4 완료·승인(위임), C5 완료·승인(위임), C6 완료·승인(위임), C7 완료·승인(위임), C8 완료·승인(위임)), 그 뒤 [공간 (sd.spatial)](#공간-영역-sdspatial)(SPT0 완료·승인(위임), SPT1 완료·승인(위임), SPT2 완료·승인(위임), SPT3 완료·승인(위임), SPT4 완료·승인(위임), SPT6 완료·승인(위임), SPT7 완료·승인(위임); 계산 기하 SPT8·SPT9·SPT10·SPT11·SPT12·SPT13·SPT14 완료·승인(위임), 흩어진 점 보간 IP9는 나중), 그리고 [그림 (sd.plot)](#그림-영역-sdplot)(PL0–PL9 완료·승인), 그 뒤 [그래프 (sd.graph)](#그래프-영역-sdgraph)(GR0·GR1·GR2·GR3·GR4·GR5·GR6·GR7 마일스톤 완료·승인(위임)), 그 뒤 [보간 (sd.interpolate)](#보간-영역-sdinterpolate)(IP0·IP1·IP2·IP3·IP4·IP5·IP6·IP7·IP8 마일스톤 완료·승인(위임)), 그 뒤 [푸리에 변환 (sd.fft)](#푸리에-변환-영역-sdfft)(FT0·FT1·FT2·FT3·FT4·FT5·FT6·FT7 마일스톤 완료·승인(위임)), 그 뒤 [평활 (sd.smooth)](#평활-영역-sdsmooth)(SM0·SM1·SM2·SM3·SM4·SM5·SM6·SM7·SM8 마일스톤 완료·승인(위임))이다.
+> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6 완료·승인, G7a 완료·승인, G7b 완료·승인), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0 완료·승인, O1 완료·승인, O2 완료·승인, O3 완료·승인, O4 완료·승인, O5 완료·승인, O6 완료·승인), 그 뒤 [가설검정 (sd.htest)](#가설검정-영역-sdhtest)(H0 완료·승인, H1 완료·승인, H2 완료·승인, H3 완료·승인, H4 완료·승인, H5 완료·승인, H6 완료·승인(위임), H7 완료·승인(위임), H8 완료·승인(위임), H9 완료·승인(위임), H10 완료·승인(위임)), 그 뒤 [희소 (sd.sparse)](#희소-영역-sdsparse)(SP0 완료·승인, SP1 완료·승인, SP2 완료·승인, SP3 완료·승인, SP4 완료·승인(위임), SP5 완료·승인(위임), SP6 완료·승인(위임), SP7 완료·승인(위임), SP8 완료·승인(위임)), 그 뒤 [수치 미적분 (sd.integrate, sd.differentiate)](#수치-미적분-영역-sdintegrate-sddifferentiate)(C0 완료·승인(위임), C1 완료·승인(위임), C2 완료·승인(위임), C3 완료·승인(위임), C4 완료·승인(위임), C5 완료·승인(위임), C6 완료·승인(위임), C7 완료·승인(위임), C8 완료·승인(위임)), 그 뒤 [공간 (sd.spatial)](#공간-영역-sdspatial)(SPT0 완료·승인(위임), SPT1 완료·승인(위임), SPT2 완료·승인(위임), SPT3 완료·승인(위임), SPT4 완료·승인(위임), SPT6 완료·승인(위임), SPT7 완료·승인(위임); 계산 기하 SPT8·SPT9·SPT10·SPT11·SPT12·SPT13·SPT14 완료·승인(위임), 흩어진 점 보간 IP9는 나중), 그리고 [그림 (sd.plot)](#그림-영역-sdplot)(PL0–PL9 완료·승인), 그 뒤 [그래프 (sd.graph)](#그래프-영역-sdgraph)(GR0·GR1·GR2·GR3·GR4·GR5·GR6·GR7 마일스톤 완료·승인(위임)), 그 뒤 [보간 (sd.interpolate)](#보간-영역-sdinterpolate)(IP0·IP1·IP2·IP3·IP4·IP5·IP6·IP7·IP8 마일스톤 완료·승인(위임)), 그 뒤 [푸리에 변환 (sd.fft)](#푸리에-변환-영역-sdfft)(FT0·FT1·FT2·FT3·FT4·FT5·FT6·FT7 마일스톤 완료·승인(위임)), 그 뒤 [평활 (sd.smooth)](#평활-영역-sdsmooth)(SM0·SM1·SM2·SM3·SM4·SM5·SM6·SM7·SM8 마일스톤 완료·승인(위임)), 그 뒤 [군집 (sd.cluster)](#군집-영역-sdcluster)(CL0 마일스톤 완료)이다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -1260,7 +1260,7 @@
 
 # 군집 영역 (sd.cluster)
 
-> 상태: **설계 확정, 구현 시작 전** (2026-11-24). 설계는 [docs/design/cluster.md](docs/design/cluster.md)(확정), API는 [docs/api/cluster.md](docs/api/cluster.md)(확정)다. 결정은 CL1–CL40이다. CL0 마일스톤은 시작 전이다.
+> 상태: **CL0 마일스톤 완료** (2026-11-24). 설계는 [docs/design/cluster.md](docs/design/cluster.md)(확정), API는 [docs/api/cluster.md](docs/api/cluster.md)(확정)다. 결정은 CL1–CL49이다. 공개 이름은 아직 없다(CL1 마일스톤부터). k-평균의 거리 꼴은 사용자가 정했다(CL49: 차의 꼴 + 증명된 거르기, 2026-11-26).
 
 ## 진행 원칙
 - 다른 영역과 같다: 마일스톤마다 시작 전에 물을 것을 정하고, 구현하고, 정확도·속도를 재고, 커밋하고, 결과를 전달한다. 해설과 안내서는 쓰지 않는다. 결정 번호와 마일스톤 이름이 같은 머리글자라서 마일스톤은 "CL1 마일스톤"처럼 적는다. 마일스톤 에이전트는 한 번에 하나다.
@@ -1271,7 +1271,7 @@
 ## 진행 상태
 | 마일스톤 | 상태 |
 |---|---|
-| CL0 준비: API 문서의 손질, 영역 등록, 시험 자료, 참값, sklearn·scipy·R 기록, 시제품의 측정, 결과의 공통 기반, 속도 사례와 골든의 틀 | 시작 전 |
+| CL0 준비: API 문서의 손질, 영역 등록, 시험 자료, 참값, sklearn·scipy·R 기록, 시제품의 측정, 결과의 공통 기반, 속도 사례와 골든의 틀 | 완료 (2026-11-24) |
 | CL1 계층: `linkage`, `agglomerative`, `divisive`, `HierarchyResult`, scipy의 계층 도구, `dendrogram`의 자료, 행렬 없는 길 | 시작 전 |
 | CL2 분할: `kmeans`, `minibatch_kmeans`, `bisecting_kmeans`, `kmedoids`(PAM·CLARA), `fuzzy_cmeans` | 시작 전 |
 | CL3 밀도: `dbscan`, `hdbscan`, `optics` | 시작 전 |
@@ -1280,3 +1280,10 @@
 | CL6 그 밖: `affinity_propagation` | 시작 전 |
 | CL7 성능과 일관성 점검 | 시작 전 |
 | CL8 문서 | 시작 전 |
+
+## 마일스톤
+
+### CL0 마일스톤. 준비
+- 결정(추천안, 사용자 위임 2026-11-24): docs/design/cluster.md §1.1 CL41–CL48(난수의 원소 번호 r·2⁴⁰ + t; 경계 가속의 여유 γ = 2(p + 4)u; 범위 밖 자료의 2의 거듭제곱 척도; 결과의 공통 기반 `ClusterResult`와 `summary`; 높이는 최종 트리 위의 Lance–Williams 재귀; NN-chain의 동점은 이웃 찾기의 정확한 동점으로 검출; Prim과 Borůvka의 초안 문턱; k-평균 중심의 합은 열쇠 순서의 4096점 덩이). k-평균의 거리 꼴은 CL9의 규칙(Accelerate보다 1.5배 넘게 느린 경로)에 걸려 사용자에게 물었고, (a) 차의 꼴 + 증명된 거르기로 정했다(CL49, 사용자 결정 2026-11-26).
+- 결과: src/stardust/cluster/(`sd.cluster`, 공개 이름은 아직 없다; `_results.py`의 공통 기반, `_common.py`의 입력·`nan_policy`·무게·미리 계산한 거리·`metric`·`rng` 검사), 시험 자료 tests/cluster/samples.py(점 집합 35개, 라벨 짝 13개, 혼합 6개), 참값 tools/cluster_ref.py(정확한 유리수와 Arb, 6묶음 → tests/cluster/ref/, 0.5 MB), 탐침 tools/cluster_probe.py(시제품 측정 → prototype.json, scipy·scikit-learn·R의 기록 → tests/cluster/data/, §5의 시간), 시제품 csrc/cluster/prototype.cpp·csrc/bind/cluster_bind.cpp(`_core.cluster._proto_*`; CL1·CL2 마일스톤이 지운다), 측정 등록 bench/areas.py·bench/speed/cases/cluster.py(마일스톤마다의 사례 계획)·bench/accuracy/cluster.py·bench/cluster/accuracy.md·tests/golden/cases_cluster.py(아직 비었다, 기록 tests/golden/data/cluster.json), 테스트 tests/cluster/(test_api_surface.py, test_reference_data.py, test_results.py).
+- 찾은 것(docs/design/cluster.md §5): k-평균의 차의 꼴은 1스레드에서 Accelerate 전개식보다 1.76–8.28배 느리고 10스레드에서 0.29–0.96배다. 전개식(sklearn)은 10⁸ 평행 이동에서 2100점 중 308점을 틀린다. Hamerly 경계 가속은 여유와 무관하게 Lloyd와 같은 비트이고 1스레드 1.4–2.6배 빠르다. 높이를 정의대로의 합으로 다시 계산하면 ward에서 5.2×10⁸ ULP까지 틀려 트리 위의 Lance–Williams 재귀로 바꿨다(2 ULP 안). NN-chain이 정의의 트리와 다른 경우는 모두 이웃 찾기의 정확한 동점을 만났다. Borůvka는 p ≤ 5에서 n = 10⁴부터 Prim보다 1.5–6배 빠르고 p = 16에서는 15배 느리다. sklearn은 비정상 수 좌표에서 모든 점을 한 군집에 넣고 평행 이동한 자료의 실루엣을 0.21 틀리며, scipy·R의 `linkage`·`hclust`는 비정상 수 좌표의 높이가 0, R `hclust`는 10¹⁵⁰ 좌표의 ward·centroid·median에서 넘친다. 같은 시작에서 R의 Hartigan–Wong은 Lloyd보다 낮은 극소에 닿았다(probe/300: 573.897 대 574.888).

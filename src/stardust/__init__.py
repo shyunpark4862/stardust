@@ -1,12 +1,12 @@
 """stardust: a library that rebuilds arrays, linear algebra, dataframes,
 special functions, statistics, random numbers, regression, optimization, hypothesis tests,
 sparse arrays, numerical integration and differentiation, spatial distances and neighbours,
-graph algorithms, interpolation, Fourier transforms and smoothing.
+graph algorithms, interpolation, Fourier transforms, smoothing and clustering.
 
 Usage: ``import stardust as sd``. The top level is the array area (docs/api/array.md);
 the others are sd.linalg, sd.frame, sd.special, sd.stats, sd.random, sd.regression,
 sd.optimize, sd.htest, sd.sparse, sd.integrate, sd.differentiate, sd.spatial, sd.graph,
-sd.interpolate, sd.fft, sd.smooth and sd.plot.
+sd.interpolate, sd.fft, sd.smooth, sd.cluster and sd.plot.
 """
 
 import math as _math
@@ -388,4 +388,5 @@ from . import graph  # noqa: E402  (sd.graph)
 from . import interpolate  # noqa: E402  (sd.interpolate)
 from . import fft  # noqa: E402  (sd.fft)
 from . import smooth  # noqa: E402  (sd.smooth)
+from . import cluster  # noqa: E402  (sd.cluster)
 from . import plot  # noqa: E402  (sd.plot; TeX is looked for when a figure is first drawn)

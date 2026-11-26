@@ -1,9 +1,9 @@
 # sd.cluster API
 
-> 상태: **확정** (2026-11-24; 설계 결정 CL1–CL40). 아직 아무것도 구현되어 있지 않다(CL0 마일스톤 시작 전). 이름과 시그니처는 [docs/design/cluster.md](../design/cluster.md) §9의 답(13번만 (b), 나머지 (a))을 따른다. 시그니처는 scikit-learn 1.9.1(`sklearn.cluster`, `sklearn.mixture`, `sklearn.metrics`), scipy 1.18.1(`scipy.cluster.hierarchy`), R 4.6.2의 `stats`와 `cluster` 2.1.8.3의 이름과 뜻에 stardust의 규칙과 CL1–CL40의 결정을 입힌 것이다. 임시로 둔 값(`fuzzy_cmeans`의 `tol`, `kmedoids`의 `max_iter`, `affinity_propagation`의 `metric='precomputed'`의 이름, `gap_statistic`의 `select` 이름)은 해당 마일스톤에서 정한다(표시가 그 자리에 있다).
+> 상태: **확정** (2026-11-24; 설계 결정 CL1–CL49). CL0 마일스톤(준비)을 마쳤고 공개 이름은 아직 없다: 이름은 CL1–CL6 마일스톤에서 생긴다(tests/cluster/test_api_surface.py가 이름마다의 마일스톤을 쥔다). `sd.cluster`는 있고 `__all__`은 비었다. 이름과 시그니처는 [docs/design/cluster.md](../design/cluster.md) §9의 답(13번만 (b), 나머지 (a))을 따른다. 시그니처는 scikit-learn 1.9.1(`sklearn.cluster`, `sklearn.mixture`, `sklearn.metrics`), scipy 1.18.1(`scipy.cluster.hierarchy`), R 4.6.2의 `stats`와 `cluster` 2.1.8.3의 이름과 뜻에 stardust의 규칙과 CL1–CL40의 결정을 입힌 것이다. 임시로 둔 값(`fuzzy_cmeans`의 `tol`, `kmedoids`의 `max_iter`, `affinity_propagation`의 `metric='precomputed'`의 이름, `gap_statistic`의 `select` 이름)은 해당 마일스톤에서 정한다(표시가 그 자리에 있다).
 
 - 설계와 결정의 근거는 [docs/design/cluster.md](../design/cluster.md)(§1.1 CL1–CL40), 공통 규칙은 [API.md](../../API.md)다.
-- 언어 표시가 없는 코드 블록은 CL0 마일스톤부터 `tests/cluster/test_api_surface.py`가 읽는다. 블록의 줄은 모듈의 함수(`name(...)`), 결과 클래스(`Name`), 결과의 메서드(`Name.method(...)`)다. 블록의 모듈 수준 이름이 `sd.cluster.__all__` 전부가 된다.
+- 언어 표시가 없는 코드 블록은 `tests/cluster/test_api_surface.py`가 읽는다. 블록의 줄은 모듈의 함수(`name(...)`), 결과 클래스(`Name`), 결과의 메서드(`Name.method(...)`)다. 블록의 모듈 수준 이름이 마일스톤을 마칠 때마다 `sd.cluster.__all__`에 들어가 CL6 마일스톤에서 그 전부가 된다.
 - 절 끝의 "(§9의 n번)"은 그 줄을 정한 설계 문서의 질문이다(답은 §1.1의 CL4–CL40).
 
 ## §1. 공통 규칙
@@ -43,7 +43,7 @@
 
 ### §1.4 결정성, 난수, 정확도 (§9의 5·6번)
 - **같은 입력이면 스레드 수와 상관없이 같은 비트다**. 빠른 길과 느린 길(Lloyd와 경계 가속, NN-chain과 일반 알고리즘, 행렬 길과 행렬 없는 길, KD 트리와 훑기)은 같은 비트를 낸다. 길을 고르는 기준은 모양뿐이다.
-- **`rng`**: 무작위를 쓰는 함수(`kmeans`, `minibatch_kmeans`, `bisecting_kmeans`, `kmedoids(method='clara')`, `fuzzy_cmeans`, `gaussian_mixture`, `gap_statistic`, `GaussianMixtureResult.sample`)는 `rng`(`sd.random.default_rng(seed)`의 `Generator`)를 키워드로 꼭 받는다(없으면 `TypeError`). `kmedoids(method='pam')`에 주면 `ValueError`다. 호출 하나가 `rng`에서 64비트 두 단어만 받고(Philox의 키), 여러 시작(`n_init`)과 참조 자료(`gap_statistic`)는 그 키의 원소 번호로 뽑는다. 그래서 같은 `rng` 상태면 같은 비트이고 스레드 수와 무관하다. 규칙은 회귀의 `rlm(method='MM')`과 같다.
+- **`rng`**: 무작위를 쓰는 함수(`kmeans`, `minibatch_kmeans`, `bisecting_kmeans`, `kmedoids(method='clara')`, `fuzzy_cmeans`, `gaussian_mixture`, `gap_statistic`, `GaussianMixtureResult.sample`)는 `rng`(`sd.random.default_rng(seed)`의 `Generator`)를 키워드로 꼭 받는다(없으면 `TypeError`). `kmedoids(method='pam')`에 주면 `ValueError`다. 호출 하나가 `rng`에서 64비트 두 단어만 받고(Philox의 키), 여러 시작(`n_init`)과 참조 자료(`gap_statistic`)는 그 키의 원소 번호로 뽑는다(시작 r의 t번째 수는 원소 r·2⁴⁰ + t; 설계 문서 CL41). 그래서 같은 `rng` 상태면 같은 비트이고 스레드 수와 무관하다. 규칙은 회귀의 `rlm(method='MM')`과 같다.
 - **정확도 계약**(설계 문서 §4): 이산 결과(라벨, 트리, medoid)는 계산한 값과 정한 동점 규칙으로 정의대로 고른 것이고, 정확한 산술의 선택과는 가까운 동점에서만 다르다. 실수 결과(높이, 중심, 목적값, 모수, 지표)는 정확한 값과 견준 한계 안이다. ARI와 RI는 올바르게 반올림한 값이다.
 - **모든 호출은 정해진 시간 안에 끝난다**: 반복이 있는 곳은 입력과 무관한 상한(`max_iter`)이 있다.
 
@@ -66,7 +66,7 @@
 
 ### §1.6 다른 라이브러리와 다른 점 (모음)
 - 공통: 함수와 결과 객체, (X, k), 입력 순서와 무관한 분할과 처음 나오는 차례의 라벨, 스레드와 무관한 비트, `rng` 필수, 경고 없음.
-- 계층: 동점은 정의와 열쇠, 높이는 최종 트리에서 다시 계산(scipy와 끝자리가 다를 수 있다), 역전 트리의 높이 자르기는 에러, 행렬 없는 길(큰 n).
+- 계층: 동점은 정의와 열쇠, 높이는 최종 트리 위의 Lance–Williams 재귀(고른 알고리즘과 무관한 비트; scipy와 끝자리가 다를 수 있다), 역전 트리의 높이 자르기는 에러, 행렬 없는 길(큰 n).
 - k-평균: 차의 제곱합 거리(sklearn은 전개식), `algorithm`이 없다(가속은 같은 비트), 서로 다른 점이 k보다 적으면 에러.
 - DBSCAN: 경계 점은 가장 가까운 핵심 점의 군집(sklearn은 먼저 펼친 군집).
 - HDBSCAN: GLOSH `outlier_scores`가 더 있다, `copy`·`store_centers`가 없다.
@@ -105,7 +105,7 @@ is_isomorphic(T1, T2, /)
 - 관측값과 비유클리드 `metric`의 `ward`·`centroid`·`median`은 `ValueError`(`linkage(): method='ward' requires metric='euclidean'`)다. 미리 계산한 거리는 받고 유클리드 거리라고 가정한다.
 - **Z**: scipy의 꼴이다. 행 i는 i번째 병합(두 군집 번호, 높이, 크기)이고 군집 번호는 점이 0 … n − 1, 병합이 n + i다. 두 군집 번호는 (작은 것, 큰 것)이다. 행의 순서는 병합 순서다(단조 연결법에서는 높이 순서).
 - **동점과 입력 순서**: 같은 높이의 후보는 두 군집의 가장 작은 점 번호(좌표의 사전순 정렬의 번호)의 짝이 작은 쪽을 먼저 합친다. 그래서 점들을 섞어 주어도 같은 트리다(Z의 점 번호는 입력의 번호).
-- **높이**: 최종 트리에서 정의대로 다시 계산한 값이다(`single`·`complete`는 입력 거리 그대로). scipy와 끝자리가 다를 수 있다(`average`는 scipy의 Lance–Williams 누적보다 정확하다).
+- **높이**: 트리가 정해진 뒤 최종 트리 위에서 Lance–Williams 재귀로 다시 계산한 값이다(`single`·`complete`는 입력 거리 그대로; 설계 문서 CL45). 그래서 행렬 길, 행렬 없는 길, 동점의 일반 알고리즘이 같은 비트를 낸다. scipy(병합 순서의 누적)와 끝자리가 다를 수 있고, 정확도는 같은 크기다(CL0 마일스톤의 시제품: 참값과 2 ULP 안, scipy 3 ULP 안).
 - **큰 n**: 관측값의 `single`, `ward`, `centroid`, `median`은 n × n 행렬을 만들지 않는다(n = 10⁵ 이상도 된다). `complete`, `average`, `weighted`와 미리 계산한 거리는 행렬이다.
 - **`agglomerative`** → `HierarchyResult`: 같은 트리의 결과 객체다. **`divisive`**: R `diana`의 분할식 계층(높이는 지름)이다.
 - **자르기**:

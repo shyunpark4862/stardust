@@ -146,6 +146,7 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/smooth/kreg.cpp
   csrc/smooth/kde.cpp
   csrc/smooth/bandwidth.cpp
+  csrc/cluster/prototype.cpp
   csrc/special/reduce.cpp
   csrc/frame/column.cpp
   csrc/frame/convert.cpp
@@ -182,6 +183,7 @@ nanobind_add_module(_core NB_STATIC NOMINSIZE
   csrc/bind/interpolate_bind.cpp
   csrc/bind/fft_bind.cpp
   csrc/bind/smooth_bind.cpp
+  csrc/bind/cluster_bind.cpp
   csrc/bind/plot_bind.cpp
   csrc/plot/levels.cpp
   csrc/plot/raster.cpp

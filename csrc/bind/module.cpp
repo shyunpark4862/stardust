@@ -1,6 +1,7 @@
 // Python entry point of the native core (`stardust._core`).
 
 #include "bind/array_bind.hpp"
+#include "bind/cluster_bind.hpp"
 #include "bind/differentiate_bind.hpp"
 #include "bind/errors.hpp"
 #include "bind/fft_bind.hpp"
@@ -186,5 +187,6 @@ NB_MODULE(_core, m) {
     sd::bind_interpolate(m);  // after the array (it returns ndarrays)
     sd::bind_fft(m);  // after the array (it returns ndarrays)
     sd::bind_smooth(m);  // after the array (it returns ndarrays)
+    sd::bind_cluster(m);  // after the array (it returns ndarrays)
     sd::bind_plot(m);  // on its own: the rasterizer takes plain numbers and bytes
 }

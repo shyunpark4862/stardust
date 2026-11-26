@@ -23,6 +23,7 @@ AREAS = (
     "interpolate",
     "fft",
     "smooth",
+    "cluster",
     "plot",
 )
 
