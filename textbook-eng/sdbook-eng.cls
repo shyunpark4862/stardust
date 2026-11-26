@@ -374,4 +374,8 @@
 \newcommand\term[1]{\emph{#1}}      % a defined term at its first use
 \newcommand\code[1]{\texttt{#1}}
 \newcommand\fl{\mathop{\mathrm{fl}}\nolimits}   % the rounding map
+% Contents: room for section numbers such as 13.11 (SNmono allows only 88.8).
+\tocsecnum=30\p@
+\tocsectotal=\tocchpnum \advance\tocsectotal by\tocsecnum
+\tocsubsectotal=\tocsectotal \advance\tocsubsectotal by\tocsubsecnum
 \endinput
