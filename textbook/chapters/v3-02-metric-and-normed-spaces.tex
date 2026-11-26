@@ -1,0 +1,1558 @@
+%% Volume III, Chapter 2: Metric and Normed Spaces
+\chapter{Metric and Normed Spaces}
+\label{ch:metric-spaces}
+
+\abstract{The analysis of Volumes~I and~II used one property of numbers and vectors throughout: that the distance between two of them can be measured. Every $\varepsilon$--$\delta$ argument goes through when $|x-y|$ is replaced by an abstract distance $d(x,y)$, and then sequences, functions and matrices all become points of spaces in which limits make sense. In such spaces many equations, from $x=\cos x$ to an integral equation or a large linear system, take one form: find a fixed point of a map that brings points closer together. This chapter develops the language of metrics, norms and completeness, and proves in it Banach's contraction mapping theorem, an existence theorem with an error bound that underlies the convergence proofs of iterative methods throughout the later volumes.}
+
+Look at the proofs of Volume~I that concern limits, and at what they use. The definition of convergence, $|a_n-L|<\varepsilon$ for all large $n$, mentions numbers only through the distance $|a_n-L|$, and the proofs that a limit is unique, that a convergent sequence is a Cauchy sequence, or that a composition of continuous functions is continuous, use only three properties of this distance: it is positive between different points, it is symmetric, and it satisfies the triangle inequality. \Vcref{1}{ch:several-variables} made the same observation for vectors, where the absolute value was replaced by the Euclidean norm and the proofs of \vcref{1}{ch:limits} went through ``with norms in place of absolute values''. Volume~II then measured vectors and matrices in several other norms (\vcref{2}{sec:trace-norms}), and functions by integrals (\vcref{2}{ch:inner-products}). This chapter takes the step that these examples suggest: it isolates the three properties as axioms, a \emph{metric}, and develops analysis in an arbitrary set equipped with one.
+
+The gain is twofold. First, results are proved once and apply everywhere: a single theorem about closed sets or continuous maps covers the real line, the space $\mathbb R^n$ with any of its norms, spaces of sequences, spaces of functions and spaces of matrices. Second, and more importantly, objects that are not numbers become points of a space, and questions about them become questions of convergence. A solution of an integral equation is a point of a space of continuous functions, and finding it is finding the limit of a sequence of approximations in that space. Whether the limit exists depends on whether the space has gaps, and this is where completeness, the property of the real numbers that \cref{ch:real-numbers-construction} proved, becomes the central notion. The highlight of the chapter is the contraction mapping theorem of Banach, \cref{thm:banach-fixed-point}: in a complete metric space, a map that shrinks all distances by a fixed factor $q<1$ has exactly one fixed point, the iteration $x_{n+1}=Tx_n$ converges to it from every starting point, and the error after $n$ steps is bounded by quantities that the iteration itself provides. One-dimensional versions of this theorem appeared in \vcref{1}{prop:fixed-point-contraction} and \vcref{2}{thm:map-linearised}; both are special cases.
+
+\Cref{sec:metrics-norms} defines metric spaces, normed spaces and their basic examples, and \cref{sec:holder-minkowski} proves the inequalities of H\"older and Minkowski, which show that the $p$-norms are norms. \Cref{sec:open-closed} transfers the open and closed sets, closures and dense sets of \vcref{1}{sec:limits-rn} to metric spaces, and \cref{sec:continuity-metric} characterises continuity by open sets. \Cref{sec:completeness-metric} studies Cauchy sequences and complete spaces, proves the completeness of the most important spaces of sequences and functions, and \cref{sec:completion} shows that every metric space can be completed, by the construction that \cref{ch:real-numbers-construction} used for $\mathbb Q$. \Cref{sec:contraction} proves the contraction mapping theorem and applies it to integral equations and to the iterative solution of linear systems, \cref{sec:bounded-linear} studies the linear maps between normed spaces that are continuous, and \cref{sec:metric-computation} watches the error bounds of the contraction mapping theorem at work. Compactness and connectedness, the remaining basic notions of the topology of metric spaces, are the subject of the next chapter; the theorem that all norms on $\mathbb R^n$ are equivalent belongs there as well, since its proof needs compactness.
+
+Elements of a general metric or normed space are written in ordinary type, $x$, $y$, $f$, whether they are numbers, sequences or functions; bold type is kept for vectors of $\mathbb R^n$ and $\mathbb C^n$ that take part in matrix computations, as in Volumes~I and~II. As in Volume~II, $\mathbb F$ denotes the field of scalars, $\mathbb R$ or $\mathbb C$. Sequences of points are indexed from $0$, $(x_n)=(x_0,x_1,\ldots)$; the terms of an element of a sequence space are indexed from $1$, $x=(x_1,x_2,\ldots)$, so that $\mathbb F^n$ consists of the first $n$ terms. A sequence of elements of a sequence space is written $(x^{(n)})$, with the terms $x^{(n)}_k$. Unless stated otherwise, $C[a,b]$ denotes the continuous real functions on $[a,b]$, with $a<b$.
+
+\section{Metrics and Norms}
+\label{sec:metrics-norms}
+
+\subsection{Metric Spaces}
+
+\begin{definition}[Metric space]
+\label{def:metric}
+A \term{metric} on a set $X$ is a function $d\colon X\times X\to\mathbb R$ such that, for all $x,y,z\in X$,
+\begin{enumerate}
+\item $d(x,y)\ge0$, and $d(x,y)=0$ if and only if $x=y$;
+\item $d(x,y)=d(y,x)$;
+\item $d(x,z)\le d(x,y)+d(y,z)$ (the \term{triangle inequality}).
+\end{enumerate}
+A \term{metric space} is a set together with a metric, written $(X,d)$, or $X$ when the metric is clear; its elements are called \term{points}, and $d(x,y)$ is the \term{distance} between $x$ and $y$. If $S\subseteq X$, the restriction of $d$ to $S\times S$ is a metric on $S$, and $S$ with this metric is a \term{subspace} of $X$.
+\end{definition}
+
+The axioms are those of the distance in the plane: distances are positive between different points and zero only from a point to itself, the distance from $x$ to $y$ is that from $y$ to $x$, and a detour through a third point is never shorter than the direct way. Three consequences are used constantly.
+
+\begin{proposition}[Consequences of the triangle inequality]
+\label{prop:metric-inequalities}
+In a metric space, for all points $x,x',y,y',z$ and $x_0,\ldots,x_n$:
+\begin{enumerate}
+\item $|d(x,z)-d(y,z)|\le d(x,y)$;
+\item $|d(x,y)-d(x',y')|\le d(x,x')+d(y,y')$;
+\item $d(x_0,x_n)\le d(x_0,x_1)+d(x_1,x_2)+\cdots+d(x_{n-1},x_n)$.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) The triangle inequality gives $d(x,z)\le d(x,y)+d(y,z)$, so $d(x,z)-d(y,z)\le d(x,y)$, and with $x$ and $y$ exchanged, $d(y,z)-d(x,z)\le d(y,x)=d(x,y)$. (ii) By (i), applied twice, $|d(x,y)-d(x',y)|\le d(x,x')$ and $|d(x',y)-d(x',y')|\le d(y,y')$, and the triangle inequality for absolute values combines the two. (iii) follows from the triangle inequality by induction on $n$.
+\end{proof}
+
+Part (i) is the \term{reverse triangle inequality}; for $X=\mathbb R$ and $z=0$ it is $\bigl||x|-|y|\bigr|\le|x-y|$ (\vcref{1}{cor:reverse-triangle}). Part (ii), sometimes called the quadrilateral inequality, will show in \cref{sec:completion} that distances between the terms of two Cauchy sequences converge.
+
+The first examples are the familiar ones. On $\mathbb R$ and on $\mathbb C$, $d(x,y)\coloneqq|x-y|$ is a metric, and on $\mathbb R^n$ the Euclidean distance $\|\mathbf x-\mathbf y\|$ is one, by \vcref{1}{prop:norm}. Every subset of these spaces is a metric space with the inherited distance: the interval $[0,1]$, the rational numbers $\mathbb Q$, the unit circle in $\mathbb C$, the integers. The distance of a subspace is measured in the surrounding space; on the unit circle it is the length of the chord, not of the arc, although the arc length is a metric on the circle too.
+
+At the other extreme, every set $X$ carries the \term{discrete metric}
+\[
+d(x,y)\coloneqq\begin{cases}0&\text{if }x=y,\\1&\text{if }x\ne y.\end{cases}
+\]
+The triangle inequality holds because its right side is at least $1$ whenever its left side is $1$. In the discrete metric no two points are close, and we shall see that every sequence that converges is eventually constant. The example is useful as a test: a statement about metric spaces that fails for the discrete metric is false.
+
+Distances that are not geometric arise naturally in computing. For strings $x=x_1x_2\cdots x_n$ and $y=y_1\cdots y_n$ of the same length over an alphabet, such as bit strings, the \term{Hamming distance}
+\[
+d_H(x,y)\coloneqq\bigl|\{i: x_i\ne y_i\}\bigr|
+\]
+counts the positions in which they differ~\cite{hamming1950}. It is a metric: the positions where $x$ and $z$ differ are contained in the union of the positions where $x$ and $y$ differ and those where $y$ and $z$ differ, since $x_i=y_i=z_i$ at all other positions. The triangle inequality explains the error-correcting codes of Hamming's paper. If any two code words have Hamming distance at least $2t+1$ and a word $w$ is received with at most $t$ errors, then the word $c$ that was sent satisfies $d_H(w,c)\le t$, and every other code word $c'$ satisfies $d_H(w,c')\ge d_H(c,c')-d_H(w,c)\ge t+1$; so $c$ is the code word nearest to $w$, and it can be recovered. In a connected graph, the \term{graph distance} between two vertices is the smallest number of edges of a path that joins them~\cite[Sect.~1.3]{diestel2017}. It is a metric, the triangle inequality holding because a path from $x$ to $y$ followed by a path from $y$ to $z$ is a path from $x$ to $z$; Volume~X computes such distances in large graphs.
+
+Number theory provides an example in which the triangle inequality holds in a much stronger form. Fix a prime $p$. By the fundamental theorem of arithmetic (\vcref{1}{thm:fta-arith}), every rational number $x\ne0$ can be written as $x=p^va/b$ with integers $v$, $a$ and $b$, where $b>0$ and neither $a$ nor $b$ is divisible by $p$, and the exponent $v$ is determined by $x$; it is the \term{$p$-adic valuation} $v_p(x)$. The \term{$p$-adic absolute value} of $x$ is $|x|_p\coloneqq p^{-v_p(x)}$, and $|0|_p\coloneqq0$. For example, $|12|_2=|2^2\cdot3|_2=1/4$, $|1/12|_2=4$ and $|3/5|_2=1$: a number is $p$-adically small when it is divisible by a high power of $p$.
+
+\begin{proposition}[The $p$-adic metric]
+\label{prop:p-adic}
+For all rational $x$ and $y$, $|xy|_p=|x|_p|y|_p$ and
+\[
+|x+y|_p\le\max\bigl(|x|_p,|y|_p\bigr).
+\]
+Consequently $d_p(x,y)\coloneqq|x-y|_p$ is a metric on $\mathbb Q$, and it satisfies the \term{ultrametric inequality} $d_p(x,z)\le\max\bigl(d_p(x,y),d_p(y,z)\bigr)$.
+\end{proposition}
+
+\begin{proof}
+Both statements are clear if $x=0$ or $y=0$. Otherwise write $x=p^va/b$ and $y=p^wc/e$ as above. Then $xy=p^{v+w}(ac)/(be)$, and by Euclid's lemma (\vcref{1}{lem:euclid}) neither $ac$ nor $be$ is divisible by $p$, so $v_p(xy)=v+w$. For the sum, suppose $v\le w$. Then
+\[
+x+y=p^v\,\frac{ae+p^{w-v}cb}{be},
+\]
+with an integer numerator and a denominator that is not divisible by $p$. If $x+y\ne0$, the numerator is $p^jm$ with $j\ge0$ and $p\nmid m$, so $v_p(x+y)=v+j\ge v=\min(v_p(x),v_p(y))$, which is the inequality. The axioms (i) and (ii) of \cref{def:metric} hold because $|x|_p=0$ only for $x=0$ and $|-1|_p=1$, and the ultrametric inequality, which implies the triangle inequality, is the inequality for the sum applied to $x-z=(x-y)+(y-z)$.
+\end{proof}
+
+In the $p$-adic metric the powers $p^n$ tend to $0$, since $|p^n|_p=p^{-n}$, and the partial sums $s_n=1+p+\cdots+p^{n-1}=(1-p^n)/(1-p)$ of the geometric series satisfy $|s_n-1/(1-p)|_p=|p^n/(1-p)|_p=p^{-n}$, because $1-p$ is not divisible by $p$. So $1+p+p^2+\cdots$ converges to $1/(1-p)$; for $p=2$, the series $1+2+4+8+\cdots$ converges to $-1$. The $p$-adic metric is a genuine alternative to the usual one, and \cref{sec:completion} returns to it.
+
+\subsection{Normed Spaces}
+
+Most metrics of analysis come from a measure of the size of a single element, as the distance $|x-y|$ comes from the absolute value. Volume~II defined norms on $\mathbb R^n$ (\vcref{2}{def:norm}) and remarked that the same definition applies on any set with the arithmetic of vectors.
+
+\begin{definition}[Normed space]
+\label{def:normed-space}
+Let $X$ be a vector space over $\mathbb F$ (\vcref{2}{def:vector-space}). A \term{norm} on $X$ is a function $x\mapsto\|x\|$ from $X$ to $\mathbb R$ such that, for all $x,y\in X$ and $t\in\mathbb F$,
+\begin{enumerate}
+\item $\|x\|\ge0$, with equality only for $x=0$;
+\item $\|tx\|=|t|\,\|x\|$;
+\item $\|x+y\|\le\|x\|+\|y\|$.
+\end{enumerate}
+A vector space with a norm is a \term{normed space}. Its \term{induced metric} is $d(x,y)\coloneqq\|x-y\|$.
+\end{definition}
+
+The induced metric is a metric: $d(x,y)=0$ only if $x-y=0$, $d(y,x)=\|(-1)(x-y)\|=d(x,y)$ by (ii), and $d(x,z)=\|(x-y)+(y-z)\|\le d(x,y)+d(y,z)$ by (iii). It has two properties that a general metric lacks. It is \term{translation invariant}, $d(x+z,y+z)=d(x,y)$, and \term{homogeneous}, $d(tx,ty)=|t|\,d(x,y)$. The discrete metric on a vector space $X\ne\{0\}$ therefore does not come from a norm: for $x\ne0$ it gives $d(2x,0)=1\ne2\,d(x,0)$. As for the absolute value, the reverse triangle inequality reads $\bigl|\|x\|-\|y\|\bigr|\le\|x-y\|$; it is \cref{prop:metric-inequalities}\,(i) with $z=0$.
+
+Inner products give norms. If $X$ is an inner product space in the sense of \vcref{2}{def:inner-product-space}, then $\|x\|\coloneqq\langle x,x\rangle^{1/2}$ is a norm by \vcref{2}{cor:inner-product-norm}, whose triangle inequality rests on the Cauchy--Schwarz inequality, \vcref{2}{thm:cauchy-schwarz-general}. Thus every inner product space is a normed space, and every normed space is a metric space:
+\[
+\text{inner product}\ \Longrightarrow\ \text{norm}\ \Longrightarrow\ \text{metric}.
+\]
+Neither implication can be reversed. The discrete metric is not induced by a norm, and the norms that come from inner products are exactly those that satisfy the parallelogram identity $\|x+y\|^2+\|x-y\|^2=2\|x\|^2+2\|y\|^2$ (\vcref{2}{prop:parallelogram} and the note after it), which the $1$-norm of $\mathbb R^2$ violates for $x=\mathbf e_1$ and $y=\mathbf e_2$: the left side is $8$, the right side $4$.
+
+Here are the normed spaces of this chapter. We verify the axioms now, except for the triangle inequality of the $p$-norms, which needs the inequalities of the next section.
+
+\emph{The spaces $\mathbb F^n$ with the $p$-norms.} For $1\le p<\infty$ and $x\in\mathbb F^n$,
+\[
+\|x\|_p\coloneqq\Bigl(\sum_{k=1}^n|x_k|^p\Bigr)^{1/p},\qquad\|x\|_\infty\coloneqq\max_{1\le k\le n}|x_k| .
+\]
+For $p=1$, $p=2$ and $p=\infty$ these are the norms of \vcref{2}{prop:standard-norms}. Properties (i) and (ii) of a norm are evident for every $p$.
+
+\emph{Sequence spaces.} For $1\le p<\infty$, the space $\ell^p$ consists of the sequences $x=(x_k)_{k\ge1}$ in $\mathbb F$ with $\sum_k|x_k|^p<\infty$, and $\|x\|_p\coloneqq(\sum_{k=1}^\infty|x_k|^p)^{1/p}$. The space $\ell^\infty$ consists of the bounded sequences, with $\|x\|_\infty\coloneqq\sup_k|x_k|$. Inside $\ell^\infty$ lie the space $c$ of convergent sequences, the space $c_0$ of sequences that converge to $0$, and the space $c_{00}$ of sequences with only finitely many nonzero terms, all with the norm $\|\cdot\|_\infty$; and $c_{00}\subseteq\ell^p$ for every $p$. That $\ell^\infty$ is a vector space and $\|\cdot\|_\infty$ a norm on it follows from $|x_k+y_k|\le|x_k|+|y_k|\le\|x\|_\infty+\|y\|_\infty$ for every $k$; $c$, $c_0$ and $c_{00}$ are subspaces by the limit laws. That $\ell^p$ is closed under addition is part of Minkowski's inequality below. The sequences $\mathbf e_j\in c_{00}$, with the term $1$ at the index $j$ and $0$ elsewhere, generalise the standard basis vectors.
+
+\emph{Bounded functions.} For a nonempty set $S$, let $\ell^\infty(S)$ be the space of bounded functions $f\colon S\to\mathbb F$ with the \term{supremum norm}
+\[
+\|f\|_\infty\coloneqq\sup_{s\in S}|f(s)| .
+\]
+It is a vector space with the pointwise operations, and $\|\cdot\|_\infty$ is a norm, by the same argument as for sequences; $\ell^\infty$ is the case $S=\{1,2,\ldots\}$, and $\mathbb F^n$ with $\|\cdot\|_\infty$ the case $S=\{1,\ldots,n\}$. Many books write $B(S)$ for this space; we avoid the letter, which denotes balls. If $X$ is a metric space, the bounded continuous functions on $X$ form a subspace $C_b(X)$ of $\ell^\infty(X)$, with the same norm.
+
+\emph{Continuous functions on an interval.} On $C[a,b]$ we use the three norms
+\[
+\|f\|_\infty\coloneqq\max_{a\le x\le b}|f(x)|,\qquad\|f\|_1\coloneqq\int_a^b|f(x)|\,dx,\qquad\|f\|_2\coloneqq\Bigl(\int_a^b|f(x)|^2\,dx\Bigr)^{1/2}.
+\]
+The maximum exists by the extreme value theorem (\vcref{1}{thm:evt}), so $C[a,b]$ with $\|\cdot\|_\infty$ is the space $C_b([a,b])$. The norm $\|\cdot\|_2$ is induced by the inner product $\langle f,g\rangle=\int_a^bfg$ of \vcref{2}{tab:inner-products}, so it is a norm. For $\|\cdot\|_1$, homogeneity and the triangle inequality follow from the linearity and the monotonicity of the integral, and the essential point is (i): if $\int_a^b|f|=0$ for a continuous $f$, then $|f|=0$ everywhere, by \vcref{1}{prop:positive-integral}. Without continuity this fails, and Part~III has to deal with functions that differ on a set too small to affect any integral.
+
+\begin{figure}
+\sdfloat{%
+\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.48\textwidth, height=0.34\textwidth, xmin=0, xmax=1, ymin=0, ymax=1.25,
+  xtick={0,0.5,1}, ytick={0,0.5,1}, xlabel={$x$},
+  legend style={at={(0.03,0.97)}, anchor=north west}]
+\addplot[forget plot, fill=sdfill, draw=none] coordinates {(0.00,0.5500) (0.02,0.5939) (0.04,0.6370) (0.06,0.6788) (0.08,0.7186) (0.10,0.7557) (0.12,0.7896) (0.14,0.8197) (0.16,0.8455) (0.18,0.8667) (0.20,0.8829) (0.22,0.8938) (0.24,0.8993) (0.26,0.8993) (0.28,0.8938) (0.30,0.8829) (0.32,0.8667) (0.34,0.8455) (0.36,0.8197) (0.38,0.7896) (0.40,0.7557) (0.42,0.7186) (0.44,0.6788) (0.46,0.6370) (0.48,0.5939) (0.50,0.5500) (0.52,0.5061) (0.54,0.4630) (0.56,0.4212) (0.58,0.3814) (0.60,0.3443) (0.62,0.3104) (0.64,0.2803) (0.66,0.2545) (0.68,0.2333) (0.70,0.2171) (0.72,0.2062) (0.74,0.2007) (0.76,0.2007) (0.78,0.2062) (0.80,0.2171) (0.82,0.2333) (0.84,0.2545) (0.86,0.2803) (0.88,0.3104) (0.90,0.3443) (0.92,0.3814) (0.94,0.4212) (0.96,0.4630) (0.98,0.5061) (1.00,0.5500) (1.00,0.9500) (0.98,0.9262) (0.96,0.9030) (0.94,0.8802) (0.92,0.8578) (0.90,0.8360) (0.88,0.8146) (0.86,0.7938) (0.84,0.7734) (0.82,0.7534) (0.80,0.7340) (0.78,0.7150) (0.76,0.6966) (0.74,0.6786) (0.72,0.6610) (0.70,0.6440) (0.68,0.6274) (0.66,0.6114) (0.64,0.5958) (0.62,0.5806) (0.60,0.5660) (0.58,0.5518) (0.56,0.5382) (0.54,0.5250) (0.52,0.5122) (0.50,0.5000) (0.48,0.4882) (0.46,0.4770) (0.44,0.4662) (0.42,0.4558) (0.40,0.4460) (0.38,0.4366) (0.36,0.4278) (0.34,0.4194) (0.32,0.4114) (0.30,0.4040) (0.28,0.3970) (0.26,0.3906) (0.24,0.3846) (0.22,0.3790) (0.20,0.3740) (0.18,0.3694) (0.16,0.3654) (0.14,0.3618) (0.12,0.3586) (0.10,0.3560) (0.08,0.3538) (0.06,0.3522) (0.04,0.3510) (0.02,0.3502) (0.00,0.3500)} -- cycle;
+\addplot[black, line width=0.7pt, domain=0:1, samples=101] {0.55+0.35*sin(deg(2*pi*x))};
+\addlegendentry{$f$}
+\addplot[black, dashed, line width=0.7pt, domain=0:1, samples=101] {0.35+0.6*x^2};
+\addlegendentry{$g$}
+\draw[{Latex[length=1.4mm]}-{Latex[length=1.4mm]}, line width=0.5pt] (axis cs:0.824,0.2374) -- (axis cs:0.824,0.7576);
+\node[anchor=north, font=\scriptsize] at (axis cs:0.80,0.19) {$\|f-g\|_\infty$};
+\end{axis}
+\end{tikzpicture}}{Two functions $f$ (solid) and $g$ (dashed) in $C[0,1]$. Their distance in the supremum norm is the largest vertical gap between the graphs (arrow), and their distance in the norm $\|\cdot\|_1$ is the area between the graphs (shaded). The first notices a narrow spike in $f-g$ at once; the second hardly notices it.\label{fig:function-distances}}
+\end{figure}
+
+The two norms $\|\cdot\|_\infty$ and $\|\cdot\|_1$ measure the difference of two functions in different ways, as \cref{fig:function-distances} shows: the first by the largest vertical gap between the graphs, the second by the area between them. A function that is zero except for a tall, narrow spike is far from $0$ in the first sense and close to $0$ in the second, and \cref{sec:open-closed} shows that the two norms lead to genuinely different notions of convergence. In numerical analysis both are used: an approximation that is good in $\|\cdot\|_\infty$ is good at every point, while $\|\cdot\|_2$ is the natural measure for least squares (Volume~XII).
+
+\emph{Matrices.} The space $\mathbb F^{m\times n}$ is a vector space of dimension $mn$, and the operator norms $\|A\|_1$, $\|A\|_2$, $\|A\|_\infty$ and the Frobenius norm $\|A\|_{\mathrm F}$ of \vcref{2}{prop:operator-norms} are norms on it. \Cref{sec:bounded-linear} defines operator norms for linear maps between arbitrary normed spaces.
+
+\subsection{Products}
+
+If $(X_1,d_1)$ and $(X_2,d_2)$ are metric spaces, the product $X_1\times X_2$ is a metric space with
+\[
+d\bigl((x_1,x_2),(y_1,y_2)\bigr)\coloneqq\max\bigl(d_1(x_1,y_1),d_2(x_2,y_2)\bigr) ,
+\]
+the \term{product metric}. The axioms follow from those of $d_1$ and $d_2$; for the triangle inequality, $d_i(x_i,z_i)\le d_i(x_i,y_i)+d_i(y_i,z_i)\le d(x,y)+d(y,z)$ for $i=1,2$. The sum $d_1+d_2$ and the Euclidean combination $(d_1^2+d_2^2)^{1/2}$ are metrics as well, and they lie between $d$ and $2d$; by \cref{prop:equivalent-norms} below, all three lead to the same convergent sequences, and we use whichever is convenient. The same construction works for finitely many factors, and for normed spaces $X_1$, $X_2$ the product metric is induced by the norm $\|(x_1,x_2)\|\coloneqq\max(\|x_1\|,\|x_2\|)$ on the vector space $X_1\times X_2$. The space $\mathbb R^n$ with $\|\cdot\|_\infty$ is the product of $n$ copies of $\mathbb R$.
+
+\subsection{Balls and Their Shapes}
+
+In a metric space, the \term{open ball} and the \term{closed ball} with centre $a$ and radius $r>0$ are
+\[
+B(a,r)\coloneqq\{x\in X: d(x,a)<r\},\qquad\bar B(a,r)\coloneqq\{x\in X: d(x,a)\le r\},
+\]
+as in \vcref{1}{def:open-closed} for $\mathbb R^n$. Their shapes reveal the metric. In the discrete metric, $B(a,1)=\{a\}$ and $\bar B(a,1)=X$. In the Hamming metric on bit strings of length $n$, $\bar B(a,t)$ consists of the strings obtained from $a$ by flipping at most $t$ bits; for $t=1$ these are $a$ itself and $n$ others. In the $p$-adic metric, the ball $\bar B(0,p^{-k})$ consists of the rational numbers $x$ with $v_p(x)\ge k$, and by the ultrametric inequality every point of a ball is a centre of it: if $d_p(b,a)\le r$, then $d_p(x,b)\le\max(d_p(x,a),d_p(a,b))\le r$ for every $x\in\bar B(a,r)$, and conversely, so $\bar B(b,r)=\bar B(a,r)$.
+
+In a normed space every ball is a translated and scaled copy of the \term{unit ball} $\bar B(0,1)$: $\bar B(a,r)=a+r\bar B(0,1)$, since $\|x-a\|\le r$ means $\|(x-a)/r\|\le1$. The unit ball is symmetric, $-\bar B(0,1)=\bar B(0,1)$, and it is convex: if $\|x\|\le1$, $\|y\|\le1$ and $0\le t\le1$, then
+\[
+\|tx+(1-t)y\|\le t\|x\|+(1-t)\|y\|\le1 .
+\]
+Volume~II observed this for the three standard norms of the plane (\vcref{2}{fig:unit-balls}). \Cref{fig:p-balls} shows the unit balls of the $p$-norms of $\mathbb R^2$ for several values of $p$. As $p$ increases they grow from the diamond $\|x\|_1\le1$ through the disc $\|x\|_2\le1$ to the square $\|x\|_\infty\le1$, a fact that \cref{prop:p-norm-monotone} turns into an inequality. For $p<1$ the same formula gives a set that is not convex, and so, by the argument just given, the formula does not define a norm.
+
+\begin{figure}
+\sdfloat{%
+\begin{tikzpicture}
+\begin{axis}[sdplot, axis equal image, width=0.50\textwidth, height=0.50\textwidth,
+  xmin=-1.15, xmax=1.15, ymin=-1.15, ymax=1.15, xtick={-1,0,1}, ytick={-1,0,1},
+  xlabel={$x_1$}, ylabel={$x_2$}, ylabel style={rotate=-90}]
+\addplot[black!45, line width=0.7pt] coordinates {(-1,-1) (1,-1) (1,1) (-1,1) (-1,-1)};
+\addplot[black, densely dotted, line width=0.8pt, domain=0:360, samples=181, variable=\t]
+  ({sign(cos(\t))*abs(cos(\t))^(0.5)}, {sign(sin(\t))*abs(sin(\t))^(0.5)});
+\addplot[black, dashed, line width=0.7pt, domain=0:360, samples=181, variable=\t] ({cos(\t)}, {sin(\t)});
+\addplot[black, line width=0.7pt] coordinates {(1,0) (0,1) (-1,0) (0,-1) (1,0)};
+\addplot[black, dashdotted, line width=0.7pt, domain=0:360, samples=361, variable=\t]
+  ({sign(cos(\t))*abs(cos(\t))^(4)}, {sign(sin(\t))*abs(sin(\t))^(4)});
+\end{axis}
+\end{tikzpicture}}{The sets $|x_1|^p+|x_2|^p\le1$ in the plane, bounded by the curves for $p=1/2$ (dash-dotted, pinched towards the origin), $p=1$ (the diamond, solid), $p=2$ (the disc, dashed), $p=4$ (dotted) and $p=\infty$ (the square $\max(|x_1|,|x_2|)\le1$, grey). The sets grow with $p$. For $p\ge1$ they are the unit balls of the norms $\|\cdot\|_p$ and are convex; for $p=1/2$ the set is not convex, and the formula does not define a norm.\label{fig:p-balls}}
+\end{figure}
+
+\section{The Inequalities of H\"older and Minkowski}
+\label{sec:holder-minkowski}
+
+The note on the $p$-norms in \vcref{2}{sec:trace-norms} stated that the triangle inequality for $\|\cdot\|_p$ is Minkowski's inequality, that it is derived from H\"older's inequality, and that H\"older's inequality follows from Young's. This section proves these statements, for finite and infinite sequences and for integrals of continuous functions. Two exponents $p,q\in[1,\infty]$ are \term{conjugate} if
+\[
+\frac1p+\frac1q=1,
+\]
+with the convention $1/\infty\coloneqq0$. The conjugate of $p\in(1,\infty)$ is $q=p/(p-1)$; the pairs $(1,\infty)$ and $(\infty,1)$ are conjugate, and $p=2$ is its own conjugate. For $1<p<\infty$, Young's inequality (\vcref{1}{cor:young}) states that
+\begin{equation}
+ab\le\frac{a^p}p+\frac{b^q}q\qquad(a,b\ge0),
+\label{eq:young}
+\end{equation}
+and equality holds exactly when $a^p=b^q$. For $a,b>0$ the inequality is the weighted arithmetic--geometric mean inequality for $a^p$ and $b^q$ with the weights $1/p$ and $1/q$, and \vcref{1}{thm:weighted-amgm} gives equality only if $a^p=b^q$, while $a^p=b^q$ gives $ab=a^p/p+a^p/q=a^p/p+b^q/q$. If $a=0$ or $b=0$, the left side is $0$ and the right side vanishes only if $a=b=0$.
+
+\subsection{Sums and Series}
+
+\begin{theorem}[H\"older's inequality]
+\label{thm:holder}
+Let $p$ and $q$ be conjugate exponents, and let $x=(x_k)$ and $y=(y_k)$ be sequences in $\mathbb F$, both finite of the same length or both infinite, with $\|x\|_p<\infty$ and $\|y\|_q<\infty$. Then
+\[
+\sum_k|x_ky_k|\le\|x\|_p\,\|y\|_q ;
+\]
+in particular, the series $\sum_kx_ky_k$ converges absolutely, and $|\sum_kx_ky_k|\le\|x\|_p\|y\|_q$. If $1<p<\infty$ and $x\ne0\ne y$, equality holds in the first inequality if and only if
+\[
+\frac{|x_k|^p}{\|x\|_p^p}=\frac{|y_k|^q}{\|y\|_q^q}\qquad\text{for every }k .
+\]
+\end{theorem}
+
+\begin{proof}
+If $p=1$ and $q=\infty$, then $|x_ky_k|\le|x_k|\,\|y\|_\infty$ for every $k$, and summing gives the inequality; the case $p=\infty$ is symmetric. Let $1<p<\infty$. If $x=0$ or $y=0$, both sides vanish. Otherwise put $a_k\coloneqq|x_k|/\|x\|_p$ and $b_k\coloneqq|y_k|/\|y\|_q$, so that $\sum_ka_k^p=1$ and $\sum_kb_k^q=1$. By Young's inequality \eqref{eq:young},
+\[
+a_kb_k\le\frac{a_k^p}p+\frac{b_k^q}q\qquad\text{for every }k .
+\]
+The right sides form a convergent series with the sum $1/p+1/q=1$, so by the comparison test (\vcref{1}{thm:comparison-series}) $\sum_ka_kb_k$ converges and is at most $1$. Multiplying by $\|x\|_p\|y\|_q$ gives the inequality, and the second statement follows by \vcref{1}{thm:absolute-series}. The differences $a_k^p/p+b_k^q/q-a_kb_k$ are nonnegative, and their sum is $1-\sum_ka_kb_k$; so equality holds if and only if every difference vanishes, that is, if and only if $a_k^p=b_k^q$ for every $k$, which is the stated condition.
+\end{proof}
+
+For $p=q=2$ the inequality is the Cauchy--Schwarz inequality for sums, \vcref{1}{thm:cauchy-schwarz}, now also for infinite series. The equality condition says that $|x_k|^p$ and $|y_k|^q$ are proportional. Given $x$, the sequence $y_k\coloneqq|x_k|^{p-1}$ satisfies it, since $|y_k|^q=|x_k|^{(p-1)q}=|x_k|^p$; this choice of $y$ will identify the dual of $\ell^p$ in \cref{sec:bounded-linear}.
+
+\begin{theorem}[Minkowski's inequality]
+\label{thm:minkowski}
+Let $1\le p\le\infty$, and let $x$ and $y$ be sequences in $\mathbb F$, both finite of the same length or both infinite, with $\|x\|_p<\infty$ and $\|y\|_p<\infty$. Then $\|x+y\|_p<\infty$ and
+\[
+\|x+y\|_p\le\|x\|_p+\|y\|_p .
+\]
+If $1<p<\infty$, equality holds if and only if one of $x$ and $y$ is a nonnegative multiple of the other.
+\end{theorem}
+
+\begin{proof}
+For $p=1$ the inequality follows by summing $|x_k+y_k|\le|x_k|+|y_k|$, and for $p=\infty$ it was shown in \cref{sec:metrics-norms}. Let $1<p<\infty$ and $s\coloneqq x+y$. First, $|s_k|^p\le\bigl(2\max(|x_k|,|y_k|)\bigr)^p\le2^p(|x_k|^p+|y_k|^p)$, so $\|s\|_p<\infty$ by the comparison test. Next,
+\[
+\sum_k|s_k|^p\le\sum_k|x_k|\,|s_k|^{p-1}+\sum_k|y_k|\,|s_k|^{p-1}.
+\]
+Apply H\"older's inequality to each sum on the right, with the exponents $p$ and $q=p/(p-1)$. Since $(p-1)q=p$, the sequence $(|s_k|^{p-1})$ has $\bigl(\sum_k|s_k|^{(p-1)q}\bigr)^{1/q}=\|s\|_p^{p/q}=\|s\|_p^{p-1}$, and so
+\begin{equation}
+\|s\|_p^p\le\|x\|_p\|s\|_p^{p-1}+\|y\|_p\|s\|_p^{p-1}=\bigl(\|x\|_p+\|y\|_p\bigr)\|s\|_p^{p-1}.
+\label{eq:minkowski-chain}
+\end{equation}
+If $s=0$ there is nothing to prove; otherwise dividing by $\|s\|_p^{p-1}>0$ gives the inequality.
+
+If $x=ty$ or $y=tx$ with $t\ge0$, both sides equal $(1+t)$ times the norm of the other vector. Conversely, suppose equality holds, and $x\ne0\ne y$; then $s\ne0$, since otherwise $0=\|x\|_p+\|y\|_p$. Equality in \eqref{eq:minkowski-chain} requires equality in both applications of H\"older's inequality, which by \cref{thm:holder} means $|x_k|^p/\|x\|_p^p=|s_k|^p/\|s\|_p^p=|y_k|^p/\|y\|_p^p$, that is,
+\[
+|x_k|=\frac{\|x\|_p}{\|s\|_p}\,|s_k|,\qquad|y_k|=\frac{\|y\|_p}{\|s\|_p}\,|s_k|\qquad\text{for every }k ;
+\]
+and it requires $|s_k|=|x_k|+|y_k|$ for every $k$ with $s_k\ne0$. Let $c\coloneqq\|x\|_p/\|y\|_p>0$. For each $k$, either $s_k=0$, and then $x_k=y_k=0$; or $s_k\ne0$, and then $|x_k|=c|y_k|$ with $y_k\ne0$ and $|x_k+y_k|=|x_k|+|y_k|$, which for numbers in $\mathbb F$ means $x_k=t_ky_k$ with $t_k\ge0$, by the equality case of \vcref{2}{cor:inner-product-norm} for the one-dimensional inner product space $\mathbb F$; then $t_k=|x_k|/|y_k|=c$. In both cases $x_k=cy_k$, so $x=cy$.
+\end{proof}
+
+\begin{corollary}
+\label{cor:lp-normed}
+For $1\le p\le\infty$, $\ell^p$ is a vector space, $\|\cdot\|_p$ is a norm on $\ell^p$, and $\|\cdot\|_p$ is a norm on $\mathbb F^n$.
+\end{corollary}
+
+\begin{proof}
+The set $\ell^p$ is closed under multiplication by scalars, since $\|tx\|_p=|t|\,\|x\|_p$, and under addition by Minkowski's inequality; so it is a subspace of the vector space of all sequences. Positivity and homogeneity of $\|\cdot\|_p$ are evident, and the triangle inequality is Minkowski's. $\mathbb F^n$ is the case of finite sequences.
+\end{proof}
+
+This completes the note on the $p$-norms in \vcref{2}{sec:trace-norms}, which stated these facts without proof. The note also recorded how the $p$-norms of a vector in $\mathbb F^n$ compare, and \cref{fig:p-balls} shows the same for the unit balls; here is the precise statement, for finite and infinite sequences.
+
+\begin{proposition}[Comparison of the $p$-norms]
+\label{prop:p-norm-monotone}
+Let $1\le p\le r\le\infty$.
+\begin{enumerate}
+\item For every sequence $x$ in $\mathbb F$, finite or infinite, $\|x\|_r\le\|x\|_p$, where the norms may be $\infty$. Consequently $\ell^p\subseteq\ell^r$, and the inclusion is proper if $p<r$.
+\item For $x\in\mathbb F^n$, $\|x\|_p\le n^{1/p-1/r}\|x\|_r$.
+\item If $x\in\ell^{p_0}$ for some $p_0<\infty$, in particular if $x\in\mathbb F^n$, then $\|x\|_p\to\|x\|_\infty$ as $p\to\infty$.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) If $\|x\|_p$ is $0$ or $\infty$, there is nothing to prove. If $r=\infty$, then $|x_k|\le\|x\|_p$ for every $k$, since a single term of a sum of nonnegative terms is at most the sum. Let $r<\infty$, and assume first that $\|x\|_p=1$. Then $|x_k|\le1$ for every $k$, so $|x_k|^r\le|x_k|^p$, and $\|x\|_r^r\le\|x\|_p^p=1$. For general $x$ apply this to $x/\|x\|_p$. For $p<r<\infty$ the sequence $x_k\coloneqq k^{-1/p}$ lies in $\ell^r$ but not in $\ell^p$, since $\sum_kk^{-r/p}$ converges and $\sum_kk^{-1}$ does not (\vcref{1}{cor:real-exponent-extensions}); for $r=\infty$ the constant sequence $1$ lies in $\ell^\infty$ but in no $\ell^p$.
+
+(ii) For $r=\infty$ this is $\sum_k|x_k|^p\le n\|x\|_\infty^p$, and for $r=p$ there is nothing to prove. For $p<r<\infty$ apply H\"older's inequality to the vectors $(|x_k|^p)$ and $(1,\ldots,1)$ with the conjugate exponents $r/p$ and $r/(r-p)$:
+\[
+\sum_{k=1}^n|x_k|^p\le\Bigl(\sum_{k=1}^n|x_k|^r\Bigr)^{p/r}n^{1-p/r},
+\]
+and take the power $1/p$ of both sides.
+
+(iii) Let $M\coloneqq\|x\|_\infty$, which is finite by (i), and assume $M>0$. For every $k$ and every $p$, $\|x\|_p\ge|x_k|$, so $\liminf_{p\to\infty}\|x\|_p\ge M$. For $p\ge p_0$, $|x_k|^p=|x_k|^{p_0}|x_k|^{p-p_0}\le|x_k|^{p_0}M^{p-p_0}$, and summing gives
+\[
+\|x\|_p\le\|x\|_{p_0}^{p_0/p}\,M^{1-p_0/p}\to M\qquad(p\to\infty),
+\]
+since $c^{1/p}\to1$ for every $c>0$.
+\end{proof}
+
+The bound (ii) with $r=\infty$ shows how fast the limit in (iii) is approached in $\mathbb F^n$: $\|x\|_\infty\le\|x\|_p\le n^{1/p}\|x\|_\infty$. If $m$ of the $n$ components have the largest modulus, the middle term is at least $m^{1/p}\|x\|_\infty$, and $\|x\|_p/\|x\|_\infty$ approaches $m^{1/p}$ as $p$ grows; \cref{sec:metric-computation} observes this numerically. The vector $(1,\ldots,1)$ attains the upper bound $n^{1/p}$, and $\mathbf e_1$ the lower bound $1$.
+
+\subsection{Integrals}
+
+The same arguments work for integrals of continuous functions, with sums replaced by integrals. For $f\in C[a,b]$ and $1\le p<\infty$ let
+\[
+\|f\|_p\coloneqq\Bigl(\int_a^b|f(x)|^p\,dx\Bigr)^{1/p},
+\]
+which agrees with the norms $\|\cdot\|_1$ and $\|\cdot\|_2$ of \cref{sec:metrics-norms}, and let $\|f\|_\infty=\max|f|$ as before.
+
+\begin{theorem}[H\"older and Minkowski for integrals]
+\label{thm:holder-integral}
+Let $p$ and $q$ be conjugate exponents and $f,g\in C[a,b]$. Then
+\[
+\int_a^b|f(x)g(x)|\,dx\le\|f\|_p\,\|g\|_q\qquad\text{and}\qquad\|f+g\|_p\le\|f\|_p+\|g\|_p .
+\]
+Consequently $\|\cdot\|_p$ is a norm on $C[a,b]$ for every $p\in[1,\infty]$.
+\end{theorem}
+
+\begin{proof}
+All integrands are continuous, since $|f|$, $|f|^p$ and products of continuous functions are (\vcref{1}{thm:continuity-algebra,thm:composition-continuous}). For $p=1$, $|fg|\le|f|\,\|g\|_\infty$, and integrating gives H\"older's inequality by the monotonicity of the integral (\vcref{1}{thm:integral-monotone}); the case $p=\infty$ is symmetric, and Minkowski's inequality for $p=1$ and $p=\infty$ follows from $|f+g|\le|f|+|g|$. Let $1<p<\infty$. If $\|f\|_p=0$, then $f=0$ by \vcref{1}{prop:positive-integral}, and the inequalities are trivial; the same holds for $g$. Otherwise Young's inequality \eqref{eq:young}, applied for each $x$ to $a=|f(x)|/\|f\|_p$ and $b=|g(x)|/\|g\|_q$, gives
+\[
+\frac{|f(x)g(x)|}{\|f\|_p\|g\|_q}\le\frac{|f(x)|^p}{p\|f\|_p^p}+\frac{|g(x)|^q}{q\|g\|_q^q},
+\]
+and integrating over $[a,b]$, using linearity and monotonicity (\vcref{1}{thm:integral-linear,thm:integral-monotone}), gives at most $1/p+1/q=1$ on the right. For Minkowski's inequality put $s\coloneqq f+g$; then
+\begin{multline*}
+\int_a^b|s|^p\le\int_a^b|f|\,|s|^{p-1}+\int_a^b|g|\,|s|^{p-1}\\\le\bigl(\|f\|_p+\|g\|_p\bigr)\Bigl(\int_a^b|s|^{(p-1)q}\Bigr)^{1/q}=\bigl(\|f\|_p+\|g\|_p\bigr)\|s\|_p^{p-1},
+\end{multline*}
+and division by $\|s\|_p^{p-1}$, if it is positive, gives the inequality. Positivity of $\|\cdot\|_p$ is \vcref{1}{prop:positive-integral} applied to $|f|^p$, and homogeneity is clear.
+\end{proof}
+
+The comparison of the norms goes the other way round for functions on a bounded interval, and the limit as $p\to\infty$ is the same.
+
+\begin{proposition}
+\label{prop:function-p-norms}
+Let $f\in C[a,b]$ and $1\le p\le r\le\infty$. Then
+\[
+\|f\|_p\le(b-a)^{1/p-1/r}\|f\|_r ,
+\]
+and $\|f\|_p\to\|f\|_\infty$ as $p\to\infty$.
+\end{proposition}
+
+\begin{proof}
+For $r=\infty$, $\int_a^b|f|^p\le(b-a)\|f\|_\infty^p$, and for $r=p$ there is nothing to prove. For $p<r<\infty$, H\"older's inequality with the exponents $r/p$ and $r/(r-p)$, applied to $|f|^p$ and the constant $1$, gives $\int_a^b|f|^p\le(\int_a^b|f|^r)^{p/r}(b-a)^{1-p/r}$; take the power $1/p$. For the limit, let $M\coloneqq\|f\|_\infty>0$ and $0<\varepsilon<M$. By the bound just proved, $\|f\|_p\le(b-a)^{1/p}M\to M$. The maximum $M$ is attained at some point $c$, and by continuity $|f|>M-\varepsilon$ on an interval $J\subseteq[a,b]$ of some length $\ell>0$ containing $c$. Then $\|f\|_p\ge(\ell(M-\varepsilon)^p)^{1/p}=\ell^{1/p}(M-\varepsilon)\to M-\varepsilon$. Since $\varepsilon$ is arbitrary, $\|f\|_p\to M$.
+\end{proof}
+
+For sequences, a large $p$ gives a small norm, because the terms below the largest one are suppressed by the power; for functions on an interval of length $1$, a large $p$ gives a large norm, because no single point carries weight and the power enhances the values above $1$. On $[0,1]$ the proposition reads $\|f\|_1\le\|f\|_2\le\|f\|_\infty$, a chain used in \cref{sec:open-closed}. For the spaces $L^p$ of Part~III, the same proofs give inclusions in opposite directions: $\ell^p\subseteq\ell^r$ for sequences, but $L^r\subseteq L^p$ on a bounded interval when $p\le r$.
+
+\subsection{Exponents below One}
+
+For $0<p<1$ the formula $\|x\|_p=(\sum_k|x_k|^p)^{1/p}$ still makes sense, but it does not define a norm: $\|\mathbf e_1+\mathbf e_2\|_p=2^{1/p}>2=\|\mathbf e_1\|_p+\|\mathbf e_2\|_p$, as the non-convex set in \cref{fig:p-balls} indicates. A metric survives, however. For $a,b\ge0$ and $0<p<1$,
+\begin{equation}
+(a+b)^p\le a^p+b^p ,
+\label{eq:subadditive-power}
+\end{equation}
+since for $a+b>0$ the numbers $u\coloneqq a/(a+b)$ and $v\coloneqq b/(a+b)$ lie in $[0,1]$ and satisfy $u^p\ge u$ and $v^p\ge v$, so that $u^p+v^p\ge u+v=1$. Applying \eqref{eq:subadditive-power} to each term shows that
+\[
+d(x,y)\coloneqq\sum_k|x_k-y_k|^p
+\]
+is a metric on the space of sequences with $\sum_k|x_k|^p<\infty$. It is translation invariant, but not homogeneous: $d(tx,ty)=|t|^pd(x,y)$. This volume does not need these spaces.
+
+\section{Open and Closed Sets}
+\label{sec:open-closed}
+
+\subsection{Open Sets}
+
+The definitions of \vcref{1}{def:open-closed} use the Euclidean distance only through balls, and they carry over to every metric space word for word.
+
+\begin{definition}[Open and closed sets]
+\label{def:open-closed-metric}
+Let $(X,d)$ be a metric space and $S\subseteq X$. A point $a\in S$ is an \term{interior point} of $S$ if $B(a,r)\subseteq S$ for some $r>0$. The set $S$ is \term{open} if every point of $S$ is an interior point, and \term{closed} if its complement $X\setminus S$ is open. A \term{neighbourhood} of a point $a$ is a set that contains a ball $B(a,r)$ with $r>0$. The set $S$ is \term{bounded} if it is contained in some ball.
+\end{definition}
+
+Whether a set is open depends on the metric and on the surrounding space: the interval $[0,1)$ is not open in $\mathbb R$, since no interval around $0$ lies inside it, but it is open in the subspace $[0,1]$, where $B(0,1/2)=[0,1/2)$. In the discrete metric every set is open, since $B(a,1)=\{a\}$, and therefore every set is also closed.
+
+\begin{proposition}
+\label{prop:balls-open}
+In a metric space, every open ball is open, every closed ball is closed, and every finite set is closed.
+\end{proposition}
+
+\begin{proof}
+Let $x\in B(a,r)$ and $\rho\coloneqq r-d(x,a)>0$. For $y\in B(x,\rho)$, $d(y,a)\le d(y,x)+d(x,a)<\rho+d(x,a)=r$, so $B(x,\rho)\subseteq B(a,r)$. If $x\notin\bar B(a,r)$, let $\rho\coloneqq d(x,a)-r>0$; for $y\in B(x,\rho)$, $d(y,a)\ge d(x,a)-d(x,y)>r$, so the complement of $\bar B(a,r)$ is open. If $x\ne a$, the ball $B(x,d(x,a))$ does not contain $a$; so $X\setminus\{a\}$ is open, and a finite set is closed by the next theorem.
+\end{proof}
+
+\begin{theorem}[Unions and intersections]
+\label{thm:open-sets}
+In a metric space $X$:
+\begin{enumerate}
+\item $\emptyset$ and $X$ are open;
+\item every union of open sets is open;
+\item every intersection of finitely many open sets is open.
+\end{enumerate}
+Consequently $\emptyset$ and $X$ are closed, every intersection of closed sets is closed, and every union of finitely many closed sets is closed.
+\end{theorem}
+
+\begin{proof}
+(i) The empty set has no points to check, and $X$ contains every ball. (ii) If $a$ lies in a union $\bigcup_iU_i$ of open sets, it lies in some $U_j$, and some ball $B(a,r)\subseteq U_j\subseteq\bigcup_iU_i$. (iii) If $a\in U_1\cap\cdots\cap U_n$ and $B(a,r_i)\subseteq U_i$, then $B(a,\min_ir_i)$ lies in every $U_i$. The statements on closed sets follow by taking complements, since $X\setminus\bigcup_iF_i=\bigcap_i(X\setminus F_i)$ and $X\setminus\bigcap_iF_i=\bigcup_i(X\setminus F_i)$ (De Morgan's laws, \vcref{1}{prop:de-morgan-sets}, in their form for families, \vcref{1}{def:families}).
+\end{proof}
+
+Infinite intersections of open sets need not be open: $\bigcap_{n\ge1}B(0,1/n)=\{0\}$ in $\mathbb R$. Dually, the union of the closed sets $[1/n,1]$, $n\ge1$, is $(0,1]$, which is not closed. A set can be both open and closed, like $\emptyset$ and $X$, or neither, like $[0,1)$ in $\mathbb R$.
+
+\begin{note}{Topological spaces}
+\Cref{thm:open-sets} lists the only properties of open sets that many arguments need, and they can be taken as axioms: a \emph{topology} on a set $X$ is a family of subsets, called open, that contains $\emptyset$ and $X$ and is closed under arbitrary unions and finite intersections. A function between topological spaces is then called continuous if preimages of open sets are open, which by \cref{thm:continuity-characterisations} below agrees with the $\varepsilon$--$\delta$ definition for metric spaces. Hausdorff's \emph{Grundz\"uge der Mengenlehre} of 1914 set up topology on axioms for neighbourhoods~\cite{hausdorff1914}; the axioms for open sets became standard later. Topologies that do not come from a metric arise, for instance, as the topology of pointwise convergence on a space of functions. Folland gives a concise account~\cite[Chap.~4]{folland1999}; this volume needs only metric spaces.
+\end{note}
+
+\subsection{Interior, Closure and Boundary}
+
+\begin{definition}[Interior, closure, boundary]
+\label{def:closure}
+Let $S$ be a subset of a metric space $X$.
+\begin{enumerate}
+\item The \term{interior} $\operatorname{int}S$ is the set of interior points of $S$.
+\item A point $a\in X$ is an \term{adherent point} of $S$ if every ball $B(a,r)$ contains a point of $S$; the set of adherent points is the \term{closure} $\overline S$.
+\item A point $a\in X$ is a \term{boundary point} of $S$ if every ball $B(a,r)$ contains a point of $S$ and a point of $X\setminus S$; the set of boundary points is the \term{boundary} $\partial S$.
+\item A point $a\in X$ is an \term{accumulation point} of $S$ if every ball $B(a,r)$ contains a point of $S$ other than $a$. A point of $S$ that is not an accumulation point of $S$ is an \term{isolated point} of $S$.
+\item For $S\ne\emptyset$, the \term{distance} of a point $x$ from $S$ and the \term{diameter} of $S$ are
+\[
+\operatorname{dist}(x,S)\coloneqq\inf_{s\in S}d(x,s),\qquad\operatorname{diam}S\coloneqq\sup_{s,t\in S}d(s,t)\in[0,\infty].
+\]
+\end{enumerate}
+\end{definition}
+
+The bar also denotes complex conjugation, $\bar z$, and the closed ball $\bar B(a,r)$; the context always decides. A set is bounded if and only if its diameter is finite, since $S\subseteq B(a,r)$ gives $\operatorname{diam}S\le2r$, and conversely $S\subseteq\bar B(s,\operatorname{diam}S)\subseteq B(s,\operatorname{diam}S+1)$ for any $s\in S$. For $S=(0,1]$ in $\mathbb R$, $\operatorname{int}S=(0,1)$, $\overline S=[0,1]$, $\partial S=\{0,1\}$, every point of $[0,1]$ is an accumulation point, and $\operatorname{dist}(2,S)=1$. The set $\{1/n: n\ge1\}$ consists of isolated points and has the single accumulation point $0$, which does not belong to it. The rational numbers have empty interior in $\mathbb R$, their closure is $\mathbb R$, and so is their boundary.
+
+\begin{proposition}[Properties of interior and closure]
+\label{prop:closure}
+Let $S$ be a subset of a metric space $X$.
+\begin{enumerate}
+\item $\operatorname{int}S$ is open, and it is the largest open set contained in $S$: every open $U\subseteq S$ satisfies $U\subseteq\operatorname{int}S$.
+\item $\overline S$ is closed, and it is the smallest closed set containing $S$. In particular $S$ is closed if and only if $S=\overline S$.
+\item $X\setminus\overline S=\operatorname{int}(X\setminus S)$, and $\partial S=\overline S\setminus\operatorname{int}S$, which is closed.
+\item For $S\ne\emptyset$, a point $x$ lies in $\overline S$ if and only if $\operatorname{dist}(x,S)=0$.
+\item $\overline S$ is the union of $S$ and the set of its accumulation points, and $\operatorname{diam}\overline S=\operatorname{diam}S$.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) If $a\in\operatorname{int}S$, some $B(a,r)\subseteq S$, and every point of this ball is an interior point of $S$, since by \cref{prop:balls-open} a smaller ball around it lies in $B(a,r)$. So $\operatorname{int}S$ is open. If $U\subseteq S$ is open, every point of $U$ has a ball inside $U\subseteq S$, so it is an interior point of $S$.
+
+(iii) A point $a$ is not in $\overline S$ if and only if some ball $B(a,r)$ contains no point of $S$, that is, lies in $X\setminus S$; this means $a\in\operatorname{int}(X\setminus S)$. The description of $\partial S$ restates the definitions: $a\in\partial S$ means that every ball around $a$ meets $S$, so $a\in\overline S$, and that no ball around $a$ lies in $S$, so $a\notin\operatorname{int}S$. Then $\partial S=\overline S\cap(X\setminus\operatorname{int}S)$ is closed by (ii), proved next, and (i).
+
+(ii) By (iii) and (i), $X\setminus\overline S$ is open, so $\overline S$ is closed. If $F\supseteq S$ is closed and $a\notin F$, a ball around $a$ lies in the open set $X\setminus F\subseteq X\setminus S$; so $a\notin\overline S$. Hence $\overline S\subseteq F$. If $S$ is closed, take $F=S$ to get $\overline S\subseteq S$; the reverse inclusion always holds.
+
+(iv) $\operatorname{dist}(x,S)=0$ means that for every $r>0$ some $s\in S$ has $d(x,s)<r$, that is, every ball $B(x,r)$ meets $S$.
+
+(v) A point of $\overline S$ that is not in $S$ has points of $S$ in every ball, all different from itself, so it is an accumulation point; conversely, accumulation points and points of $S$ are adherent. For the diameter, $\operatorname{diam}S\le\operatorname{diam}\overline S$ is clear. If $x,y\in\overline S$ and $\varepsilon>0$, choose $s,t\in S$ with $d(x,s)<\varepsilon$ and $d(y,t)<\varepsilon$; then $d(x,y)<d(s,t)+2\varepsilon\le\operatorname{diam}S+2\varepsilon$.
+\end{proof}
+
+\subsection{Convergent Sequences}
+
+\begin{definition}[Convergence in a metric space]
+\label{def:metric-convergence}
+A sequence $(x_n)$ in a metric space $X$ \term{converges} to $x\in X$, written $x_n\to x$ or $\lim_{n\to\infty}x_n=x$, if $d(x_n,x)\to0$: for every $\varepsilon>0$ there is $N$ with $d(x_n,x)<\varepsilon$ for all $n\ge N$. Equivalently, every ball $B(x,\varepsilon)$, or every neighbourhood of $x$, contains all but finitely many terms.
+\end{definition}
+
+A sequence has at most one limit: if $x_n\to x$ and $x_n\to y$, then $d(x,y)\le d(x,x_n)+d(x_n,y)\to0$, so $d(x,y)=0$. Every subsequence of a convergent sequence converges to the same limit, as in \vcref{1}{prop:subsequence}, and a convergent sequence is bounded, since all but finitely many terms lie in $B(x,1)$. In a normed space, $x_n\to x$ means $\|x_n-x\|\to0$, and we say that $(x_n)$ converges \term{in the norm}. The examples of \cref{sec:metrics-norms} show how different convergence can be.
+
+\begin{enumerate}
+\item In the discrete metric, $x_n\to x$ if and only if $x_n=x$ for all large $n$, since $d(x_n,x)<1$ forces $x_n=x$.
+\item In $\mathbb F^n$ with any $p$-norm, $x^{(m)}\to x$ if and only if $x^{(m)}_k\to x_k$ for each component $k$. Indeed $|x^{(m)}_k-x_k|\le\|x^{(m)}-x\|_\infty\le\|x^{(m)}-x\|_p\le n^{1/p}\|x^{(m)}-x\|_\infty$ by \cref{prop:p-norm-monotone}, and the $\infty$-norm tends to zero exactly when each of the $n$ components does; this is \vcref{1}{prop:componentwise} for the Euclidean norm.
+\item In $\ell^p$, convergence $x^{(m)}\to x$ implies convergence of each term, $x^{(m)}_k\to x_k$, by the first inequality above, but the converse fails: the unit sequences $\mathbf e_m$ tend to $0$ term by term, while $\|\mathbf e_m-0\|_p=1$ for all $m$. The terms of $\mathbf e_m$ do not tend to zero ``uniformly in $k$''.
+\item In $\ell^\infty(S)$, $f_n\to f$ means $\sup_{s\in S}|f_n(s)-f(s)|\to0$: for every $\varepsilon>0$ there is $N$ with $|f_n(s)-f(s)|<\varepsilon$ for all $n\ge N$ and \emph{all} $s\in S$ simultaneously. This is \term{uniform convergence} on $S$, the subject of Chapter~4, and the reason why $\|\cdot\|_\infty$ is also called the uniform norm.
+\item In the $p$-adic metric, $p^n\to0$ and $1+p+\cdots+p^{n-1}\to1/(1-p)$, while in the usual metric both sequences diverge.
+\end{enumerate}
+
+Closed sets are characterised by sequences, as \vcref{1}{prop:closed-sequences} showed in $\mathbb R^n$, and the proof is the same.
+
+\begin{proposition}[Closure and sequences]
+\label{prop:closure-sequences}
+Let $S$ be a subset of a metric space $X$.
+\begin{enumerate}
+\item A point $x$ lies in $\overline S$ if and only if $x$ is the limit of a sequence of points of $S$, and $x$ is an accumulation point of $S$ if and only if it is the limit of a sequence of points of $S\setminus\{x\}$.
+\item $S$ is closed if and only if the limit of every convergent sequence of points of $S$ lies in $S$.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) If $x\in\overline S$, choose $s_n\in S\cap B(x,1/(n+1))$ for every $n$; then $s_n\to x$. Conversely, if $s_n\to x$ with $s_n\in S$, every ball around $x$ contains some $s_n$. The statement on accumulation points is proved in the same way with $S\setminus\{x\}$ in place of $S$. (ii) By \cref{prop:closure}\,(ii), $S$ is closed if and only if $\overline S\subseteq S$, and by (i) this means that limits of sequences in $S$ lie in $S$.
+\end{proof}
+
+In a normed space, the closure of an open ball is the closed ball with the same centre and radius, as one would expect. Let $\|x-a\|=r$; then $x_n\coloneqq a+(1-1/n)(x-a)$ lies in $B(a,r)$ for $n\ge1$, and $\|x_n-x\|=r/n\to0$, so $x\in\overline{B(a,r)}$; together with $\overline{B(a,r)}\subseteq\bar B(a,r)$, which holds because $\bar B(a,r)$ is closed, this gives $\overline{B(a,r)}=\bar B(a,r)$ in every normed space $X\ne\{0\}$. In a general metric space the closure can be smaller: with the discrete metric, $B(a,1)=\{a\}$ is closed, while $\bar B(a,1)=X$. Notation must therefore be read literally. The symbol $\bar B(a,r)$ denotes the set $\{x: d(x,a)\le r\}$, not the closure of $B(a,r)$.
+
+\subsection{Subspaces}
+
+A subset $Y$ of a metric space $X$ is a metric space in its own right, and its open sets are related to those of $X$ in a simple way.
+
+\begin{proposition}[Open sets of a subspace]
+\label{prop:relative-open}
+Let $Y$ be a subspace of a metric space $X$. A set $U\subseteq Y$ is open in $Y$ if and only if $U=V\cap Y$ for some open set $V$ of $X$, and a set $F\subseteq Y$ is closed in $Y$ if and only if $F=G\cap Y$ for some closed set $G$ of $X$. If $Y$ is open in $X$, the open sets of $Y$ are the open sets of $X$ contained in $Y$; if $Y$ is closed in $X$, the closed sets of $Y$ are the closed sets of $X$ contained in $Y$.
+\end{proposition}
+
+\begin{proof}
+The ball of $Y$ with centre $a\in Y$ and radius $r$ is $B_Y(a,r)=B(a,r)\cap Y$. If $U$ is open in $Y$, choose for each $a\in U$ a radius $r_a$ with $B(a,r_a)\cap Y\subseteq U$, and let $V\coloneqq\bigcup_{a\in U}B(a,r_a)$, which is open in $X$; then $V\cap Y=U$. Conversely, if $V$ is open in $X$ and $a\in V\cap Y$, some $B(a,r)\subseteq V$, and $B_Y(a,r)\subseteq V\cap Y$. For closed sets take complements in $Y$: $Y\setminus(G\cap Y)=(X\setminus G)\cap Y$. The last two statements follow because finite intersections of open sets, and of closed sets, are open, and closed, respectively.
+\end{proof}
+
+For instance, $[0,1/2)=(-1,1/2)\cap[0,1]$ is open in $[0,1]$. A striking example is the subspace $\mathbb Q$ of $\mathbb R$. The set $A\coloneqq\{q\in\mathbb Q: q^2<2\}=(-\sqrt2,\sqrt2)\cap\mathbb Q$ is open in $\mathbb Q$, and since $\sqrt2$ is irrational, $A=[-\sqrt2,\sqrt2]\cap\mathbb Q$ is also closed in $\mathbb Q$. So $\mathbb Q$ splits into the two disjoint open sets $A$ and $\mathbb Q\setminus A$, both nonempty; \cref{prop:ivt-completeness} met this splitting, and the next chapter calls a space with such a splitting disconnected.
+
+\subsection{Dense Sets and Separability}
+
+\begin{definition}[Dense set, separable space]
+\label{def:dense}
+A subset $D$ of a metric space $X$ is \term{dense} in $X$ if $\overline D=X$, that is, if every ball in $X$ contains a point of $D$, or equivalently if every point of $X$ is the limit of a sequence in $D$. The space $X$ is \term{separable} if it has a countable dense subset.
+\end{definition}
+
+The rational numbers are dense in $\mathbb R$ (\cref{thm:r-archimedean}), and $\mathbb Q^n$ is dense in $\mathbb R^n$, since a vector can be approximated component by component; both sets are countable (\vcref{1}{thm:q-countable,prop:countable-examples}), so $\mathbb R$ and $\mathbb R^n$ are separable. The polynomials with rational coefficients are dense in $(C[a,b],\|\cdot\|_\infty)$; this is the Weierstrass approximation theorem of Chapter~5, and it shows that $C[a,b]$ is separable as well. For the sequence spaces the answer depends on $p$.
+
+\begin{proposition}[Separability of the sequence spaces]
+\label{prop:separable}
+The spaces $\ell^p$, $1\le p<\infty$, and $c_0$ are separable; $\ell^\infty$ is not.
+\end{proposition}
+
+\begin{proof}
+Let $\mathbb Q_{\mathbb F}$ be $\mathbb Q$ if $\mathbb F=\mathbb R$, and the set of complex numbers with rational real and imaginary parts if $\mathbb F=\mathbb C$; it is countable and dense in $\mathbb F$. Let $D$ be the set of sequences with terms in $\mathbb Q_{\mathbb F}$ of which only finitely many are nonzero. The set $D_N$ of those that vanish after the index $N$ is in bijection with $\mathbb Q_{\mathbb F}^N$, which is countable by induction on $N$ with \vcref{1}{prop:countable-examples}\,(ii). Choosing, as that induction does, an explicit injection $\phi_N\colon D_N\to\mathbb N$ for each $N$, the map that sends $x\in D$ to $p(N,\phi_N(x))$, where $N$ is the smallest index with $x\in D_N$ and $p$ is the bijection of \vcref{1}{prop:countable-examples}\,(ii), is an injection of $D$ into $\mathbb N$, so $D$ is countable.
+
+Let $x\in\ell^p$ and $\varepsilon>0$. Since $\sum_k|x_k|^p$ converges, there is $N$ with $\sum_{k>N}|x_k|^p<\varepsilon^p/2$. Choose $y_k\in\mathbb Q_{\mathbb F}$ with $|x_k-y_k|^p<\varepsilon^p/(2N)$ for $k\le N$, and $y_k\coloneqq0$ for $k>N$. Then $y\in D$ and $\|x-y\|_p^p<N\varepsilon^p/(2N)+\varepsilon^p/2=\varepsilon^p$. So $D$ is dense in $\ell^p$. For $x\in c_0$ choose $N$ with $|x_k|<\varepsilon$ for $k>N$ and $y$ as before with $|x_k-y_k|<\varepsilon$ for $k\le N$; then $\|x-y\|_\infty<\varepsilon$, and $D$ is dense in $c_0$.
+
+For $\ell^\infty$, consider the set $E$ of all sequences with terms in $\{0,1\}$. It is uncountable, by Cantor's diagonal argument, \vcref{1}{thm:binary-sequences}, and any two different elements of $E$ have distance $1$ in $\ell^\infty$. Suppose $D'$ were a countable dense subset of $\ell^\infty$. Each ball $B(e,1/2)$, $e\in E$, would contain a point $\delta(e)\in D'$, and different $e$ give disjoint balls, by the triangle inequality, so different points $\delta(e)$. Thus $\delta$ would be an injection of the uncountable set $E$ into the countable set $D'$, which is impossible (\vcref{1}{cor:countable}\,(iii)).
+\end{proof}
+
+The proof for $\ell^p$ used $p<\infty$ only to make the tail $\sum_{k>N}|x_k|^p$ small. In $\ell^\infty$ the sequence $(1,1,1,\ldots)$ has no small tail, and the uncountably many sequences of zeros and ones keep apart from each other. Separability is a mild condition, satisfied by almost every space that arises in applications, but its failure for $\ell^\infty$ is the first sign that $\ell^\infty$ is in many respects a larger space than the others.
+
+\subsection{Equivalent Metrics and Norms}
+
+Different metrics on the same set may have the same open sets and the same convergent sequences, and then they are interchangeable for most purposes.
+
+\begin{definition}[Equivalent norms and metrics]
+\label{def:equivalent-norms}
+Two norms $\|\cdot\|$ and $\|\cdot\|'$ on a vector space $X$ are \term{equivalent} if there are constants $c,C>0$ with
+\[
+c\|x\|\le\|x\|'\le C\|x\|\qquad\text{for all }x\in X .
+\]
+Two metrics $d$ and $d'$ on a set $X$ are \term{strongly equivalent} if $cd\le d'\le Cd$ for some constants $c,C>0$, and \term{topologically equivalent} if they have the same open sets.
+\end{definition}
+
+\begin{proposition}
+\label{prop:equivalent-norms}
+Strongly equivalent metrics, in particular the metrics induced by equivalent norms, have the same open sets, the same closed sets, the same convergent sequences with the same limits, and the same bounded sets.
+\end{proposition}
+
+\begin{proof}
+Let $cd\le d'\le Cd$. A ball of $d'$ contains a ball of $d$ with the same centre: $d(x,a)<r/C$ implies $d'(x,a)<r$. Conversely, $d'(x,a)<cr$ implies $d(x,a)<r$. So a set that contains a $d$-ball around each of its points contains a $d'$-ball around each, and conversely: the open sets agree, and so do the closed sets. $d(x_n,x)\to0$ if and only if $d'(x_n,x)\to0$, by the squeeze theorem, and a set lies in a $d$-ball of radius $r$ if and only if it lies in a $d'$-ball of radius at most $Cr$, by the inequalities.
+\end{proof}
+
+On $\mathbb F^n$, all the $p$-norms are equivalent to each other, by \cref{prop:p-norm-monotone}: $\|x\|_\infty\le\|x\|_p\le n^{1/p}\|x\|_\infty$. The next chapter proves that any two norms on a finite-dimensional space are equivalent, as \vcref{2}{prop:standard-norms} announced. Topological equivalence is weaker than strong equivalence. On $\mathbb R$, the metric $d'(x,y)\coloneqq|\arctan x-\arctan y|$ has the same open sets as $|x-y|$, because $\arctan$ is a continuous bijection onto $(-\pi/2,\pi/2)$ with a continuous inverse (\vcref{1}{thm:inverse-continuous}), so that small changes of $x$ and small changes of $\arctan x$ correspond; but $d'(x,y)\le\pi$ for all $x$ and $y$, so no inequality $d'\ge c\,|x-y|$ can hold, and the set $\mathbb R$ is bounded for $d'$. \Cref{sec:completeness-metric} shows that completeness, too, can be lost under a topologically equivalent change of metric.
+
+In infinite dimensions, norms on the same space are often not equivalent, and the choice of norm changes the analysis. The three norms of $C[0,1]$ are the standard example.
+
+\begin{proposition}[The norms of $C{[0,1]}$ are not equivalent]
+\label{prop:c-norms-inequivalent}
+For every $f\in C[0,1]$,
+\[
+\|f\|_1\le\|f\|_2\le\|f\|_\infty ,
+\]
+but there are no constants $C$ with $\|f\|_\infty\le C\|f\|_2$ for all $f$, or with $\|f\|_2\le C\|f\|_1$ for all $f$. The set $U\coloneqq\{f\in C[0,1]: |f(1)|<1\}$ is open for $\|\cdot\|_\infty$, but not open for $\|\cdot\|_2$ or $\|\cdot\|_1$.
+\end{proposition}
+
+\begin{proof}
+The chain of inequalities is \cref{prop:function-p-norms} with $b-a=1$. For the monomials $f_n(x)\coloneqq x^n$,
+\[
+\|f_n\|_\infty=1,\qquad\|f_n\|_2=\Bigl(\int_0^1x^{2n}\,dx\Bigr)^{1/2}=\frac1{\sqrt{2n+1}},\qquad\|f_n\|_1=\frac1{n+1},
+\]
+so $\|f_n\|_\infty/\|f_n\|_2=\sqrt{2n+1}$ and $\|f_n\|_2/\|f_n\|_1=(n+1)/\sqrt{2n+1}$ are unbounded as $n\to\infty$. If $f\in U$ and $\|g-f\|_\infty<1-|f(1)|$, then $|g(1)|\le|f(1)|+|g(1)-f(1)|<1$, so $U$ is open for $\|\cdot\|_\infty$. The function $0$ lies in $U$, but every ball around $0$ in $\|\cdot\|_2$ contains a function $2f_n$, since $\|2f_n\|_2\to0$, and $2f_n(1)=2$, so $2f_n\notin U$. Since $\|\cdot\|_1\le\|\cdot\|_2$, the same functions lie in every ball around $0$ in $\|\cdot\|_1$.
+\end{proof}
+
+\begin{figure}
+\sdfloat{%
+\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.52\textwidth, height=0.36\textwidth, xmin=0, xmax=1, ymin=0, ymax=1.05,
+  xtick={0,0.5,1}, ytick={0,0.5,1}, xlabel={$x$},
+  legend style={at={(0.03,0.97)}, anchor=north west}]
+\addplot[black!12, fill=black!12, draw=none, domain=0:1, samples=200] {x^32} \closedcycle;
+\addplot[black, line width=0.7pt, domain=0:1, samples=50] {x};
+\addplot[black, dashed, line width=0.7pt, domain=0:1, samples=100] {x^4};
+\addplot[black, densely dotted, line width=0.8pt, domain=0:1, samples=200] {x^32};
+\legend{, $n=1$, $n=4$, $n=32$}
+\end{axis}
+\end{tikzpicture}}{The functions $x^n$ on $[0,1]$ for $n=1$, $4$ and $32$. All have the supremum norm $1$, attained at $x=1$, but the area under the graph, $\|x^n\|_1=1/(n+1)$, tends to zero; it is shaded for $n=32$. In the norm $\|\cdot\|_1$ the functions converge to $0$, in the supremum norm they do not converge at all.\label{fig:monomials}}
+\end{figure}
+
+\Cref{fig:monomials} shows what happens. In $\|\cdot\|_1$ and $\|\cdot\|_2$ the monomials $x^n$ converge to $0$; in the supremum norm they do not converge to any continuous function, since a limit $g$ would have to satisfy $|x^n-g(x)|\to0$ uniformly, hence $g(x)=\lim x^n$, which is $0$ for $x<1$ and $1$ for $x=1$, a discontinuous function. The value at a point is invisible to the integral norms and essential for the supremum norm, and the set $U$ of the proposition, defined by a condition at a single point, is open in one norm and not in the others.
+
+\section{Continuity}
+\label{sec:continuity-metric}
+
+\subsection{Three Descriptions of Continuity}
+
+\begin{definition}[Continuity]
+\label{def:metric-continuity}
+Let $(X,d_X)$ and $(Y,d_Y)$ be metric spaces. A function $f\colon X\to Y$ is \term{continuous at} $a\in X$ if for every $\varepsilon>0$ there is $\delta>0$ such that
+\[
+d_X(x,a)<\delta\quad\Longrightarrow\quad d_Y\bigl(f(x),f(a)\bigr)<\varepsilon ,
+\]
+that is, $f(B(a,\delta))\subseteq B(f(a),\varepsilon)$. It is \term{continuous} if it is continuous at every point of $X$.
+\end{definition}
+
+For functions between subsets of $\mathbb R$ or $\mathbb R^n$ this is the continuity of \vcref{1}{def:continuity,def:continuity-rn}. The following theorem gives two further descriptions. The first, by sequences, is the one most often used in proofs; the second, by open sets, is the one that generalises, as the note on topological spaces explained, and it answers the question that \vcref{1}{sec:functions} and the note on continuity and open sets in \vcref{1}{sec:continuity} raised for metric spaces.
+
+\begin{theorem}[Characterisations of continuity]
+\label{thm:continuity-characterisations}
+Let $f\colon X\to Y$ be a function between metric spaces.
+\begin{enumerate}
+\item For $a\in X$ the following are equivalent: (a) $f$ is continuous at $a$; (b) $f(x_n)\to f(a)$ for every sequence $(x_n)$ in $X$ with $x_n\to a$; (c) for every neighbourhood $V$ of $f(a)$, the preimage $f^{-1}(V)$ is a neighbourhood of $a$.
+\item The following are equivalent: (a) $f$ is continuous; (b) $f^{-1}(V)$ is open in $X$ for every open set $V\subseteq Y$; (c) $f^{-1}(F)$ is closed in $X$ for every closed set $F\subseteq Y$.
+\end{enumerate}
+\end{theorem}
+
+\begin{proof}
+(i) (a)$\Rightarrow$(b): let $x_n\to a$ and $\varepsilon>0$, and choose $\delta$ as in the definition. For large $n$, $d_X(x_n,a)<\delta$, and then $d_Y(f(x_n),f(a))<\varepsilon$. (b)$\Rightarrow$(a): if $f$ is not continuous at $a$, there is $\varepsilon>0$ such that no $\delta$ works; with $\delta=1/(n+1)$ we obtain points $x_n$ with $d_X(x_n,a)<1/(n+1)$ and $d_Y(f(x_n),f(a))\ge\varepsilon$. Then $x_n\to a$, but $f(x_n)\not\to f(a)$. (a)$\Rightarrow$(c): if $V\supseteq B(f(a),\varepsilon)$, choose $\delta$ for this $\varepsilon$; then $B(a,\delta)\subseteq f^{-1}(V)$. (c)$\Rightarrow$(a): given $\varepsilon$, the preimage of the neighbourhood $B(f(a),\varepsilon)$ contains some ball $B(a,\delta)$, which is the definition.
+
+(ii) (a)$\Rightarrow$(b): let $V$ be open and $a\in f^{-1}(V)$. Then $V$ is a neighbourhood of $f(a)$, and by (i) $f^{-1}(V)$ is a neighbourhood of $a$, so $a$ is an interior point of $f^{-1}(V)$. (b)$\Rightarrow$(a): for $a\in X$ and $\varepsilon>0$, the ball $B(f(a),\varepsilon)$ is open (\cref{prop:balls-open}), so its preimage is open and contains $a$, hence contains a ball $B(a,\delta)$. (b)$\Leftrightarrow$(c): preimages commute with complements, $f^{-1}(Y\setminus F)=X\setminus f^{-1}(F)$ (\vcref{1}{prop:image-preimage}\,(ii)), and a set is closed exactly when its complement is open.
+\end{proof}
+
+The theorem explains why central definitions are made with preimages, as \vcref{1}{sec:functions} remarked: preimages commute with unions, intersections and complements, and images do not. It also gives a quick way to see that sets are open or closed. If $g\colon X\to\mathbb R$ is continuous and $c\in\mathbb R$, then $\{x: g(x)<c\}=g^{-1}((-\infty,c))$ is open, and $\{x: g(x)\le c\}$ and $\{x: g(x)=c\}$ are closed, since $(-\infty,c]$ and $\{c\}$ are closed in $\mathbb R$; this generalises \vcref{1}{prop:level-sets-closed}. The open unit ball $\{f\in C[0,1]: \|f\|_\infty<1\}$, the set of continuous functions with $f(1/2)=0$, and the set of matrices with determinant $0$ are examples, once the functions $\|\cdot\|_\infty$, $f\mapsto f(1/2)$ and $\det$ are known to be continuous; the next results provide this.
+
+Continuity is preserved by the usual constructions. If $f\colon X\to Y$ and $g\colon Y\to Z$ are continuous, so is $g\circ f$: for an open $W\subseteq Z$, $(g\circ f)^{-1}(W)=f^{-1}(g^{-1}(W))$ is open. The restriction of a continuous function to a subspace is continuous, since the balls of the subspace are the intersections of the balls of $X$ with it. And continuity is a local property: $f$ is continuous at $a$ if it agrees near $a$ with a function that is continuous at $a$.
+
+\subsection{Uniform Continuity, Lipschitz Maps and Isometries}
+
+\begin{definition}[Uniformly continuous, Lipschitz, isometric]
+\label{def:uniform-lipschitz}
+A function $f\colon X\to Y$ between metric spaces is
+\begin{enumerate}
+\item \term{uniformly continuous} if for every $\varepsilon>0$ there is $\delta>0$ with $d_Y(f(x),f(x'))<\varepsilon$ for all $x,x'\in X$ with $d_X(x,x')<\delta$;
+\item \term{Lipschitz continuous} with the constant $L\ge0$ if $d_Y(f(x),f(x'))\le L\,d_X(x,x')$ for all $x,x'\in X$;
+\item an \term{isometry} if $d_Y(f(x),f(x'))=d_X(x,x')$ for all $x,x'\in X$.
+\end{enumerate}
+A bijection $f$ such that $f$ and $f^{-1}$ are both continuous is a \term{homeomorphism}, and a surjective isometry is an \term{isometric isomorphism} of metric spaces.
+\end{definition}
+
+These are \vcref{1}{def:uniform-continuity,def:lipschitz} for metric spaces. An isometry is Lipschitz with the constant $1$, a Lipschitz function is uniformly continuous, with $\delta=\varepsilon/(L+1)$, and a uniformly continuous function is continuous. An isometry is injective, since $f(x)=f(x')$ gives $d_X(x,x')=0$, and so a surjective isometry is a bijection whose inverse is again an isometry. Isometric spaces are indistinguishable as metric spaces: every statement about distances that holds in one holds in the other.
+
+The distance function itself is the first example of a Lipschitz function, and with it the norm and the vector operations of a normed space.
+
+\begin{proposition}[Distances, norms and vector operations]
+\label{prop:distance-lipschitz}
+\leavevmode
+\begin{enumerate}
+\item In a metric space $X$, the function $x\mapsto d(x,a)$ is Lipschitz with the constant $1$ for every $a\in X$, and so is $x\mapsto\operatorname{dist}(x,S)$ for every nonempty $S\subseteq X$. The metric $d\colon X\times X\to\mathbb R$ is Lipschitz with the constant $2$ for the product metric; consequently $x_n\to x$ and $y_n\to y$ imply $d(x_n,y_n)\to d(x,y)$.
+\item In a normed space $X$, the norm is Lipschitz with the constant $1$, addition $X\times X\to X$ is Lipschitz with the constant $2$, and scalar multiplication $\mathbb F\times X\to X$ is continuous; that is, $x_n\to x$, $y_n\to y$ and $t_n\to t$ imply $\|x_n\|\to\|x\|$, $x_n+y_n\to x+y$ and $t_nx_n\to tx$.
+\item In an inner product space, $x_n\to x$ and $y_n\to y$ imply $\langle x_n,y_n\rangle\to\langle x,y\rangle$.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) The first statement is \cref{prop:metric-inequalities}\,(i). For the second, let $x,y\in X$. For every $s\in S$, $\operatorname{dist}(x,S)\le d(x,s)\le d(x,y)+d(y,s)$; taking the infimum over $s$ gives $\operatorname{dist}(x,S)\le d(x,y)+\operatorname{dist}(y,S)$, and exchanging $x$ and $y$ gives the claim. The third statement is \cref{prop:metric-inequalities}\,(ii), since $d(x,x')+d(y,y')$ is at most twice the product distance of $(x,y)$ and $(x',y')$.
+
+(ii) The norm is $x\mapsto d(x,0)$. For addition, $\|(x+y)-(x'+y')\|\le\|x-x'\|+\|y-y'\|$. For scalar multiplication,
+\[
+\|t_nx_n-tx\|\le|t_n|\,\|x_n-x\|+|t_n-t|\,\|x\|\to0,
+\]
+since $(t_n)$ is bounded.
+
+(iii) $|\langle x_n,y_n\rangle-\langle x,y\rangle|\le|\langle x_n-x,y_n\rangle|+|\langle x,y_n-y\rangle|\le\|x_n-x\|\,\|y_n\|+\|x\|\,\|y_n-y\|$ by the Cauchy--Schwarz inequality, and $(\|y_n\|)$ is bounded.
+\end{proof}
+
+Maps into a product are handled one component at a time, and with this the algebra of continuous functions follows from the continuity of the operations.
+
+\begin{proposition}[Maps into products]
+\label{prop:product-maps}
+Let $X$, $Y_1$ and $Y_2$ be metric spaces and $Y_1\times Y_2$ carry the product metric. A map $f=(f_1,f_2)\colon X\to Y_1\times Y_2$ is continuous at $a$ if and only if $f_1$ and $f_2$ are. Consequently, if $f,g\colon X\to\mathbb F$ are continuous, so are $f+g$, $fg$ and, where $g\ne0$, $f/g$, and if $f,g\colon X\to V$ are continuous maps into a normed space, so is $f+g$.
+\end{proposition}
+
+\begin{proof}
+The product distance of $f(x)$ and $f(a)$ is the larger of $d(f_1(x),f_1(a))$ and $d(f_2(x),f_2(a))$, so it is less than $\varepsilon$ if and only if both are. For the consequences, $f+g$ is the composition of $x\mapsto(f(x),g(x))$ with addition, which is continuous by \cref{prop:distance-lipschitz}\,(ii); the product and the quotient are compositions with the continuous maps $(s,t)\mapsto st$ on $\mathbb F^2$ and $(s,t)\mapsto s/t$ on $\mathbb F\times(\mathbb F\setminus\{0\})$, which are continuous by the limit laws and \cref{thm:continuity-characterisations}\,(i).
+\end{proof}
+
+Continuous functions are determined by their values on a dense set, a fact used repeatedly in the rest of the chapter.
+
+\begin{proposition}
+\label{prop:dense-agree}
+Let $f,g\colon X\to Y$ be continuous maps between metric spaces. The set $\{x\in X: f(x)=g(x)\}$ is closed. If $f$ and $g$ agree on a dense subset of $X$, then $f=g$.
+\end{proposition}
+
+\begin{proof}
+The function $x\mapsto d_Y(f(x),g(x))$ is continuous, as the composition of $x\mapsto(f(x),g(x))$ with $d_Y$ (\cref{prop:product-maps,prop:distance-lipschitz}), and the set in question is the preimage of the closed set $\{0\}$. A closed set that contains a dense set is the whole space, by \cref{prop:closure}\,(ii).
+\end{proof}
+
+\subsection{Examples}
+
+\emph{Evaluation and integration on $C[a,b]$.} For a fixed $t\in[a,b]$, the evaluation $f\mapsto f(t)$ satisfies $|f(t)-g(t)|\le\|f-g\|_\infty$, so it is Lipschitz with the constant $1$ on $(C[a,b],\|\cdot\|_\infty)$. On $(C[0,1],\|\cdot\|_1)$ it is not continuous at $t=1$: the monomials $x^n$ converge to $0$ in $\|\cdot\|_1$, while their values at $1$ do not. The integral $f\mapsto\int_a^bf$ satisfies $|\int_a^bf-\int_a^bg|\le\|f-g\|_1\le(b-a)\|f-g\|_\infty$, so it is Lipschitz for both norms. In this sense the integral is a robust quantity and a point value a fragile one, a distinction that returns in the numerical analysis of Volume~XII.
+
+\emph{The identity between two norms.} By \cref{prop:c-norms-inequivalent}, the identity map from $(C[0,1],\|\cdot\|_\infty)$ to $(C[0,1],\|\cdot\|_1)$ is Lipschitz with the constant $1$, but its inverse, the identity in the other direction, is not continuous at $0$: the monomials $x^n$ converge to $0$ in the first space but not in the second. So a continuous bijection need not be a homeomorphism.
+
+\emph{Wrapping an interval round a circle.} A continuous bijection with a discontinuous inverse also exists in the plane. The map $\gamma(t)\coloneqq(\cos t,\sin t)$ from $[0,2\pi)$ onto the unit circle is continuous and bijective, but its inverse is not continuous at $(1,0)=\gamma(0)$: the points $\gamma(2\pi-1/n)$ converge to $(1,0)$, while their preimages $2\pi-1/n$ converge to $2\pi$, not to $0$. The interval is cut open at one end, the circle is not, and no continuous bijection can hide the difference. The next chapter shows that this cannot happen when the domain is compact.
+
+\emph{Homeomorphic spaces with different distances.} The map $h(x)\coloneqq x/(1+|x|)$ is a homeomorphism from $\mathbb R$ onto $(-1,1)$. It is continuous and strictly increasing, with the limits $\pm1$ at $\pm\infty$, so it maps $\mathbb R$ bijectively onto $(-1,1)$, and its inverse $y\mapsto y/(1-|y|)$ is continuous as well. Homeomorphic spaces have the same open sets in corresponding positions, but they can look very different metrically: $\mathbb R$ is unbounded and $(-1,1)$ is bounded, and \cref{sec:completeness-metric} shows that one is complete and the other is not.
+
+\subsection{Separating Closed Sets}
+
+The function $\operatorname{dist}(\cdot,A)$ vanishes exactly on the closure of $A$, by \cref{prop:closure}\,(iv), and it is continuous. Combining two such functions gives a continuous function that separates two closed sets.
+
+\begin{lemma}[Separation of closed sets]
+\label{lem:urysohn}
+Let $A$ and $B$ be disjoint nonempty closed subsets of a metric space $X$. The function
+\[
+u(x)\coloneqq\frac{\operatorname{dist}(x,A)}{\operatorname{dist}(x,A)+\operatorname{dist}(x,B)}
+\]
+is defined and continuous on $X$, takes values in $[0,1]$, and satisfies $u^{-1}(\{0\})=A$ and $u^{-1}(\{1\})=B$. Consequently $A$ and $B$ have disjoint open neighbourhoods $\{u<1/2\}\supseteq A$ and $\{u>1/2\}\supseteq B$.
+\end{lemma}
+
+\begin{proof}
+The denominator vanishes only where both distances vanish, that is, on $\overline A\cap\overline B=A\cap B=\emptyset$, by \cref{prop:closure}\,(iv). So $u$ is the quotient of two continuous functions with a nonvanishing denominator and is continuous by \cref{prop:product-maps}. Its values lie in $[0,1]$, $u(x)=0$ exactly when $\operatorname{dist}(x,A)=0$, that is, when $x\in A$, and $u(x)=1$ exactly when $\operatorname{dist}(x,B)=0$. The two sets in the last statement are open by \cref{thm:continuity-characterisations}.
+\end{proof}
+
+This is the metric form of Urysohn's lemma, which in topology asserts the existence of such functions in more general spaces~\cite[Chap.~4]{folland1999}. In $\mathbb R$, with $A=(-\infty,0]$ and $B=[1,\infty)$, the function $u$ is $0$ on $A$, $1$ on $B$ and $x$ in between. Functions of this kind, continuous, between $0$ and $1$, and equal to $1$ on one set and $0$ on another, are called cut-off functions; Chapter~5 constructs smooth ones on $\mathbb R^n$.
+
+\section{Completeness}
+\label{sec:completeness-metric}
+
+\subsection{Cauchy Sequences and Complete Spaces}
+
+\begin{definition}[Complete metric space, Banach space]
+\label{def:complete}
+A sequence $(x_n)$ in a metric space $X$ is a \term{Cauchy sequence} if for every $\varepsilon>0$ there is $N$ with $d(x_m,x_n)<\varepsilon$ for all $m,n\ge N$. The space $X$ is \term{complete} if every Cauchy sequence in $X$ converges to a point of $X$. A complete normed space is a \term{Banach space}.
+\end{definition}
+
+For $\mathbb Q$ and $\mathbb R$ with the distance $|x-y|$ this is the definition of \cref{def:of-convergence}, and \cref{thm:r-cauchy-complete} is the statement that $\mathbb R$ is complete. The general properties of Cauchy sequences are proved as there.
+
+\begin{proposition}[Properties of Cauchy sequences]
+\label{prop:cauchy-basic}
+Let $X$ be a metric space.
+\begin{enumerate}
+\item Every convergent sequence is a Cauchy sequence, and every Cauchy sequence is bounded.
+\item A Cauchy sequence with a convergent subsequence converges, to the limit of the subsequence.
+\item A uniformly continuous map between metric spaces maps Cauchy sequences to Cauchy sequences.
+\item If $d$ and $d'$ are strongly equivalent metrics on $X$, they have the same Cauchy sequences, and $(X,d)$ is complete if and only if $(X,d')$ is.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) If $x_n\to x$, then $d(x_m,x_n)\le d(x_m,x)+d(x,x_n)<\varepsilon$ when both distances to $x$ are below $\varepsilon/2$. If $d(x_m,x_n)<1$ for $m,n\ge N$, all terms lie in the ball around $x_N$ of radius $1+\max_{n<N}d(x_n,x_N)$. (ii) This is the proof of \cref{prop:of-limits}\,(vi), with $d$ in place of the absolute value. (iii) Given $\varepsilon$, let $\delta$ be as in the definition of uniform continuity and $N$ such that $d(x_m,x_n)<\delta$ for $m,n\ge N$; then $d(f(x_m),f(x_n))<\varepsilon$. (iv) If $cd\le d'\le Cd$, then $d'(x_m,x_n)<\varepsilon$ whenever $d(x_m,x_n)<\varepsilon/C$, and conversely with $c$; the convergent sequences agree by \cref{prop:equivalent-norms}.
+\end{proof}
+
+Part (iii) fails for maps that are only continuous. The function $1/x$ is continuous on $(0,1]$ and maps the Cauchy sequence $(1/n)_{n\ge1}$ to the sequence $(n)$, which is not a Cauchy sequence. Completeness is therefore not a property of the open sets alone, as the following examples show, and it must be checked for each metric.
+
+\begin{proposition}[Complete subspaces]
+\label{prop:closed-complete}
+Let $Y$ be a subspace of a metric space $X$. If $Y$ is complete, it is closed in $X$. If $X$ is complete and $Y$ is closed, then $Y$ is complete.
+\end{proposition}
+
+\begin{proof}
+Let $Y$ be complete, and let $y_n\in Y$ converge to $x\in X$. Then $(y_n)$ is a Cauchy sequence, in $X$ and therefore in $Y$, so it has a limit $y\in Y$; by the uniqueness of limits in $X$, $x=y\in Y$. So $Y$ is closed, by \cref{prop:closure-sequences}. Conversely, let $X$ be complete and $Y$ closed. A Cauchy sequence in $Y$ converges in $X$, and its limit lies in $Y$ because $Y$ is closed.
+\end{proof}
+
+With these tools many spaces are seen to be complete or not at once. The spaces $\mathbb R$ and $\mathbb C$ are complete, by the Cauchy criterion (\vcref{1}{thm:cauchy-criterion}) and \cref{thm:r-cauchy-complete}, and $\mathbb F^n$ is complete with the Euclidean norm, as observed after \vcref{1}{prop:componentwise}; by \cref{prop:cauchy-basic}\,(iv) it is complete with every $p$-norm. So $\mathbb F^n$ with any $p$-norm is a Banach space. Closed subsets of these spaces, such as $[a,b]$, $\mathbb Z$, or a closed ball in $\mathbb R^n$, are complete, while $\mathbb Q$ and $(0,1)$ are not, since they are not closed in $\mathbb R$. In the discrete metric every Cauchy sequence is eventually constant, by the tolerance $\varepsilon=1$, so every discrete space is complete.
+
+The two examples at the end of \cref{sec:open-closed,sec:continuity-metric} show that completeness can change without any change of the open sets. On $\mathbb R$ with $d'(x,y)=|\arctan x-\arctan y|$, the sequence $(n)$ is a Cauchy sequence, since $\arctan n$ converges to $\pi/2$, but it has no limit: $d'(n,x)\to|\pi/2-\arctan x|>0$ for every real $x$. So $(\mathbb R,d')$ is not complete, although its open sets are those of the complete space $(\mathbb R,|\cdot|)$. Likewise $\mathbb R$ and $(-1,1)$ are homeomorphic, and only the first is complete.
+
+\subsection{Complete Spaces of Sequences}
+
+\begin{theorem}[Completeness of $\ell^p$]
+\label{thm:lp-complete}
+For $1\le p\le\infty$, the space $\ell^p$ is a Banach space.
+\end{theorem}
+
+\begin{proof}
+Let $(x^{(n)})$ be a Cauchy sequence in $\ell^p$. For each index $k$, $|x^{(n)}_k-x^{(m)}_k|\le\|x^{(n)}-x^{(m)}\|_p$, so $(x^{(n)}_k)_n$ is a Cauchy sequence in $\mathbb F$ and has a limit $x_k$, by the completeness of $\mathbb F$. Let $x\coloneqq(x_k)$. We show that $x\in\ell^p$ and $\|x^{(n)}-x\|_p\to0$.
+
+Let $\varepsilon>0$, and choose $N$ with $\|x^{(n)}-x^{(m)}\|_p<\varepsilon$ for $m,n\ge N$. Let $p<\infty$. For every $K$ and $m,n\ge N$,
+\[
+\sum_{k=1}^K|x^{(n)}_k-x^{(m)}_k|^p\le\|x^{(n)}-x^{(m)}\|_p^p<\varepsilon^p .
+\]
+This is a finite sum, and letting $m\to\infty$ gives $\sum_{k=1}^K|x^{(n)}_k-x_k|^p\le\varepsilon^p$ for every $K$ and every $n\ge N$. Letting $K\to\infty$ gives $\|x^{(n)}-x\|_p\le\varepsilon$ for $n\ge N$. In particular $x^{(N)}-x\in\ell^p$, and so $x=x^{(N)}-(x^{(N)}-x)\in\ell^p$, since $\ell^p$ is a vector space (\cref{cor:lp-normed}). Hence $\|x^{(n)}-x\|_p\le\varepsilon$ for all $n\ge N$, and $x^{(n)}\to x$ in $\ell^p$. For $p=\infty$ the argument is the same with $\sup_{k\le K}$ in place of the sums: $|x^{(n)}_k-x^{(m)}_k|<\varepsilon$ for all $k$ and $m,n\ge N$ gives $|x^{(n)}_k-x_k|\le\varepsilon$ for all $k$ and $n\ge N$.
+\end{proof}
+
+The proof has the pattern of every completeness proof for a space of sequences or functions: (a) a candidate for the limit is found term by term, or point by point, using the completeness of $\mathbb F$; (b) an estimate that holds for finitely many terms, uniformly in their number, is passed to the limit; (c) the candidate is shown to belong to the space and to be the limit in its norm. Step (b) is where care is needed. The unit sequences $\mathbf e_n$ converge term by term to $0$, but $\|\mathbf e_n-\mathbf e_m\|_p=2^{1/p}$ for $m\ne n$, so they do not form a Cauchy sequence, and no conclusion about convergence in the norm can be drawn from the termwise limit alone.
+
+\subsection{Complete Spaces of Functions}
+
+The analogous statement for bounded functions needs one fact about uniform convergence, which Chapter~4 develops in general: a uniform limit of continuous functions is continuous.
+
+\begin{lemma}[Uniform limits of continuous functions]
+\label{lem:uniform-limit}
+Let $X$ and $Y$ be metric spaces, and let $f_n\colon X\to Y$ be continuous functions that converge uniformly to $f\colon X\to Y$, in the sense that $\sup_{x\in X}d_Y(f_n(x),f(x))\to0$. Then $f$ is continuous.
+\end{lemma}
+
+\begin{proof}
+Let $a\in X$ and $\varepsilon>0$. Choose $n$ with $d_Y(f_n(x),f(x))<\varepsilon/3$ for all $x\in X$, and then, by the continuity of $f_n$ at $a$, a number $\delta>0$ with $d_Y(f_n(x),f_n(a))<\varepsilon/3$ whenever $d_X(x,a)<\delta$. For such $x$,
+\[
+d_Y\bigl(f(x),f(a)\bigr)\le d_Y\bigl(f(x),f_n(x)\bigr)+d_Y\bigl(f_n(x),f_n(a)\bigr)+d_Y\bigl(f_n(a),f(a)\bigr)<\varepsilon .\qedhere
+\]
+\end{proof}
+
+The argument is called the $\varepsilon/3$ argument; it uses uniformity in an essential way, since the single index $n$ must work at $x$ and at $a$ simultaneously. Without uniformity the conclusion fails, as the monomials $x^n$ on $[0,1]$ show: they converge at every point, to a discontinuous limit.
+
+\begin{theorem}[Completeness of spaces of bounded functions]
+\label{thm:bounded-functions-complete}
+For every nonempty set $S$, the space $\ell^\infty(S)$ is a Banach space. For every metric space $X$, the space $C_b(X)$ is a closed subspace of $\ell^\infty(X)$, and so it is a Banach space. In particular $(C[a,b],\|\cdot\|_\infty)$ is a Banach space.
+\end{theorem}
+
+\begin{proof}
+Let $(f_n)$ be a Cauchy sequence in $\ell^\infty(S)$, and let $\varepsilon>0$ and $N$ be such that $\|f_n-f_m\|_\infty<\varepsilon$ for $m,n\ge N$. For every $s\in S$, $|f_n(s)-f_m(s)|<\varepsilon$, so $(f_n(s))$ is a Cauchy sequence in $\mathbb F$ with a limit $f(s)$, and letting $m\to\infty$ gives
+\[
+|f_n(s)-f(s)|\le\varepsilon\qquad\text{for all }s\in S\text{ and }n\ge N .
+\]
+Hence $|f(s)|\le\|f_N\|_\infty+\varepsilon$, so $f$ is bounded, and $\|f_n-f\|_\infty\le\varepsilon$ for $n\ge N$: $f_n\to f$ in $\ell^\infty(S)$. If the $f_n$ lie in $C_b(X)$ and converge in $\ell^\infty(X)$ to $f$, the convergence is uniform, and $f$ is continuous by \cref{lem:uniform-limit}; so $C_b(X)$ is closed in $\ell^\infty(X)$ and complete by \cref{prop:closed-complete}. Every continuous function on $[a,b]$ is bounded, so $C[a,b]$ with the supremum norm is $C_b([a,b])$.
+\end{proof}
+
+The same argument shows that $c_0$ and $c$ are closed in $\ell^\infty$, and hence Banach spaces. For $c_0$: if $x^{(n)}\in c_0$ and $\|x^{(n)}-x\|_\infty\to0$, choose $n$ with $\|x^{(n)}-x\|_\infty<\varepsilon/2$ and then $K$ with $|x^{(n)}_k|<\varepsilon/2$ for $k>K$; then $|x_k|<\varepsilon$ for $k>K$, so $x\in c_0$. The space $c_{00}$, on the other hand, is not complete in any of the norms $\|\cdot\|_p$: the truncations $x^{(n)}\coloneqq(1,1/2,\ldots,1/n,0,0,\ldots)$ form a Cauchy sequence in $c_{00}$ with $\|\cdot\|_\infty$, and also with $\|\cdot\|_p$ for $p>1$, whose limit $(1/k)$ in $c_0$ and in $\ell^p$ is not in $c_{00}$; for $p=1$, the truncations of $(2^{-k})$ do the same.
+
+With the integral norms, $C[a,b]$ is not complete. \Cref{fig:ramps} shows the Cauchy sequence that proves it.
+
+\begin{figure}
+\sdfloat{%
+\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.52\textwidth, height=0.34\textwidth, xmin=0, xmax=1, ymin=0, ymax=1.18,
+  xtick={0,0.5,1}, ytick={0,1}, xlabel={$x$},
+  legend style={at={(0.03,0.97)}, anchor=north west}]
+\addplot[black, line width=0.7pt] coordinates {(0,0) (0.5,0) (0.75,1) (1,1)};
+\addlegendentry{$n=4$}
+\addplot[black, dashed, line width=0.7pt] coordinates {(0,0) (0.5,0) (0.625,1) (1,1)};
+\addlegendentry{$n=8$}
+\addplot[black, densely dotted, line width=0.8pt] coordinates {(0,0) (0.5,0) (0.53125,1) (1,1)};
+\addlegendentry{$n=32$}
+\end{axis}
+\end{tikzpicture}}{The continuous functions $f_n$ of \cref{prop:c-l1-incomplete} for $n=4$, $8$ and $32$: zero up to $1/2$, rising linearly to $1$ on $[1/2,1/2+1/n]$, and $1$ afterwards. They form a Cauchy sequence in the norms $\|\cdot\|_1$ and $\|\cdot\|_2$, and their only candidate for a limit is a step function, which is not continuous.\label{fig:ramps}}
+\end{figure}
+
+\begin{proposition}[Integral norms are not complete]
+\label{prop:c-l1-incomplete}
+For $n\ge2$ let $f_n\in C[0,1]$ be $0$ on $[0,1/2]$, $n(x-1/2)$ on $[1/2,1/2+1/n]$ and $1$ on $[1/2+1/n,1]$. Then $(f_n)$ is a Cauchy sequence in $(C[0,1],\|\cdot\|_1)$ and in $(C[0,1],\|\cdot\|_2)$, and it converges in neither space. Hence neither space is complete.
+\end{proposition}
+
+\begin{proof}
+For $m>n$, $f_m\ge f_n$, and the two functions differ only on $[1/2,1/2+1/n]$, where both lie in $[0,1]$. The area under $f_n$ is $1/2-1/n+1/(2n)=1/2-1/(2n)$, so
+\[
+\|f_m-f_n\|_1=\int_0^1(f_m-f_n)=\frac1{2n}-\frac1{2m}<\frac1{2n} .
+\]
+Since $0\le f_m-f_n\le1$, also $(f_m-f_n)^2\le f_m-f_n$, and $\|f_m-f_n\|_2^2\le\|f_m-f_n\|_1<1/(2n)$. So $(f_n)$ is a Cauchy sequence in both norms.
+
+Suppose that $\|f_n-f\|_1\to0$ for some $f\in C[0,1]$. Since $f_n=0$ on $[0,1/2]$,
+\[
+\int_0^{1/2}|f|=\int_0^{1/2}|f-f_n|\le\|f-f_n\|_1\to0 ,
+\]
+so $\int_0^{1/2}|f|=0$ and $f=0$ on $[0,1/2]$ by \vcref{1}{prop:positive-integral}. For every $\delta\in(0,1/2)$, the functions $f_n$ with $n\ge1/\delta$ equal $1$ on $[1/2+\delta,1]$, and the same argument gives $f=1$ on $[1/2+\delta,1]$. So $f=1$ on $(1/2,1]$, and $f$ is not continuous at $1/2$, a contradiction. If $\|f_n-f\|_2\to0$, then $\|f_n-f\|_1\le\|f_n-f\|_2\to0$ by \cref{prop:function-p-norms}, and the same contradiction arises.
+\end{proof}
+
+The space $C[a,b]$ with an integral norm thus has gaps, as $\mathbb Q$ does: the step function at which the functions $f_n$ aim is missing. \Cref{sec:completion} fills such gaps abstractly, and Part~III identifies what fills them: the completion of $(C[a,b],\|\cdot\|_1)$ is the space $L^1(a,b)$ of Lebesgue integrable functions, in which the step function, and much worse functions, are points. That the integral norms are natural for least squares and probability, and that they are not complete on continuous functions, is one of the motivations for the Lebesgue integral.
+
+\Cref{tab:spaces} collects the spaces of this chapter.
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}{colspec={llll}, row{1}={font=\small\bfseries}}
+\toprule
+space & norm & complete & separable \\
+\midrule
+$\mathbb F^n$ & $\|\cdot\|_p$, $1\le p\le\infty$ & yes & yes \\
+$\ell^p$, $1\le p<\infty$ & $\|\cdot\|_p$ & yes (\cref{thm:lp-complete}) & yes (\cref{prop:separable}) \\
+$\ell^\infty$ & $\|\cdot\|_\infty$ & yes (\cref{thm:lp-complete}) & no (\cref{prop:separable}) \\
+$c_0$ & $\|\cdot\|_\infty$ & yes & yes (\cref{prop:separable}) \\
+$c_{00}$ & $\|\cdot\|_p$, $1\le p\le\infty$ & no & yes \\
+$C_b(X)$, $\ell^\infty(S)$ & $\|\cdot\|_\infty$ & yes (\cref{thm:bounded-functions-complete}) & depends on $X$, $S$ \\
+$C[a,b]$ & $\|\cdot\|_\infty$ & yes (\cref{thm:bounded-functions-complete}) & yes (Chapter~5) \\
+$C[a,b]$ & $\|\cdot\|_1$, $\|\cdot\|_2$ & no (\cref{prop:c-l1-incomplete}) & yes (Chapter~5) \\
+\bottomrule
+\end{sdtable}}{The normed spaces of this chapter. The space $c_{00}$ is separable because it contains the countable dense set of the proof of \cref{prop:separable}. The separability of $C[a,b]$ follows from the Weierstrass approximation theorem, since $\|f\|_2\le(b-a)^{1/2}\|f\|_\infty$ and $\|f\|_1\le(b-a)\|f\|_\infty$ make a set that is dense for the supremum norm dense for the others.\label{tab:spaces}}
+\end{table}
+
+\subsection{Series in Normed Spaces}
+
+In a normed space one can add, and so one can form series. A series $\sum_kx_k$ \term{converges} to $s$ if its partial sums $s_n=\sum_{k\le n}x_k$ converge to $s$ in the norm, and it is \term{absolutely convergent} if $\sum_k\|x_k\|<\infty$. For real numbers, absolute convergence implies convergence (\vcref{1}{thm:absolute-series}), and this property characterises the complete normed spaces.
+
+\begin{theorem}[Completeness and absolute convergence]
+\label{thm:absolute-series}
+A normed space $X$ is complete if and only if every absolutely convergent series in $X$ converges. In a Banach space, $\|\sum_kx_k\|\le\sum_k\|x_k\|$ for every absolutely convergent series.
+\end{theorem}
+
+\begin{proof}
+Let $X$ be complete and $\sum_k\|x_k\|<\infty$. For $m>n$,
+\[
+\|s_m-s_n\|=\Bigl\|\sum_{k=n+1}^mx_k\Bigr\|\le\sum_{k=n+1}^m\|x_k\| ,
+\]
+and the right side is small for large $n$ by the Cauchy criterion for the convergent real series $\sum_k\|x_k\|$. So $(s_n)$ is a Cauchy sequence and converges. The norm is continuous, so $\|s_n\|\le\sum_{k\le n}\|x_k\|$ passes to the limit and gives the inequality.
+
+Conversely, suppose every absolutely convergent series converges, and let $(y_n)$ be a Cauchy sequence. Choose indices $n_0<n_1<\cdots$ with $\|y_m-y_n\|<2^{-j}$ for all $m,n\ge n_j$. The series $y_{n_0}+\sum_{j\ge0}(y_{n_{j+1}}-y_{n_j})$ is absolutely convergent, since its terms have norms below $2^{-j}$, so it converges; its partial sums are $y_{n_{j+1}}$, by telescoping. Thus the subsequence $(y_{n_j})$ converges, and so does $(y_n)$, by \cref{prop:cauchy-basic}\,(ii).
+\end{proof}
+
+In $C_b(X)$, the theorem is the \term{Weierstrass M-test}: if $|f_k(x)|\le M_k$ for all $x$ and $\sum_kM_k<\infty$, then $\sum_kf_k$ converges uniformly on $X$, and its sum is continuous. For example, $\sum_{k\ge1}\sin(kx)/k^2$ converges uniformly on $\mathbb R$ to a continuous function, since $\|\sin(kx)/k^2\|_\infty\le1/k^2$. Volume~II proved a special case for continuous functions on a closed bounded interval (\vcref{2}{lem:vector-functions}), and Chapter~4 develops uniform convergence of series in general. In $\mathbb R^{n\times n}$ with an operator norm, the theorem is the convergence argument of the Neumann series in \vcref{2}{thm:neumann}, and \cref{sec:bounded-linear} uses it for operators on Banach spaces.
+
+\subsection{Nested Closed Sets}
+
+In $\mathbb R$, completeness is equivalent to the property that nested closed intervals whose lengths tend to zero have a common point, by \cref{thm:completeness-forms}, statement (c$'$), in the presence of the Archimedean property. In a metric space, closed sets play the role of the intervals and the diameter that of the length.
+
+\begin{theorem}[Cantor's intersection theorem]
+\label{thm:cantor-intersection}
+A metric space $X$ is complete if and only if it has the following property: for every sequence $F_0\supseteq F_1\supseteq F_2\supseteq\cdots$ of nonempty closed subsets of $X$ with $\operatorname{diam}F_n\to0$, the intersection $\bigcap_nF_n$ is nonempty. The intersection then consists of exactly one point.
+\end{theorem}
+
+\begin{proof}
+Let $X$ be complete, and choose $x_n\in F_n$ for every $n$. For $m,n\ge N$, both $x_m$ and $x_n$ lie in $F_N$, so $d(x_m,x_n)\le\operatorname{diam}F_N$; hence $(x_n)$ is a Cauchy sequence, with a limit $x$. For each $N$, the terms $x_m$ with $m\ge N$ lie in the closed set $F_N$, so $x\in F_N$ (\cref{prop:closure-sequences}). Thus $x\in\bigcap_NF_N$. Two points $x,y$ of the intersection satisfy $d(x,y)\le\operatorname{diam}F_n$ for every $n$, so $x=y$.
+
+Conversely, assume the property, and let $(x_n)$ be a Cauchy sequence. Let $F_n$ be the closure of $\{x_k: k\ge n\}$. These sets are closed, nonempty and decreasing, and $\operatorname{diam}F_n=\operatorname{diam}\{x_k: k\ge n\}$ by \cref{prop:closure}\,(v), which tends to $0$ because $(x_n)$ is a Cauchy sequence. Let $x$ be a common point. Since $x$ and $x_n$ both lie in $F_n$, $d(x_n,x)\le\operatorname{diam}F_n\to0$, and $x_n\to x$.
+\end{proof}
+
+Both hypotheses matter. In $\mathbb R$ the closed sets $[n,\infty)$ are nested and have empty intersection; their diameters are infinite. In the incomplete space $(0,1]$, the closed sets $(0,1/n]$ are nested with diameters $1/n\to0$, and their intersection is empty. In the space $\mathbb R$ itself, the theorem is the nested interval property (c$'$) of \cref{thm:completeness-forms}; that theorem needed the Archimedean property as an additional hypothesis because its intervals were measured by their lengths in an arbitrary ordered field, whereas here the diameters are real numbers to begin with. The theorem returns in the next chapter, in the proof of the Baire category theorem.
+
+\subsection{Extension by Continuity}
+
+A function defined on a dense subset can often be extended to the whole space by taking limits. Uniform continuity is the condition that makes this work.
+
+\begin{theorem}[Extension of uniformly continuous maps]
+\label{thm:extension}
+Let $D$ be a dense subset of a metric space $X$, let $Y$ be a complete metric space, and let $f\colon D\to Y$ be uniformly continuous. There is exactly one continuous map $F\colon X\to Y$ with $F|_D=f$. It is uniformly continuous, and for $x\in X$ it is given by $F(x)=\lim_nf(x_n)$ for any sequence $(x_n)$ in $D$ with $x_n\to x$. If $f$ is Lipschitz with the constant $L$, then so is $F$; if $f$ is an isometry, so is $F$.
+\end{theorem}
+
+\begin{proof}
+\emph{Definition of $F$.} Let $x\in X$, and choose $x_n\in D$ with $x_n\to x$, which is possible because $D$ is dense. The sequence $(x_n)$ is a Cauchy sequence, so $(f(x_n))$ is a Cauchy sequence by \cref{prop:cauchy-basic}\,(iii), and it converges, since $Y$ is complete. If $(x'_n)$ is another sequence in $D$ that converges to $x$, then the mixed sequence $x_0,x'_0,x_1,x'_1,\ldots$ also converges to $x$, so its image converges as well; its subsequences $(f(x_n))$ and $(f(x'_n))$ must then have the same limit. So $F(x)\coloneqq\lim_nf(x_n)$ does not depend on the choice of the sequence. For $x\in D$, the constant sequence gives $F(x)=f(x)$.
+
+\emph{Uniform continuity.} Let $\varepsilon>0$, and let $\delta>0$ be such that $d_Y(f(s),f(t))<\varepsilon$ for $s,t\in D$ with $d_X(s,t)<\delta$. Let $x,x'\in X$ with $d_X(x,x')<\delta$, and choose sequences $x_n\to x$ and $x'_n\to x'$ in $D$. Since $d_X(x_n,x'_n)\to d_X(x,x')$ (\cref{prop:distance-lipschitz}), $d_X(x_n,x'_n)<\delta$ for large $n$, and so $d_Y(f(x_n),f(x'_n))<\varepsilon$. Passing to the limit, again with \cref{prop:distance-lipschitz}, gives $d_Y(F(x),F(x'))\le\varepsilon$. So $F$ is uniformly continuous. In the same way, $d_Y(f(x_n),f(x'_n))\le L\,d_X(x_n,x'_n)$ passes to the limit and gives the Lipschitz condition for $F$, and an equality between the two distances passes to an equality.
+
+\emph{Uniqueness.} Two continuous maps that agree on the dense set $D$ agree everywhere, by \cref{prop:dense-agree}.
+\end{proof}
+
+Uniform continuity cannot be weakened to continuity. The function $\sin(1/x)$ is continuous on the dense subset $(0,1]$ of $[0,1]$, but it has no continuous extension to $[0,1]$, since it takes the values $1$ and $-1$ at points arbitrarily close to $0$. Nor can the completeness of $Y$ be dropped: the identity of $\mathbb Q$, regarded as a map from the dense subset $\mathbb Q$ of $\mathbb R$ to the space $\mathbb Q$, is an isometry, but it has no continuous extension $\mathbb R\to\mathbb Q$, since such an extension would map $\sqrt2$ to the limit in $\mathbb Q$ of rational approximations of $\sqrt2$, which does not exist. The theorem is used in the next section to compare completions, and in \cref{sec:bounded-linear} to extend linear maps from dense subspaces. A classical application gives the real powers: $x\mapsto a^x$, for fixed $a>0$, is uniformly continuous on every bounded set of rational numbers, and its continuous extension to $\mathbb R$ is the function $a^x=e^{x\ln a}$ of \vcref{1}{ch:transcendental}.
+
+\section{Completion}
+\label{sec:completion}
+
+\Cref{ch:real-numbers-construction} filled the gaps of $\mathbb Q$ by declaring the Cauchy sequences of rational numbers, up to null sequences, to be the new numbers. The same construction fills the gaps of every metric space. It is in fact simpler in general than it was for $\mathbb Q$, for a reason explained after the proof.
+
+\begin{definition}[Completion]
+\label{def:completion}
+A \term{completion} of a metric space $X$ is a complete metric space $\hat X$ together with an isometry $\iota\colon X\to\hat X$ such that $\iota(X)$ is dense in $\hat X$.
+\end{definition}
+
+The isometry identifies $X$ with the subspace $\iota(X)$ of $\hat X$, and density says that $\hat X$ contains nothing that cannot be approximated from $X$. The proof of completeness below rests on a lemma that reduces the work to Cauchy sequences in the dense subset; it is the abstract form of the diagonal argument of \cref{fig:diagonal}.
+
+\begin{lemma}
+\label{lem:dense-cauchy}
+Let $D$ be a dense subset of a metric space $Z$. If every Cauchy sequence of points of $D$ converges in $Z$, then $Z$ is complete.
+\end{lemma}
+
+\begin{proof}
+Let $(z_n)$ be a Cauchy sequence in $Z$. For each $n$ choose $y_n\in D$ with $d(z_n,y_n)<1/(n+1)$. Then $d(y_m,y_n)<1/(m+1)+d(z_m,z_n)+1/(n+1)$, so $(y_n)$ is a Cauchy sequence in $D$, and it converges to some $z\in Z$ by hypothesis. Finally $d(z_n,z)\le d(z_n,y_n)+d(y_n,z)\to0$.
+\end{proof}
+
+\begin{theorem}[Existence and uniqueness of completions]
+\label{thm:completion}
+Every metric space $X$ has a completion $(\hat X,\iota)$. It is unique in the following sense: if $(\tilde X,\kappa)$ is another completion, there is exactly one isometry $\varphi$ of $\hat X$ onto $\tilde X$ with $\varphi\circ\iota=\kappa$.
+\end{theorem}
+
+\begin{proof}
+\emph{The space.} Let $\mathcal C$ be the set of Cauchy sequences in $X$. For $a=(a_n)$ and $b=(b_n)$ in $\mathcal C$, the real numbers $d(a_n,b_n)$ form a Cauchy sequence, since by \cref{prop:metric-inequalities}\,(ii)
+\[
+|d(a_m,b_m)-d(a_n,b_n)|\le d(a_m,a_n)+d(b_m,b_n) .
+\]
+As $\mathbb R$ is complete, the limit $\rho(a,b)\coloneqq\lim_nd(a_n,b_n)$ exists. It satisfies $\rho(a,b)\ge0$, $\rho(a,b)=\rho(b,a)$ and $\rho(a,c)\le\rho(a,b)+\rho(b,c)$, by passing to the limit in the corresponding properties of $d$. Call $a$ and $b$ equivalent, $a\sim b$, if $\rho(a,b)=0$. This is an equivalence relation, by the three properties of $\rho$, and if $a\sim a'$ and $b\sim b'$, then $\rho(a',b')\le\rho(a',a)+\rho(a,b)+\rho(b,b')=\rho(a,b)$ and, symmetrically, $\rho(a,b)\le\rho(a',b')$. So
+\[
+\hat X\coloneqq\mathcal C/{\sim},\qquad\hat d([a],[b])\coloneqq\rho(a,b)
+\]
+is well defined, and $\hat d$ is a metric on $\hat X$: it is nonnegative, symmetric, satisfies the triangle inequality, and vanishes only for equivalent sequences, that is, for equal classes.
+
+\emph{The isometry.} For $x\in X$ let $\iota(x)$ be the class of the constant sequence $(x,x,\ldots)$. Then $\hat d(\iota(x),\iota(y))=d(x,y)$, so $\iota$ is an isometry.
+
+\emph{Density.} Let $u=[a]\in\hat X$ and $\varepsilon>0$, and choose $N$ with $d(a_m,a_n)<\varepsilon$ for $m,n\ge N$. For $m\ge N$,
+\[
+\hat d\bigl(\iota(a_m),u\bigr)=\lim_{n\to\infty}d(a_m,a_n)\le\varepsilon .
+\]
+So $\iota(a_m)\to u$ as $m\to\infty$, and $\iota(X)$ is dense in $\hat X$. In words: the class of a Cauchy sequence is the limit, in $\hat X$, of the sequence itself.
+
+\emph{Completeness.} By \cref{lem:dense-cauchy} it suffices to show that every Cauchy sequence $(\iota(x_m))$ in $\iota(X)$ converges in $\hat X$. Since $\iota$ is an isometry, $(x_m)$ is a Cauchy sequence in $X$, and by the density step, $\iota(x_m)\to[(x_m)]$.
+
+\emph{Uniqueness.} Let $(\tilde X,\kappa)$ be a completion. The map $\kappa\circ\iota^{-1}\colon\iota(X)\to\tilde X$ is an isometry defined on a dense subset of $\hat X$, with values in the complete space $\tilde X$. By \cref{thm:extension} it extends to an isometry $\varphi\colon\hat X\to\tilde X$, and $\varphi\circ\iota=\kappa$. Its image $\varphi(\hat X)$ is isometric to the complete space $\hat X$ and is therefore complete, hence closed in $\tilde X$ by \cref{prop:closed-complete}; it contains $\kappa(X)$, which is dense. So $\varphi(\hat X)=\tilde X$. If $\psi$ is another isometry with $\psi\circ\iota=\kappa$, then $\psi$ and $\varphi$ are continuous and agree on the dense set $\iota(X)$, so $\psi=\varphi$ by \cref{prop:dense-agree}.
+\end{proof}
+
+Compare this with \cref{sec:cauchy-construction}. There, the distance of two rational numbers was a rational number, and the limit of the distances $|a_n-b_n|$ of two Cauchy sequences did not yet exist; it had to be represented by the class of the sequence $(|a_n-b_n|)$ itself, and the order and the arithmetic of the new classes had to be constructed and verified axiom by axiom. Here the distances are real numbers, and the completeness of $\mathbb R$, proved in \cref{thm:r-cauchy-complete}, supplies their limits at once. The structure of the two proofs is otherwise the same: classes of Cauchy sequences modulo sequences whose distance tends to zero, the embedding by constant sequences, the convergence of every representative to its class (\cref{thm:r-archimedean}\,(ii) there, the density step here), and completeness by a diagonal choice. The real numbers are, up to a unique isometry, the completion of $\mathbb Q$ with the distance $|x-y|$: by \cref{thm:r-archimedean}, $\mathbb Q$ is dense in the complete space $\mathbb R$.
+
+\subsection{Completions in Practice}
+
+The abstract construction is rarely needed when $X$ already sits inside a complete space.
+
+\begin{proposition}[Completion by closure]
+\label{prop:completion-closure}
+Let $X$ be a subspace of a complete metric space $Z$. Then the closure $\overline X$ of $X$ in $Z$, with the inclusion map, is a completion of $X$.
+\end{proposition}
+
+\begin{proof}
+$\overline X$ is closed in $Z$ and therefore complete (\cref{prop:closed-complete}), the inclusion is an isometry, and $X$ is dense in $\overline X$ by the definition of the closure.
+\end{proof}
+
+By uniqueness, every completion of $X$ is then isometric to $\overline X$. So the completion of $c_{00}$ with the norm $\|\cdot\|_p$, $1\le p<\infty$, is $\ell^p$, because $c_{00}$ is dense in $\ell^p$ by the proof of \cref{prop:separable} and $\ell^p$ is complete; with the norm $\|\cdot\|_\infty$ it is $c_0$, the closure of $c_{00}$ in $\ell^\infty$. The completion of the polynomials on $[a,b]$ with the supremum norm is $C[a,b]$, by the Weierstrass approximation theorem of Chapter~5. The interesting cases are those in which no complete space containing $X$ is known in advance. For $(C[a,b],\|\cdot\|_1)$ the theorem guarantees a completion, and Part~III shows that it is the space $L^1(a,b)$ of Lebesgue integrable functions; this identification is a theorem about integration, not a consequence of the abstract construction.
+
+\begin{proposition}[Completions of normed and inner product spaces]
+\label{prop:completion-normed}
+The completion $\hat X$ of a normed space $X$ is a Banach space: it carries exactly one structure of a normed space for which $\iota$ is linear and $\hat d(u,v)=\|u-v\|$. If the norm of $X$ comes from an inner product, so does the norm of $\hat X$.
+\end{proposition}
+
+\begin{proof}
+Identify $X$ with $\iota(X)\subseteq\hat X$. The product $X\times X$ is dense in $\hat X\times\hat X$ with the product metric. Addition is Lipschitz from $X\times X$ to $X$, by \cref{prop:distance-lipschitz}, so by \cref{thm:extension} it extends uniquely to a continuous map $\hat X\times\hat X\to\hat X$, which we call addition; for fixed $t\in\mathbb F$, the map $x\mapsto tx$ is Lipschitz with the constant $|t|$ and extends to $\hat X$; and the norm, which is Lipschitz from $X$ to $\mathbb R$, extends to a continuous function on $\hat X$. Every axiom of a normed space is an equation or an inequality between continuous functions on $\hat X$ or on $\hat X\times\hat X$, such as $u+v=v+u$, $t(u+v)=tu+tv$, $\|tu\|=|t|\,\|u\|$ or $\|u+v\|\le\|u\|+\|v\|$, and it holds on the dense set $X$ or $X\times X$. Equations pass to all points by \cref{prop:dense-agree}, and inequalities as well, since the set where a continuous function $g$ satisfies $g\ge0$ is closed. The same argument gives $\|u-v\|=\hat d(u,v)$, so $\|u\|>0$ for $u\ne0$, and the normed space $\hat X$ is complete. Uniqueness: any normed structure on $\hat X$ with the stated properties has continuous operations that agree with those of $X$ on $X$, and is therefore the one just constructed.
+
+Suppose now that $\|x\|^2=\langle x,x\rangle$ for an inner product on $X$. For $u,v\in\hat X$ choose $x_n\to u$ and $y_n\to v$ in $X$. Then
+\[
+|\langle x_m,y_m\rangle-\langle x_n,y_n\rangle|\le\|x_m-x_n\|\,\|y_m\|+\|x_n\|\,\|y_m-y_n\| ,
+\]
+by the Cauchy--Schwarz inequality, and the norms are bounded; so $\langle x_n,y_n\rangle$ converges. Applying the same estimate to mixed sequences, as in the proof of \cref{thm:extension}, shows that the limit $\langle u,v\rangle$ does not depend on the choice of the sequences. Linearity in the second argument and conjugate symmetry pass to the limit, by the continuity of the vector operations, and $\langle u,u\rangle=\lim\|x_n\|^2=\|u\|^2$, which is positive for $u\ne0$.
+\end{proof}
+
+\begin{definition}[Hilbert space]
+\label{def:hilbert-space}
+An inner product space that is complete in the norm $\|x\|=\langle x,x\rangle^{1/2}$ is a \term{Hilbert space}.
+\end{definition}
+
+The spaces $\mathbb F^n$ with the Euclidean inner product and $\ell^2$, with $\langle x,y\rangle=\sum_k\bar x_ky_k$, which converges by H\"older's inequality, are Hilbert spaces, by \cref{thm:lp-complete}. The space $C[a,b]$ with $\langle f,g\rangle=\int_a^bfg$ is an inner product space that is not complete, by \cref{prop:c-l1-incomplete}, and its completion, a Hilbert space by the proposition, is the space $L^2(a,b)$ of Part~III. The geometry of Hilbert spaces, which extends the orthogonality of \vcref{2}{ch:inner-products} to infinite dimensions, is the subject of Chapter~22.
+
+\subsection{The \texorpdfstring{$p$}{p}-adic Numbers}
+
+The rational numbers have a completion for every metric on them, and the $p$-adic metric of \cref{prop:p-adic} gives a completion quite unlike $\mathbb R$. Its elements, the \term{$p$-adic numbers}, form the space $\mathbb Q_p$, introduced by Hensel in 1897~\cite{hensel1897}. In $\mathbb Q_p$ the series $\sum_{k\ge0}a_kp^k$ with digits $a_k\in\{0,1,\ldots,p-1\}$ converges for every choice of the digits, because its partial sums form a Cauchy sequence: by the ultrametric inequality, $|\sum_{k=m}^na_kp^k|_p\le p^{-m}$. Such series are the $p$-adic analogues of decimal expansions, infinite to the left rather than to the right, and every $p$-adic number with $|x|_p\le1$ has exactly one expansion of this kind~\cite{gouvea1997}. We saw that $1+p+p^2+\cdots=1/(1-p)$; similarly, $-1=\sum_{k\ge0}(p-1)p^k$, since $1+\sum_{k<n}(p-1)p^k=p^n\to0$.
+
+\begin{note}{The \texorpdfstring{$p$}{p}-adic numbers and Ostrowski's theorem}
+The arithmetic of $\mathbb Q$ extends to its $p$-adic completion, in the same way as it extends to $\mathbb R$: sums and products of Cauchy sequences are Cauchy sequences, and $\mathbb Q_p$ is a field, complete with respect to the extension of $|\cdot|_p$, but not ordered. Its compact subset $\mathbb Z_p\coloneqq\{x: |x|_p\le1\}$ of $p$-adic integers consists of the series $\sum_{k\ge0}a_kp^k$, and congruences modulo all powers of $p$ can be studied in it all at once; this makes the $p$-adic numbers a basic tool of number theory~\cite{gouvea1997}. Ostrowski proved in 1916 that every absolute value on $\mathbb Q$, that is, every function with the properties $|x|=0\Leftrightarrow x=0$, $|xy|=|x||y|$ and $|x+y|\le|x|+|y|$, is either trivial ($|x|=1$ for all $x\ne0$), or a power $|x|_\infty^s$ of the usual absolute value with $0<s\le1$, or a power $|x|_p^s$ of a $p$-adic one with $s>0$~\cite{ostrowski1916}. So, up to this equivalence, the real numbers and the $p$-adic numbers are the only completions of $\mathbb Q$ that respect its multiplication.
+\end{note}
+
+\section{The Contraction Mapping Theorem}
+\label{sec:contraction}
+
+Many equations can be written in the form $x=Tx$, where $T$ maps a set into itself. The equation $\cos x=x$ of \vcref{1}{sec:ivt} is of this form; a linear system $A\mathbf x=\mathbf b$ can be rewritten as $\mathbf x=G\mathbf x+\mathbf c$, as Jacobi's method does (\vcref{2}{prop:stationary-iteration}); and an initial value problem $y'=f(t,y)$, $y(t_0)=y_0$, is equivalent to the integral equation $y=Ty$ with $(Ty)(t)=y_0+\int_{t_0}^tf(s,y(s))\,ds$ (\vcref{2}{prop:integral-equation}), in which $T$ maps functions to functions. A solution is a \term{fixed point} of $T$, and the simplest method to find one is to iterate: choose $x_0$ and compute $x_{n+1}\coloneqq Tx_n$. If the iterates converge to some $x^*$ and $T$ is continuous, then $x^*=\lim x_{n+1}=\lim Tx_n=Tx^*$. Whether they converge is the question, and the following condition answers it.
+
+\begin{definition}[Contraction]
+\label{def:contraction}
+A map $T\colon X\to X$ of a metric space into itself is a \term{contraction} if there is a number $q$ with $0\le q<1$ such that
+\[
+d(Tx,Ty)\le q\,d(x,y)\qquad\text{for all }x,y\in X ,
+\]
+that is, if $T$ is Lipschitz continuous with a constant $q<1$. The number $q$ is a \term{contraction constant} of $T$. A point $x^*$ with $Tx^*=x^*$ is a \term{fixed point} of $T$.
+\end{definition}
+
+\begin{theorem}[Banach's fixed point theorem]
+\label{thm:banach-fixed-point}
+Let $X$ be a nonempty complete metric space and $T\colon X\to X$ a contraction with the constant $q$. Then $T$ has exactly one fixed point $x^*$. For every $x_0\in X$ the iterates $x_{n+1}\coloneqq Tx_n$ converge to $x^*$, and for every $n\ge1$
+\begin{align}
+d(x_n,x^*)&\le q\,d(x_{n-1},x^*)\le q^n\,d(x_0,x^*), \label{eq:contraction-monotone}\\
+d(x_n,x^*)&\le\frac{q^n}{1-q}\,d(x_1,x_0) , \label{eq:a-priori}\\
+d(x_n,x^*)&\le\frac q{1-q}\,d(x_n,x_{n-1}) . \label{eq:a-posteriori}
+\end{align}
+\end{theorem}
+
+\begin{proof}
+\emph{Uniqueness.} If $Tx^*=x^*$ and $Ty^*=y^*$, then $d(x^*,y^*)=d(Tx^*,Ty^*)\le q\,d(x^*,y^*)$, so $(1-q)\,d(x^*,y^*)\le0$, and $x^*=y^*$ since $q<1$.
+
+\emph{The iterates form a Cauchy sequence.} By induction, $d(x_{k+1},x_k)=d(Tx_k,Tx_{k-1})\le q\,d(x_k,x_{k-1})\le\cdots\le q^k\,d(x_1,x_0)$. For $m>n$, the polygon inequality (\cref{prop:metric-inequalities}\,(iii)) and the geometric series give
+\begin{equation}
+d(x_m,x_n)\le\sum_{k=n}^{m-1}d(x_{k+1},x_k)\le\sum_{k=n}^{m-1}q^k\,d(x_1,x_0)\le\frac{q^n}{1-q}\,d(x_1,x_0) .
+\label{eq:contraction-cauchy}
+\end{equation}
+Since $q^n\to0$, $(x_n)$ is a Cauchy sequence, and it converges to some $x^*\in X$ because $X$ is complete.
+
+\emph{The limit is a fixed point.} $T$ is Lipschitz, hence continuous, so $Tx^*=\lim Tx_n=\lim x_{n+1}=x^*$.
+
+\emph{The bounds.} $d(x_n,x^*)=d(Tx_{n-1},Tx^*)\le q\,d(x_{n-1},x^*)$, and induction gives \eqref{eq:contraction-monotone}. Letting $m\to\infty$ in \eqref{eq:contraction-cauchy}, with the continuity of the distance (\cref{prop:distance-lipschitz}), gives \eqref{eq:a-priori}. Finally, \eqref{eq:a-priori} with $n=1$, applied to the iteration started at $x_{n-1}$ instead of $x_0$, gives \eqref{eq:a-posteriori}.
+\end{proof}
+
+The theorem gives more than existence. The fixed point is unique, it is found by the simplest of all algorithms from any starting point, and the error is controlled at every step. The \term{a priori bound} \eqref{eq:a-priori} uses only the first step and tells in advance how many steps suffice for a tolerance $\varepsilon$: any $n$ with $q^nd(x_1,x_0)\le(1-q)\varepsilon$. The \term{a posteriori bound} \eqref{eq:a-posteriori} uses the last step and is usually much sharper; it justifies the common practice of stopping an iteration when two successive iterates are close, provided the factor $q/(1-q)$ is taken into account, which is large when $q$ is close to $1$. By \eqref{eq:contraction-monotone} the error decreases at least by the factor $q$ in every step; the convergence is \term{linear}, in the terminology of Volume~XIII, with rate at most $q$. \Cref{fig:contraction-spiral} shows the iteration and the a posteriori bound for a contraction of the plane, and \cref{sec:metric-computation} compares the bounds with the actual errors in two examples.
+
+\begin{figure}
+\sdfloat{%
+\begin{tikzpicture}
+\begin{axis}[sdplot, axis equal image, width=0.56\textwidth, height=0.56\textwidth,
+  xmin=-1.7, xmax=2.4, ymin=-1.1, ymax=2.95, xtick={-1,0,1,2}, ytick={-1,0,1,2},
+  xlabel={$x_1$}, ylabel={$x_2$}, ylabel style={rotate=-90}]
+\draw[black!55, dashed, line width=0.5pt] (axis cs:0.3420,0.9397) circle[radius=1.9058];
+\draw[black!55, dashed, line width=0.5pt] (axis cs:-0.3830,0.3214) circle[radius=0.9529];
+\draw[black!55, dashed, line width=0.5pt] (axis cs:-0.2165,-0.1250) circle[radius=0.4764];
+\addplot[black!55, line width=0.4pt] coordinates {(2.0000,0.0000) (0.3420,0.9397) (-0.3830,0.3214) (-0.2165,-0.1250) (0.0217,-0.1231) (0.0616,-0.0109) (0.0156,0.0271) (-0.0100,0.0120) (-0.0073,-0.0027) (-0.0000,-0.0039) (0.0018,-0.0007)};
+\addplot[black, only marks, mark=*, mark size=1.4pt] coordinates {(2.0000,0.0000) (0.3420,0.9397) (-0.3830,0.3214) (-0.2165,-0.1250)};
+\addplot[black, only marks, mark=+, mark size=3pt, line width=0.6pt] coordinates {(0,0)};
+\node[anchor=south west, font=\scriptsize] at (axis cs:2.0,0.0) {$x_0$};
+\node[anchor=south west, font=\scriptsize] at (axis cs:0.35,0.95) {$x_1$};
+\node[anchor=south east, font=\scriptsize] at (axis cs:-0.39,0.33) {$x_2$};
+\node[anchor=north east, font=\scriptsize] at (axis cs:-0.22,-0.13) {$x_3$};
+\node[anchor=south west, font=\scriptsize] at (axis cs:0.06,0.06) {$x^*$};
+\end{axis}
+\end{tikzpicture}}{The iteration $x_{n+1}=Tx_n$ for the contraction $T$ of the Euclidean plane that rotates every vector by $70^\circ$ about the origin and halves its length, so that $q=1/2$ and $x^*=0$ (cross). The iterates from $x_0=(2,0)$ spiral into the fixed point; the first four are marked by dots. The dashed circles have centre $x_n$ and the radius $(q/(1-q))\|x_n-x_{n-1}\|=\|x_n-x_{n-1}\|$ of the a posteriori bound \eqref{eq:a-posteriori}, for $n=1,2,3$; each contains the fixed point, and each is half as large as the previous one.\label{fig:contraction-spiral}}
+\end{figure}
+
+\subsection{Special Cases and the Role of the Hypotheses}
+
+Volumes~I and~II proved two special cases. \Vcref{1}{prop:fixed-point-contraction} concerns a differentiable $g\colon[a,b]\to[a,b]$ with $|g'|\le q<1$. By the mean value theorem in the form \vcref{1}{cor:lipschitz-derivative}, $g$ is a contraction of the complete metric space $[a,b]$, and \cref{thm:banach-fixed-point} gives the uniqueness of the fixed point, the convergence of the iteration, and the bound $|x_n-c|\le q^n|x_0-c|$ of that proposition, which is \eqref{eq:contraction-monotone}; the existence of the fixed point, which Volume~I took from the intermediate value theorem, now comes from completeness instead. \Vcref{2}{thm:map-linearised}\,(i) concerns a fixed point $x^*$ with $|f'(x^*)|<1$ and shows that $f$ is a contraction of a small interval around $x^*$ into itself, which is the local form of the theorem given in \cref{thm:local-contraction} below.
+
+None of the hypotheses can be dropped. Completeness is needed: $Tx\coloneqq x/2$ is a contraction of $(0,1]$ without a fixed point, its iterates converging to the missing point $0$. The constant $q$ must be smaller than $1$ uniformly: on the complete space $[1,\infty)$, the map $Tx\coloneqq x+1/x$ satisfies
+\[
+|Tx-Ty|=|x-y|\Bigl(1-\frac1{xy}\Bigr)<|x-y|\qquad(x\ne y),
+\]
+so it shrinks every distance, but it has no fixed point, since $Tx>x$; the factor $1-1/(xy)$ comes arbitrarily close to $1$. And a map with $q=1$, such as the translation $x\mapsto x+1$ of $\mathbb R$, need not have a fixed point either. On the other hand, \cref{thm:banach-fixed-point} needs nothing beyond the metric: no linear structure, no derivatives and no compactness.
+
+\Vcref{1}{sec:uniform} anticipated that the Lipschitz condition would reappear as the hypothesis of the contraction mapping theorem and of the existence theorem for differential equations, and the reason is now visible. Continuity alone gives existence of fixed points only in special situations: for continuous maps of an interval into itself by the intermediate value theorem (\vcref{1}{thm:fixed-point}), and in higher dimensions by the much deeper theorems mentioned in the Notes. It never gives uniqueness, since the identity map is continuous and every point is a fixed point, and it gives no method of computation. A Lipschitz condition with a constant below $1$ provides all three, by an argument that is a few lines long. For the differential equation $y'=f(t,y)$, a Lipschitz condition on $f$ with respect to $y$, as in \vcref{2}{def:lipschitz-y}, makes the integral operator $T$ above Lipschitz on a space of continuous functions with the supremum norm; on a short time interval its constant is below $1$, and on a longer one a power of $T$ is a contraction, by the estimate of the Picard iterates in \vcref{2}{thm:picard-lindelof}. Later in this part, this observation and \cref{cor:power-contraction} below complete the proof of the Picard--Lindel\"of theorem. The Volterra equation of \cref{thm:volterra} shows the mechanism in a simpler setting.
+
+\subsection{Variants}
+
+\begin{corollary}[A power that contracts]
+\label{cor:power-contraction}
+Let $X$ be a nonempty complete metric space and $T\colon X\to X$ a map such that some power $T^m$, $m\ge1$, is a contraction. Then $T$ has exactly one fixed point $x^*$, and the iterates $x_{n+1}=Tx_n$ converge to $x^*$ from every starting point.
+\end{corollary}
+
+\begin{proof}
+By \cref{thm:banach-fixed-point}, $T^m$ has exactly one fixed point $x^*$. Since $T^m(Tx^*)=T(T^mx^*)=Tx^*$, the point $Tx^*$ is a fixed point of $T^m$ as well, so $Tx^*=x^*$. Every fixed point of $T$ is a fixed point of $T^m$, so $x^*$ is the only one. For $x_0\in X$ and $r\in\{0,\ldots,m-1\}$, the subsequence $(x_{km+r})_{k\ge0}$ consists of the iterates of $T^m$ started at $x_r$, and it converges to $x^*$ by the theorem. These $m$ subsequences together contain all terms of $(x_n)$, so $x_n\to x^*$.
+\end{proof}
+
+The power $T^m$ may be a contraction although $T$ is not, as the Volterra equation below shows. Often a map is a contraction only near the solution, and one must check that the iteration does not leave the region where it contracts.
+
+\begin{theorem}[Contractions on a ball]
+\label{thm:local-contraction}
+Let $X$ be a complete metric space, $x_0\in X$, $r>0$, and $T\colon\bar B(x_0,r)\to X$ a map with
+\[
+d(Tx,Ty)\le q\,d(x,y)\quad\text{for all }x,y\in\bar B(x_0,r),\qquad d(Tx_0,x_0)\le(1-q)\,r ,
+\]
+where $0\le q<1$. Then $T$ maps $\bar B(x_0,r)$ into itself and has exactly one fixed point in $\bar B(x_0,r)$, the limit of the iterates $x_{n+1}=Tx_n$, which satisfy the bounds of \cref{thm:banach-fixed-point}.
+\end{theorem}
+
+\begin{proof}
+For $x\in\bar B(x_0,r)$, $d(Tx,x_0)\le d(Tx,Tx_0)+d(Tx_0,x_0)\le qr+(1-q)r=r$. So $T$ maps the closed ball into itself. The ball is closed (\cref{prop:balls-open}), hence complete (\cref{prop:closed-complete}), and $T$ is a contraction of it; \cref{thm:banach-fixed-point} applies.
+\end{proof}
+
+The second condition says that the first step is small compared with the radius, measured in units of $1-q$. It is the condition that makes Newton's method converge from a good starting point, by an argument of this kind that Volume~XIII gives; in \vcref{1}{sec:inverse-implicit}, Volume~I used the same device for the inverse function theorem, and Chapter~7 proves that theorem in Banach spaces. The last variant concerns equations that depend on a parameter.
+
+\begin{theorem}[Dependence on a parameter]
+\label{thm:fixed-point-parameter}
+Let $X$ be a nonempty complete metric space, $\Lambda$ a metric space, and $T\colon\Lambda\times X\to X$ a map such that $d(T(\lambda,x),T(\lambda,y))\le q\,d(x,y)$ for all $\lambda$, $x$ and $y$, with a constant $q<1$ independent of $\lambda$, and such that $\lambda\mapsto T(\lambda,x)$ is continuous for every $x$. Let $x^*(\lambda)$ be the fixed point of $T(\lambda,\cdot)$. Then
+\[
+d\bigl(x^*(\lambda),x^*(\mu)\bigr)\le\frac1{1-q}\,d\bigl(T(\lambda,x^*(\mu)),T(\mu,x^*(\mu))\bigr)\qquad(\lambda,\mu\in\Lambda),
+\]
+and $\lambda\mapsto x^*(\lambda)$ is continuous. If moreover $d(T(\lambda,x),T(\mu,x))\le L\,d_\Lambda(\lambda,\mu)$ for all $x$, then $x^*$ is Lipschitz with the constant $L/(1-q)$.
+\end{theorem}
+
+\begin{proof}
+Write $x\coloneqq x^*(\lambda)$ and $y\coloneqq x^*(\mu)$. Then
+\begin{align*}
+d(x,y)=d\bigl(T(\lambda,x),T(\mu,y)\bigr)&\le d\bigl(T(\lambda,x),T(\lambda,y)\bigr)+d\bigl(T(\lambda,y),T(\mu,y)\bigr)\\
+&\le q\,d(x,y)+d\bigl(T(\lambda,y),T(\mu,y)\bigr),
+\end{align*}
+which gives the inequality. As $\lambda\to\mu$, its right side tends to $0$ by the continuity of $\lambda\mapsto T(\lambda,y)$, and the Lipschitz statement follows at once.
+\end{proof}
+
+Kepler's equation $E-e\sin E=M$, which relates the mean anomaly $M$ of a planet to its eccentric anomaly $E$ for an orbit of eccentricity $0\le e<1$, is an example. For fixed $M\in\mathbb R$, the map $T(M,E)\coloneqq M+e\sin E$ is a contraction of $\mathbb R$ with the constant $e$, since $|\sin E-\sin E'|\le|E-E'|$, and $|T(M,E)-T(M',E)|=|M-M'|$. So the equation has exactly one solution $E(M)$ for every $M$, the iteration $E_{n+1}=M+e\sin E_n$ converges to it, and $|E(M)-E(M')|\le|M-M'|/(1-e)$.
+
+\subsection{Integral Equations}
+
+An \term{integral equation of the second kind} asks for a function $f$ with
+\begin{equation}
+f(x)=g(x)+\lambda\int_a^bK(x,y)f(y)\,dy\qquad(a\le x\le b),
+\label{eq:fredholm}
+\end{equation}
+where the \term{kernel} $K$, the function $g$ and the number $\lambda$ are given. Fredholm founded the theory of such equations in 1903~\cite{fredholm1903}; they arise, for instance, when a boundary value problem such as that of \vcref{2}{prop:boundary-value} is rewritten with an integral in place of the derivatives. We work in the Banach space $C[a,b]$ with the supremum norm.
+
+\begin{theorem}[Fredholm equations with small $\lambda$]
+\label{thm:fredholm-small}
+Let $K$ be continuous on $[a,b]^2$, $M\coloneqq\max|K|$, $g\in C[a,b]$, and $|\lambda|M(b-a)<1$. Then \eqref{eq:fredholm} has exactly one solution $f\in C[a,b]$. The iterates $f_0\coloneqq g$, $f_{n+1}\coloneqq g+\lambda\mathcal Kf_n$, where $(\mathcal Kf)(x)\coloneqq\int_a^bK(x,y)f(y)\,dy$, converge to it uniformly on $[a,b]$, with the bounds of \cref{thm:banach-fixed-point} for $q\coloneqq|\lambda|M(b-a)$.
+\end{theorem}
+
+\begin{proof}
+First, $\mathcal K$ maps $C[a,b]$ into itself. Let $f\in C[a,b]$ and $\varepsilon>0$. The function $K$ is uniformly continuous on the closed bounded set $[a,b]^2$ (\vcref{1}{lem:heine-cantor-rn}), so there is $\delta>0$ with $|K(x,y)-K(x',y)|<\varepsilon$ whenever $|x-x'|<\delta$, for all $y$. For such $x$ and $x'$,
+\[
+|(\mathcal Kf)(x)-(\mathcal Kf)(x')|\le\int_a^b|K(x,y)-K(x',y)|\,|f(y)|\,dy\le(b-a)\,\varepsilon\,\|f\|_\infty ,
+\]
+so $\mathcal Kf$ is continuous. The map $Tf\coloneqq g+\lambda\mathcal Kf$ therefore maps $C[a,b]$ into itself, and
+\[
+|(Tf)(x)-(Th)(x)|=|\lambda|\,\Bigl|\int_a^bK(x,y)\bigl(f(y)-h(y)\bigr)\,dy\Bigr|\le|\lambda|M(b-a)\,\|f-h\|_\infty
+\]
+for every $x$, so $\|Tf-Th\|_\infty\le q\|f-h\|_\infty$. Since $C[a,b]$ is complete (\cref{thm:bounded-functions-complete}), \cref{thm:banach-fixed-point} applies.
+\end{proof}
+
+The condition is sufficient but not necessary. For the kernel $K(x,y)=xy$ on $[0,1]$ the equation can be solved by hand: $f(x)=g(x)+\lambda cx$ with the number $c=\int_0^1yf(y)\,dy$, and multiplying by $x$ and integrating gives $c=\int_0^1yg(y)\,dy+\lambda c/3$. So for $\lambda\ne3$ there is exactly one solution,
+\[
+f(x)=g(x)+\frac{\lambda x}{1-\lambda/3}\int_0^1yg(y)\,dy ,
+\]
+while the theorem, with $M=1$ and $b-a=1$, guarantees it only for $|\lambda|<1$. For $\lambda=3$ and $g(x)=x$ there is no solution at all, since $c=1/3+c$ is impossible. The value $\lambda=3$ is the reciprocal of the eigenvalue $1/3$ of $\mathcal K$, whose eigenfunction is $x$; \cref{sec:bounded-linear} improves the condition of the theorem, and Chapter~22 develops the theory of such eigenvalues.
+
+If the integral extends only up to $x$, the equation is a \term{Volterra equation},
+\begin{equation}
+f(x)=g(x)+\lambda\int_a^xK(x,y)f(y)\,dy\qquad(a\le x\le b),
+\label{eq:volterra}
+\end{equation}
+and it can be solved for every $\lambda$.
+
+\begin{theorem}[Volterra equations]
+\label{thm:volterra}
+Let $K$ be continuous on $[a,b]^2$, $M\coloneqq\max|K|$ and $g\in C[a,b]$. For every $\lambda\in\mathbb R$, the equation \eqref{eq:volterra} has exactly one solution $f\in C[a,b]$, and the iterates $f_0\coloneqq g$, $f_{n+1}\coloneqq g+\lambda\mathcal Vf_n$, with $(\mathcal Vf)(x)\coloneqq\int_a^xK(x,y)f(y)\,dy$, converge to it uniformly.
+\end{theorem}
+
+\begin{proof}
+$\mathcal Vf$ is continuous for $f\in C[a,b]$: for $a\le x\le x'\le b$,
+\[
+|(\mathcal Vf)(x')-(\mathcal Vf)(x)|\le\int_a^x|K(x',y)-K(x,y)|\,|f(y)|\,dy+\int_x^{x'}|K(x',y)|\,|f(y)|\,dy ,
+\]
+and the first term is small for $|x'-x|<\delta$ by uniform continuity, as in the previous proof, while the second is at most $M\|f\|_\infty|x'-x|$. Let $Tf\coloneqq g+\lambda\mathcal Vf$. Then $T^mf-T^mh=\lambda^m\mathcal V^m(f-h)$, by induction on $m$ and the linearity of $\mathcal V$. We show by induction that for $u\in C[a,b]$
+\[
+|(\mathcal V^mu)(x)|\le\frac{M^m(x-a)^m}{m!}\,\|u\|_\infty\qquad(a\le x\le b,\ m\in\mathbb N).
+\]
+For $m=0$ this is clear, and if it holds for $m$, then
+\[
+|(\mathcal V^{m+1}u)(x)|\le\int_a^xM\,\frac{M^m(y-a)^m}{m!}\,\|u\|_\infty\,dy=\frac{M^{m+1}(x-a)^{m+1}}{(m+1)!}\,\|u\|_\infty .
+\]
+Hence $\|T^mf-T^mh\|_\infty\le c_m\|f-h\|_\infty$ with $c_m\coloneqq(|\lambda|M(b-a))^m/m!$, and $c_m\to0$ as $m\to\infty$ (\vcref{1}{thm:standard-limits}). For $m$ with $c_m<1$, $T^m$ is a contraction of the complete space $C[a,b]$, and \cref{cor:power-contraction} applies.
+\end{proof}
+
+The factorial in the estimate is the reason why the restriction on $\lambda$ disappears: the region of integration $a\le y_m\le\cdots\le y_1\le x$ of the $m$-fold integral $\mathcal V^m$ is a simplex of volume $(x-a)^m/m!$, a small part of the cube $[a,x]^m$. The simplest example is $f(x)=1+\int_0^xf(y)\,dy$ on $[0,b]$, the integral form of $f'=f$, $f(0)=1$. The iterates from $f_0=1$ are $f_n(x)=\sum_{k=0}^nx^k/k!$, the partial sums of the exponential series (\vcref{1}{thm:exp-series}), and the solution is $e^x$. This is the computation that \vcref{2}{thm:picard-lindelof} carried out for $y'=y$.
+
+\subsection{The Jacobi Iteration}
+
+Iterative methods for linear systems are fixed point iterations. Volume~II introduced Jacobi's method for $A\mathbf x=\mathbf b$, with the diagonal part $D$ of $A$ and the rest $R\coloneqq A-D$: the system is equivalent to $\mathbf x=G\mathbf x+D^{-1}\mathbf b$ with $G\coloneqq-D^{-1}R$, and the method iterates this map (\vcref{2}{prop:stationary-iteration}). Volume~II proved that the iteration converges if and only if the spectral radius of $G$ is below $1$, and stated, with a reference, that this holds for strictly diagonally dominant matrices. The contraction mapping theorem proves it with explicit bounds.
+
+\begin{theorem}[Jacobi's method for diagonally dominant matrices]
+\label{thm:jacobi-contraction}
+Let $A\in\mathbb R^{n\times n}$ be strictly diagonally dominant by rows (\vcref{2}{def:diagonal-dominance}), and let
+\[
+q\coloneqq\max_{1\le i\le n}\frac1{|a_{ii}|}\sum_{j\ne i}|a_{ij}|<1 .
+\]
+Then for every $\mathbf b\in\mathbb R^n$ the system $A\mathbf x=\mathbf b$ has exactly one solution $\mathbf x^*$. For every $\mathbf x_0$, the Jacobi iterates
+\[
+(\mathbf x_{k+1})_i\coloneqq\frac1{a_{ii}}\Bigl(b_i-\sum_{j\ne i}a_{ij}(\mathbf x_k)_j\Bigr)\qquad(i=1,\ldots,n)
+\]
+converge to $\mathbf x^*$, and the bounds \eqref{eq:contraction-monotone}--\eqref{eq:a-posteriori} hold in the norm $\|\cdot\|_\infty$ with this $q$.
+\end{theorem}
+
+\begin{proof}
+The diagonal entries are nonzero, since $|a_{ii}|>\sum_{j\ne i}|a_{ij}|\ge0$. The iteration is $\mathbf x_{k+1}=T\mathbf x_k$ with $T\mathbf x\coloneqq G\mathbf x+D^{-1}\mathbf b$, where $G=-D^{-1}R$ has the entries $g_{ij}=-a_{ij}/a_{ii}$ for $j\ne i$ and $g_{ii}=0$. By \vcref{2}{thm:norm-formulas}, $\|G\|_\infty$ is the largest row sum of the moduli of its entries, which is $q$. So
+\[
+\|T\mathbf x-T\mathbf y\|_\infty=\|G(\mathbf x-\mathbf y)\|_\infty\le q\,\|\mathbf x-\mathbf y\|_\infty ,
+\]
+and $T$ is a contraction of the Banach space $(\mathbb R^n,\|\cdot\|_\infty)$. Its unique fixed point is the unique solution of $\mathbf x=G\mathbf x+D^{-1}\mathbf b$, which is equivalent to $D\mathbf x=-R\mathbf x+\mathbf b$, that is, to $A\mathbf x=\mathbf b$. \Cref{thm:banach-fixed-point} gives the rest.
+\end{proof}
+
+The theorem contains the invertibility of strictly diagonally dominant matrices, the L\'evy--Desplanques theorem of \vcref{2}{thm:diagonal-dominance}: a matrix for which $A\mathbf x=\mathbf b$ is uniquely solvable for every $\mathbf b$ is invertible. It also shows what the iteration costs. Each step needs one product of the matrix with a vector, and by the a priori bound the number of steps for a tolerance $\varepsilon$ grows like $\ln(1/\varepsilon)/\ln(1/q)$; when $q$ is close to $1$, as for the matrices that arise from differential equations on fine grids, this is slow, which is why Volume~X turns to better iterations. The choice of the norm matters: $\|\cdot\|_\infty$ is the norm in which the row condition of diagonal dominance makes $G$ a contraction, and for matrices that are strictly diagonally dominant by columns the same argument works in the weighted norm $\mathbf x\mapsto\|D\mathbf x\|_1$, since $\|DG\mathbf x\|_1=\|RD^{-1}(D\mathbf x)\|_1$ and $\|RD^{-1}\|_1<1$ by the column condition.
+
+\section{Bounded Linear Maps}
+\label{sec:bounded-linear}
+
+Linear maps between finite-dimensional spaces are automatically continuous, and Volume~II measured them by operator norms. In infinite dimensions, as the note on linear operators in infinite dimensions in \vcref{2}{sec:rank-nullity-applications} explained, linearity alone is a weak property: differentiation is linear, but small changes of a function can cause arbitrarily large changes of its derivative. This section develops the theory of the linear maps that are continuous, which the note announced.
+
+\subsection{Boundedness and Continuity}
+
+\begin{definition}[Bounded linear map, operator norm]
+\label{def:bounded-operator}
+Let $X$ and $Y$ be normed spaces over $\mathbb F$. A linear map $T\colon X\to Y$ is \term{bounded} if there is a constant $C$ with $\|Tx\|\le C\|x\|$ for all $x\in X$. Its \term{operator norm} is
+\[
+\|T\|\coloneqq\sup\{\|Tx\|: x\in X,\ \|x\|\le1\} .
+\]
+The set of bounded linear maps from $X$ to $Y$ is denoted $\mathcal L(X,Y)$, and $\mathcal L(X)\coloneqq\mathcal L(X,X)$. A bounded linear map $X\to\mathbb F$ is a \term{bounded linear functional}, and $X^*\coloneqq\mathcal L(X,\mathbb F)$ is the \term{dual space} of $X$.
+\end{definition}
+
+Bounded linear maps are often called bounded \term{operators}. The word ``bounded'' does not mean that $T$ is a bounded function, which only $T=0$ is; it means that $T$ maps bounded sets to bounded sets. In Volume~II, $\mathcal L(V,W)$ denoted all linear maps; \cref{prop:finite-dim-bounded} shows that on the spaces $\mathbb F^n$ with their usual norms the two meanings agree, and the next chapter extends this to all finite-dimensional normed spaces.
+
+\begin{theorem}[Bounded and continuous linear maps]
+\label{thm:bounded-continuous}
+For a linear map $T\colon X\to Y$ between normed spaces the following are equivalent:
+\begin{enumerate}
+\item $T$ is continuous;
+\item $T$ is continuous at $0$;
+\item $T$ is bounded;
+\item $T$ is Lipschitz continuous.
+\end{enumerate}
+If $T$ is bounded, $\|Tx\|\le\|T\|\,\|x\|$ for all $x$, and $\|T\|$ is the smallest constant with this property, as well as the smallest Lipschitz constant of $T$.
+\end{theorem}
+
+\begin{proof}
+(i)$\Rightarrow$(ii) is trivial. (ii)$\Rightarrow$(iii): with $\varepsilon=1$ there is $\delta>0$ such that $\|x\|\le\delta$ implies $\|Tx\|\le1$, since $T0=0$. For $x\ne0$, the vector $\delta x/\|x\|$ has norm $\delta$, so $\|T(\delta x/\|x\|)\|\le1$, that is, $\|Tx\|\le\|x\|/\delta$. (iii)$\Rightarrow$(iv): $\|Tx-Ty\|=\|T(x-y)\|\le C\|x-y\|$. (iv)$\Rightarrow$(i) is clear.
+
+Let $T$ be bounded. For $x\ne0$, $\|Tx\|=\|x\|\,\|T(x/\|x\|)\|\le\|T\|\,\|x\|$, by the definition of $\|T\|$, and this also holds for $x=0$. If $\|Tx\|\le C\|x\|$ for all $x$, then $\|Tx\|\le C$ for $\|x\|\le1$, so $\|T\|\le C$. By linearity, the best constant in $\|Tx-Ty\|\le L\|x-y\|$ is the best constant in $\|Tz\|\le L\|z\|$.
+\end{proof}
+
+For $X\ne\{0\}$, the operator norm can also be written $\|T\|=\sup_{x\ne0}\|Tx\|/\|x\|=\sup_{\|x\|=1}\|Tx\|$, which for matrices is \vcref{2}{def:operator-norm}. The theorem is a dichotomy. A linear map is either continuous everywhere, with a uniform Lipschitz constant, or discontinuous at every point: if it is discontinuous at one point it is discontinuous at $0$, by translation, and then everywhere.
+
+\begin{proposition}[The operator norm]
+\label{prop:operator-norm}
+Let $X$, $Y$ and $Z$ be normed spaces. Then $\mathcal L(X,Y)$ is a vector space, and the operator norm is a norm on it. If $T\in\mathcal L(X,Y)$ and $S\in\mathcal L(Y,Z)$, then $ST\in\mathcal L(X,Z)$ and
+\[
+\|ST\|\le\|S\|\,\|T\| .
+\]
+The identity map has $\|I\|=1$ if $X\ne\{0\}$.
+\end{proposition}
+
+\begin{proof}
+If $S,T\in\mathcal L(X,Y)$ and $t\in\mathbb F$, then $\|(S+T)x\|\le\|Sx\|+\|Tx\|\le(\|S\|+\|T\|)\|x\|$ and $\|(tT)x\|=|t|\,\|Tx\|$; so $S+T$ and $tT$ are bounded, with $\|S+T\|\le\|S\|+\|T\|$ and $\|tT\|=|t|\,\|T\|$. If $\|T\|=0$, then $Tx=0$ for all $x$. For the product, $\|STx\|\le\|S\|\,\|Tx\|\le\|S\|\,\|T\|\,\|x\|$. Finally $\|Ix\|=\|x\|$.
+\end{proof}
+
+The inequality $\|ST\|\le\|S\|\|T\|$, called \term{submultiplicativity}, makes powers easy to bound, $\|T^k\|\le\|T\|^k$, and it is the property on which the Neumann series below rests.
+
+\begin{proposition}[Linear maps on $\mathbb F^n$]
+\label{prop:finite-dim-bounded}
+Let $1\le p\le\infty$ and let $Y$ be a normed space. Every linear map $T\colon(\mathbb F^n,\|\cdot\|_p)\to Y$ is bounded. In particular, a matrix $A\in\mathbb F^{m\times n}$, regarded as a map from $(\mathbb F^n,\|\cdot\|_p)$ to $(\mathbb F^m,\|\cdot\|_p)$, is a bounded linear map, and for $p\in\{1,2,\infty\}$ its operator norm is the norm $\|A\|_p$ of \vcref{2}{def:operator-norm}.
+\end{proposition}
+
+\begin{proof}
+With $x=\sum_jx_j\mathbf e_j$ and $C\coloneqq\max_j\|T\mathbf e_j\|$,
+\[
+\|Tx\|=\Bigl\|\sum_{j=1}^nx_jT\mathbf e_j\Bigr\|\le C\|x\|_1\le Cn^{1-1/p}\|x\|_p ,
+\]
+by \cref{prop:p-norm-monotone}\,(ii). The statement on matrices is the definition of $\|A\|_p$.
+\end{proof}
+
+\subsection{Examples}
+
+\emph{Integral operators.} Let $K$ be continuous on $[a,b]^2$. The operator $\mathcal K$ of \cref{thm:fredholm-small}, $(\mathcal Kf)(x)=\int_a^bK(x,y)f(y)\,dy$, is a linear map of $C[a,b]$ into itself, and its norm can be computed. The answer is the continuous analogue of the largest row sum of \vcref{2}{thm:norm-formulas}.
+
+\begin{proposition}[The norm of an integral operator]
+\label{prop:integral-operator-norm}
+On $(C[a,b],\|\cdot\|_\infty)$, the integral operator $\mathcal K$ with a continuous kernel $K$ is bounded, and
+\[
+\|\mathcal K\|=\max_{a\le x\le b}\int_a^b|K(x,y)|\,dy .
+\]
+\end{proposition}
+
+\begin{proof}
+The function $k(x)\coloneqq\int_a^b|K(x,y)|\,dy$ is continuous, by the argument for $\mathcal Kf$ in the proof of \cref{thm:fredholm-small} applied to the kernel $|K|$ and the function $1$, so it attains its maximum $\kappa$ at some $x_0$. For every $f$ and $x$, $|(\mathcal Kf)(x)|\le\int_a^b|K(x,y)|\,|f(y)|\,dy\le k(x)\|f\|_\infty\le\kappa\|f\|_\infty$, so $\|\mathcal K\|\le\kappa$. For the reverse inequality let $\varepsilon>0$ and
+\[
+f_\varepsilon(y)\coloneqq\frac{K(x_0,y)}{|K(x_0,y)|+\varepsilon},
+\]
+a continuous function with $\|f_\varepsilon\|_\infty\le1$. Since $t^2/(|t|+\varepsilon)\ge|t|-\varepsilon$ for every real $t$, as $t^2\ge t^2-\varepsilon^2$ shows,
+\[
+\|\mathcal Kf_\varepsilon\|_\infty\ge(\mathcal Kf_\varepsilon)(x_0)=\int_a^b\frac{K(x_0,y)^2}{|K(x_0,y)|+\varepsilon}\,dy\ge\kappa-\varepsilon(b-a) .
+\]
+So $\|\mathcal K\|\ge\kappa-\varepsilon(b-a)$ for every $\varepsilon>0$.
+\end{proof}
+
+The function $f_\varepsilon$ is a continuous substitute for the sign of $K(x_0,\cdot)$, which is the vector that attains the largest row sum for matrices; the sign itself is not continuous in general, and the supremum defining $\|\mathcal K\|$ need not be attained. A kernel that does not depend on $x$, $K(x,y)=g(y)$, gives the bounded linear functional $f\mapsto\int_a^bfg$, with the norm $\|g\|_1$. The \term{integration operator} $(Jf)(x)\coloneqq\int_a^xf$ has the discontinuous kernel $K(x,y)=1$ for $y\le x$ and $0$ otherwise, but it is bounded on $(C[a,b],\|\cdot\|_\infty)$ directly: $|(Jf)(x)|\le(x-a)\|f\|_\infty$, so $\|J\|\le b-a$, with equality for $f=1$.
+
+\emph{Differentiation.} Differentiation is the standard example of an unbounded operator, as that note explained; here is the statement as a proposition.
+
+\begin{proposition}[Differentiation is unbounded]
+\label{prop:differentiation-unbounded}
+Let $C^1[0,1]$ be the space of continuously differentiable functions on $[0,1]$, and $Df\coloneqq f'$.
+\begin{enumerate}
+\item As a map from $(C^1[0,1],\|\cdot\|_\infty)$ to $(C[0,1],\|\cdot\|_\infty)$, $D$ is linear and not bounded, hence continuous at no point.
+\item With the norm $\|f\|_{C^1}\coloneqq\|f\|_\infty+\|f'\|_\infty$ on $C^1[0,1]$, $D$ is bounded, with $\|D\|=1$.
+\end{enumerate}
+\end{proposition}
+
+\begin{proof}
+(i) $D$ is linear by the rules of differentiation. For $f_n(x)\coloneqq x^n$, $\|f_n\|_\infty=1$ and $\|Df_n\|_\infty=\|nx^{n-1}\|_\infty=n$, so no constant $C$ satisfies $\|Df\|_\infty\le C\|f\|_\infty$ for all $f$; by \cref{thm:bounded-continuous}, $D$ is not continuous, and by the dichotomy after it, it is continuous at no point. (ii) $\|Df\|_\infty=\|f'\|_\infty\le\|f\|_{C^1}$, so $\|D\|\le1$; for $f_n$ as in (i), $\|Df_n\|_\infty/\|f_n\|_{C^1}=n/(1+n)\to1$.
+\end{proof}
+
+Boundedness is thus a property of a map together with the norms, not of the map alone. The norm $\|\cdot\|_{C^1}$ measures the derivative as part of the size of a function, and in it $D$ is bounded by construction. In the supremum norm, two functions can be uniformly close while their derivatives are far apart; the functions $x^n/n$ are within $1/n$ of $0$ and have derivatives of norm $1$. This is the reason why numerical differentiation of data with errors is unstable, while numerical integration is stable, as Volume~XII analyses.
+
+\emph{Point evaluation.} The functional $\delta_t(f)\coloneqq f(t)$ on $C[a,b]$ is bounded for $\|\cdot\|_\infty$, with $\|\delta_t\|=1$. For $\|\cdot\|_1$ it is unbounded: for $t=1$ on $[0,1]$, $\|x^n\|_1=1/(n+1)$ while $\delta_1(x^n)=1$, as already observed in \cref{sec:continuity-metric}.
+
+\emph{Shifts and multipliers on $\ell^p$.} The right shift $S_+(x_1,x_2,\ldots)\coloneqq(0,x_1,x_2,\ldots)$ is an isometry of $\ell^p$ into itself, so $\|S_+\|=1$, and the left shift $S_-(x_1,x_2,\ldots)\coloneqq(x_2,x_3,\ldots)$ has $\|S_-\|=1$, attained at $\mathbf e_2$; these are the shifts of \vcref{2}{tab:kernel-image}, now on $\ell^p$ and with norms. For a bounded sequence $a$, the multiplier $M_a(x)\coloneqq(a_kx_k)$ has $\|M_a\|=\|a\|_\infty$: $\|M_ax\|_p\le\|a\|_\infty\|x\|_p$, and $\|M_a\mathbf e_k\|_p=|a_k|$ comes arbitrarily close to $\|a\|_\infty$.
+
+\emph{An unbounded functional.} On $c_{00}$ with the norm $\|\cdot\|_\infty$, the linear functional $\varphi(x)\coloneqq\sum_kkx_k$ is not bounded, since $\varphi(\mathbf e_k)=k$ and $\|\mathbf e_k\|_\infty=1$. Linear functionals on $\mathbb F^n$ are always bounded, by \cref{prop:finite-dim-bounded}, so this phenomenon is again one of infinite dimensions.
+
+\subsection{Completeness of the Space of Operators}
+
+\begin{theorem}[$\mathcal L(X,Y)$ is complete]
+\label{thm:operator-space-complete}
+If $X$ is a normed space and $Y$ a Banach space, then $\mathcal L(X,Y)$ with the operator norm is a Banach space. In particular, the dual space $X^*$ of every normed space is a Banach space.
+\end{theorem}
+
+\begin{proof}
+Let $(T_n)$ be a Cauchy sequence in $\mathcal L(X,Y)$. For each $x\in X$, $\|T_nx-T_mx\|\le\|T_n-T_m\|\,\|x\|$, so $(T_nx)$ is a Cauchy sequence in $Y$ and has a limit $Tx$. The map $T$ is linear, since $T_n(sx+ty)=sT_nx+tT_ny$ and the vector operations are continuous (\cref{prop:distance-lipschitz}). Let $\varepsilon>0$ and $N$ with $\|T_n-T_m\|<\varepsilon$ for $m,n\ge N$. For $\|x\|\le1$ and $m,n\ge N$, $\|T_nx-T_mx\|<\varepsilon$, and letting $m\to\infty$ gives $\|T_nx-Tx\|\le\varepsilon$. So $T_n-T$ is bounded, with $\|T_n-T\|\le\varepsilon$ for $n\ge N$; hence $T=T_N-(T_N-T)$ is bounded, and $T_n\to T$ in $\mathcal L(X,Y)$. The dual space is the case $Y=\mathbb F$.
+\end{proof}
+
+The proof follows the pattern noted after \cref{thm:lp-complete}: a candidate is found pointwise, and a uniform estimate makes it the limit in the norm. Combined with \cref{thm:extension}, completeness of the target allows bounded linear maps to be extended from dense subspaces.
+
+\begin{corollary}[Extension of bounded linear maps]
+\label{cor:bounded-extension}
+Let $X_0$ be a dense subspace of a normed space $X$, $Y$ a Banach space, and $T_0\in\mathcal L(X_0,Y)$. There is exactly one $T\in\mathcal L(X,Y)$ with $T|_{X_0}=T_0$, and $\|T\|=\|T_0\|$.
+\end{corollary}
+
+\begin{proof}
+$T_0$ is Lipschitz with the constant $\|T_0\|$, so by \cref{thm:extension} it has exactly one continuous extension $T$, which is Lipschitz with the same constant, so that $\|Tx\|\le\|T_0\|\,\|x\|$. The map $T$ is linear: the two continuous maps $(x,y)\mapsto T(sx+ty)$ and $(x,y)\mapsto sTx+tTy$ agree on the dense subset $X_0\times X_0$ of $X\times X$ and are therefore equal (\cref{prop:dense-agree}). Finally $\|T\|\ge\|T_0\|$, since $T$ extends $T_0$.
+\end{proof}
+
+\subsection{The Dual of \texorpdfstring{$\ell^p$}{lp}}
+
+H\"older's inequality shows that every $y\in\ell^q$ defines a bounded linear functional on $\ell^p$, for conjugate exponents $p$ and $q$. For $p<\infty$, every bounded linear functional arises in this way.
+
+\begin{theorem}[The dual of $\ell^p$]
+\label{thm:lp-dual}
+Let $1\le p<\infty$ and let $q$ be the conjugate exponent. For $y\in\ell^q$,
+\[
+\varphi_y(x)\coloneqq\sum_{k=1}^\infty x_ky_k\qquad(x\in\ell^p)
+\]
+defines $\varphi_y\in(\ell^p)^*$ with $\|\varphi_y\|=\|y\|_q$, and the map $y\mapsto\varphi_y$ is a linear isometry of $\ell^q$ onto $(\ell^p)^*$. The same formula gives a linear isometry of $\ell^1$ onto $(c_0)^*$.
+\end{theorem}
+
+\begin{proof}
+\emph{Boundedness.} By H\"older's inequality (\cref{thm:holder}) the series converges and $|\varphi_y(x)|\le\|x\|_p\|y\|_q$, so $\varphi_y$ is a bounded linear functional with $\|\varphi_y\|\le\|y\|_q$. The map $y\mapsto\varphi_y$ is evidently linear.
+
+\emph{The norm, and surjectivity.} Let $\varphi\in(\ell^p)^*$ be arbitrary, and put $y_k\coloneqq\varphi(\mathbf e_k)$. We show that $y\in\ell^q$, $\|y\|_q\le\|\varphi\|$ and $\varphi=\varphi_y$. Applied to $\varphi=\varphi_y$, whose values $\varphi_y(\mathbf e_k)$ are the terms $y_k$, this gives $\|y\|_q\le\|\varphi_y\|$, and hence $\|\varphi_y\|=\|y\|_q$; in general it shows that every $\varphi$ is some $\varphi_y$.
+
+For $N\ge1$ define $x^{(N)}\in c_{00}$ by $x^{(N)}_k\coloneqq0$ for $k>N$ and, for $k\le N$,
+\[
+x^{(N)}_k\coloneqq\overline{\sigma_k}\,|y_k|^{q-1}\ \ \text{if }q<\infty,\qquad x^{(N)}_k\coloneqq\overline{\sigma_k}\ \ \text{if }q=\infty ,
+\]
+where $\sigma_k\coloneqq y_k/|y_k|$ if $y_k\ne0$ and $\sigma_k\coloneqq0$ otherwise, so that $\overline{\sigma_k}y_k=|y_k|$. Let first $1<p<\infty$, so that $1<q<\infty$. Then
+\begin{gather*}
+\varphi(x^{(N)})=\sum_{k\le N}x^{(N)}_ky_k=\sum_{k\le N}|y_k|^q,\\
+\|x^{(N)}\|_p=\Bigl(\sum_{k\le N}|y_k|^{(q-1)p}\Bigr)^{1/p}=\Bigl(\sum_{k\le N}|y_k|^q\Bigr)^{1/p},
+\end{gather*}
+since $(q-1)p=q$. From $\varphi(x^{(N)})\le\|\varphi\|\,\|x^{(N)}\|_p$ we get $(\sum_{k\le N}|y_k|^q)^{1-1/p}\le\|\varphi\|$, that is, $(\sum_{k\le N}|y_k|^q)^{1/q}\le\|\varphi\|$, when the sum is positive, and trivially otherwise. Letting $N\to\infty$ gives $\|y\|_q\le\|\varphi\|$. For $p=1$ and $q=\infty$ the vectors $\mathbf e_k$ have norm $1$, and $|y_k|=|\varphi(\mathbf e_k)|\le\|\varphi\|$ gives $\|y\|_\infty\le\|\varphi\|$.
+
+Finally, $\varphi$ and $\varphi_y$ are bounded linear functionals that agree on every $\mathbf e_k$, hence on $c_{00}$. Since $c_{00}$ is dense in $\ell^p$ for $p<\infty$ (\cref{prop:separable}) and both functionals are continuous, $\varphi=\varphi_y$ by \cref{prop:dense-agree}.
+
+\emph{The dual of $c_0$.} For $y\in\ell^1$, $|\sum_kx_ky_k|\le\|x\|_\infty\|y\|_1$ defines $\varphi_y\in(c_0)^*$ with $\|\varphi_y\|\le\|y\|_1$. Given $\varphi\in(c_0)^*$, let $y_k\coloneqq\varphi(\mathbf e_k)$, and let $x^{(N)}$ be as above for $q=\infty$, a vector in $c_{00}\subseteq c_0$ with $\|x^{(N)}\|_\infty\le1$. Then $\sum_{k\le N}|y_k|=\varphi(x^{(N)})\le\|\varphi\|$, so $\|y\|_1\le\|\varphi\|$, and $\varphi=\varphi_y$ because $c_{00}$ is dense in $c_0$.
+\end{proof}
+
+The test vectors $x^{(N)}$ are those that give equality in H\"older's inequality, truncated so that they lie in $\ell^p$; the proof shows that the inequality is sharp, and that this sharpness determines the dual space. For $p=2$ the theorem says that every bounded linear functional on $\ell^2$ has the form $x\mapsto\sum_kx_ky_k$, which, with $\bar y$ in place of $y$, is the inner product $\langle\bar y,x\rangle$; this is the infinite-dimensional Riesz representation theorem for $\ell^2$, which \vcref{2}{thm:riesz} proved in finite dimensions and which fails in the incomplete space $C[-1,1]$, as Volume~II showed after that theorem. Chapter~22 proves it for all Hilbert spaces.
+
+\begin{note}{Other dual spaces}
+For $p=\infty$ the theorem fails: $(\ell^\infty)^*$ is strictly larger than $\ell^1$. The functionals $\varphi_y$, $y\in\ell^1$, vanish on $c_{00}$ only for $y=0$, but there are nonzero bounded linear functionals on $\ell^\infty$ that vanish on $c_0$, for instance functionals that extend the limit functional $x\mapsto\lim_kx_k$ from the space $c$ of convergent sequences to all of $\ell^\infty$. Their existence follows from the Hahn--Banach theorem, which extends bounded linear functionals from subspaces without increasing their norm, and which this volume does not prove; Folland gives the proof~\cite[Chap.~5]{folland1999}. For the function spaces, Riesz identified the dual of $L^p$ with $L^q$ for $1<p<\infty$~\cite{riesz1910}, a theorem that Chapter~21 proves for $1\le p<\infty$, and the dual of $C[a,b]$ consists of the Riemann--Stieltjes integrals with respect to functions of bounded variation, a theorem of Riesz~\cite{riesz1909} that Chapter~21 describes.
+\end{note}
+
+\subsection{The Neumann Series}
+
+For a matrix $A$ with $\|A\|<1$, \vcref{2}{thm:neumann} proved that $I-A$ is invertible with $(I-A)^{-1}=\sum_kA^k$. The proof used the entries of the matrices. In a Banach space there are no entries, but the completeness of $\mathcal L(X)$ takes their place.
+
+\begin{definition}[Invertible operator]
+\label{def:invertible-operator}
+An operator $A\in\mathcal L(X,Y)$ is \term{invertible} if it is bijective and its inverse is bounded, $A^{-1}\in\mathcal L(Y,X)$.
+\end{definition}
+
+The inverse of a bijective linear map is linear, but in infinite dimensions it need not be bounded: the map $f\mapsto Jf$ from $C[0,1]$ onto the space of $C^1$ functions with $f(0)=0$, with the supremum norm on both, is a bounded bijection whose inverse is the unbounded operator $D$. For Banach spaces $X$ and $Y$ the inverse of a bounded bijection is automatically bounded, by the open mapping theorem~\cite[Sect.~5.3]{folland1999}, which this volume does not prove; with the definition above we shall not need it.
+
+\begin{theorem}[Neumann series]
+\label{thm:neumann-banach}
+Let $X$ be a Banach space and $T\in\mathcal L(X)$ with $\sum_{k=0}^\infty\|T^k\|<\infty$; this holds in particular if $\|T\|<1$, and more generally if $\limsup_k\|T^k\|^{1/k}<1$. Then $I-T$ is invertible, the series $\sum_{k=0}^\infty T^k$ converges in $\mathcal L(X)$, and
+\[
+(I-T)^{-1}=\sum_{k=0}^\infty T^k,\qquad\bigl\|(I-T)^{-1}\bigr\|\le\sum_{k=0}^\infty\|T^k\|,\qquad\Bigl\|(I-T)^{-1}-\sum_{k=0}^NT^k\Bigr\|\le\sum_{k>N}\|T^k\| .
+\]
+If $\|T\|<1$, the two bounds are at most $1/(1-\|T\|)$ and $\|T\|^{N+1}/(1-\|T\|)$.
+\end{theorem}
+
+\begin{proof}
+If $\|T\|<1$, then $\|T^k\|\le\|T\|^k$, and the series $\sum_k\|T^k\|$ converges by comparison with the geometric series; if $\limsup\|T^k\|^{1/k}<1$, it converges by the root test (\vcref{1}{thm:root-test}). The space $\mathcal L(X)$ is complete (\cref{thm:operator-space-complete}), so the absolutely convergent series $\sum_kT^k$ converges to some $S\in\mathcal L(X)$, with $\|S\|\le\sum_k\|T^k\|$ (\cref{thm:absolute-series}); the tail $S-S_N=\sum_{k>N}T^k$, where $S_N\coloneqq\sum_{k\le N}T^k$, satisfies the third bound for the same reason. As in the matrix case, the sum telescopes:
+\[
+(I-T)S_N=S_N(I-T)=I-T^{N+1}.
+\]
+Multiplication by the fixed operator $I-T$ is continuous on $\mathcal L(X)$, since $\|(I-T)U\|\le\|I-T\|\,\|U\|$ by \cref{prop:operator-norm}, and $\|T^{N+1}\|\to0$, since the terms of a convergent series tend to zero. Letting $N\to\infty$ gives $(I-T)S=S(I-T)=I$. So $I-T$ is bijective with the bounded inverse $S$. The last statement is the geometric series.
+\end{proof}
+
+For matrices, $\lim_k\|A^k\|^{1/k}$ is the spectral radius $\rho(A)$, by Gelfand's formula (\vcref{2}{thm:gelfand}), and the general hypothesis of the theorem becomes $\rho(A)<1$, the condition of \vcref{2}{cor:neumann-spectral}. In a Banach space, the iteration $x_{k+1}=Tx_k+g$ for the equation $x=Tx+g$ produces the partial sums $x_k=\sum_{j<k}T^jg$ when started at $x_0=0$; if $\|T\|<1$ it is the iteration of the contraction $x\mapsto Tx+g$, and the Neumann series is \cref{thm:banach-fixed-point} for affine maps, with the additional information that the solution depends linearly and boundedly on $g$.
+
+\begin{corollary}[Perturbation of invertible operators]
+\label{cor:perturbation-banach}
+Let $X$ be a Banach space, $Y$ a normed space, and $A\in\mathcal L(X,Y)$ invertible. If $E\in\mathcal L(X,Y)$ and $\|A^{-1}\|\,\|E\|<1$, then $A+E$ is invertible, and
+\[
+\bigl\|(A+E)^{-1}\bigr\|\le\frac{\|A^{-1}\|}{1-\|A^{-1}\|\,\|E\|},\qquad\bigl\|(A+E)^{-1}-A^{-1}\bigr\|\le\frac{\|A^{-1}\|^2\|E\|}{1-\|A^{-1}\|\,\|E\|} .
+\]
+Consequently the invertible operators form an open subset of $\mathcal L(X,Y)$, and $A\mapsto A^{-1}$ is continuous on it.
+\end{corollary}
+
+\begin{proof}
+Write $A+E=A(I+A^{-1}E)$, where $A^{-1}E\in\mathcal L(X)$ has norm at most $\|A^{-1}\|\|E\|<1$. By \cref{thm:neumann-banach} with $T=-A^{-1}E$, the operator $I+A^{-1}E$ is invertible with an inverse of norm at most $1/(1-\|A^{-1}\|\|E\|)$, so $A+E$ is invertible with the inverse $(I+A^{-1}E)^{-1}A^{-1}$, which gives the first bound. For the second, $(A+E)^{-1}-A^{-1}=-(A+E)^{-1}EA^{-1}$, as multiplication by $A+E$ from the left confirms, and its norm is at most $\|(A+E)^{-1}\|\,\|E\|\,\|A^{-1}\|$. The ball $\{A+E: \|E\|<1/\|A^{-1}\|\}$ consists of invertible operators, and the second bound tends to $0$ as $\|E\|\to0$.
+\end{proof}
+
+This is \vcref{2}{cor:perturbed-inverse} in Banach spaces, with the same proof. Dividing the second bound by $\|A^{-1}\|$ shows again that the relative change of the inverse is controlled by the condition number $\kappa(A)\coloneqq\|A\|\|A^{-1}\|$ times the relative perturbation $\|E\|/\|A\|$, as long as this product is small. In numerical analysis, the corollary is the reason why the solution of a well-conditioned problem changes little when the problem is perturbed, whether by measurement errors in the data or by the discretisation of an operator equation.
+
+\subsection{Integral Equations Revisited}
+
+The Fredholm equation \eqref{eq:fredholm} is the operator equation $(I-\lambda\mathcal K)f=g$ in the Banach space $C[a,b]$. By \cref{prop:integral-operator-norm,thm:neumann-banach}, it has exactly one solution whenever
+\[
+|\lambda|\max_{a\le x\le b}\int_a^b|K(x,y)|\,dy<1 ,
+\]
+and the solution is given by the \term{Neumann series}
+\[
+f=\sum_{k=0}^\infty\lambda^k\mathcal K^kg=g+\lambda\mathcal Kg+\lambda^2\mathcal K^2g+\cdots ,
+\]
+which converges in the supremum norm and depends continuously on $g$, with $\|f\|_\infty\le\|g\|_\infty/(1-|\lambda|\,\|\mathcal K\|)$. Since $\int_a^b|K(x,y)|\,dy\le M(b-a)$, this condition is weaker than that of \cref{thm:fredholm-small}, and the partial sums are the iterates of that theorem. For the kernel $K(x,y)=xy$ on $[0,1]$, the norm is $\|\mathcal K\|=\max_x\int_0^1xy\,dy=1/2$, and the condition becomes $|\lambda|<2$. The general hypothesis of the theorem does better: $\mathcal K^kf=3^{-(k-1)}\mathcal Kf$ for $k\ge1$, since $\mathcal K$ maps every $f$ to a multiple of $x$ and $\mathcal Kx=x/3$, so $\|\mathcal K^k\|=3^{-(k-1)}/2$, $\|\mathcal K^k\|^{1/k}\to1/3$, and the Neumann series of $\lambda\mathcal K$ converges exactly for $|\lambda|<3$, in agreement with the explicit solution found after \cref{thm:fredholm-small}.
+
+For the Volterra operator $\mathcal V$ the proof of \cref{thm:volterra} showed $\|\mathcal V^k\|\le M^k(b-a)^k/k!$, so $\|\lambda^k\mathcal V^k\|^{1/k}\to0$ for every $\lambda$, by \vcref{1}{thm:standard-limits}. The Neumann series converges for all $\lambda$, and $I-\lambda\mathcal V$ is invertible for every $\lambda$. In the language of Chapter~22, the Volterra operator has no nonzero eigenvalues. \Cref{sec:metric-computation} computes a Neumann series numerically.
+
+\section{Error Bounds in Computation}
+\label{sec:metric-computation}
+
+The theorems of this chapter make quantitative promises: the error of a fixed point iteration is at most a computable bound, a $p$-norm is within a factor $n^{1/p}$ of the maximum norm, and the partial sums of a Neumann series approach the solution geometrically. This section checks these promises in computations and shows where floating-point arithmetic adds something that the theory does not see. The computations were made on an Apple M4 Pro processor with Python~3.15 and its binary64 floating-point numbers, using the array and linear algebra functions of the version of the stardust library of 25 November 2026; exact reference values were computed with the module \code{fractions} or with the ball arithmetic of python-flint (version 0.9.0), with error bounds far below the digits shown.
+
+\subsection{Two Fixed Point Iterations}
+
+The first example is the iteration $x_{n+1}=\cos x_n$ of \vcref{1}{prop:fixed-point-contraction}, regarded as the iteration of a contraction of the complete space $[0,1]$ with the constant $q=\sin1=0.8415$, started at $x_0=1$. The second is Jacobi's method for the system $A\mathbf x=\mathbf b$ with the tridiagonal matrix $A\in\mathbb R^{100\times100}$ that has $3$ on the diagonal and $-1$ next to it, and with $b_i=1+\sin(\pi t_i)$ at $100$ equally spaced points $t_i$ of $[0,1]$, started at $\mathbf x_0=\mathbf 0$. The matrix is strictly diagonally dominant, and \cref{thm:jacobi-contraction} gives the contraction constant $q=2/3$ in the norm $\|\cdot\|_\infty$. The fixed point of the cosine, $x^*=0.7390851332151606\ldots$, was computed by Newton's method in ball arithmetic, and the exact solution of the linear system, for the binary64 numbers $b_i$, by elimination in rational arithmetic. \Cref{fig:contraction-bounds} shows the errors $\|x_n-x^*\|$ together with the a priori bound \eqref{eq:a-priori} and the a posteriori bound \eqref{eq:a-posteriori}.
+
+\begin{figure}
+\sdfloat{%
+\sdpanel{A}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.49\textwidth, height=0.42\textwidth, ymode=log, xmin=0, xmax=80, ymin=1e-15, ymax=30,
+  xtick={0,20,40,60,80}, ytick={1e-15,1e-10,1e-5,1}, xlabel={$n$},
+  legend style={at={(0.03,0.03)}, anchor=south west}]
+\addplot[black!45, line width=0.7pt] coordinates {(0,2.8998e+00) (4,1.4539e+00) (8,7.2891e-01) (12,3.6545e-01) (16,1.8323e-01) (20,9.1864e-02) (24,4.6058e-02) (28,2.3092e-02) (32,1.1578e-02) (36,5.8046e-03) (40,2.9102e-03) (44,1.4591e-03) (48,7.3155e-04) (52,3.6677e-04) (56,1.8389e-04) (60,9.2196e-05) (64,4.6224e-05) (68,2.3175e-05) (72,1.1619e-05) (76,5.8256e-06) (80,2.9208e-06)};
+\addlegendentry{a priori}
+\addplot[black, dashed, line width=0.7pt] coordinates {(4,7.3882e-01) (8,1.5030e-01) (12,3.0894e-02) (16,6.3590e-03) (20,1.3092e-03) (24,2.6955e-04) (28,5.5497e-05) (32,1.1426e-05) (36,2.3526e-06) (40,4.8438e-07) (44,9.9731e-08) (48,2.0534e-08) (52,4.2277e-09) (56,8.7046e-10) (60,1.7922e-10) (64,3.6900e-11) (68,7.5979e-12) (72,1.5652e-12) (76,3.2235e-13) (80,6.6592e-14)};
+\addlegendentry{a posteriori}
+\addplot[black, line width=0.7pt] coordinates {(0,2.6091e-01) (4,5.4395e-02) (8,1.1333e-02) (12,2.3400e-03) (16,4.8207e-04) (20,9.9267e-05) (24,2.0439e-05) (28,4.2082e-06) (32,8.6643e-07) (36,1.7839e-07) (40,3.6729e-08) (44,7.5623e-09) (48,1.5570e-09) (52,3.2058e-10) (56,6.6004e-11) (60,1.3590e-11) (64,2.7980e-12) (68,5.7613e-13) (72,1.1871e-13) (76,2.4456e-14) (80,5.0266e-15)};
+\addlegendentry{error}
+\end{axis}
+\end{tikzpicture}}\hfill
+\sdpanel{B}{\begin{tikzpicture}
+\begin{axis}[sdplot, width=0.49\textwidth, height=0.42\textwidth, ymode=log, xmin=0, xmax=80, ymin=1e-15, ymax=30,
+  xtick={0,20,40,60,80}, ytick={1e-15,1e-10,1e-5,1}, xlabel={$k$}]
+\addplot[black!45, line width=0.7pt] coordinates {(0,1.9999e+00) (4,3.9504e-01) (8,7.8032e-02) (12,1.5414e-02) (16,3.0447e-03) (20,6.0142e-04) (24,1.1880e-04) (28,2.3466e-05) (32,4.6353e-06) (36,9.1562e-07) (40,1.8086e-07) (44,3.5726e-08) (48,7.0570e-09) (52,1.3940e-09) (56,2.7535e-10) (60,5.4391e-11) (64,1.0744e-11) (68,2.1223e-12) (72,4.1921e-13) (76,8.2807e-14) (80,1.6357e-14)};
+\addplot[black, dashed, line width=0.7pt] coordinates {(4,3.9474e-01) (8,7.7895e-02) (12,1.5371e-02) (16,3.0332e-03) (20,5.9856e-04) (24,1.1811e-04) (28,2.3308e-05) (32,4.5995e-06) (36,9.0763e-07) (40,1.7911e-07) (44,3.5344e-08) (48,6.9745e-09) (52,1.3763e-09) (56,2.7159e-10) (60,5.3595e-11) (64,1.0576e-11) (68,2.0872e-12) (72,4.1211e-13) (76,8.1712e-14) (80,1.5987e-14)};
+\addplot[black, line width=0.7pt] coordinates {(0,1.9989e+00) (4,3.9444e-01) (8,7.7836e-02) (12,1.5360e-02) (16,3.0310e-03) (20,5.9811e-04) (24,1.1803e-04) (28,2.3291e-05) (32,4.5960e-06) (36,9.0695e-07) (40,1.7897e-07) (44,3.5317e-08) (48,6.9693e-09) (52,1.3753e-09) (56,2.7139e-10) (60,5.3555e-11) (64,1.0568e-11) (68,2.0859e-12) (72,4.1179e-13) (76,8.1772e-14) (80,1.6491e-14)};
+\end{axis}
+\end{tikzpicture}}}{Errors and error bounds of two contraction iterations, at every fourth step. (A) $x_{n+1}=\cos x_n$ on $[0,1]$ from $x_0=1$, with $q=\sin1$: the actual error (solid) decreases by the factor $\sin x^*=0.674$ per step, the a priori bound \eqref{eq:a-priori} (grey) only by $q=0.841$, and the a posteriori bound \eqref{eq:a-posteriori} (dashed) follows the error at a distance of about one decimal digit. (B) Jacobi's method for the $100\times100$ tridiagonal system of the text, with $q=2/3$ in $\|\cdot\|_\infty$: the three curves are almost indistinguishable.\label{fig:contraction-bounds}}
+\end{figure}
+
+The two panels show the two faces of the theorem. For the cosine, the a priori bound is pessimistic: it first falls below $10^{-10}$ at $n=140$, while the error does so at $n=55$. The reason is that $q=\sin1$ is the worst Lipschitz constant over the whole interval $[0,1]$, while near the fixed point the iteration contracts by the factor $|\cos'x^*|=\sin x^*=0.6736$, and the observed ratios of successive errors approach this value: $0.6755$ at $n=10$ and $0.6736$ from $n=30$ on. The a posteriori bound, computed from the last step, reaches $10^{-10}$ at $n=62$, only seven steps after the error, and it would be the natural stopping criterion for this iteration. From $n=91$ on, the computed iterates no longer change, $x_n=x_{n-1}$ in binary64, and the a posteriori bound becomes $0$ while the error stays at the level of the rounding error of the last iterate, about $10^{-16}$; the bounds are statements about exact arithmetic.
+
+For the Jacobi iteration the bounds are nearly sharp. The matrix $G=-D^{-1}R$ has $\|G\|_\infty=2/3$ and spectral radius $(2/3)\cos(\pi/101)=0.66634$, by the eigenvalues of the second difference matrix (\vcref{2}{thm:second-difference-eigen}), and the error vector quickly lines up with the eigenvector of the largest eigenvalue, which the iteration contracts by almost exactly the factor $q$. All three quantities fall below $10^{-10}$ at $k=59$. Here the contraction constant is as good as it can be, and the price of the guarantee is negligible. The rounding errors appear at the end. From $k=74$ on, the computed error exceeds the a posteriori bound, at first by $1.2\times10^{-16}$, and at $k=80$ the error, $1.649\times10^{-14}$, exceeds both bounds, $1.636\times10^{-14}$ and $1.599\times10^{-14}$, by amounts of the order of the rounding errors committed in each step, which are of the size $2^{-53}\|\mathbf x^*\|_\infty\approx2\times10^{-16}$ and accumulate over the steps. The library's direct solver, for comparison, produced the solution with an error of $3.4\times10^{-16}$ in the norm $\|\cdot\|_\infty$.
+
+\subsection{The \texorpdfstring{$p$}{p}-Norms for Large \texorpdfstring{$p$}{p}}
+
+\Cref{tab:p-norms} shows the $p$-norms of $x=(3,-4,1,2,4)\in\mathbb R^5$, computed with the library's function for vector norms; every value agreed with the correctly rounded value computed in ball arithmetic. By \cref{prop:p-norm-monotone}, $\|x\|_p/\|x\|_\infty$ lies between $1$ and $5^{1/p}$, and since two of the five components attain the maximum modulus $4$, the remark after that proposition shows that it is at least $2^{1/p}$. The table shows that it approaches $2^{1/p}$ quickly: the components $3$, $2$ and $1$ contribute $(3/4)^p$, $(1/2)^p$ and $(1/4)^p$ to the sum $\sum_k(|x_k|/4)^p$, and these contributions die out geometrically, while the two maximal components contribute $1$ each.
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}{colspec={rllll}, row{1}={font=\small\bfseries}}
+\toprule
+$p$ & $\|x\|_p$ & $\|x\|_p/\|x\|_\infty$ & $2^{1/p}$ & $5^{1/p}$ \\
+\midrule
+$1$ & $14$ & $3.500000$ & $2.000000$ & $5.000000$ \\
+$2$ & $6.782330$ & $1.695582$ & $1.414214$ & $2.236068$ \\
+$4$ & $4.969726$ & $1.242432$ & $1.189207$ & $1.495349$ \\
+$8$ & $4.389768$ & $1.097442$ & $1.090508$ & $1.222845$ \\
+$16$ & $4.178402$ & $1.044601$ & $1.044274$ & $1.105823$ \\
+$32$ & $4.087595$ & $1.021899$ & $1.021897$ & $1.051581$ \\
+$64$ & $4.043557$ & $1.010889$ & $1.010889$ & $1.025466$ \\
+$256$ & $4.010845$ & $1.002711$ & $1.002711$ & $1.006307$ \\
+$1024$ & $4.002709$ & $1.000677$ & $1.000677$ & $1.001573$ \\
+\bottomrule
+\end{sdtable}}{The $p$-norms of $x=(3,-4,1,2,4)$, with $\|x\|_\infty=4$. The ratio $\|x\|_p/\|x\|_\infty$ tends to $1$, as \cref{prop:p-norm-monotone}\,(iii) asserts; it lies below the general bound $5^{1/p}$ and approaches $2^{1/p}$, because two components attain the maximum.\label{tab:p-norms}}
+\end{table}
+
+The defining formula is not a good way to compute a $p$-norm in floating point. For $y\coloneqq100x$, the terms $|y_k|^p$ include $400^p$, which exceeds the largest binary64 number, about $1.80\times10^{308}$, as soon as $p\ge119$, since $\ln(1.80\times10^{308})/\ln400=118.47$. Evaluated term by term in binary64, the sum $\sum_k|y_k|^p$ overflows for $p\ge119$, and the formula returns $\infty$ although $\|y\|_p$ is about $400$; the library's function returned $402.3367\ldots$ for $p=119$, $401.3887\ldots$ for $p=200$ and $400.2774\ldots$ for $p=1000$, all correctly rounded. Small numbers fail in the opposite way: for $(10^{-200},2\cdot10^{-200})$ the squares underflow to $0$, and the formula gives a Euclidean norm of $0$ instead of $\sqrt5\cdot10^{-200}$. The remedy is the homogeneity of the norm: with $m\coloneqq\|x\|_\infty$,
+\[
+\|x\|_p=m\Bigl(\sum_k\bigl(|x_k|/m\bigr)^p\Bigr)^{1/p},
+\]
+and the scaled terms lie in $[0,1]$, with at least one equal to $1$, so that the sum lies between $1$ and $n$ and neither overflows nor underflows to zero. This is the kind of rearrangement, harmless in exact arithmetic and essential in floating point, that Volume~VI studies, and Volume~IX treats the computation of norms in this light.
+
+\subsection{A Neumann Series}
+
+For the integral equation
+\[
+f(x)=g(x)+\frac12\int_0^1e^{xy}f(y)\,dy\qquad(0\le x\le1),
+\]
+with $g(x)\coloneqq1-(e^x-1)/(2x)$ and $g(0)\coloneqq1/2$, the solution is $f=1$, as substitution shows. The operator $\lambda\mathcal K$ with $\lambda=1/2$ and $K(x,y)=e^{xy}$ has the norm $\max_x\int_0^1e^{xy}\,dy/2=(e-1)/2=0.8591$ by \cref{prop:integral-operator-norm}, the maximum being attained at $x=1$; so the equation is uniquely solvable and its Neumann series converges, by \cref{thm:neumann-banach}. To compute, we replace the integral by the trapezoidal rule with $N$ subintervals and require the equation at the $N+1$ nodes $x_i=i/N$. This turns it into the linear system $(I-\lambda W)\mathbf f=\mathbf g$ with $w_{ij}=\omega_je^{x_ix_j}$, where $\omega_j$ are the trapezoidal weights, a discretisation of the operator by a matrix whose norm $\|\lambda W\|_\infty=0.85915$ is close to that of the operator. The solution $\mathbf f_N$ of this system, computed with the library's direct solver, differs from the exact solution $1$ at the nodes by $1.40\times10^{-3}$ for $N=10$, $8.69\times10^{-5}$ for $N=40$, $2.17\times10^{-5}$ for $N=80$ and $1.36\times10^{-6}$ for $N=320$, decreasing by the factor $4$ when $N$ is doubled, as the error of the trapezoidal rule does (\vcref{1}{thm:quadrature-errors}); Volume~XII analyses this method.
+
+\begin{table}
+\sdfloat{%
+\begin{sdtable}{colspec={rlll}, row{1}={font=\small\bfseries}}
+\toprule
+$k$ & $\|(\lambda W)^k\mathbf g\|_\infty$ & $\|\mathbf f_N-\mathbf s_k\|_\infty$ & bound \\
+\midrule
+$0$ & $5.00\times10^{-1}$ & $8.59\times10^{-1}$ & $3.05$ \\
+$1$ & $2.68\times10^{-1}$ & $5.92\times10^{-1}$ & $2.62$ \\
+$5$ & $5.93\times10^{-2}$ & $1.24\times10^{-1}$ & $1.43$ \\
+$10$ & $8.41\times10^{-3}$ & $1.76\times10^{-2}$ & $6.68\times10^{-1}$ \\
+$20$ & $1.69\times10^{-4}$ & $3.53\times10^{-4}$ & $1.47\times10^{-1}$ \\
+$30$ & $3.39\times10^{-6}$ & $7.09\times10^{-6}$ & $3.21\times10^{-2}$ \\
+$40$ & $6.81\times10^{-8}$ & $1.43\times10^{-7}$ & $7.03\times10^{-3}$ \\
+$50$ & $1.37\times10^{-9}$ & $2.86\times10^{-9}$ & $1.54\times10^{-3}$ \\
+$60$ & $2.75\times10^{-11}$ & $5.75\times10^{-11}$ & $3.38\times10^{-4}$ \\
+\bottomrule
+\end{sdtable}}{The Neumann series for the discretised integral equation of the text with $N=80$: the norms of the terms $(\lambda W)^k\mathbf g$, the distance of the partial sum $\mathbf s_k=\sum_{j\le k}(\lambda W)^j\mathbf g$ from the solution $\mathbf f_N$ of the linear system, and the bound $\|\lambda W\|_\infty^{k+1}\|\mathbf g\|_\infty/(1-\|\lambda W\|_\infty)$ of \cref{thm:neumann-banach}.\label{tab:neumann}}
+\end{table}
+
+\Cref{tab:neumann} follows the partial sums of the Neumann series for $N=80$. The bound of \cref{thm:neumann-banach} is valid throughout but pessimistic: it decreases by the factor $\|\lambda W\|_\infty=0.859$ per term, while the terms and the errors decrease by the factor $0.6765$, which is the spectral radius of $\lambda W$, computed with the library's eigenvalue function. This is the general hypothesis $\limsup\|T^k\|^{1/k}<1$ of the theorem at work, through Gelfand's formula: in the long run the norms of the powers decay with the spectral radius, not with the norm. Sixty terms give the solution of the discretised equation to about $10^{-10}$, far below the discretisation error, and each term costs one multiplication of the $81\times81$ matrix with a vector. For this small system a direct solver is cheaper; for the much larger systems that arise from integral equations in two or three dimensions, iterations built on this idea become competitive, a subject of Volume~XII.
+
+\bigskip
+A metric measures the distance between points of an arbitrary set, and a norm the size of the elements of a vector space; the $p$-norms on $\mathbb F^n$, on the sequence spaces $\ell^p$ and on $C[a,b]$ are norms by Minkowski's inequality, which rests on H\"older's and thus on Young's. Open and closed sets, closures, dense sets and convergent sequences are defined by balls, and continuity of a map between metric spaces is equivalent to the openness of the preimages of open sets. Equivalent norms give the same open sets and convergent sequences, but the norms of $C[0,1]$ are not equivalent. A metric space is complete if its Cauchy sequences converge; $\mathbb F^n$, $\ell^p$, $\ell^\infty(S)$, $C_b(X)$ and $(C[a,b],\|\cdot\|_\infty)$ are complete, while the integral norms on $C[a,b]$ are not. Completeness of a normed space is equivalent to the convergence of absolutely convergent series and, for a metric space, to Cantor's intersection property, and uniformly continuous maps extend from dense subsets into complete spaces. Every metric space has a completion, unique up to a unique isometry, by the construction that produced $\mathbb R$ from $\mathbb Q$. In a complete metric space a contraction has exactly one fixed point, the iteration converges to it from every starting point, and the error is bounded a priori and a posteriori; the theorem solves integral equations and diagonally dominant linear systems. A linear map between normed spaces is continuous if and only if it is bounded; the bounded linear maps into a Banach space form a Banach space, the dual of $\ell^p$ is $\ell^q$, and a Neumann series inverts $I-T$ when the powers of $T$ are summable, which makes the invertible operators an open set.
+
+The next chapter studies compactness and connectedness in metric spaces. Compactness is the property that turns the existence of approximate solutions into the existence of solutions without a contraction, and it provides the theorem that all norms on $\mathbb R^n$ are equivalent; Baire's category theorem, proved with \cref{thm:cantor-intersection}, shows how large complete metric spaces are.
+
+\chapternotes
+
+Metric spaces were introduced by Fr\'echet in his thesis of 1906, as classes of elements with a distance in which he studied convergence, compactness and continuity of functionals~\cite{frechet1906}, and Hausdorff's \emph{Grundz\"uge der Mengenlehre} of 1914 gave them their name, metrische R\"aume, and developed their theory, including the completion~\cite{hausdorff1914}. Complete normed spaces were axiomatised by Banach in his thesis, published in 1922, which also contains the contraction mapping theorem~\cite{banach1922}; Caccioppoli stated the theorem for complete metric spaces in 1930~\cite{caccioppoli1930}. The method of successive approximations that the theorem abstracts goes back to Picard's work on differential equations of 1890 and Lindel\"of's of 1894~\cite{picard1890,lindelof1894}, and Fredholm's paper of 1903 began the theory of integral equations~\cite{fredholm1903}. The sequence spaces and the inequalities for them appeared in stages: the inequality now named after H\"older was published by Rogers in 1888 and by H\"older in 1889~\cite{rogers1888,holder1889}, Minkowski's inequality appears in his \emph{Geometrie der Zahlen}~\cite{minkowski1896}, and Riesz introduced the spaces $L^p$ of functions and determined their duals in 1910~\cite{riesz1910}; Hardy, Littlewood and P\'olya treat all these inequalities with their equality cases~\cite{hardy1952inequalities}. Fixed point theorems without contraction, which give existence but neither uniqueness nor a method, are Brouwer's theorem that every continuous map of a closed ball of $\mathbb R^n$ into itself has a fixed point~\cite{brouwer1911}, of which \vcref{1}{thm:fixed-point} is the case $n=1$, and Schauder's extension of it to compact convex subsets of Banach spaces~\cite{schauder1930}; Chapter~8 returns to them. The $p$-adic numbers are due to Hensel~\cite{hensel1897}, and Gouv\^ea's book is an introduction~\cite{gouvea1997}; Ostrowski's theorem is in~\cite{ostrowski1916}.
+
+Rudin develops the topology of metric spaces and Cauchy sequences in the second and third chapters of his book~\cite{rudin1976}, and Kolmogorov and Fomin~\cite{kolmogorov1975} and Simmons~\cite{simmons1963} treat metric and normed spaces at the level of this chapter, with the contraction mapping theorem and its applications. Kreyszig~\cite{kreyszig1978} gives a full chapter to applications of Banach's theorem to linear systems, differential equations and integral equations, and develops bounded operators and dual spaces with many examples. Dieudonn\'e's \emph{Foundations of Modern Analysis}~\cite{dieudonne1960} presents metric spaces, normed spaces and the calculus in them in a uniform abstract style, and Folland~\cite[Chap.~5]{folland1999} gives a concise account of normed spaces and bounded operators. For Jacobi's method and other iterations for linear systems see Golub and Van Loan~\cite[Sect.~11.2]{golub2013} and Saad~\cite{saad2003}; Volume~X returns to them.
+
+\chapterreferences

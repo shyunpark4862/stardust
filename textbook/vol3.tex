@@ -36,10 +36,22 @@ This list collects the symbols that are used in several chapters, and the conven
 \item[$\limsup a_n$, $\liminf a_n$] the upper and the lower limit, $\inf_n\sup_{k\ge n}a_k$ and $\sup_n\inf_{k\ge n}a_k$, in $[-\infty,\infty]$; for functions, $\limsup_{x\to a}f(x)$ (\cref{def:semicontinuous})
 \end{symbols}
 
+\symbolgroup{Metric and normed spaces}
+\begin{symbols}
+\item[$B(a,r)$, $\bar B(a,r)$] the open ball $\{x: d(x,a)<r\}$ and the closed ball $\{x: d(x,a)\le r\}$ of a metric space $(X,d)$, as in Volume~I; $\bar B(a,r)$ need not be the closure of $B(a,r)$
+\item[$\overline S$, $\operatorname{int}S$, $\partial S$] the closure, the interior and the boundary of a set $S$ (\cref{def:closure}); the bar also denotes the complex conjugate
+\item[$\operatorname{dist}(x,S)$, $\operatorname{diam}S$] $\inf_{s\in S}d(x,s)$ and $\sup_{s,t\in S}d(s,t)$
+\item[$\ell^p$, $c_0$] the sequences $(x_k)_{k\ge1}$ with $\|x\|_p<\infty$; the sequences that tend to $0$, with $\|\cdot\|_\infty$
+\item[$\|f\|_\infty$, $\ell^\infty(S)$, $C_b(X)$] the supremum norm $\sup|f|$; the bounded functions on a set $S$; the bounded continuous functions on a metric space $X$
+\item[$\|f\|_p$] $(\int_a^b|f|^p)^{1/p}$ for $f\in C[a,b]$ and $1\le p<\infty$ (\cref{sec:holder-minkowski})
+\item[$\mathcal L(X,Y)$, $\|T\|$, $X^*$] the \emph{bounded} linear maps between normed spaces, with the operator norm $\sup_{\|x\|\le1}\|Tx\|$ (in Volume~II, all linear maps; the same on $\mathbb F^n$); the dual space $\mathcal L(X,\mathbb F)$
+\end{symbols}
+
 \mainmatter
 % Parts and chapters go here, one \input per chapter (chapters/v3-NN-<name>.tex)
 \part{Real Analysis}
 \input{chapters/v3-01-the-real-numbers}
+\input{chapters/v3-02-metric-and-normed-spaces}
 
 \backmatter
 \end{document}
