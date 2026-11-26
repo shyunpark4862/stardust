@@ -20,7 +20,6 @@ This list collects the symbols that are used in several chapters, and the conven
 \begin{symbols}
 \item[$\neg P$, $P\wedge Q$, $P\vee Q$] not $P$; $P$ and $Q$; $P$ or $Q$ (or both)
 \item[$P\Rightarrow Q$, $P\Leftrightarrow Q$] if $P$, then $Q$; $P$ if and only if $Q$
-\item[$A\equiv B$] the formulas $A$ and $B$ are logically equivalent (for congruence see below)
 \item[$\forall$, $\exists$, $\exists!$] for every; there is at least one; there is exactly one
 \item[$a\coloneqq b$] $a$ is defined to be $b$
 \item[$\{x\in S: P(x)\}$] the set of the elements $x$ of $S$ for which $P(x)$ holds; $\{t(x): x\in S\}$ is the set of the values $t(x)$
@@ -89,7 +88,7 @@ This list collects the symbols that are used in several chapters, and the conven
 \begin{symbols}
 \item[$\mathbf x=(x_1,\ldots,x_n)$] a vector of $\mathbb R^n$ (bold lower case), a column in matrix products
 \item[$\mathbf 0$, $\mathbf e_i$] the zero vector; the $i$th standard basis vector
-\item[$\langle\mathbf x,\mathbf y\rangle$] the inner product $\sum_ix_iy_i=\mathbf x^{\mathsf T}\mathbf y$; $\mathbf x^{\mathsf H}\mathbf y$ (linear in $\mathbf y$) for complex vectors
+\item[$\langle\mathbf x,\mathbf y\rangle$] the inner product $\mathbf x^{\mathsf T}\mathbf y=\sum_ix_iy_i$; $\mathbf x^{\mathsf H}\mathbf y$ if complex (linear in $\mathbf y$)
 \item[$\|\mathbf x\|$, $\|\mathbf x\|_p$] the Euclidean norm $\|\mathbf x\|_2$; $\|\mathbf x\|_1=\sum_i|x_i|$; $\|\mathbf x\|_\infty=\max_i|x_i|$
 \item[$A=(a_{ij})$, $\mathbb R^{m\times n}$] a matrix (italic capital) with entries $a_{ij}$; the real $m\times n$ matrices
 \item[$A^{\mathsf T}$, $A^{\mathsf H}$, $I_n$] the transpose; the conjugate transpose $\bar A^{\mathsf T}$; the identity matrix
@@ -101,7 +100,7 @@ This list collects the symbols that are used in several chapters, and the conven
 \item[$\operatorname{span}S$, $\dim V$] the span of a set $S$; the dimension of a vector space $V$
 \item[$\mathcal C(A)$, $\mathcal N(A)$] the column space and the null space of $A$
 \item[$\ker T$, $\operatorname{im}T$, $\mathcal L(V,W)$] the kernel and the image of $T$; the linear maps from $V$ to $W$
-\item[$S^\perp$, $T^*$] the orthogonal complement of a set $S$ in an inner product space; the adjoint of a linear map $T$, which is $A^{\mathsf H}$ for a matrix $A$
+\item[$S^\perp$, $T^*$] the orthogonal complement of $S$; the adjoint of $T$ ($A^{\mathsf H}$ for a matrix)
 \item[{$[T]_{\mathcal D\leftarrow\mathcal B}$}] the matrix of $T$ with respect to the bases $\mathcal B$ and $\mathcal D$; $[T]_{\mathcal B}$ if $\mathcal D=\mathcal B$
 \item[$B(\mathbf a,r)$, $\bar B(\mathbf a,r)$] the open and the closed ball with centre $\mathbf a$ and radius $r$
 \item[$\mathbf f=(f_1,\ldots,f_m)$] a vector-valued function, in bold, with component functions $f_i$
