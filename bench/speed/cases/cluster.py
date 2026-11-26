@@ -433,8 +433,33 @@ def _density_specs():
     ]
 
 
+def _gm_start(k):
+    """The same start for every library: equal weights, the data's first k rows as means, unit precisions."""
+
+    def kw(d, sd_side, ctype):
+        p = d["X"].shape[1]
+        w = np.full(k, 1.0 / k)
+        m = d["X"][:k].copy()
+        P = {"full": np.repeat(np.eye(p)[None], k, axis=0), "tied": np.eye(p), "diag": np.ones((k, p)),
+             "spherical": np.ones(k)}[ctype]  # fmt: skip
+        if sd_side:
+            import stardust as sd
+
+            return {"weights_init": sd.asarray(w), "means_init": sd.asarray(m), "precisions_init": sd.asarray(P)}
+        return {"weights_init": w, "means_init": m, "precisions_init": P}
+
+    return kw
+
+
 def _mixture_specs():
-    return [
+    def sk_gm():
+        return __import__("sklearn.mixture", fromlist=["GaussianMixture"]).GaussianMixture
+
+    def rng():
+        return __import__("stardust").random.default_rng(0)
+
+    start = _gm_start(5)
+    out = [
         Spec(
             "CL4",
             "mixture",
@@ -442,23 +467,41 @@ def _mixture_specs():
             ("gaussian_mixture",),
             "20000",
             _blobs(2 * 10**4, 10, 5),
-            lambda d: lambda: _cl().gaussian_mixture(d["sX"], 5, rng=__import__("stardust").random.default_rng(0)),
-            (
-                Ref(
-                    "sklearn",
-                    lambda d: (
-                        lambda: (
-                            __import__("sklearn.mixture", fromlist=["GaussianMixture"])
-                            .GaussianMixture(5, random_state=0)
-                            .fit(d["X"])
-                        )
-                    ),
-                    threads="follow",
-                ),
-            ),
-            check=Check(skip="different random starts"),
+            lambda d: lambda: _cl().gaussian_mixture(d["sX"], 5, rng=rng()),
+            (Ref("sklearn", lambda d: lambda: sk_gm()(5, random_state=0).fit(d["X"]), threads="follow"),),
+            quick=True,
+            note="each library's own k-means start; the blobs are well separated, so both reach one fixed point",
+            check=Check(sd=lambda r: float(r.lower_bound), ref=lambda label, r: float(r.lower_bound_), rtol=1e-9),
         )
     ]
+    for ctype in ("full", "tied", "diag", "spherical"):
+        out.append(
+            Spec(
+                "CL4",
+                "mixture",
+                f"gaussian_mixture {ctype} p=10 k=5 same start",
+                ("gaussian_mixture",),
+                "20000",
+                _blobs(2 * 10**4, 10, 5),
+                lambda d, t=ctype: (
+                    lambda: _cl().gaussian_mixture(d["sX"], 5, rng=rng(), covariance_type=t, **start(d, True, t))
+                ),
+                (
+                    Ref(
+                        "sklearn",
+                        lambda d, t=ctype: lambda: sk_gm()(5, covariance_type=t, **start(d, False, t)).fit(d["X"]),
+                        threads="follow",
+                    ),
+                ),
+                note="the same start (weights, means, precisions) on both sides: the same EM iterations",
+                check=Check(
+                    sd=lambda r: np.array([r.lower_bound, r.n_iter], float),
+                    ref=lambda label, r: np.array([r.lower_bound_, r.n_iter_], float),
+                    rtol=1e-10,
+                ),
+            )
+        )
+    return out
 
 
 def _metrics_specs():

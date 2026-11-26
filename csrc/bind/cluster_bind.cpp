@@ -14,6 +14,7 @@ void bind_cluster(nb::module_& core) {
     cluster::bind_kmedoids(m);
     cluster::bind_fuzzy(m);
     cluster::bind_density(m);
+    cluster::bind_mixture(m);
 }
 
 }  // namespace sd

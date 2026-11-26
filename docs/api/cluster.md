@@ -1,8 +1,8 @@
 # sd.cluster API
 
-> 상태: **확정** (2026-11-24; 설계 결정 CL1–CL74). CL3 마일스톤(밀도, 2026-11-27)까지 마쳤다: §2·§3·§4의 이름이 공개됐고 나머지 이름은 CL4–CL6 마일스톤에서 생긴다(tests/cluster/test_api_surface.py가 이름마다의 마일스톤을 쥔다). 이름과 시그니처는 [docs/design/cluster.md](../design/cluster.md) §9의 답(13번만 (b), 나머지 (a))을 따른다. 시그니처는 scikit-learn 1.9.1(`sklearn.cluster`, `sklearn.mixture`, `sklearn.metrics`), scipy 1.18.1(`scipy.cluster.hierarchy`), R 4.6.2의 `stats`와 `cluster` 2.1.8.3의 이름과 뜻에 stardust의 규칙과 CL1–CL40의 결정을 입힌 것이다. `fuzzy_cmeans`의 `tol`과 `kmedoids`의 `max_iter`는 CL2 마일스톤이 정했다(설계 문서 CL65·CL66). 남은 임시 값(`affinity_propagation`의 `metric='precomputed'`의 이름, `gap_statistic`의 `select` 이름)은 해당 마일스톤에서 정한다(표시가 그 자리에 있다).
+> 상태: **확정** (2026-11-24; 설계 결정 CL1–CL81). CL4 마일스톤(혼합, 2026-11-27)까지 마쳤다: §2·§3·§4·§5의 이름이 공개됐고 나머지 이름은 CL5·CL6 마일스톤에서 생긴다(tests/cluster/test_api_surface.py가 이름마다의 마일스톤을 쥔다). 이름과 시그니처는 [docs/design/cluster.md](../design/cluster.md) §9의 답(13번만 (b), 나머지 (a))을 따른다. 시그니처는 scikit-learn 1.9.1(`sklearn.cluster`, `sklearn.mixture`, `sklearn.metrics`), scipy 1.18.1(`scipy.cluster.hierarchy`), R 4.6.2의 `stats`와 `cluster` 2.1.8.3의 이름과 뜻에 stardust의 규칙과 CL1–CL40의 결정을 입힌 것이다. `fuzzy_cmeans`의 `tol`과 `kmedoids`의 `max_iter`는 CL2 마일스톤이 정했다(설계 문서 CL65·CL66). 남은 임시 값(`affinity_propagation`의 `metric='precomputed'`의 이름, `gap_statistic`의 `select` 이름)은 해당 마일스톤에서 정한다(표시가 그 자리에 있다).
 
-- 설계와 결정의 근거는 [docs/design/cluster.md](../design/cluster.md)(§1.1 CL1–CL74), 공통 규칙은 [API.md](../../API.md)다.
+- 설계와 결정의 근거는 [docs/design/cluster.md](../design/cluster.md)(§1.1 CL1–CL81), 공통 규칙은 [API.md](../../API.md)다.
 - 언어 표시가 없는 코드 블록은 `tests/cluster/test_api_surface.py`가 읽는다. 블록의 줄은 모듈의 함수(`name(...)`), 결과 클래스(`Name`), 결과의 메서드(`Name.method(...)`)다. 블록의 모듈 수준 이름이 마일스톤을 마칠 때마다 `sd.cluster.__all__`에 들어가 CL6 마일스톤에서 그 전부가 된다.
 - 절 끝의 "(§9의 n번)"은 그 줄을 정한 설계 문서의 질문이다(답은 §1.1의 CL4–CL40).
 
@@ -74,7 +74,7 @@
 - DBSCAN: 경계 점은 가장 가까운 핵심 점의 군집(sklearn은 먼저 펼친 군집).
 - HDBSCAN: 같은 높이의 병합을 한꺼번에 줄인다(sklearn은 그때 입력 순서에 따라 다르다), GLOSH `outlier_scores`가 더 있다, `copy`·`store_centers`가 없다.
 - OPTICS: 거리를 소수 15자리로 반올림하지 않는다, 가장 작은 열쇠에서 시작한다.
-- 혼합 모형: `k`, `bic`·`aic`는 필드, `lower_bound`와 `loglik`을 나눈다.
+- 혼합 모형: `k`, `bic`·`aic`는 필드, `lower_bound`와 `loglik`을 나눈다, 이차형식은 차의 꼴과 평균을 뺀 2차 모멘트(sklearn은 펼친다), 표본은 (*shape, p)이고 표본마다 성분이 독립이다.
 - 지표: ARI·RI는 정확한 정수 셈, `silhouette_score`에 표본 뽑기가 없다.
 
 ## §2. 계층 (§9의 12–19번)
@@ -215,10 +215,13 @@ GaussianMixtureResult.score_samples(X_new, /)
 GaussianMixtureResult.sample(shape=None, /, *, rng)
 GaussianMixtureResult.summary()
 ```
-- sklearn `GaussianMixture`의 EM과 기본값이다. `covariance_type`은 `'full'`, `'tied'`, `'diag'`, `'spherical'`. `init`은 `'kmeans'`(이 영역의 `kmeans` 한 번), `'k-means++'`, `'random'`, `'random_from_data'`. 멈춤은 점마다 평균한 하한의 변화 < `tol`이다.
-- `reg_covar`를 더해도 공분산이 양정치가 아니면 `LinAlgError`다.
-- `bic`·`aic`는 필드다(sklearn은 `bic(X)` 메서드). 모수의 수는 sklearn의 `_n_parameters`와 같다.
-- `sample(shape)`은 (*shape, p)의 점과 그 성분 라벨을 namedtuple `(X, labels)`로 돌려준다(sklearn은 `n_samples`와 튜플; 모양 규칙은 `sd.stats`의 `sample`과 같다).
+- sklearn `GaussianMixture`의 EM과 기본값이다. `covariance_type`은 `'full'`(성분마다 행렬), `'tied'`(하나를 나눠 쓴다), `'diag'`(성분마다 대각), `'spherical'`(성분마다 분산 하나)이고 `reg_covar`(≥ 0)를 공분산의 대각에 더한다. 시작마다 `init`의 책임도에서 모수를 만든다: `'kmeans'`(이 영역의 `kmeans(X, k, init='k-means++', n_init=1)` 한 번의 라벨; 그 두 단어는 `rng`의 흐름에서 받는다), `'k-means++'`(k-means++가 고른 k점), `'random'`(무작위 책임도), `'random_from_data'`(무작위 k점). `weights_init`(합이 1인 (k,)), `means_init`((k, p)), `precisions_init`(sklearn의 모양: 정밀도 행렬 (k, p, p), (p, p), (k, p), (k,); full·tied는 대칭 양정치)이 주어지면 그 값으로 바꾸고, 셋 다 주어지면 아무것도 뽑지 않는다. 멈춤은 E 단계의 로그우도 평균(하한)의 변화 < `tol`(상한 `max_iter`; 0이면 시작 그대로)이고, `n_init`개 시작 가운데 하한이 가장 큰 것(같으면 앞)을 남긴다. n ≥ 2, 1 ≤ k ≤ n이고 `'kmeans'`는 서로 다른 점이 k개 이상이어야 한다(`ValueError`).
+- 이차형식은 차의 꼴 ‖Uᵀ(x − μ)‖²이고 공분산은 평균을 뺀 두 번째 훑기다(`[sklearn과 다름]`: sklearn은 펼친 꼴이라 원점에서 먼 자료의 diag·spherical 밀도와 tied·diag·spherical의 공분산이 자릿수를 잃는다; 설계 문서 CL75). 같은 시작이면 sklearn과 같은 반복 수로 같은 고정점에 닿는다.
+- `reg_covar`를 더해도 공분산이 양정치가 아니면 `LinAlgError`다(`gaussian_mixture(): component 2 has an ill-defined covariance; ...`, tied는 `the tied covariance is ill-defined`). 양정치가 아닌 `precisions_init`은 `ValueError`다.
+- `bic`·`aic`는 필드다(sklearn은 `bic(X)` 메서드): −2·`loglik` + `n_parameters`·log n, −2·`loglik` + 2·`n_parameters`. 모수의 수는 sklearn의 `_n_parameters`와 같다.
+- `labels`는 결과의 모수에서 가중 밀도가 가장 큰 성분이다(`predict(X)`와 같다; 같으면 맞춤이 먼저 만든 성분). 성분의 차례는 라벨의 처음 나오는 차례다.
+- `predict`, `predict_proba`(책임도 (m, k), 열 j가 라벨 j), `score_samples`(점마다 혼합의 로그 밀도; sklearn과 같다).
+- `sample(shape)`은 (*shape, p)의 점과 그 성분 라벨을 namedtuple `(X, labels)`로 돌려준다(sklearn은 `n_samples`와 튜플; 모양 규칙은 `sd.stats`의 `sample`과 같다: `shape=None`이면 (p,)와 int). 표본마다 무게로 성분을 뽑고 그 정규 분포에서 뽑는다(`[sklearn과 다름]`: sklearn은 성분별 개수를 다항 분포로 뽑아 성분 차례로 묶는다). `rng`에서 두 단어만 받는다.
 
 | `GaussianMixtureResult`의 필드 | 뜻 |
 |---|---|
@@ -227,6 +230,7 @@ GaussianMixtureResult.summary()
 | `lower_bound` | 마지막 E 단계에서 점마다 평균한 하한(sklearn의 `lower_bound_`) |
 | `bic`, `aic`, `n_parameters` | 정보 기준과 모수의 수 |
 | `covariance_type`, `n_init`, `best_init` | 설정과 고른 시작 |
+| `n_iter`, `converged` | 고른 시작의 반복 수와 수렴 |
 
 ## §6. 지표와 k 고르기 (§9의 10·11·33–35번)
 ```

@@ -10,5 +10,6 @@ void bind_kmeans(nanobind::module_& m);     // kmeans.cpp: k-means, mini-batch a
 void bind_kmedoids(nanobind::module_& m);   // kmedoids.cpp: PAM and CLARA
 void bind_fuzzy(nanobind::module_& m);      // fuzzy.cpp: fuzzy c-means
 void bind_density(nanobind::module_& m);    // density.cpp: DBSCAN, HDBSCAN, OPTICS
+void bind_mixture(nanobind::module_& m);    // mixture.cpp: Gaussian mixtures (EM)
 
 }  // namespace sd::cluster

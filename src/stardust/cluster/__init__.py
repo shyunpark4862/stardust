@@ -6,11 +6,11 @@ Usage: ``import stardust as sd`` then ``sd.cluster.kmeans(X, k, rng=sd.random.de
 (k-means, k-medoids, fuzzy c-means), hierarchical (scipy's linkage tools and DIANA), density (DBSCAN,
 HDBSCAN, OPTICS), Gaussian mixtures and the clustering indices in one flat namespace (no submodules); the
 fitting functions return <Name>Result objects, the scipy-named hierarchy tools take and return arrays
-(decisions CL1-CL57 in docs/design/cluster.md §1.1).
+(decisions CL1-CL81 in docs/design/cluster.md §1.1).
 
 Milestone CL0 made the common base of the results (_results.py) and the argument checks (_common.py); the
 public names come with milestones CL1 to CL6 (CL1: the hierarchy, _hierarchy.py; CL2: the partitions, _kmeans.py,
-_kmedoids.py, _fuzzy.py; CL3: the density methods, _density.py).
+_kmedoids.py, _fuzzy.py; CL3: the density methods, _density.py; CL4: the Gaussian mixtures, _mixture.py).
 """
 
 from ._density import DBSCANResult, HDBSCANResult, OPTICSResult, dbscan, hdbscan, optics
@@ -41,6 +41,7 @@ from ._hierarchy import (
 )
 from ._kmeans import BisectingKMeansResult, KMeansResult, bisecting_kmeans, kmeans, minibatch_kmeans
 from ._kmedoids import KMedoidsResult, kmedoids
+from ._mixture import GaussianMixtureResult, gaussian_mixture
 
 __all__ = [
     "linkage",
@@ -80,4 +81,6 @@ __all__ = [
     "HDBSCANResult",
     "optics",
     "OPTICSResult",
+    "gaussian_mixture",
+    "GaussianMixtureResult",
 ]

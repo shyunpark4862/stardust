@@ -26,8 +26,10 @@ computed with; and per method the reference hi + lo:
                comparison, 0 an exact tie); OPTICS at min_samples 5, max_eps inf: optics_reach (kind 0; field pred)
                and optics_order (kind 3, index the position, hi the input index; field near: a choice within a
                near tie)
-    mixture    score, logdens_<j>, resp_<j> (kind 0, the mixture's points), mstep (kind 1: weights, means,
-               covariances in sklearn's shapes)
+    mixture    score, logdens_<j>, resp_<j> (kind 0, the mixture's points, at the exact covariances); score_u,
+               logdens_u_<j>, resp_u_<j> (kind 0, at the given factors: group input prec_chol, scikit-learn's
+               precisions_cholesky_ shape flattened); prec_chol (kind 2: the exact factor of the exact covariance,
+               flattened); mstep (kind 1: weights, means, covariances in sklearn's shapes; decision CL75)
     metrics    over the labelings' groups: ari, ri, fm, mi, nmi_<avg>, ami_<avg>, homogeneity, completeness, v
                (field special: sklearn's special case); per point set with true labels: silhouette (kind 0) and
                over the groups silhouette_score, calinski_harabasz, davies_bouldin
@@ -60,6 +62,14 @@ holds them to these constants), and each milestone settles its own):
     HDBSCAN's stability    |S - S*| <= gamma(p / 2 + 6 + rows) S+, S+ = sum of (lambda + birth) size over the
                            cluster's rows                                                              (§4.4)
     probability, GLOSH     |v - v*| <= 2 gamma(p / 2 + 5) (absolute; both in [0, 1])                   (§4.4)
+    mixture log densities  at given factors U (theorem 7, first order, doubled): a component's
+                           |l - l*| <= gamma(3p + 7) (q+ + p log 2 pi) / 2 + gamma(p + 2) Lambda+ + u |l*|, q+ the
+                           quadratic form with |U| and |z|, Lambda+ = sum |log U_dd|; the mixture's and the
+                           responsibilities from those (mixture_bounds)                                (§4.5)
+    the factor of S        full, tied: max |U - U*| <= C_PREC p gamma(p + 1) kappa_2(S) max |U*| (normwise,
+                           first order; C_PREC measured);
+                           diag, spherical: gamma(2) |U*| (one square root, one division)              (§4.5)
+    the M step             at given responsibilities (theorem 9, first order, doubled; mstep_bound)       (§4.5)
 """
 
 from __future__ import annotations
@@ -84,6 +94,9 @@ SQUARED = ("centroid", "median", "ward")
 C_CENTER = 2.0
 C_INERTIA = 2.0
 C_PAM = 2.0
+C_PREC = 2.0  # milestone CL4's draft for the factor of a full or tied covariance (§4.5)
+C_FIRST = 2.0  # the first-order bounds of §4.5 doubled: the products of gammas they drop
+LN2PI = math.log(2 * math.pi)
 
 
 def names() -> list[str]:
@@ -290,3 +303,104 @@ def height_bound(Z, X, method, keys, h_ref):
                 if c_ >= n:
                     b[i] = max(b[i], b[c_ - n])
     return b
+
+
+# ---- Gaussian mixtures (CL4) -----------------------------------------------------------------------------------
+
+
+def _blocks(ctype, U, k, p):
+    """The upper triangular p x p factor of each component from an array in scikit-learn's shape."""
+    U = np.asarray(U, float)
+    if ctype == "full":
+        return [U[j] for j in range(k)]
+    if ctype == "tied":
+        return [U] * k
+    if ctype == "diag":
+        return [np.diag(U[j]) for j in range(k)]
+    return [np.eye(p) * U[j] for j in range(k)]
+
+
+def mixture_bounds(ctype, X, weights, means, factors, wlp):
+    """Bounds of §4.5's theorem 7 at given factors (scikit-learn's precisions_cholesky_ shape): (the weighted log
+    densities' (m, k), the mixture log densities' (m,), the responsibilities' (m, k)); wlp the exact weighted log
+    densities (m, k). First order, doubled (C_FIRST)."""
+    X = np.asarray(X, float)
+    m, p = X.shape
+    k = len(weights)
+    B = _blocks(ctype, factors, k, p)
+    E = np.empty((m, k))
+    for j in range(k):
+        Z = np.abs(X - means[j])
+        a = Z @ np.abs(B[j])  # a_e = sum_d |U_de| |z_d|
+        qplus = np.sum(a * a, axis=1)
+        lam = float(np.sum(np.abs(np.log(np.diag(B[j])))))
+        lw = math.log(weights[j]) if weights[j] > 0 else 0.0
+        ell = wlp[:, j] - lw
+        E[:, j] = gamma(3 * p + 7) * (qplus + p * LN2PI) / 2 + gamma(p + 2) * lam + U * np.abs(ell)
+        E[:, j] += 2 * U * abs(lw) + U * np.abs(wlp[:, j])
+    top = np.max(wlp, axis=1)
+    amax = np.max(np.abs(wlp - top[:, None]), axis=1)
+    lpn = top + np.log(np.sum(np.exp(wlp - top[:, None]), axis=1))
+    emax = np.max(E, axis=1)
+    score = 2 * emax + U * amax + gamma(k + 2) + U * (math.log(k) + np.abs(lpn))
+    resp = np.exp(wlp - lpn[:, None]) * (4 * emax + 2 * U * amax + gamma(k + 4))[:, None] + 2.0**-1074
+    return C_FIRST * E, C_FIRST * score, C_FIRST * resp
+
+
+def precision_bound(ctype, cov, Uref, k, p):
+    """The bound on |U - U*| of the factor of each covariance (scikit-learn's shapes; Uref the exact factor)."""
+    Uref = np.abs(np.asarray(Uref, float))
+    if ctype in ("diag", "spherical"):
+        return gamma(2) * Uref
+    C = np.asarray(cov, float).reshape(-1, p, p)
+    R = Uref.reshape(-1, p, p)
+    out = np.empty_like(R)
+    for j in range(C.shape[0]):
+        ev = np.linalg.eigvalsh(C[j])
+        out[j] = C_PREC * p * gamma(p + 1) * (ev[-1] / ev[0]) * np.max(R[j])
+    return out.reshape(Uref.shape)
+
+
+def mstep_bound(ctype, X, R, ref):
+    """The bound of §4.5's theorem 9 on the M step at given responsibilities R (m, k): one value per entry of
+    (weights, means, covariances) in scikit-learn's shapes, as the reference's mstep; ref those exact values.
+    First order, doubled."""
+    X = np.asarray(X, float)
+    R = np.asarray(R, float)
+    m, p = X.shape
+    k = R.shape[1]
+    w, mu = ref[:k], ref[k : k + k * p].reshape(k, p)
+    cov = ref[k + k * p :]
+    nk = R.sum(axis=0)
+    terms = m * k if ctype == "tied" else m
+    bw = gamma(2 * m + k + 2) * np.abs(w)
+    A = (R.T @ np.abs(X)) / nk[:, None]  # sum r |x_d| / nk
+    dmu = gamma(2 * m + 3) * A
+    bmu = dmu.ravel()
+    Zs = [np.abs(X - mu[j]) for j in range(k)]
+    if ctype in ("full", "tied"):
+        blocks = []
+        for j in range(k):
+            Bj = (Zs[j] * R[:, j : j + 1]).T @ Zs[j]
+            Cj = R[:, j] @ Zs[j]
+            Dj = np.outer(dmu[j], Cj) + np.outer(Cj, dmu[j])
+            blocks.append((Bj, Dj))
+        if ctype == "full":
+            b = [(gamma(2 * terms + 5) * B + D) / nk[j] for j, (B, D) in enumerate(blocks)]
+            bc = np.concatenate([x.ravel() for x in b])
+        else:
+            B = sum(x[0] for x in blocks)
+            D = sum(x[1] for x in blocks)
+            bc = ((gamma(2 * terms + k + 5) * B + D) / nk.sum()).ravel()
+    else:
+        per = np.empty((k, p))
+        for j in range(k):
+            Bj = R[:, j] @ (Zs[j] ** 2)
+            Dj = 2 * dmu[j] * (R[:, j] @ Zs[j])
+            per[j] = (gamma(2 * terms + 5) * Bj + Dj) / nk[j]
+        if ctype == "diag":
+            bc = per.ravel()
+        else:
+            bc = per.sum(axis=1) / p + gamma(p + 1) * np.abs(cov)
+    bc = bc + U * np.abs(cov)
+    return C_FIRST * np.concatenate([bw, bmu, bc])

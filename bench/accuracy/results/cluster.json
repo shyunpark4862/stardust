@@ -2,31 +2,38 @@
  "schema": 1,
  "area": "cluster",
  "runs": {
-  "20261127-021048-16e66978+": {
-   "commit": "16e66978",
+  "20261127-030114-7e318060+": {
+   "commit": "7e318060",
    "dirty": true,
    "changed": [
+    "API.md",
     "ARCHITECTURE.md",
     "CMakeLists.txt",
+    "README.md",
     "bench/accuracy/cluster.py",
     "bench/speed/cases/cluster.py",
     "csrc/bind/cluster_bind.cpp",
     "csrc/cluster/cluster.hpp",
-    "csrc/cluster/mst.cpp",
-    "csrc/cluster/mst.hpp",
-    "csrc/graph/traversal.cpp",
+    "csrc/cluster/kmeans.cpp",
     "docs/api/cluster.md",
     "docs/design/cluster.md",
+    "site/src/content/areas/array.mdx",
     "src/stardust/cluster/__init__.py",
-    "tests/cluster/ref/density.npz",
+    "tests/cluster/ref/mixture.npz",
     "tests/cluster/refdata.py",
     "tests/cluster/test_api_surface.py",
-    "tests/cluster/test_reference_data.py",
     "tests/golden/cases_cluster.py",
     "tests/golden/data/cluster.json",
+    "textbook/chapters/v1-08-series-approximation.tex",
+    "textbook/chapters/v1-23-first-order-equations.tex",
+    "textbook/chapters/v1-24-linear-equations-of-higher-order.tex",
+    "textbook/chapters/v1-25-linear-systems-of-differential-equations.tex",
+    "textbook/plans/PROMISES.md",
+    "textbook/references.bib",
+    "textbook/vol1.tex",
     "tools/cluster_ref.py"
    ],
-   "date": "2026-11-27T02:10:48",
+   "date": "2026-11-27T03:01:14",
    "machine": "arm64",
    "python": "3.15.0",
    "references": {
@@ -226,8 +233,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261127-021048-16e66978+",
-   "comparators_run": "20261127-021048-16e66978+"
+   "run": "20261127-030114-7e318060+",
+   "comparators_run": "20261127-030114-7e318060+"
   },
   {
    "id": "cluster/fuzzy",
@@ -272,7 +279,7 @@
      ]
     }
    },
-   "run": "20261127-021048-16e66978+"
+   "run": "20261127-030114-7e318060+"
   },
   {
    "id": "cluster/hierarchy",
@@ -1013,8 +1020,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261127-021048-16e66978+",
-   "comparators_run": "20261127-021048-16e66978+"
+   "run": "20261127-030114-7e318060+",
+   "comparators_run": "20261127-030114-7e318060+"
   },
   {
    "id": "cluster/kmeans",
@@ -1109,8 +1116,8 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261127-021048-16e66978+",
-   "comparators_run": "20261127-021048-16e66978+"
+   "run": "20261127-030114-7e318060+",
+   "comparators_run": "20261127-030114-7e318060+"
   },
   {
    "id": "cluster/kmedoids",
@@ -1160,8 +1167,113 @@
     }
    },
    "comparator_seconds": 60.0,
-   "run": "20261127-021048-16e66978+",
-   "comparators_run": "20261127-021048-16e66978+"
+   "run": "20261127-030114-7e318060+",
+   "comparators_run": "20261127-030114-7e318060+"
+  },
+  {
+   "id": "cluster/mixture",
+   "area": "cluster",
+   "name": "mixture",
+   "points": 572,
+   "regions": {
+    "mixture/logdens": {
+     "points": 144,
+     "rel_max": 1.1641532182693481e-10,
+     "contract": 0.09510526368323459,
+     "bound": 1.0,
+     "worst": [
+      "full/k3p2 #26"
+     ]
+    },
+    "mixture/mstep": {
+     "points": 147,
+     "rel_max": 5.684341886080802e-14,
+     "contract": 0.05280022665936016,
+     "bound": 1.0,
+     "worst": [
+      "full/k2p5 #7"
+     ]
+    },
+    "mixture/prec_chol": {
+     "points": 87,
+     "rel_max": 4.547473508864641e-13,
+     "contract": 0.7071067811865474,
+     "bound": 1.0,
+     "worst": [
+      "spherical/k3p2 #0"
+     ]
+    },
+    "mixture/resp": {
+     "points": 144,
+     "rel_max": 1.1102230246251565e-16,
+     "contract": 0.016482412032094267,
+     "bound": 1.0,
+     "worst": [
+      "diag/k4p3 #33"
+     ]
+    },
+    "mixture/score": {
+     "points": 50,
+     "rel_max": 1.3642420526593924e-12,
+     "contract": 0.031085293598578752,
+     "bound": 1.0,
+     "worst": [
+      "spherical/k3p2 #5"
+     ]
+    }
+   },
+   "comparators": {
+    "sklearn": {
+     "mixture/logdens": {
+      "points": 144,
+      "rel_max": 1.1641532182693481e-10,
+      "contract": 1.3568890644739626,
+      "bound": 1.0,
+      "worst": [
+       "diag/k4p3 #0"
+      ]
+     },
+     "mixture/mstep": {
+      "points": 147,
+      "rel_max": 5.684341886080802e-14,
+      "contract": 9.340266370619537,
+      "bound": 1.0,
+      "worst": [
+       "diag/k4p3 #19"
+      ]
+     },
+     "mixture/prec_chol": {
+      "points": 87,
+      "rel_max": 9.535483513900544e-12,
+      "contract": 0.7071067811865474,
+      "bound": 1.0,
+      "worst": [
+       "spherical/k3p2 #0"
+      ]
+     },
+     "mixture/resp": {
+      "points": 144,
+      "rel_max": 6.106226635438361e-15,
+      "contract": 0.03524691937929806,
+      "bound": 1.0,
+      "worst": [
+       "diag/k4p3 #8"
+      ]
+     },
+     "mixture/score": {
+      "points": 50,
+      "rel_max": 1.3642420526593924e-12,
+      "contract": 0.034202311880212125,
+      "bound": 1.0,
+      "worst": [
+       "diag/k4p3 #0"
+      ]
+     }
+    }
+   },
+   "comparator_seconds": 60.0,
+   "run": "20261127-030114-7e318060+",
+   "comparators_run": "20261127-030114-7e318060+"
   }
  ]
 }

@@ -21,9 +21,11 @@ tests/cluster/refdata.py:
               spanning tree weights (refdata.distance_bound), stabilities (stability_bound), probabilities and GLOSH
               scores (membership_strength_bound), the 'eom' and 'leaf' labels against the exact definition; OPTICS's
               reachabilities and order; comparator scikit-learn's DBSCAN, HDBSCAN and OPTICS, live
-  mixture     CL4: the log densities and responsibilities at given parameters (relative to max(1, |value|)) and
-              the M step at given responsibilities; comparator scikit-learn's GaussianMixture at the same
-              parameters (its one-pass diagonal covariance loses digits: 6.6e-12 measured at CL0)
+  mixture     CL4 (done): the log densities, the mixture's log density and the responsibilities at given factors
+              (refdata.mixture_bounds), the factors of given covariances (precision_bound) and the M step at given
+              responsibilities (mstep_bound), against mixture.npz; comparator scikit-learn's _estimate_log_gaussian_prob,
+              _compute_precision_cholesky and _estimate_gaussian_parameters at the same inputs (its expanded quadratic
+              forms of diag and spherical and its one-pass tied, diag and spherical moments lose digits)
   metrics     CL5: ARI, RI (correctly rounded: 0.5 ULP), FM, MI, NMI, AMI, homogeneity, completeness, V, the
               silhouettes, Calinski-Harabasz and Davies-Bouldin; comparator scikit-learn's indices
 """
@@ -466,6 +468,93 @@ def _density_regions(lib):
     return out
 
 
+# ---- mixtures (CL4) ---------------------------------------------------------------------------------------------------
+# mixture.npz: at the given factors U_f (scikit-learn's precisions_cholesky_ of the sets' covariances) the components'
+# log densities, the mixture's and the responsibilities in units of refdata.mixture_bounds (theorem 7); the factors
+# of the exact covariances in units of precision_bound; the M step at the rounded responsibilities in units of
+# mstep_bound (theorem 9). scikit-learn's functions at the same inputs are the comparator columns (its M step's
+# weights normalized as its _m_step does).
+
+_MIX_TYPES = {"full": 0, "tied": 1, "diag": 2, "spherical": 3}
+
+
+def _mixture_regions(lib):
+    import math
+
+    from tests.cluster import refdata as D
+    from tests.cluster import samples as S
+
+    r = D.ref("mixture")
+    pts = {}
+
+    def per(name, mid, kind, lo=True):
+        pos, idx = D.at(r, name, mid, kind)
+        o = np.argsort(idx, kind="stable")
+        m = r.methods[name]
+        return m.hi[pos[o]] + (m.lo[pos[o]] if lo else 0.0)
+
+    def add(key, where, err, bound):
+        e = pts.setdefault(key, {"where": [], "contract": [], "rel": []})
+        for q, (v, b) in enumerate(zip(np.ravel(err), np.ravel(bound))):
+            e["where"].append(f"{where} #{q}")
+            e["contract"].append(v / b if b > 0 else (0.0 if v == 0 else math.inf))
+            e["rel"].append(v)
+
+    for mid in S.mixture_ids():
+        mx = S.mixture(mid)
+        k, p, t = mx.k, mx.p, mx.covariance_type
+        shape = {"full": (k, p, p), "tied": (p, p), "diag": (k, p), "spherical": (k,)}[t]
+        U = np.asarray(r.group_inputs["prec_chol"][D.group_of(r, mid)], float).reshape(shape)
+        wlp_ref = np.column_stack([per(f"logdens_u_{j}", mid, 0) + math.log(mx.weights[j]) for j in range(k)])
+        bE, bs, br = D.mixture_bounds(t, mx.X, mx.weights, mx.means, U, wlp_ref)
+        Rf = np.column_stack([per(f"resp_{j}", mid, 0, lo=False) for j in range(k)])  # the reference M step's input
+        if lib == "sd":
+            import stardust as sd
+
+            core = sd._core.cluster
+            blocks = U if t == "full" else (np.repeat(U[None], k, 0) if t == "tied" else None)
+            ld = (np.array([np.sum(np.log(np.diag(B))) for B in blocks]) if blocks is not None
+                  else (np.sum(np.log(U), axis=1) if t == "diag" else p * np.log(U)))  # fmt: skip
+            comp = []
+            for j in range(k):
+                Uj = U[j : j + 1] if t != "tied" else U
+                _, _, lj = core.gmm_estimate(sd.asarray(mx.X), sd.asarray(mx.means[j : j + 1]),
+                                             sd.asarray(np.ascontiguousarray(Uj)), sd.asarray(ld[j : j + 1]),
+                                             sd.asarray(np.zeros(1)), _MIX_TYPES[t], 0)  # fmt: skip
+                comp.append(np.asarray(lj))
+            comp = np.column_stack(comp)
+            _, resp, lpn = core.gmm_estimate(sd.asarray(mx.X), sd.asarray(mx.means), sd.asarray(np.ascontiguousarray(U)),
+                                             sd.asarray(ld), sd.asarray(np.log(mx.weights)), _MIX_TYPES[t], 0)  # fmt: skip
+            resp, lpn = np.asarray(resp), np.asarray(lpn)
+            fac = core.gmm_precisions(sd.asarray(np.ascontiguousarray(mx.covariances)), _MIX_TYPES[t], k, p)
+            Ug = np.asarray(fac[0])
+            w, m, c = core.gmm_mstep(sd.asarray(mx.X), sd.asarray(Rf), _MIX_TYPES[t], 1e-6)
+            ms = np.concatenate([np.asarray(w).ravel(), np.asarray(m).ravel(), np.asarray(c).ravel()])
+        else:
+            from scipy.special import logsumexp
+            from sklearn.mixture import _gaussian_mixture as G
+
+            comp = G._estimate_log_gaussian_prob(mx.X, mx.means, U, t)
+            wl = comp + np.log(mx.weights)
+            lpn = logsumexp(wl, axis=1)
+            resp = np.exp(wl - lpn[:, None])
+            Ug = G._compute_precision_cholesky(np.asarray(mx.covariances, float), t)
+            nk, m, c = G._estimate_gaussian_parameters(mx.X, Rf, 1e-6, t)
+            ms = np.concatenate([nk / nk.sum(), m.ravel(), np.asarray(c).ravel()])
+        add("mixture/logdens", mid, np.abs(comp - (wlp_ref - np.log(mx.weights))), bE)
+        add("mixture/score", mid, np.abs(lpn - per("score_u", mid, 0)), bs)
+        rr = np.column_stack([per(f"resp_u_{j}", mid, 0) for j in range(k)])
+        add("mixture/resp", mid, np.abs(resp - rr), br)
+        uref = per("prec_chol", mid, 2).reshape(shape)
+        add("mixture/prec_chol", mid, np.abs(Ug - uref), D.precision_bound(t, mx.covariances, uref, k, p))
+        mref = per("mstep", mid, 1)
+        add("mixture/mstep", mid, np.abs(ms - mref), D.mstep_bound(t, mx.X, Rf, mref))
+    return {
+        key: region(p["where"], rel=np.array(p["rel"]), contract=np.array(p["contract"]), bound=1.0)
+        for key, p in sorted(pts.items())
+    }
+
+
 def sweeps():
     return [
         Custom(
@@ -478,4 +567,5 @@ def sweeps():
         Custom("cluster", "kmedoids", lambda: _kmedoids_regions("sd"), compare_libs(_kmedoids_regions, ("R",))),
         Custom("cluster", "fuzzy", _fuzzy_regions),
         Custom("cluster", "density", lambda: _density_regions("sd"), compare_libs(_density_regions, ("sklearn",))),
+        Custom("cluster", "mixture", lambda: _mixture_regions("sd"), compare_libs(_mixture_regions, ("sklearn",))),
     ]

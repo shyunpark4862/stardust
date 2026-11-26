@@ -28,6 +28,7 @@
 //   kmeans_predict(X, C, Cs, e, path) -> (labels, sqd)   the nearest centres of new rows (predict)
 //   kmeans_distinct(X, w) -> int                          distinct rows of positive weight (rows in key order)
 //   first_seen(labels, order, k) -> (labels, numbers)     key-order labels to the input's order, renumbered (CL6)
+//   kmeans_plusplus(X, order, k, key0, key1, r) -> (k,)   the key ranks k-means++ picks (start r; the mixtures' start)
 //   minibatch_kmeans(...), bisecting_kmeans(...)          below
 //   _kmeans_assign_expanded(X, C) -> labels               Accelerate's expanded form alone (measurements only)
 #include "cluster/cluster.hpp"
@@ -561,7 +562,9 @@ void sqd_all(const Data& D, const double* c, double* out) {
 // probability w D^2 by the running sums of CL48's order, the one of smallest potential sum w min(D^2, d^2) kept,
 // the smaller candidate number on a tie). Start r draws element r 2^40 + t: t = 0 the first centre, then
 // t = 1 + (c - 1) L + q for candidate q of centre c.
-std::vector<double> plusplus(const Data& D, int64_t k, random::Key key, std::uint64_t r) {
+std::vector<double> plusplus(
+    const Data& D, int64_t k, random::Key key, std::uint64_t r, std::vector<int64_t>* picked = nullptr
+) {
     const int64_t n = D.n, p = D.p;
     random::Stream st(key);
     std::vector<double> C(static_cast<size_t>(k * p)), Dm(static_cast<size_t>(n)), P(static_cast<size_t>(n)),
@@ -569,6 +572,7 @@ std::vector<double> plusplus(const Data& D, int64_t k, random::Key key, std::uin
     for (int64_t i = 0; i < n; ++i) v[static_cast<size_t>(i)] = D.weight(i);
     running_sums(v.data(), n, P.data());
     int64_t first = pick(P.data(), n, uniform(st, element(r, 0)));
+    if (picked) picked->assign(1, first);
     std::copy(D.X + first * p, D.X + (first + 1) * p, C.begin());
     sqd_all(D, D.X + first * p, Dm.data());
     const int64_t L = 2 + static_cast<int64_t>(std::log(static_cast<double>(k)));
@@ -624,6 +628,7 @@ std::vector<double> plusplus(const Data& D, int64_t k, random::Key key, std::uin
         for (int64_t q = 1; q < L; ++q)
             if (pots[static_cast<size_t>(q)] < pots[static_cast<size_t>(best)]) best = q;
         const int64_t pick_i = cand[static_cast<size_t>(best)];
+        if (picked) picked->push_back(pick_i);
         std::copy(D.X + pick_i * p, D.X + (pick_i + 1) * p, C.begin() + c * p);
         std::vector<double> dn(static_cast<size_t>(n));
         sqd_all(D, D.X + pick_i * p, dn.data());
@@ -1448,6 +1453,21 @@ nb::object first_seen_py(nb::handle labo, nb::handle ordo, int64_t k) {
     return nb::make_tuple(wrap(int_array(in, n)), wrap(int_array(num, k)));
 }
 
+// The rows k-means++ picks (start r of the stream keyed by key0, key1; CL63): their ranks in key order, in the order
+// picked (gaussian_mixture's init='k-means++', as scikit-learn's GaussianMixture takes kmeans_plusplus's indices).
+nb::object plusplus_py(nb::handle Xo, nb::handle ordo, int64_t k, int64_t key0, int64_t key1, int64_t r) {
+    const Args A = fit_args(Xo, ordo, nb::none());
+    if (k < 1 || k > A.n || r < 0) throw nb::value_error("k");
+    std::vector<int64_t> idx;
+    {
+        const parallel::Unlocked unlocked(A.n * A.p >= kSplitWork);
+        const KeyRows R(A.X, A.order, nullptr, A.n, A.p);
+        const Data D = R.data();
+        (void)plusplus(D, k, key_of(key0, key1), static_cast<std::uint64_t>(r), &idx);
+    }
+    return wrap(int_array(idx, k));
+}
+
 // Accelerate's expanded form alone (sklearn's): the measurements' baseline (tools/cluster_probe.py); single: with
 // Accelerate held to one thread for the call (BLASSetThreading), else Accelerate's own threads
 nb::object assign_expanded_py(nb::handle Xo, nb::handle Co, bool single) {
@@ -1515,6 +1535,10 @@ void bind_kmeans(nb::module_& m) {
     );
     m.def("kmeans_distinct", &kmeans_distinct_py, nb::arg("X"), nb::arg("order"), nb::arg("w").none());
     m.def("first_seen", &first_seen_py, nb::arg("labels"), nb::arg("order"), nb::arg("k"));
+    m.def(
+        "kmeans_plusplus", &plusplus_py, nb::arg("X"), nb::arg("order"), nb::arg("k"), nb::arg("key0"), nb::arg("key1"),
+        nb::arg("r")
+    );
     m.def("_kmeans_assign_expanded", &assign_expanded_py, nb::arg("X"), nb::arg("C"), nb::arg("single") = false);
 }
 

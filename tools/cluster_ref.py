@@ -51,9 +51,14 @@ lexicographic ranks, samples.lex_rank) and "gap" records how close the runner-up
                 (weight, min key, max key) order; fields a, b the input indices, a < b)
     mixture     for each samples.mixtures set: score (kind 0: the log density of the mixture at the point,
                 logsumexp of log w_j + log N(x; mu_j, Sigma_j)), logdens_<j> and resp_<j> (the component's log
-                density and responsibility) in Arb from the exact inverse and determinant (fmpq_mat); mstep
-                (kind 1): sklearn's M step from the rounded responsibilities (weights, means, covariances in
-                sklearn's shapes, reg_covar 1e-6 added), exact rationals, index in that order
+                density and responsibility) in Arb from the exact inverse and determinant (fmpq_mat); the same at
+                the given factors U_f (group input prec_chol: scikit-learn's precisions_cholesky_ of the
+                covariances as doubles, its shape flattened): score_u, logdens_u_<j>, resp_u_<j> (the quadratic
+                form ||U_f^T (x - mu)||^2 exact, log det U_f in Arb); prec_chol (kind 2): the exact factor U* of the
+                exact covariance (U* U*^T = S^-1, Arb), index the flattened position; mstep (kind 1): the M step of
+                decision CL75 from the rounded responsibilities (nk = sum r + 10 eps; weights nk / sum nk, means,
+                covariances about the means in sklearn's shapes, reg_covar 1e-6 added), exact rationals, index
+                in that order
     metrics     per labeling (one group each): ari, ri, fm, mi, nmi_<avg> and ami_<avg> for the four
                 averages, homogeneity, completeness, v (beta 1) over the groups (Fraction for ari, ri and the
                 counts; Arb otherwise, AMI's expectation the exact hypergeometric sum with lgamma, left out
@@ -1106,6 +1111,40 @@ def _covs(mx):
     return out
 
 
+def _prec_chol_f(mx):
+    """The given factors U_f (doubles, scikit-learn's shapes): scikit-learn's _compute_precision_cholesky of the
+    set's covariances (any doubles would do: the references are exact at these)."""
+    from sklearn.mixture._gaussian_mixture import _compute_precision_cholesky
+
+    return np.asarray(_compute_precision_cholesky(np.asarray(mx.covariances, float), mx.covariance_type), float)
+
+
+def _factor_blocks(mx, U):
+    """The upper triangular p x p factor of each component from an array in scikit-learn's shape."""
+    k, p = mx.k, mx.p
+    t = mx.covariance_type
+    if t == "full":
+        return [U[j] for j in range(k)]
+    if t == "tied":
+        return [U] * k
+    if t == "diag":
+        return [np.diag(U[j]) for j in range(k)]
+    return [np.eye(p) * U[j] for j in range(k)]
+
+
+def _upper_of_precision(P):
+    """U (upper, Arb) with U U^T = P for an exact rational matrix P, from the last row up (the current precision)."""
+    p = P.nrows()
+    U = [[arb(0)] * p for _ in range(p)]
+    for j in range(p - 1, -1, -1):
+        s = arb_q(P[j, j]) - sum((U[j][t] ** 2 for t in range(j + 1, p)), arb(0))
+        U[j][j] = s.sqrt()
+        for i in range(j - 1, -1, -1):
+            v = arb_q(P[i, j]) - sum((U[i][t] * U[j][t] for t in range(j + 1, p)), arb(0))
+            U[i][j] = v / U[j][j]
+    return U
+
+
 def mixture_task(mid):
     mx = S().mixture(mid)
     k, p = mx.k, mx.p
@@ -1114,57 +1153,91 @@ def mixture_task(mid):
     dets = [C.det() for C in covs]
     mu = [[Q(v) for v in row] for row in mx.means]
     lw = [Q(v) for v in mx.weights]
+    Uf = _prec_chol_f(mx)
+    Ub = [[[Q(v) for v in row] for row in B] for B in _factor_blocks(mx, Uf)]
     pts = []
     resp_f = []
     for i, x in enumerate(mx.X):
         xq = [Q(v) for v in x]
-        quads = []
+        quads, quads_u = [], []
         for j in range(k):
-            dvec = fmpq_mat([[xq[t] - mu[j][t]] for t in range(p)])
+            z = [xq[t] - mu[j][t] for t in range(p)]
+            dvec = fmpq_mat([[v] for v in z])
             quads.append((dvec.transpose() * invs[j] * dvec)[0, 0])
+            y = [sum((Ub[j][d][e] * z[d] for d in range(p)), fmpq(0)) for e in range(p)]  # U_f^T z
+            quads_u.append(sum((v * v for v in y), fmpq(0)))
 
         def logdens(j):
             return arb_q(lw[j]).log() - arb_q(quads[j]) / 2 - arb_q(dets[j]).log() / 2 - p * (2 * arb.pi()).log() / 2
 
-        def score():
-            ls = [logdens(j) for j in range(k)]
+        def logdens_u(j):  # at the given factor U_f: -q/2 - p/2 log(2 pi) + sum log U_dd, plus log w
+            ld = sum((arb_q(Ub[j][d][d]).log() for d in range(p)), arb(0))
+            return arb_q(lw[j]).log() - arb_q(quads_u[j]) / 2 + ld - p * (2 * arb.pi()).log() / 2
+
+        def lse(f):
+            ls = [f(j) for j in range(k)]
             m = max(ls, key=lambda v: v.mid())
             return m + sum(((v - m).exp() for v in ls), arb(0)).log()
 
-        ms = {"score": (*settle(score), {})}
+        def score():
+            return lse(logdens)
+
+        def score_u():
+            return lse(logdens_u)
+
+        ms = {"score": (*settle(score), {}), "score_u": (*settle(score_u), {})}
         rf = []
         for j in range(k):
             ms[f"logdens_{j}"] = (*settle(lambda j=j: logdens(j) - arb_q(lw[j]).log()), {})
             hj = settle(lambda j=j: (logdens(j) - score()).exp())
             ms[f"resp_{j}"] = (*hj, {})
             rf.append(hj[0])
+            ms[f"logdens_u_{j}"] = (*settle(lambda j=j: logdens_u(j) - arb_q(lw[j]).log()), {})
+            ms[f"resp_u_{j}"] = (*settle(lambda j=j: (logdens_u(j) - score_u()).exp()), {})
         resp_f.append(rf)
         pts.append((0, i, ms))
-    # M step from the rounded responsibilities (sklearn's _estimate_gaussian_parameters, reg_covar 1e-6)
+    # the exact factors U* of the exact covariances (U* U*^T = S^-1), scikit-learn's shape, flattened
+    t = mx.covariance_type
+    if t in ("full", "tied"):
+        blocks = invs if t == "full" else invs[:1]
+        q = 0
+        for P in blocks:
+            for a in range(p):
+                for b in range(p):
+                    h = settle(lambda P=P, a=a, b=b: _upper_of_precision(P)[a][b]) if b >= a else (0.0, 0.0)
+                    pts.append((2, q, {"prec_chol": (*h, {})}))
+                    q += 1
+    else:
+        for q, v in enumerate(np.asarray(mx.covariances, float).ravel()):
+            h = settle(lambda v=v: 1 / arb_q(Q(v)).sqrt())
+            pts.append((2, q, {"prec_chol": (*h, {})}))
+    # M step from the rounded responsibilities (decision CL75: nk = sum r + 10 eps, the means, the second moments
+    # about them, reg_covar 1e-6; weights nk / sum nk; tied over sum nk; spherical the mean of the diagonal)
     R = [[Q(v) for v in row] for row in resp_f]
     Xq = [[Q(v) for v in row] for row in mx.X]
     m = len(Xq)
     reg = Q(1e-6)
-    nk = [sum((R[i][j] for i in range(m)), fmpq(0)) for j in range(k)]
+    guard = Q(10 * 2.0**-52)
+    nk = [sum((R[i][j] for i in range(m)), fmpq(0)) + guard for j in range(k)]
+    nsum = sum(nk, fmpq(0))
     means = [[sum((R[i][j] * Xq[i][t] for i in range(m)), fmpq(0)) / nk[j] for t in range(p)] for j in range(k)]
-    vals = [nk[j] / m for j in range(k)]
+    vals = [nk[j] / nsum for j in range(k)]
     vals += [means[j][t] for j in range(k) for t in range(p)]
-    if mx.covariance_type == "full":
+    if t == "full":
         for j in range(k):
             for a in range(p):
                 for b in range(p):
                     v = sum((R[i][j] * (Xq[i][a] - means[j][a]) * (Xq[i][b] - means[j][b]) for i in range(m)), fmpq(0))
                     vals.append(v / nk[j] + (reg if a == b else 0))
-    elif mx.covariance_type == "tied":
-        # sklearn: (X'X - sum_j nk_j mu_j mu_j') / n + reg, written as the centred sum
+    elif t == "tied":
         for a in range(p):
             for b in range(p):
                 v = sum(
                     (R[i][j] * (Xq[i][a] - means[j][a]) * (Xq[i][b] - means[j][b]) for i in range(m) for j in range(k)),
                     fmpq(0),
                 )
-                vals.append(v / sum(nk, fmpq(0)) + (reg if a == b else 0))
-    elif mx.covariance_type == "diag":
+                vals.append(v / nsum + (reg if a == b else 0))
+    elif t == "diag":
         for j in range(k):
             for a in range(p):
                 v = sum((R[i][j] * (Xq[i][a] - means[j][a]) ** 2 for i in range(m)), fmpq(0))
@@ -1172,14 +1245,14 @@ def mixture_task(mid):
     else:
         for j in range(k):
             v = sum((R[i][j] * (Xq[i][a] - means[j][a]) ** 2 for i in range(m) for a in range(p)), fmpq(0))
-            vals.append(v / nk[j] / p + reg)
+            vals.append((v / nk[j] + p * reg) / p)
     for q, v in enumerate(vals):
         h, lo = dd_of(v)
         pts.append((1, q, {"mstep": (h, lo, {})}))
     return {
         "set": mid,
         "digest": mx.digest,
-        "ginputs": {"covariance_type": np.array(mx.covariance_type), "k": np.array(k)},
+        "ginputs": {"covariance_type": np.array(mx.covariance_type), "k": np.array(k), "prec_chol": Uf.ravel()},
         "points": pts,
         "gmethods": {},
     }
@@ -1415,7 +1488,7 @@ EXTRA = {
     "kmeans": "exact rationals (fmpq)",
     "fuzzy": "exact rationals (fmpq); m = 3's square roots in Arb",
     "density": "exact rationals (fmpq)",
-    "mixture": "exact rationals (fmpq, fmpq_mat)",
+    "mixture": "exact rationals (fmpq, fmpq_mat); log, exp and the factors' square roots in Arb",
     "metrics": "exact rationals (Fraction)",
 }
 

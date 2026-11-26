@@ -20,10 +20,15 @@ allow_single_cluster, alpha; max_eps, xi, predecessor_correction, cluster_method
 the results' dbscan_clustering, extract_xi and extract_dbscan, nan_policy, the wrong calls, and cases of tens of
 thousands of points.
 
+The Gaussian mixtures (CL4 milestone): gaussian_mixture on those point sets for the four covariance types, each
+start (init), n_init, tol, reg_covar, max_iter (0 included), the given weights, means and precisions, the results'
+predict, predict_proba, score_samples and sample, nan_policy, an ill-defined covariance, the wrong calls, and cases
+of tens of thousands of points.
+
 The plan for the rest (docs/design/cluster.md §7.5): every public function on the representatives of
-tests/cluster/samples.py times each option's values (covariance_type, reg_covar; average_method, beta), the
-results' methods (predict, sample with its rng), NaN under each nan_policy and the same points in two orders
-(decision CL7). Results are the same at 1, 3 and 10 threads (decision CL9), so no case is thread dependent.
+tests/cluster/samples.py times each option's values (average_method, beta), NaN under each nan_policy and the same
+points in two orders (decision CL7). Results are the same at 1, 3 and 10 threads (decision CL9), so no case is
+thread dependent.
 """
 
 import math
@@ -392,8 +397,100 @@ def _density_cases(L):
     yield "optics 12000 max_eps", lambda: cl.optics(a(big[::3]), max_eps=0.3, cluster_method="dbscan", eps=0.1)
 
 
+def _mixture_cases(L):
+    """Milestone CL4: gaussian_mixture on the hierarchy's point sets, the covariance types, the starts and options,
+    the results' methods (predict, predict_proba, score_samples, sample), NaN, the errors and large cases."""
+    sd, np = L.sd, L.np
+    a = L.arr
+    cl = sd.cluster
+
+    def g(seed=0):
+        return sd.random.default_rng(seed)
+
+    sets = dict(_sets(L))
+    types = ("full", "tied", "diag", "spherical")
+    for name in ("blobs60", "overlap45", "p5_40", "lattice16", "lattice16_shuffled", "line7", "dups20", "hexagon7",
+                 "three", "collinear25", "narrow30", "shifted30", "huge30", "subnormal30"):  # fmt: skip
+        X = sets[name]
+        k = 2 if name in ("three", "line7") else 3
+        for t in types:
+            yield (
+                f"gaussian_mixture {name} {t}",
+                lambda X=X, k=k, t=t: cl.gaussian_mixture(a(X), k, rng=g(), covariance_type=t),
+            )
+    X = sets["blobs60"]
+    for init in ("kmeans", "k-means++", "random", "random_from_data"):
+        for t in types:
+            yield (
+                f"gaussian_mixture init={init} {t} n_init=3",
+                lambda init=init, t=t: cl.gaussian_mixture(a(X), 3, rng=g(1), init=init, covariance_type=t, n_init=3),
+            )
+    for kw in ({"tol": 1e-8}, {"tol": 0.0, "max_iter": 7}, {"reg_covar": 0.1}, {"reg_covar": 0.0}, {"max_iter": 0},
+               {"max_iter": 1}, {"k": 1}, {"k": 6}):  # fmt: skip
+        kk = kw.pop("k", 3)
+        yield f"gaussian_mixture k={kk} {sorted(kw.items())!r}", lambda kk=kk, kw=kw: cl.gaussian_mixture(
+            a(X), kk, rng=g(2), **kw)  # fmt: skip
+    w0 = np.array([0.2, 0.3, 0.5])
+    m0 = np.array([[0.0, 0.0], [6.0, 0.0], [0.0, 6.0]])
+    P0 = {"full": np.array([np.eye(2), 2 * np.eye(2), [[1.0, 0.3], [0.3, 1.0]]]), "tied": np.eye(2) * 1.5,
+          "diag": np.ones((3, 2)), "spherical": np.array([1.0, 0.5, 2.0])}  # fmt: skip
+    for t in types:
+        yield (
+            f"gaussian_mixture given {t}",
+            lambda t=t: cl.gaussian_mixture(
+                a(X), 3, rng=g(3), covariance_type=t, weights_init=a(w0), means_init=a(m0), precisions_init=a(P0[t])
+            ),
+        )
+        yield f"gaussian_mixture means_init {t}", lambda t=t: cl.gaussian_mixture(
+            a(X), 3, rng=g(3), covariance_type=t, means_init=a(m0))  # fmt: skip
+    Xe = np.array([[0.0, 0.0], [3.0, 3.0], [100.0, -50.0], [6.0, 0.5]])
+    for t in types:
+        r = cl.gaussian_mixture(a(X), 3, rng=g(), covariance_type=t)
+        yield f"GaussianMixtureResult {t} predict", lambda r=r: r.predict(a(Xe))
+        yield f"GaussianMixtureResult {t} predict_proba", lambda r=r: r.predict_proba(a(Xe))
+        yield f"GaussianMixtureResult {t} score_samples", lambda r=r: r.score_samples(a(Xe))
+        yield f"GaussianMixtureResult {t} sample", lambda r=r: r.sample((50,), rng=g(5))
+        yield f"GaussianMixtureResult {t} sample one", lambda r=r: r.sample(rng=g(6))
+    r = cl.gaussian_mixture(a(X), 3, rng=g())
+    yield "GaussianMixtureResult error predict columns", lambda: r.predict(a(np.zeros((2, 3))))
+    yield "GaussianMixtureResult error sample no rng", lambda: r.sample(5)
+    Xn = X.copy()
+    Xn[[3, 17], 0] = NAN
+    for pol in ("raise", "omit"):
+        yield (
+            f"gaussian_mixture nan_policy={pol}",
+            lambda pol=pol: cl.gaussian_mixture(a(Xn), 3, rng=g(), nan_policy=pol),
+        )
+    dup = np.repeat(np.array([[0.0, 0.0], [1.0, 1.0], [2.0, 0.5]]), 5, axis=0)
+    yield "gaussian_mixture error ill-defined", lambda: cl.gaussian_mixture(a(dup), 3, rng=g(), reg_covar=0.0)
+    yield "gaussian_mixture error no rng", lambda: cl.gaussian_mixture(a(X), 2)
+    yield "gaussian_mixture error n_components", lambda: cl.gaussian_mixture(a(X), 2, rng=g(), n_components=2)
+    yield "gaussian_mixture error covariance_type", lambda: cl.gaussian_mixture(a(X), 2, rng=g(), covariance_type="x")
+    yield "gaussian_mixture error weights_init", lambda: cl.gaussian_mixture(a(X), 2, rng=g(), weights_init=a(w0[:2]))
+    yield (
+        "gaussian_mixture error precisions_init",
+        lambda: cl.gaussian_mixture(
+            a(X), 1, rng=g(), covariance_type="tied", precisions_init=a(np.array([[1.0, 2.0], [2.0, 1.0]]))
+        ),
+    )
+    yield "gaussian_mixture error few distinct", lambda: cl.gaussian_mixture(a(np.zeros((5, 2))), 2, rng=g())
+    # large enough to split into tasks
+    rr = L.rng(13)
+    big = np.vstack([rr.normal(c, 1.0, (10000, 5)) for c in (0.0, 4.0, 8.0)])
+    for t in types:
+        yield f"gaussian_mixture 30000 {t}", lambda t=t: cl.gaussian_mixture(a(big), 4, rng=g(), covariance_type=t)
+    yield (
+        "gaussian_mixture 30000 p=30 random",
+        lambda: cl.gaussian_mixture(a(rr.standard_normal((20000, 30))), 3, rng=g(), init="random", max_iter=5),
+    )
+    rb = cl.gaussian_mixture(a(big), 3, rng=g())
+    yield "GaussianMixtureResult 30000 sample", lambda: rb.sample((20000,), rng=g(7))
+    yield "GaussianMixtureResult 30000 score_samples", lambda: rb.score_samples(a(big))
+
+
 def cases(L):
     yield from _linkage_cases(L)
     yield from _tool_cases(L)
     yield from _partition_cases(L)
     yield from _density_cases(L)
+    yield from _mixture_cases(L)
