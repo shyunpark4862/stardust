@@ -493,7 +493,7 @@ the entry $(AB)_{21}=-1$ is the inner product of the second row $(-1,3,1)$ of $A
 \label{fig:product-views}
 \end{figure}
 
-Each reading is useful in its own place. The entry reading is the one usually taught first, and it is the right one for computing a single entry. The column reading says that every column of $AB$ lies in the span of the columns of $A$, which \cref{ch:vector-spaces} uses to compare ranks, and it is the natural way to multiply when the matrices are stored column by column. The row reading is the transposed statement. The outer product reading writes $AB$ as a sum of $n$ \term{rank-one matrices}, matrices of the form $\mathbf u\mathbf v^{\mathsf T}$, all of whose columns are multiples of the single vector $\mathbf u$. It is the reading behind Gaussian elimination (\cref{ch:linear-systems}), where each step subtracts a rank-one matrix, and behind the singular value decomposition (Chapter~21), which writes a matrix as a sum of rank-one matrices ordered by importance; it also shows that the product can be accumulated in $n$ steps, each of which reads one column of $A$ and one row of $B$.
+Each reading is useful in its own place. The entry reading is the one usually taught first, and it is the right one for computing a single entry. The column reading says that every column of $AB$ lies in the span of the columns of $A$, which \cref{ch:vector-spaces} uses to compare ranks, and it is the natural way to multiply when the matrices are stored column by column. The row reading is the transposed statement. The outer product reading writes $AB$ as a sum of $n$ \term{rank-one matrices}, matrices of the form $\mathbf u\mathbf v^{\mathsf T}$, all of whose columns are multiples of the single vector $\mathbf u$. It is the reading behind Gaussian elimination (\cref{ch:linear-systems}), where each step subtracts a rank-one matrix, and behind the singular value decomposition (\cref{ch:svd}), which writes a matrix as a sum of rank-one matrices ordered by importance; it also shows that the product can be accumulated in $n$ steps, each of which reads one column of $A$ and one row of $B$.
 
 \subsection{Powers and Polynomials of a Matrix}
 
@@ -650,7 +650,7 @@ Let $A\in\mathbb R^{m\times n}$.
 (i) $B=BI_m=B(AC)=(BA)C=I_nC=C$, by associativity. (ii) If $BA=I$ and $A\mathbf x=A\mathbf y$, then $\mathbf x=BA\mathbf x=BA\mathbf y=\mathbf y$. (iii) $A(C\mathbf b)=(AC)\mathbf b=\mathbf b$. (iv) If $A$ is invertible, $L_A$ is injective and surjective by (ii) and (iii), and $L_{A^{-1}}\circ L_A=L_{A^{-1}A}=\operatorname{id}$, and likewise in the other order. Conversely, if $L_A$ is bijective, its inverse function $g$ is linear: for $\mathbf u=A\mathbf x$ and $\mathbf v=A\mathbf y$, $g(s\mathbf u+t\mathbf v)=g(A(s\mathbf x+t\mathbf y))=s\mathbf x+t\mathbf y=sg(\mathbf u)+tg(\mathbf v)$. By \cref{thm:matrices-linear-maps}, $g=L_B$ for a matrix $B$, and $L_{AB}=L_A\circ L_B=\operatorname{id}=L_{BA}$ gives $AB=BA=I$.
 \end{proof}
 
-The column vector $\mathbf a=(1,2)$, a $2\times1$ matrix, shows the asymmetry of the two sides. The map $L_{\mathbf a}\colon t\mapsto t\mathbf a$ from $\mathbb R$ to $\mathbb R^2$ is injective, and every row $(b_1,b_2)$ with $b_1+2b_2=1$ is a left inverse, for example $(1,0)$, $(0,1/2)$ and $(1,2)/5$; each of them recovers $t$ from the point $t\mathbf a$, but each in a different way, by reading off the first coordinate, half the second coordinate, or the projection onto the line. There is no right inverse: for every row $\mathbf b^{\mathsf T}=(b_1,b_2)$, the product $\mathbf a\mathbf b^{\mathsf T}$ has the rows $(b_1,b_2)$ and $(2b_1,2b_2)$, the second twice the first, and so it is not $I_2$. Correspondingly, $L_{\mathbf a}$ is not surjective: its image is a line. Chapter~21 singles out the left inverse $(1,2)/5$, the one given by orthogonal projection, as the \emph{pseudoinverse}.
+The column vector $\mathbf a=(1,2)$, a $2\times1$ matrix, shows the asymmetry of the two sides. The map $L_{\mathbf a}\colon t\mapsto t\mathbf a$ from $\mathbb R$ to $\mathbb R^2$ is injective, and every row $(b_1,b_2)$ with $b_1+2b_2=1$ is a left inverse, for example $(1,0)$, $(0,1/2)$ and $(1,2)/5$; each of them recovers $t$ from the point $t\mathbf a$, but each in a different way, by reading off the first coordinate, half the second coordinate, or the projection onto the line. There is no right inverse: for every row $\mathbf b^{\mathsf T}=(b_1,b_2)$, the product $\mathbf a\mathbf b^{\mathsf T}$ has the rows $(b_1,b_2)$ and $(2b_1,2b_2)$, the second twice the first, and so it is not $I_2$. Correspondingly, $L_{\mathbf a}$ is not surjective: its image is a line. \Cref{ch:svd} singles out the left inverse $(1,2)/5$, the one given by orthogonal projection, as the \emph{pseudoinverse}.
 
 For square matrices the asymmetry disappears. This is a genuinely deeper fact, because it depends on the dimension being the same on both sides.
 
@@ -698,7 +698,7 @@ For a $2\times2$ matrix, singularity means $\det A=ad-bc=0$, by \cref{prop:inver
 \[
 \frac1\varepsilon\begin{bmatrix}1+\varepsilon&-1\\-1&1\end{bmatrix},
 \]
-which blows up as $\varepsilon\to0$. How close a matrix is to being singular, relative to its size, is measured by its condition number, which \cref{sec:trace-norms} prepares and Chapter~21 and Volume~VIII develop.
+which blows up as $\varepsilon\to0$. How close a matrix is to being singular, relative to its size, is measured by its condition number, which \cref{sec:trace-norms} prepares and \cref{ch:svd} and Volume~VIII develop.
 
 If $A$ is invertible, the system $A\mathbf x=\mathbf b$ has the unique solution $\mathbf x=A^{-1}\mathbf b$. This formula is the right way to \emph{think} about the solution, but not the right way to \emph{compute} it: \cref{sec:computing-matrices} explains why the inverse is almost never formed in practice.
 
@@ -1129,7 +1129,7 @@ The set $\mathbb R^{m\times n}$ is a copy of $\mathbb R^{mn}$, and the Euclidean
 \[
 \langle A,B\rangle_{\mathrm F}\coloneqq\sum_{i=1}^m\sum_{j=1}^na_{ij}b_{ij}=\operatorname{tr}(A^{\mathsf T}B),
 \]
-where the last equality holds because the $j$th diagonal entry of $A^{\mathsf T}B$ is $\sum_ia_{ij}b_{ij}$. The corresponding norm is the Frobenius norm $\|A\|_{\mathrm F}=\langle A,A\rangle_{\mathrm F}^{1/2}=\bigl(\sum_{i,j}a_{ij}^2\bigr)^{1/2}$ of \cref{prop:matrix-norms}, which showed that $\|A\mathbf x\|\le\|A\|_{\mathrm F}\|\mathbf x\|$ and $\|AB\|_{\mathrm F}\le\|A\|_{\mathrm F}\|B\|_{\mathrm F}$. Everything proved about inner products on $\mathbb R^{mn}$ holds for it; the Cauchy--Schwarz inequality, for instance, reads $|\operatorname{tr}(A^{\mathsf T}B)|\le\|A\|_{\mathrm F}\|B\|_{\mathrm F}$. Two further facts make the Frobenius norm convenient: it adds up over columns, $\|A\|_{\mathrm F}^2=\sum_j\|\mathbf a_j\|^2$, and it is unchanged by orthogonal transformations, $\|QA\|_{\mathrm F}=\|A\|_{\mathrm F}=\|AQ'\|_{\mathrm F}$ for orthogonal $Q$ and $Q'$, because $Q$ preserves the length of every column of $A$, and $\|AQ'\|_{\mathrm F}=\|Q'^{\mathsf T}A^{\mathsf T}\|_{\mathrm F}$. Chapter~21 measures the distance of a matrix from the matrices of low rank in this norm.
+where the last equality holds because the $j$th diagonal entry of $A^{\mathsf T}B$ is $\sum_ia_{ij}b_{ij}$. The corresponding norm is the Frobenius norm $\|A\|_{\mathrm F}=\langle A,A\rangle_{\mathrm F}^{1/2}=\bigl(\sum_{i,j}a_{ij}^2\bigr)^{1/2}$ of \cref{prop:matrix-norms}, which showed that $\|A\mathbf x\|\le\|A\|_{\mathrm F}\|\mathbf x\|$ and $\|AB\|_{\mathrm F}\le\|A\|_{\mathrm F}\|B\|_{\mathrm F}$. Everything proved about inner products on $\mathbb R^{mn}$ holds for it; the Cauchy--Schwarz inequality, for instance, reads $|\operatorname{tr}(A^{\mathsf T}B)|\le\|A\|_{\mathrm F}\|B\|_{\mathrm F}$. Two further facts make the Frobenius norm convenient: it adds up over columns, $\|A\|_{\mathrm F}^2=\sum_j\|\mathbf a_j\|^2$, and it is unchanged by orthogonal transformations, $\|QA\|_{\mathrm F}=\|A\|_{\mathrm F}=\|AQ'\|_{\mathrm F}$ for orthogonal $Q$ and $Q'$, because $Q$ preserves the length of every column of $A$, and $\|AQ'\|_{\mathrm F}=\|Q'^{\mathsf T}A^{\mathsf T}\|_{\mathrm F}$. \Cref{ch:svd} measures the distance of a matrix from the matrices of low rank in this norm.
 
 \subsection{Operator Norms}
 
@@ -1143,7 +1143,7 @@ For $A\in\mathbb R^{m\times n}$ and $p\in\{1,2,\infty\}$, the \term{operator nor
 \]
 \end{definition}
 
-For $p=2$ this is the operator norm of \cref{prop:matrix-norms}. Unlike $\|A\|_2$, which Chapter~21 computes as the largest singular value of $A$, the norms for $p=1$ and $p=\infty$ have simple formulas.
+For $p=2$ this is the operator norm of \cref{prop:matrix-norms}. Unlike $\|A\|_2$, which \cref{ch:svd} computes as the largest singular value of $A$, the norms for $p=1$ and $p=\infty$ have simple formulas.
 
 \begin{theorem}[The \texorpdfstring{$1$}{1}-norm and the \texorpdfstring{$\infty$}{infinity}-norm of a matrix]
 \label{thm:norm-formulas}
@@ -1181,7 +1181,7 @@ Let $p\in\{1,2,\infty\}$. For all matrices whose shapes fit:
 For $p=2$, (i) to (iii) are \cref{prop:matrix-norms}, and the proof given there works for $p=1$ and $p=\infty$ as well, since it uses only the norm properties of $\|\cdot\|_p$ and the finiteness of the supremum, which \cref{thm:norm-formulas} provides. $\|I\|_p=1$ because $\|I\mathbf x\|_p=\|\mathbf x\|_p$. For (iv), $|a_{ij}|$ is at most the $j$th column sum and the $i$th row sum, and at most $\|A\|_2$ by \cref{prop:matrix-norms}\,(iii); and a column or row sum of $n$ terms is at most $n\max|a_{kl}|$, as is $\|A\|_{\mathrm F}=(\sum a_{kl}^2)^{1/2}\le(n^2\max a_{kl}^2)^{1/2}$, which bounds $\|A\|_2$ by \cref{prop:matrix-norms}\,(i).
 \end{proof}
 
-For the matrix with the rows $(1,-2)$ and $(3,4)$, the column sums are $4$ and $6$ and the row sums $3$ and $7$, so $\|A\|_1=6$ and $\|A\|_\infty=7$, while $\|A\|_{\mathrm F}=\sqrt{30}=5.477\ldots$ and, as Chapter~21 will show, $\|A\|_2=(15+5\sqrt5)^{1/2}=5.1166\ldots$. The four numbers differ, but by (iv) they are within a factor $n$ of each other and of the largest entry. In particular, a sequence of matrices $A_k$ converges entrywise to $A$ if and only if $\|A_k-A\|\to0$ in any of these norms, as for vectors in \cref{prop:componentwise}. The submultiplicativity (iii) is what makes operator norms useful for products and powers: $\|A^k\|_p\le\|A\|_p^k$.
+For the matrix with the rows $(1,-2)$ and $(3,4)$, the column sums are $4$ and $6$ and the row sums $3$ and $7$, so $\|A\|_1=6$ and $\|A\|_\infty=7$, while $\|A\|_{\mathrm F}=\sqrt{30}=5.477\ldots$ and, as \cref{ch:svd} will show, $\|A\|_2=(15+5\sqrt5)^{1/2}=5.1166\ldots$. The four numbers differ, but by (iv) they are within a factor $n$ of each other and of the largest entry. In particular, a sequence of matrices $A_k$ converges entrywise to $A$ if and only if $\|A_k-A\|\to0$ in any of these norms, as for vectors in \cref{prop:componentwise}. The submultiplicativity (iii) is what makes operator norms useful for products and powers: $\|A^k\|_p\le\|A\|_p^k$.
 
 \subsection{The Neumann Series}
 
@@ -1241,7 +1241,7 @@ By the corollary, every matrix close enough to an invertible matrix is invertibl
 \[
 \frac{\|(A+E)^{-1}-A^{-1}\|}{\|A^{-1}\|}\le\frac{\kappa(A)\,\|E\|/\|A\|}{1-\kappa(A)\,\|E\|/\|A\|},\qquad\kappa(A)\coloneqq\|A\|\,\|A^{-1}\|,
 \]
-in which the relative perturbation $\|E\|/\|A\|$ of the matrix is amplified by the \term{condition number} $\kappa(A)$. This number, the matrix counterpart of the condition number of \cref{sec:conditioning}, governs the accuracy of every method for linear systems; Chapter~21 and Volume~VIII study it.
+in which the relative perturbation $\|E\|/\|A\|$ of the matrix is amplified by the \term{condition number} $\kappa(A)$. This number, the matrix counterpart of the condition number of \cref{sec:conditioning}, governs the accuracy of every method for linear systems; \cref{ch:svd} and Volume~VIII study it.
 
 \section{Complex Vectors and Matrices}
 \label{sec:complex-matrices}

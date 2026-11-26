@@ -1308,7 +1308,7 @@ In the other direction, let $U_n$ be the unit upper triangular matrix with $1$ o
 \]
 which vanishes for $\varepsilon=-2^{-(n-2)}$. For $n=60$ a change of a single entry by $2^{-58}\approx3.5\times10^{-18}$ makes the matrix singular, although its determinant is $1$. We confirmed this in exact rational arithmetic; the library routine \code{linalg.det}, which \cref{sec:det-overflow} describes, returned exactly $1$ for $U_{60}$ and $1.1\times10^{-16}$ for the perturbed matrix.
 
-The measure of nearness to singularity is the condition number of \cref{sec:trace-norms}, not the determinant: with $\kappa_2(A)\coloneqq\|A\|_2\|A^{-1}\|_2$, the number $1/\kappa_2(A)$ is the distance from $A$ to the nearest singular matrix in the norm $\|\cdot\|_2$, relative to $\|A\|_2$, as Chapter~21 shows with the singular value decomposition.
+The measure of nearness to singularity is the condition number of \cref{sec:trace-norms}, not the determinant: with $\kappa_2(A)\coloneqq\|A\|_2\|A^{-1}\|_2$, the number $1/\kappa_2(A)$ is the distance from $A$ to the nearest singular matrix in the norm $\|\cdot\|_2$, relative to $\|A\|_2$, as \cref{ch:svd} shows with the singular value decomposition.
 
 The determinant has a condition number of its own. By case (iii) after \cref{thm:jacobi-formula}, a perturbation $E$ changes $\det A$ by the relative amount $\operatorname{tr}(A^{-1}E)=\sum_{i,j}(A^{-1})_{ji}e_{ij}$ to first order. If every entry is perturbed by at most a fraction $\varepsilon$ of itself, $|e_{ij}|\le\varepsilon|a_{ij}|$, as when the entries are rounded to floating-point numbers with $\varepsilon=u$, then the relative change is at most $\varepsilon\,\kappa_{\det}(A)$ to first order, with
 \[
