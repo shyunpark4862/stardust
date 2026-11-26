@@ -28,18 +28,21 @@
 //                quadratic form by tiles of four columns e x eight points (quad_full); the second moments of full and
 //                tied keep a tile of four rows x eight columns in registers through a batch of 128 terms (Moments).
 //                Every element's operations are those of the scalar definition in its order, so the bits do not
-//                depend on a point's block or the tiling.
+//                depend on a point's block or the tiling. Full and tied with large p and few threads take y = U^T z
+//                from Accelerate instead (CL107, blas_estep): the same definition, y's sums in Accelerate's order,
+//                so those bits depend on the thread count set (the same on every run with it, D-33).
 //
 // _core.cluster:
-//   gmm_fit(X, order, k, type, init, init_data, w0, m0, P0, n_init, max_iter, tol, reg, key0, key1)
+//   gmm_fit(X, order, k, type, init, init_data, w0, m0, P0, n_init, max_iter, tol, reg, key0, key1, path=0)
 //       -> (labels in key order (n,), weights, means, covariances, precisions_cholesky (scikit-learn's shapes,
 //           the data's units), lower_bound, loglik, n_iter, converged, best_init, e, means, U, log det U, log
 //           weights (on the fit's grid: predict's)) or (None, component, start) for an ill-defined covariance
 //           (component -1 - j: the given precision of component j is not positive definite)
 //       type 0 full, 1 tied, 2 diag, 3 spherical; init 0 labels init_data (n_init, n) one-hot (kmeans), 1 rows
 //       init_data (n_init, k) (k-means++'s), 2 'random', 3 'random_from_data', 4 none (w0, m0, P0 all given)
-//   gmm_estimate(X, means, U, logdet, logw, type, e) -> (labels, responsibilities (m, k), log p(x)) or None when a
-//       row overflows on the fit's grid
+//   gmm_estimate(X, means, U, logdet, logw, type, e, path=0) -> (labels, responsibilities (m, k), log p(x)) or None
+//       when a row overflows on the fit's grid; path (both): the E step's kernel, 0 by shape and thread count, 1 the
+//       own kernel, 2 Accelerate (full and tied; the tests)
 //   gmm_precisions(covariances, type, k, p) -> (U, log det U) or None (the factor fails; the tests' entry)
 //   gmm_mstep(X, resp, type, reg) -> (weights, means, covariances)   the M step at given responsibilities (tests)
 //   gmm_sample(N, weights, perm, means, U, type, e, key0, key1) -> (points (N, p), labels (N,))
@@ -49,6 +52,7 @@
 #include "parallel/pool.hpp"
 #include "stats/sample_dist.hpp"
 
+#include <Accelerate/Accelerate.h>
 #include <arm_neon.h>
 
 #include <algorithm>
@@ -66,6 +70,7 @@ namespace {
 enum Type : int { kFull = 0, kTied = 1, kDiag = 2, kSph = 3 };
 constexpr int64_t kTask = 512;         // rows of an E-step task
 constexpr double kGuard = 10 * 0x1p-52;  // scikit-learn's 10 eps added to nk
+constexpr int64_t kBlasTask = 2048;      // rows of the Accelerate E step's tasks (one product a component and task)
 
 struct Ill {  // a covariance whose factor failed: its component (0 for tied); -1 - j for a given precision
     int64_t comp;
@@ -239,6 +244,7 @@ struct Model {
 struct Padded {
     int64_t pw = 0;  // the padded row width
     std::vector<double> U;
+    Padded() = default;
     explicit Padded(const Model& M) {
         if (M.type != kFull && M.type != kTied) return;
         const int64_t p = M.p, m = M.type == kFull ? M.k : 1;
@@ -335,6 +341,67 @@ void weighted_logprob(const Model& M, const Padded& P, const double* X, int64_t 
     }
 }
 
+// The same W for full and tied by Accelerate (CL107): per component Z = X - mu_j (rows i0 .. i1, the same
+// subtractions), Y = Z U_j by dgemm (y_e = sum_d z_d U_de summed in Accelerate's order; the zeros of U add exact
+// zeros), then q = sum_e y_e^2 by fma in e order (sixteen points at a time, two a NEON pair: rows zipped) and W as
+// weighted_logprob. Only y's sums can differ from the own kernel, so theorem 7 (§4.5) holds as it is (its bound on
+// y_e holds for any order of the sum).
+void weighted_logprob_blas(const Model& M, const double* X, int64_t i0, int64_t i1, double* W) {
+    const int64_t k = M.k, p = M.p, m = i1 - i0;
+    const double c = static_cast<double>(p) * std::log(2.0 * std::numbers::pi);
+    std::vector<double> Z(static_cast<size_t>(m * p)), Y(static_cast<size_t>(m * p)), q(static_cast<size_t>(m + 16));
+    for (int64_t j = 0; j < k; ++j) {
+        const double* mu = M.mu.data() + j * p;
+        for (int64_t i = 0; i < m; ++i) {
+            const double* x = X + (i0 + i) * p;
+            double* z = Z.data() + i * p;
+            int64_t d = 0;
+            for (; d + 2 <= p; d += 2) vst1q_f64(z + d, vsubq_f64(vld1q_f64(x + d), vld1q_f64(mu + d)));
+            for (; d < p; ++d) z[d] = x[d] - mu[d];
+        }
+        cblas_dgemm(
+            CblasRowMajor, CblasNoTrans, CblasNoTrans, m, p, p, 1.0, Z.data(), p, M.Uof(j), p, 0.0, Y.data(), p
+        );
+        for (int64_t b = 0; b < m; b += 16) {
+            const double* r[16];
+            for (int t = 0; t < 16; ++t) r[t] = Y.data() + std::min<int64_t>(b + t, m - 1) * p;
+            float64x2_t a[8];
+            for (auto& v : a) v = vdupq_n_f64(0.0);
+            int64_t e = 0;
+            for (; e + 2 <= p; e += 2)
+                for (int h = 0; h < 8; ++h) {
+                    const float64x2_t x0 = vld1q_f64(r[2 * h] + e), x1 = vld1q_f64(r[2 * h + 1] + e);
+                    const float64x2_t lo = vzip1q_f64(x0, x1), hi = vzip2q_f64(x0, x1);
+                    a[h] = vfmaq_f64(a[h], lo, lo);
+                    a[h] = vfmaq_f64(a[h], hi, hi);
+                }
+            if (e < p)
+                for (int h = 0; h < 8; ++h) {
+                    const float64x2_t v = vsetq_lane_f64(r[2 * h + 1][e], vdupq_n_f64(r[2 * h][e]), 1);
+                    a[h] = vfmaq_f64(a[h], v, v);
+                }
+            for (int h = 0; h < 8; ++h) vst1q_f64(q.data() + b + 2 * h, a[h]);
+        }
+        const double ld_j = M.logdet[static_cast<size_t>(j)], lw = M.logw[static_cast<size_t>(j)];
+        for (int64_t i = 0; i < m; ++i) {
+            const double v = -0.5 * (c + q[static_cast<size_t>(i)]) + ld_j;
+            W[i * k + j] = v + lw;
+        }
+    }
+}
+
+// The E step's kernel for full and tied (CL107): Accelerate where it is faster by §5's measurements, p >= 24 with
+// one thread and p >= 30 with two or three (with more the own kernel on every core is as fast or faster); the own
+// kernel elsewhere. The choice reads the thread count set (sd.set_num_threads), not the threads free at the call, so
+// a thread count gives the same bits on every run (D-33); between thread counts the last bits of y may differ.
+// path: 0 by shape and thread count, 1 the own kernel, 2 Accelerate (the tests).
+bool blas_estep(const Model& M, int path) {
+    if (M.type != kFull && M.type != kTied) return false;
+    if (path != 0) return path == 2;
+    const int T = parallel::num_threads();
+    return T <= 3 && M.p >= (T == 1 ? 24 : 30);
+}
+
 // from the weighted log densities of rows (m x k): log p(x) and, when resp is given, the responsibilities
 void normalize(const double* W, int64_t m, int64_t k, double* lpn, double* resp) {
     std::vector<double> a(static_cast<size_t>(m * k)), e(static_cast<size_t>(m * k));
@@ -365,14 +432,19 @@ void normalize(const double* W, int64_t m, int64_t k, double* lpn, double* resp)
 
 // The E step on all rows: log p(x) (n,), the responsibilities (n x k) when resp, the labels (largest w_j, the first
 // on a tie) when lab
-void estep(const Model& M, const double* X, int64_t n, double* lpn, double* resp, int64_t* lab = nullptr) {
+void estep(
+    const Model& M, const double* X, int64_t n, double* lpn, double* resp, int64_t* lab = nullptr, int path = 0
+) {
     const int64_t k = M.k, p = M.p;
-    const Padded P(M);
-    const int64_t nt = (n + kTask - 1) / kTask;
+    const bool blas = blas_estep(M, path);
+    const Padded P = blas ? Padded() : Padded(M);
+    const int64_t task = blas ? kBlasTask : kTask;
+    const int64_t nt = (n + task - 1) / task;
     auto body = [&](int64_t t) {
-        const int64_t i0 = t * kTask, i1 = std::min(n, (t + 1) * kTask);
+        const int64_t i0 = t * task, i1 = std::min(n, (t + 1) * task);
         std::vector<double> W(static_cast<size_t>((i1 - i0) * k));
-        weighted_logprob(M, P, X, i0, i1, W.data());
+        if (blas) weighted_logprob_blas(M, X, i0, i1, W.data());
+        else weighted_logprob(M, P, X, i0, i1, W.data());
         if (lab)
             for (int64_t i = i0; i < i1; ++i) {
                 const double* w = W.data() + (i - i0) * k;
@@ -384,7 +456,7 @@ void estep(const Model& M, const double* X, int64_t n, double* lpn, double* resp
         normalize(W.data(), i1 - i0, k, lpn + i0, resp ? resp + i0 * k : nullptr);
     };
     const int64_t work = M.type == kFull || M.type == kTied ? p * (p + 3) / 2 + 30 : 2 * p + 30;
-    if (nt > 1 && n * k * work >= kSplitWork) parallel::parallel_for(nt, body, kTask * k * work);
+    if (nt > 1 && n * k * work >= kSplitWork) parallel::parallel_for(nt, body, task * k * work);
     else
         for (int64_t t = 0; t < nt; ++t) body(t);
 }
@@ -712,7 +784,8 @@ nb::object fit_py(
     double tol,
     double reg,
     int64_t key0,
-    int64_t key1
+    int64_t key1,
+    int path
 ) {
     int64_t n, p, no;
     const double* X0 = matrix_arg(Xo, "X", n, p);
@@ -790,7 +863,7 @@ nb::object fit_py(
                 double lb = -kInfD;
                 for (int64_t it = 1; it <= max_iter; ++it) {
                     const double prev = lb;
-                    estep(M, X, n, lpn.data(), R.data());
+                    estep(M, X, n, lpn.data(), R.data(), nullptr, path);
                     double total = 0.0;
                     mstep(M, X, n, R.data(), regs, false, lpn.data(), &total);
                     lb = total / static_cast<double>(n);
@@ -809,7 +882,7 @@ nb::object fit_py(
                     have = true;
                 }
             }
-            estep(best.M, X, n, lpn.data(), nullptr, lab.data());
+            estep(best.M, X, n, lpn.data(), nullptr, lab.data(), path);
             loglik = chunk_total(lpn.data(), n);
         } catch (const Ill& bad) { ill = std::make_pair(bad.comp, s); }
     }
@@ -850,7 +923,9 @@ Model model_of(nb::handle mo, nb::handle Uo, nb::handle ldo, nb::handle lwo, int
     return M;
 }
 
-nb::object estimate_py(nb::handle Xo, nb::handle mo, nb::handle Uo, nb::handle ldo, nb::handle lwo, int type, int e) {
+nb::object estimate_py(
+    nb::handle Xo, nb::handle mo, nb::handle Uo, nb::handle ldo, nb::handle lwo, int type, int e, int path
+) {
     const Model M = model_of(mo, Uo, ldo, lwo, type);
     int64_t m, p;
     const double* X0 = matrix_arg(Xo, "X", m, p);
@@ -869,7 +944,7 @@ nb::object estimate_py(nb::handle Xo, nb::handle mo, nb::handle Uo, nb::handle l
             X = Xs.data();
         }
         if (!overflow) {
-            estep(M, X, m, lpn.data(), resp.data(), lab.data());
+            estep(M, X, m, lpn.data(), resp.data(), lab.data(), path);
             if (e) {
                 const double shift = static_cast<double>(p) * static_cast<double>(e) * std::numbers::ln2;
                 for (auto& v : lpn) v += shift;
@@ -994,11 +1069,12 @@ void bind_mixture(nb::module_& m) {
     m.def(
         "gmm_fit", &fit_py, nb::arg("X"), nb::arg("order"), nb::arg("k"), nb::arg("type"), nb::arg("init"),
         nb::arg("init_data").none(), nb::arg("w0").none(), nb::arg("m0").none(), nb::arg("P0").none(),
-        nb::arg("n_init"), nb::arg("max_iter"), nb::arg("tol"), nb::arg("reg"), nb::arg("key0"), nb::arg("key1")
+        nb::arg("n_init"), nb::arg("max_iter"), nb::arg("tol"), nb::arg("reg"), nb::arg("key0"), nb::arg("key1"),
+        nb::arg("path") = 0
     );
     m.def(
         "gmm_estimate", &estimate_py, nb::arg("X"), nb::arg("means"), nb::arg("U"), nb::arg("logdet"), nb::arg("logw"),
-        nb::arg("type"), nb::arg("e")
+        nb::arg("type"), nb::arg("e"), nb::arg("path") = 0
     );
     m.def("gmm_precisions", &precisions_py, nb::arg("covariances"), nb::arg("type"), nb::arg("k"), nb::arg("p"));
     m.def("gmm_mstep", &mstep_py, nb::arg("X"), nb::arg("resp"), nb::arg("type"), nb::arg("reg"));

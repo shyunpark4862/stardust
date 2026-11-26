@@ -127,10 +127,14 @@ def test_every_path_gives_lloyds_bits(path):
 
 
 def test_thread_counts_give_the_same_bytes():
+    # CL106: the path (filter, bounds) is chosen by shape and thread count, and every path has Lloyd's bits, so the
+    # bytes do not depend on the thread count; X12 takes the filter at 1 and 3 threads and the bounds with the direct
+    # scan at 10, X30 with k = 30 the filter with bounds at 1 and 3 and the direct scan at 10
     g = np.random.default_rng(5)
     X = np.vstack([g.normal(c, 1.0, (6000, 5)) for c in (0.0, 4.0, 9.0)])
     Xi = np.round(2.0 * g.standard_normal((9000, 2)))  # exact ties
     W = g.random(len(X))
+    X12 = np.vstack([g.normal(c, 1.0, (1500, 12)) for c in g.normal(0.0, 3.0, (10, 12))])
 
     def results():
         out = []
@@ -140,6 +144,8 @@ def test_thread_counts_give_the_same_bytes():
                 out += [r.labels, r.centers, r.inertia, r.n_iter]
         r = CL.kmeans(X, 30, rng=_rng(4), weights=W)
         out += [r.labels, r.centers, r.inertia]
+        r = CL.kmeans(X12, 10, rng=_rng(7))
+        out += [r.labels, r.centers, r.inertia, r.n_iter, r.predict(X12[::7])]
         r = CL.minibatch_kmeans(X, 5, rng=_rng(5), batch_size=500)
         out += [r.labels, r.centers, r.n_steps]
         r = CL.bisecting_kmeans(X, 6, rng=_rng(6))

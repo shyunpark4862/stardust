@@ -36,13 +36,25 @@ Affinity propagation (CL6 milestone): affinity_propagation on the point sets, da
 preference (a float, an array), 'precomputed' similarities, nan_policy, the result's predict and summary, a fit
 without exemplars, the wrong calls, and a case of thousands of points.
 
-Results are the same at 1, 3 and 10 threads (decision CL9), so no case is thread dependent.
+Results are the same at 1, 3 and 10 threads (decision CL9) but where CL107 lets them differ: gaussian_mixture's
+full and tied E step with large p takes Accelerate's products at one to three threads and the own kernel at more
+(the same bytes on every run of a thread count, D-33), so those cases are in THREAD_DEPENDENT.
 """
 
 import math
 
 NAN, INF = math.nan, math.inf
 METHODS = ("single", "complete", "average", "weighted", "centroid", "median", "ward")
+
+# Cases whose result may depend on the thread count (tools/golden.py stores them per thread count when it does).
+_E_STEP = (
+    "CL107: full and tied with p >= 24 take Accelerate's y = U^T z at 1 thread (p >= 30 at 2 or 3), the own kernel "
+    "at 10"
+)
+THREAD_DEPENDENT = {
+    "gaussian_mixture 30000 p=30 random": _E_STEP,
+    "gaussian_mixture 3001 p=30 tied": _E_STEP,
+}
 
 # Public names no case calls (tools/golden.py): the reason each needs none.
 EXCLUDED = {
@@ -491,6 +503,11 @@ def _mixture_cases(L):
     yield (
         "gaussian_mixture 30000 p=30 random",
         lambda: cl.gaussian_mixture(a(rr.standard_normal((20000, 30))), 3, rng=g(), init="random", max_iter=5),
+    )
+    X30 = L.rng(14).standard_normal((3001, 30))
+    yield (
+        "gaussian_mixture 3001 p=30 tied",
+        lambda: cl.gaussian_mixture(a(X30), 3, rng=g(), covariance_type="tied"),
     )
     rb = cl.gaussian_mixture(a(big), 3, rng=g())
     yield "GaussianMixtureResult 30000 sample", lambda: rb.sample((20000,), rng=g(7))

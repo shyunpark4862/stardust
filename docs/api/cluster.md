@@ -1,8 +1,8 @@
 # sd.cluster API
 
-> 상태: **확정** (2026-11-27; 설계 결정 CL1–CL105). §2–§7의 공개 이름 예순하나가 모두 구현되어 있다: 계층(§2: `linkage agglomerative divisive HierarchyResult`, scipy 이름의 도구 열여섯과 `CophenetResult DendrogramResult`), 분할(§3: `kmeans minibatch_kmeans bisecting_kmeans KMeansResult BisectingKMeansResult kmedoids KMedoidsResult fuzzy_cmeans FuzzyCMeansResult`), 밀도(§4: `dbscan DBSCANResult hdbscan HDBSCANResult optics OPTICSResult`), 혼합(§5: `gaussian_mixture GaussianMixtureResult`), 지표와 k 고르기(§6: sklearn 이름의 지표 열여섯과 `HomogeneityResult`, `gap_statistic GapResult`, `gower_distance`), 그 밖(§7: `affinity_propagation AffinityPropagationResult`). 시그니처는 scikit-learn 1.9.1(`sklearn.cluster`, `sklearn.mixture`, `sklearn.metrics`), scipy 1.18.1(`scipy.cluster.hierarchy`), R 4.6.2의 `stats`와 `cluster` 2.1.8.3의 이름과 뜻에 stardust의 규칙과 설계 결정을 입힌 것이다.
+> 상태: **확정** (2026-11-27; 설계 결정 CL1–CL107). §2–§7의 공개 이름 예순하나가 모두 구현되어 있다: 계층(§2: `linkage agglomerative divisive HierarchyResult`, scipy 이름의 도구 열여섯과 `CophenetResult DendrogramResult`), 분할(§3: `kmeans minibatch_kmeans bisecting_kmeans KMeansResult BisectingKMeansResult kmedoids KMedoidsResult fuzzy_cmeans FuzzyCMeansResult`), 밀도(§4: `dbscan DBSCANResult hdbscan HDBSCANResult optics OPTICSResult`), 혼합(§5: `gaussian_mixture GaussianMixtureResult`), 지표와 k 고르기(§6: sklearn 이름의 지표 열여섯과 `HomogeneityResult`, `gap_statistic GapResult`, `gower_distance`), 그 밖(§7: `affinity_propagation AffinityPropagationResult`). 시그니처는 scikit-learn 1.9.1(`sklearn.cluster`, `sklearn.mixture`, `sklearn.metrics`), scipy 1.18.1(`scipy.cluster.hierarchy`), R 4.6.2의 `stats`와 `cluster` 2.1.8.3의 이름과 뜻에 stardust의 규칙과 설계 결정을 입힌 것이다.
 
-- 설계와 결정의 근거는 [docs/design/cluster.md](../design/cluster.md)(§1.1 CL1–CL105), 공통 규칙은 [API.md](../../API.md)다.
+- 설계와 결정의 근거는 [docs/design/cluster.md](../design/cluster.md)(§1.1 CL1–CL107), 공통 규칙은 [API.md](../../API.md)다.
 - 언어 표시가 없는 코드 블록은 `tests/cluster/test_api_surface.py`가 읽는다. 블록의 줄은 모듈의 함수(`name(...)`), 결과 클래스(`Name`), 결과의 메서드(`Name.method(...)`)다. 블록의 모듈 수준 이름이 `sd.cluster.__all__` 전부이고, 시그니처가 블록과 같아야 한다.
 - 절 끝의 "(§9의 n번)"은 그 줄을 정한 설계 문서의 질문이다(답은 §1.1의 CL4–CL40).
 
@@ -43,7 +43,8 @@
 - 결과는 자료의 사본을 쥐지 않는다. 자료가 필요한 게으른 필드(`HDBSCANResult.centroids` 등)는 자료의 읽기 전용 참조를 쥔다.
 
 ### §1.4 결정성, 난수, 정확도 (§9의 5·6번)
-- **같은 입력이면 스레드 수와 상관없이 같은 비트다**. 빠른 길과 느린 길(Lloyd와 경계 가속, NN-chain과 일반 알고리즘, 행렬 길과 행렬 없는 길, KD 트리와 훑기)은 같은 비트를 낸다. 길을 고르는 기준은 모양뿐이다.
+- **같은 입력이면 스레드 수와 상관없이 같은 비트다**. 빠른 길과 느린 길(Lloyd와 경계 가속, 차의 꼴과 전개식의 증명된 거르기, NN-chain과 일반 알고리즘, 행렬 길과 행렬 없는 길, KD 트리와 훑기)은 같은 비트를 낸다. 길을 고르는 기준은 모양이고, k-평균의 거르기와 경계만 그 호출이 쓸 스레드 수도 본다(같은 비트라 결과는 그대로다; 설계 문서 CL106).
+- **예외 하나** (사용자 결정 2026-11-27: 재현성만 있으면 성능 우선): `gaussian_mixture`의 `covariance_type='full'`·`'tied'`에서 p ≥ 24(1스레드)·p ≥ 30(2–3스레드)이면 E 단계의 이차형식 y = Uᵀ(x − μ)를 Accelerate의 행렬 곱으로 잰다. 그 맞춤과 결과의 `predict`·`predict_proba`·`score_samples`는 같은 기계·같은 스레드 수(`sd.set_num_threads`)에서 실행마다 같은 비트이고(API.md §3의 약속), 스레드 수가 다르면 마지막 자리가 다를 수 있다(4스레드 이상과 작은 p, `'diag'`·`'spherical'`은 자체 커널이라 스레드와 무관하다). 정확도 계약은 같다(설계 문서 CL107, §4.5).
 - **`rng`**: 무작위를 쓰는 함수(`kmeans`, `minibatch_kmeans`, `bisecting_kmeans`, `kmedoids(method='clara')`, `fuzzy_cmeans`, `gaussian_mixture`, `gap_statistic`, `GaussianMixtureResult.sample`)는 `rng`(`sd.random.default_rng(seed)`의 `Generator`)를 키워드로 꼭 받는다(없으면 `TypeError`). `kmedoids(method='pam')`에 주면 `ValueError`다(`kmedoids(): 'rng' is only used with method='clara'`; 회귀 `rlm`의 꼴). 호출 하나가 `rng`에서 64비트 두 단어만 받고(Philox의 키), 여러 시작(`n_init`)과 참조 자료(`gap_statistic`)는 그 키의 원소 번호로 뽑는다(시작 r의 t번째 수는 원소 r·2⁴⁰ + t; 설계 문서 CL41). 그래서 같은 `rng` 상태면 같은 비트이고 스레드 수와 무관하다. 규칙은 회귀의 `rlm(method='MM')`과 같다.
 - **정확도 계약**(설계 문서 §4): 이산 결과(라벨, 트리, medoid)는 계산한 값과 정한 동점 규칙으로 정의대로 고른 것이고, 정확한 산술의 선택과는 가까운 동점에서만 다르다. 실수 결과(높이, 중심, 목적값, 모수, 지표)는 정확한 값과 견준 한계 안이다. ARI와 RI는 올바르게 반올림한 값이다.
 - **모든 호출은 정해진 시간 안에 끝난다**: 반복이 있는 곳은 입력과 무관한 상한(`max_iter`)이 있다.
@@ -70,7 +71,7 @@
 - 할당 전에 `MemoryError`인 곳(API.md §2): 계층 군집의 압축 꼴 거리 행렬(8·n(n − 1)/2 바이트)이 물리 메모리보다 클 때(행렬 없는 길이 있는 연결법은 그 길로 간다), `metric='precomputed'`의 정사각을 압축 꼴로 바꿀 때.
 
 ### §1.6 다른 라이브러리와 다른 점 (모음)
-- 공통: 함수와 결과 객체, (X, k), 입력 순서와 무관한 분할과 처음 나오는 차례의 라벨, 스레드와 무관한 비트, `rng` 필수, 경고 없음.
+- 공통: 함수와 결과 객체, (X, k), 입력 순서와 무관한 분할과 처음 나오는 차례의 라벨, 스레드와 무관한 비트(큰 p의 `gaussian_mixture` full·tied는 같은 스레드 수에서 같은 비트; §1.4), `rng` 필수, 경고 없음.
 - 계층: 동점은 정의와 열쇠, 높이는 최종 트리 위의 Lance–Williams 재귀(고른 알고리즘과 무관한 비트; scipy와 끝자리가 다를 수 있다), 역전 트리의 높이 자르기는 에러, 행렬 없는 길(큰 n).
 - k-평균: 차의 제곱합 거리(sklearn은 전개식), `algorithm`이 없다(가속은 같은 비트), 서로 다른 점이 k보다 적으면 에러.
 - DBSCAN: 경계 점은 가장 가까운 핵심 점의 군집(sklearn은 먼저 펼친 군집).
@@ -163,7 +164,7 @@ FuzzyCMeansResult.predict(X_new, /)
 FuzzyCMeansResult.predict_proba(X_new, /)
 FuzzyCMeansResult.summary()
 ```
-- **`kmeans`**: 목적은 관성 Σwᵢ‖xᵢ − c_{lᵢ}‖²이고 Lloyd 반복이다. 거리는 차의 제곱합(`sd.spatial.cdist(metric='sqeuclidean')`의 한 짝과 같은 비트)이다(`[sklearn과 다름]`: sklearn은 전개식). `algorithm` 인자는 없다: 경계 가속(Hamerly)과 전개식의 증명된 거르기를 모양에 따라 쓰고 결과는 같은 비트다(설계 문서 CL60, §4.2).
+- **`kmeans`**: 목적은 관성 Σwᵢ‖xᵢ − c_{lᵢ}‖²이고 Lloyd 반복이다. 거리는 차의 제곱합(`sd.spatial.cdist(metric='sqeuclidean')`의 한 짝과 같은 비트)이다(`[sklearn과 다름]`: sklearn은 전개식). `algorithm` 인자는 없다: 경계 가속(Hamerly)과 전개식(Accelerate의 행렬 곱)의 증명된 거르기를 모양과 스레드 수에 따라 쓰고 결과는 같은 비트다. 거르기는 전개식이 한계 안의 후보를 하나로 줄인 점에 그 중심을 주고, 아닌 점만 차의 꼴로 다시 잰다(설계 문서 CL60, CL106, §4.2).
   - `init`: `'k-means++'`(sklearn의 탐욕 판, 단계마다 후보 2 + ⌊ln k⌋개), `'random'`(무게에 비례해 점 k개를 비복원으로), (k, p) 배열(그 중심에서 시작; `n_init`은 1이어야 한다). 배열을 주어도 `rng`는 두 단어를 움직인다.
   - `n_init`: `'auto'`(sklearn과 같다: `'k-means++'`와 배열은 1, `'random'`은 10) 또는 1 이상의 int. 가장 좋은 시작은 (관성, 시작 번호)가 가장 작은 것이다.
   - 멈춤: 라벨이 바뀌지 않거나 중심 이동의 제곱합이 `tol`·(축마다 분산의 평균) 이하. 멈춘 뒤 라벨을 마지막 중심으로 다시 매긴다(sklearn과 같다). `max_iter`에서 멈추면 `converged=False`다.
@@ -220,7 +221,7 @@ GaussianMixtureResult.sample(shape=None, /, *, rng)
 GaussianMixtureResult.summary()
 ```
 - sklearn `GaussianMixture`의 EM과 기본값이다. `covariance_type`은 `'full'`(성분마다 행렬), `'tied'`(하나를 나눠 쓴다), `'diag'`(성분마다 대각), `'spherical'`(성분마다 분산 하나)이고 `reg_covar`(≥ 0)를 공분산의 대각에 더한다. 시작마다 `init`의 책임도에서 모수를 만든다: `'kmeans'`(이 영역의 `kmeans(X, k, init='k-means++', n_init=1)` 한 번의 라벨; 그 두 단어는 `rng`의 흐름에서 받는다), `'k-means++'`(k-means++가 고른 k점), `'random'`(무작위 책임도), `'random_from_data'`(무작위 k점). `weights_init`(합이 1인 (k,)), `means_init`((k, p)), `precisions_init`(sklearn의 모양: 정밀도 행렬 (k, p, p), (p, p), (k, p), (k,); full·tied는 대칭 양정치)이 주어지면 그 값으로 바꾸고, 셋 다 주어지면 아무것도 뽑지 않는다. 멈춤은 E 단계의 로그우도 평균(하한)의 변화 < `tol`(상한 `max_iter`; 0이면 시작 그대로)이고, `n_init`개 시작 가운데 하한이 가장 큰 것(같으면 앞)을 남긴다. n ≥ 2, 1 ≤ k ≤ n이고 `'kmeans'`는 서로 다른 점이 k개 이상이어야 한다(`ValueError`).
-- 이차형식은 차의 꼴 ‖Uᵀ(x − μ)‖²이고 공분산은 평균을 뺀 두 번째 훑기다(`[sklearn과 다름]`: sklearn은 펼친 꼴이라 원점에서 먼 자료의 diag·spherical 밀도와 tied·diag·spherical의 공분산이 자릿수를 잃는다; 설계 문서 CL75). 같은 시작이면 sklearn과 같은 반복 수로 같은 고정점에 닿는다.
+- 이차형식은 차의 꼴 ‖Uᵀ(x − μ)‖²이고(full·tied의 큰 p는 Uᵀ(x − μ)를 Accelerate로 잰다: 같은 스레드 수에서 같은 비트; §1.4) 공분산은 평균을 뺀 두 번째 훑기다(`[sklearn과 다름]`: sklearn은 펼친 꼴이라 원점에서 먼 자료의 diag·spherical 밀도와 tied·diag·spherical의 공분산이 자릿수를 잃는다; 설계 문서 CL75). 같은 시작이면 sklearn과 같은 반복 수로 같은 고정점에 닿는다.
 - `reg_covar`를 더해도 공분산이 양정치가 아니면 `LinAlgError`다(`gaussian_mixture(): component 2 has an ill-defined covariance; ...`, tied는 `the tied covariance is ill-defined`). 양정치가 아닌 `precisions_init`은 `ValueError`다.
 - `bic`·`aic`는 필드다(sklearn은 `bic(X)` 메서드): −2·`loglik` + `n_parameters`·log n, −2·`loglik` + 2·`n_parameters`. 모수의 수는 sklearn의 `_n_parameters`와 같다.
 - `labels`는 결과의 모수에서 가중 밀도가 가장 큰 성분이다(`predict(X)`와 같다; 같으면 맞춤이 먼저 만든 성분). 성분의 차례는 라벨의 처음 나오는 차례다.

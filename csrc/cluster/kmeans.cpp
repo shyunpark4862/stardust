@@ -1,5 +1,5 @@
 // k-means and its kin (docs/design/cluster.md §2.3, §3.1, §3.3, §3.10, §4.2; decisions CL10, CL23-CL25, CL41-CL43,
-// CL48, CL49). The rows arrive in key order (CL7: the rank of the lexicographic order), so every tie rule below that
+// CL48, CL49, CL95, CL106). The rows arrive in key order (CL7: the rank of the lexicographic order), so every tie rule below that
 // says "the smaller point" means the smaller key, and the same points in another order give the same result.
 //
 // The definition is Lloyd's iteration on spatial's sqeuclidean (partition.hpp: sqd, the difference form) of the data
@@ -9,7 +9,9 @@
 //              against panels of 8 centres; a lane has pair_scalar's bits). filtered (CL49): the expanded form
 //              ||x||^2 - 2 x.c + ||c||^2 (Accelerate's dgemm for x.c) with a proven error bound rules out the
 //              centres it shows to be farther than another, and the difference form decides among the rest
-//              (§4.2 proves that a ruled-out centre's sqd is larger than another's, whatever order dgemm sums in).
+//              (§4.2 proves that a ruled-out centre's sqd is larger than another's, whatever order dgemm sums in);
+//              a point left with one centre takes it without its sqd where only the label is read (CL106). The
+//              path (filter, bounds) is chosen by shape and the threads of the call: every path has the same bits.
 //   bounds     Hamerly's (2010) upper bound of the own centre's distance and lower bound of the others', kept on
 //              true distances with CL42's margin (partition.hpp Margin); a point whose bounds clear the margin
 //              keeps its label without a scan (§4.2: its scan would give it again).
@@ -31,6 +33,7 @@
 //   kmeans_plusplus(X, order, k, key0, key1, r) -> (k,)   the key ranks k-means++ picks (start r; the mixtures' start)
 //   minibatch_kmeans(...), bisecting_kmeans(...)          below
 //   _kmeans_assign_expanded(X, C) -> labels               Accelerate's expanded form alone (measurements only)
+//   _kmeans_assign_reps(X, C, path, reps) -> labels       Lloyd's assignment alone, reps times (measurements only)
 #include "cluster/cluster.hpp"
 #include "cluster/partition.hpp"
 #include "parallel/pool.hpp"
@@ -73,10 +76,11 @@ struct Centres {
     int64_t k = 0, p = 0;
     const double* C = nullptr;
     std::vector<double> panels;  // full panels of 8 centres, then the tail's panel of tw (scan_direct)
-    int64_t full = 0, tw = 0;    // full panels, the tail's width (0, 2, 4 or 8 centres)
-    std::vector<double> norm2;   // computed ||c||^2 (filter)
+    int64_t full = 0, tw = 0;  // full panels, the tail's width (0, 2, 4 or 8 centres)
+    std::vector<double> norm2;  // computed ||c||^2 (filter)
     std::vector<double> radius;  // >= ||c||^2 (filter)
-    std::vector<double> half;    // <= half the true distance to the nearest other centre (bounds)
+    double radius_max = 0.0;  // the largest radius (filter)
+    std::vector<double> half;  // <= half the true distance to the nearest other centre (bounds)
 
     void set(const double* c, int64_t kk, int64_t pp, bool filter, bool bounds, const Margin& M) {
         C = c, k = kk, p = pp;
@@ -97,6 +101,7 @@ struct Centres {
                 norm2[static_cast<size_t>(j)] = s;
                 radius[static_cast<size_t>(j)] = up2(s * (1.0 + M.g));
             }
+            radius_max = *std::max_element(radius.begin(), radius.end());
         }
         if (bounds) {
             half.assign(static_cast<size_t>(k), kInfD);
@@ -139,8 +144,22 @@ struct Data {
     }
 };
 
-// The filter pays (CL49) where the scan's products are many: by shape alone (CL95, §5's measurements).
-bool filter_shape(int64_t p, int64_t k) { return p >= 10 && p * k >= 400; }
+// The filter pays (CL49) where the scan's products are many. By shape and the threads that will run the scan
+// (CL106, §5's measurements of one assignment at 1, 3 and 10 threads): with one thread from p = 3 (k >= 50), 5
+// (k >= 20), 7 (k >= 5) or 15 (k = 3, 4); with two or three from p = 5 (k >= 20) or 10 (k >= 5); with more, where
+// Accelerate's products from every thread at once meet in the matrix units, from p = 7 (k >= 50), 10 (k >= 20) or
+// for k >= 10 with p from 20 to 50. Every path gives the difference form's labels and bits, so the choice may
+// depend on the threads.
+bool filter_shape(int64_t p, int64_t k, int threads) {
+    if (k < 3) return false;
+    if (threads <= 1) return p >= (k >= 50 ? 3 : k >= 20 ? 5 : k >= 5 ? 7 : 15);
+    if (threads <= 3) return k >= 5 && p >= (k >= 20 ? 5 : 10);
+    if (k >= 20) return p >= (k >= 50 ? 7 : 10);
+    return k >= 10 && p >= 20 && p <= 50;
+}
+
+// the threads a scan of this call will run on (1 when the pool is not available: nested, busy, one thread)
+int scan_threads() { return parallel::available() ? parallel::num_threads() : 1; }
 
 // ---- scans ---------------------------------------------------------------------------------------------------
 
@@ -282,11 +301,22 @@ inline double scan_lower(const Margin& M, const Scan& r, int64_t k) {
 }
 
 // filtered (CL49): the expanded form rules out centres, the difference form decides among the rest. The expanded
-// value v = (||x||^2 - 2 x.c) + ||c||^2 (the norms and x.c summed in any order: dgemm) is within
-// E = cE (||x||^2 + ||c||^2) of the true d^2 (cE = 2 (2 gamma(p + 2)) with room for E's own roundings); a centre
-// j with v_j - E_j > (v_b + E_b) kappa + tau is farther than b by more than sqd's error, so
-// its sqd is larger than b's (§4.2) and it cannot be the nearest; b is taken as the centre of smallest v + E, which
-// is never ruled out. tau absorbs the underflows' absolute errors. Both passes run on NEON, two centres a step.
+// value v = (||x||^2 - 2 x.c) + ||c||^2 (the norms and x.c summed in any order: dgemm, here G = C X^T, k x m) is
+// within E = cE (||x||^2 + ||c||^2) of the true d^2 (cE = 2 (2 gamma(p + 2)) with room for E's own roundings); a
+// centre j with v_j - E_j > (v_b + E_b) kappa + tau is farther than b by more than sqd's error, so its sqd is larger
+// than b's (§4.2) and it cannot be the nearest; b is taken as the centre of smallest v + E, which is never ruled
+// out. tau absorbs the underflows' absolute errors.
+//   pass 0 (CL106), eight points a step on NEON (a lane a point, so a lane's scan is the scalar one): w = ||c||^2 -
+//   2 x.c (one rounding; v = nx + w is the expanded form with its two additions in the other order, and §4.2's bound
+//   holds for either), its smallest wJ (the first centre on a tie) and second smallest w2. With E* >= every E (from
+//   the largest ||c||^2 bound) every other centre's v - E is at least A0 = fl(fl(nx + w2) - E*) and J's v + E at most
+//   fl(fl(nx + wJ) + E*), so A0 > lim0 = fl(fl(fl(nx + wJ) + E*) kappa) + tau leaves J the one kept centre (theorem 5
+//   with those two bounds); lim0 is also >= sqd(x, c_J) (theorem 5's corollary, §4.2).
+//   passes 1 and 2 (a point pass 0 does not settle: a near tie, or a point far from the origin): per centre
+//   A = v - E, the smallest v + E, then the centres with A <= lim.
+// The kept centres' sqd decide (sqdN, eight pairs side by side). exact false (Lloyd's assignments, which read only
+// the label and Hamerly's bounds): a point pass 0 settles takes J without its sqd and s1 = lim0, an upper bound of
+// it; the label is the difference form's either way.
 void scan_filtered(
     const Data& D,
     const Centres& Cs,
@@ -294,7 +324,8 @@ void scan_filtered(
     int64_t m,
     Scan* out,
     std::vector<double>& Xg,
-    std::vector<double>& G
+    std::vector<double>& G,
+    bool exact
 ) {
     const int64_t p = D.p, k = Cs.k;
     const double* rows = D.X + idx[0] * p;
@@ -305,56 +336,34 @@ void scan_filtered(
         for (int64_t q = 0; q < m; ++q) std::copy(D.X + idx[q] * p, D.X + (idx[q] + 1) * p, Xg.begin() + q * p);
         rows = Xg.data();
     }
-    G.resize(static_cast<size_t>(m * k));
-    cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasTrans, m, k, p, 1.0, rows, p, Cs.C, p, 0.0, G.data(), k);
+    constexpr int L = 8;  // points of a pass-0 step
+    // G's rows m + 8 apart, rounded to 8 and padded off a power of two (rows 2^15 bytes apart would share L1 sets);
+    // a step past m reads the padding (zeros; those lanes are left out). One product for the task: smaller blocks
+    // that keep G in L1 were slower (the call's own cost).
+    const int64_t ld = (m + 7) / 8 * 8 + 8;
+    G.assign(static_cast<size_t>(k * ld), 0.0);
+    cblas_dgemm(CblasRowMajor, CblasNoTrans, CblasTrans, k, m, p, 1.0, Cs.C, p, rows, p, 0.0, G.data(), ld);
     const double cE = 8.0 * static_cast<double>(p + 4) * kU;
     const double kappa = 1.0 + 8.0 * static_cast<double>(p + 4) * kU;
     const double tau = 0x1p-960;
     const double* nc = Cs.norm2.data();
     const double* rc = Cs.radius.data();  // >= ||c||^2
-    const int64_t k2 = k & ~int64_t{1};
-    const float64x2_t cEv = vdupq_n_f64(cE), infv = vdupq_n_f64(kInfD);
     struct Cand {
         int64_t q, j;
     };
     std::vector<Cand> cand;
-    cand.reserve(static_cast<size_t>(2 * m));
-    std::vector<double> lows(static_cast<size_t>(m));
-    for (int64_t q = 0; q < m; ++q) {
+    cand.reserve(static_cast<size_t>(exact ? m + m / 8 : m / 8));
+    std::vector<double> lows(static_cast<size_t>(m)), vb(static_cast<size_t>(k));
+    std::vector<char> done(static_cast<size_t>(exact ? 0 : m), 0);  // labels-only points settled in pass 0
+    // passes 1 and 2 of point q (vb: its x.c, overwritten by A)
+    auto slow = [&](int64_t q) {
         const int64_t i = idx[q];
-        const double* x = D.X + i * p;
-        double* v = G.data() + q * k;  // x.c, then A = v - E
         const double nx = D.xn2[static_cast<size_t>(i)], rx = D.xrad[static_cast<size_t>(i)];
-        // pass 1: v = (||x||^2 - 2 x.c) + ||c||^2, E = cE (rx + rc), A = v - E: A is stored over x.c, and the
-        // smallest v + E, the smallest A with its centre and the second smallest A are kept lane by lane
-        const float64x2_t nxv = vdupq_n_f64(nx), rxv = vdupq_n_f64(rx);
-        float64x2_t umin = infv, a1 = infv, a2 = infv;
-        uint64x2_t aj = vdupq_n_u64(0), jv = {0, 1};
-        const uint64x2_t two = vdupq_n_u64(2);
-        for (int64_t j = 0; j < k2; j += 2, jv = vaddq_u64(jv, two)) {
-            const float64x2_t g = vld1q_f64(v + j);
-            const float64x2_t vv = vaddq_f64(vsubq_f64(nxv, vaddq_f64(g, g)), vld1q_f64(nc + j));
-            const float64x2_t e = vmulq_f64(cEv, vaddq_f64(rxv, vld1q_f64(rc + j)));
-            umin = vminq_f64(umin, vaddq_f64(vv, e));
-            const float64x2_t A = vsubq_f64(vv, e);
-            vst1q_f64(v + j, A);
-            const uint64x2_t lt = vcltq_f64(A, a1);
-            a2 = vminq_f64(a2, vmaxq_f64(a1, A));
-            aj = vbslq_u64(lt, jv, aj);
-            a1 = vminq_f64(a1, A);
-        }
-        double um = vminvq_f64(umin);
-        double A1, A2;
-        int64_t J1;
-        {
-            const double l0 = vgetq_lane_f64(a1, 0), l1 = vgetq_lane_f64(a1, 1);
-            const auto j0 = static_cast<int64_t>(vgetq_lane_u64(aj, 0)),
-                       j1 = static_cast<int64_t>(vgetq_lane_u64(aj, 1));
-            const bool second = (l1 < l0) | ((l1 == l0) & (j1 < j0));
-            A1 = second ? l1 : l0, J1 = second ? j1 : j0;
-            A2 = std::min(std::min(vgetq_lane_f64(a2, 0), vgetq_lane_f64(a2, 1)), std::max(l0, l1));
-        }
-        for (int64_t j = k2; j < k; ++j) {
+        double* v = vb.data();
+        for (int64_t j = 0; j < k; ++j) v[j] = G[static_cast<size_t>(j * ld + q)];
+        double um = kInfD, A1 = kInfD, A2 = kInfD;
+        int64_t J1 = 0;
+        for (int64_t j = 0; j < k; ++j) {
             const double vv = (nx - (v[j] + v[j])) + nc[j], e = cE * (rx + rc[j]);
             um = std::min(um, vv + e);
             const double A = vv - e;
@@ -363,10 +372,9 @@ void scan_filtered(
             J1 = A < A1 ? j : J1;
             A1 = std::min(A1, A);
         }
-        // a centre with A > lim is ruled out (the smallest A among them bounds their distances below). The usual
-        // case: the second smallest A is above lim, so the one kept centre is that of the smallest A (it is the
-        // centre of smallest v + E or has its A at most that) and the ruled-out centres' smallest A is the second
-        // smallest; otherwise pass 2 walks the stored A.
+        // a centre with A > lim is ruled out (the smallest A among them bounds their distances below). Usually the
+        // second smallest A is above lim and the one kept centre is that of the smallest A (the centre of smallest
+        // v + E or one whose A is at most that); otherwise the stored A are walked.
         const double lim = um * kappa + tau;
         double lo;
         if (A2 > lim) {
@@ -381,6 +389,55 @@ void scan_filtered(
             }
         }
         lows[static_cast<size_t>(q)] = lo;
+    };
+    const float64x2_t m2v = vdupq_n_f64(-2.0), infv = vdupq_n_f64(kInfD);
+    const float64x2_t cEv = vdupq_n_f64(cE), rcm = vdupq_n_f64(Cs.radius_max), kv = vdupq_n_f64(kappa),
+                      tv = vdupq_n_f64(tau);
+    for (int64_t q0 = 0; q0 < m; q0 += L) {
+        const int R = static_cast<int>(std::min<int64_t>(L, m - q0));
+        float64x2_t w1[L / 2], w2[L / 2];
+        uint64x2_t wj[L / 2];
+        for (int h = 0; h < L / 2; ++h) w1[h] = infv, w2[h] = infv, wj[h] = vdupq_n_u64(0);
+        const double* g = G.data() + q0;
+        for (int64_t j = 0; j < k; ++j, g += ld) {
+            const float64x2_t ncj = vdupq_n_f64(nc[j]);
+            const uint64x2_t jj = vdupq_n_u64(static_cast<uint64_t>(j));
+            for (int h = 0; h < L / 2; ++h) {
+                const float64x2_t w = vfmaq_f64(ncj, vld1q_f64(g + 2 * h), m2v);
+                const uint64x2_t lt = vcltq_f64(w, w1[h]);
+                w2[h] = vminq_f64(w2[h], vmaxq_f64(w1[h], w));
+                wj[h] = vbslq_u64(lt, jj, wj[h]);
+                w1[h] = vminq_f64(w1[h], w);
+            }
+        }
+        alignas(16) double nxa[L], rxa[L], lim0[L], A0[L];
+        alignas(16) uint64_t Ja[L];
+        for (int l = 0; l < L; ++l) {
+            const auto i = static_cast<size_t>(idx[q0 + std::min(l, R - 1)]);
+            nxa[l] = D.xn2[i], rxa[l] = D.xrad[i];
+        }
+        for (int h = 0; h < L / 2; ++h) {
+            const float64x2_t nx = vld1q_f64(nxa + 2 * h);
+            const float64x2_t Es = vmulq_f64(cEv, vaddq_f64(vld1q_f64(rxa + 2 * h), rcm));  // E* >= every E (monotone)
+            vst1q_f64(lim0 + 2 * h, vaddq_f64(vmulq_f64(vaddq_f64(vaddq_f64(nx, w1[h]), Es), kv), tv));
+            vst1q_f64(A0 + 2 * h, vsubq_f64(vaddq_f64(nx, w2[h]), Es));
+            vst1q_u64(Ja + 2 * h, wj[h]);
+        }
+        for (int l = 0; l < R; ++l) {
+            const int64_t q = q0 + l;
+            if (A0[l] > lim0[l]) {
+                const auto J = static_cast<int64_t>(Ja[l]);
+                if (!exact) {
+                    out[q] = {J, lim0[l], kInfD, A0[l]};
+                    done[static_cast<size_t>(q)] = 1;
+                } else {
+                    cand.push_back({q, J});
+                    lows[static_cast<size_t>(q)] = A0[l];
+                }
+            } else {
+                slow(q);
+            }
+        }
     }
     // the kept centres by the difference form, eight pairs side by side (sqdN: sqd's bits), then each point's
     // smallest (sqd, centre) and second smallest in centre order
@@ -400,6 +457,7 @@ void scan_filtered(
     }
     size_t c = 0;
     for (int64_t q = 0; q < m; ++q) {
+        if (!exact && done[static_cast<size_t>(q)]) continue;
         double b1 = kInfD, b2 = kInfD;
         int64_t a = 0;
         for (; c < nc_ && cand[c].q == q; ++c) {
@@ -418,11 +476,12 @@ struct ScanBuffers {
     std::vector<double> Xg, G;
 };
 
-void scan(const Data& D, const Centres& Cs, bool filter, ScanBuffers& B) {
+// exact: every result's s1 is its sqd (false: Lloyd's assignments, see scan_filtered)
+void scan(const Data& D, const Centres& Cs, bool filter, ScanBuffers& B, bool exact = true) {
     const int64_t m = static_cast<int64_t>(B.idx.size());
     B.res.resize(static_cast<size_t>(m));
     if (m == 0) return;
-    if (filter) scan_filtered(D, Cs, B.idx.data(), m, B.res.data(), B.Xg, B.G);
+    if (filter) scan_filtered(D, Cs, B.idx.data(), m, B.res.data(), B.Xg, B.G, exact);
     else scan_direct(D, Cs, B.idx.data(), m, B.res.data());
 }
 
@@ -458,16 +517,23 @@ struct Bounds {
 };
 
 // Assigns every point to its nearest centre (the bounds skip the points they prove); true when a label changed.
-bool assign(const Data& D, const Centres& Cs, std::vector<int64_t>& lab, Bounds* Bd, bool fresh, bool filter) {
+bool assign(
+    const Data& D, const Centres& Cs, std::vector<int64_t>& lab, Bounds* Bd, bool fresh, bool filter, bool exact = false
+) {
     const int64_t n = D.n, p = D.p;
     const int64_t nt = (n + kTask - 1) / kTask;
     std::vector<char> changed(static_cast<size_t>(nt), 0);
     auto body = [&](int64_t t) {
         ScanBuffers B;
         const int64_t i0 = t * kTask, i1 = std::min(n, (t + 1) * kTask);
-        B.idx.reserve(static_cast<size_t>(i1 - i0));
-        for (int64_t i = i0; i < i1; ++i) {
-            if (Bd && !fresh) {
+        if (!Bd || fresh) {  // every point is scanned
+            B.idx.resize(static_cast<size_t>(i1 - i0));
+            std::iota(B.idx.begin(), B.idx.end(), i0);
+        } else {
+            B.idx.reserve(static_cast<size_t>(i1 - i0));
+        }
+        for (int64_t i = i0; i < i1 && Bd && !fresh; ++i) {
+            {
                 const auto ii = static_cast<size_t>(i);
                 const int64_t a = lab[ii];
                 double U = next_up(Bd->U[ii] + Bd->delta[static_cast<size_t>(a)]);
@@ -484,7 +550,7 @@ bool assign(const Data& D, const Centres& Cs, std::vector<int64_t>& lab, Bounds*
             }
             B.idx.push_back(i);
         }
-        scan(D, Cs, filter, B);
+        scan(D, Cs, filter, B, exact);
         char ch = 0;
         for (size_t q = 0; q < B.idx.size(); ++q) {
             const auto ii = static_cast<size_t>(B.idx[q]);
@@ -838,16 +904,17 @@ double tolerance(const Data& D, double tol) {
     return s / static_cast<double>(p) * tol;
 }
 
-// The path by shape: Hamerly's bounds where a scan costs more than their check (k (p + 4) >= 100: below it the
-// check of a point's two bounds, with its roundings, costs about what its scan does; CL95 and the measurements in
-// docs/design/cluster.md §5), the filter by filter_shape. Forced paths (tests): 1 Lloyd direct, 2 Lloyd filtered,
-// 3 bounds direct, 4 bounds filtered.
-bool bounds_shape(int64_t p, int64_t k) { return k >= 2 && k * (p + 4) >= 100; }
+// The path by shape: the filter by filter_shape, Hamerly's bounds where a scan costs more than their check: k p >= 64
+// with the direct scan, k p >= 150 with the filtered one (it is cheaper a centre; below these the check of a point's
+// two bounds and the own centre's sqd cost about what its scan does; CL106 and the measurements of whole fits in
+// docs/design/cluster.md §5). Forced paths (tests): 1 Lloyd direct, 2 Lloyd filtered, 3 bounds direct, 4 bounds
+// filtered.
+bool bounds_shape(int64_t p, int64_t k, bool filter) { return k >= 2 && k * p >= (filter ? 150 : 64); }
 
 void choose_path(int path, int64_t p, int64_t k, bool& bounds, bool& filter) {
     if (path == 0) {
-        bounds = bounds_shape(p, k);
-        filter = filter_shape(p, k);
+        filter = filter_shape(p, k, scan_threads());
+        bounds = bounds_shape(p, k, filter);
         return;
     }
     bounds = path == 3 || path == 4;
@@ -1288,7 +1355,7 @@ struct BisectNode {
 
 struct BisectOut {
     std::vector<BisectNode> nodes;  // node 0 the root
-    std::vector<int64_t> leaves;    // in the tree's left-to-right order
+    std::vector<int64_t> leaves;  // in the tree's left-to-right order
     std::vector<int64_t> best_init;
     int64_t n_iter = 0;
     bool converged = true;
@@ -1401,8 +1468,8 @@ nb::object bisecting_py(
     Fit F;
     int e = 0;
     std::vector<double> node_centres;  // (2k - 1, p), unscaled: node v's centre (the root's: zeros)
-    std::vector<int64_t> children;     // (k - 1, 2): each split node's (left, right) node numbers, by split
-    std::vector<double> heights;       // (k - 1,): the split node's inertia, unscaled
+    std::vector<int64_t> children;  // (k - 1, 2): each split node's (left, right) node numbers, by split
+    std::vector<double> heights;  // (k - 1,): the split node's inertia, unscaled
     std::vector<int64_t> split_node(static_cast<size_t>(std::max<int64_t>(k - 1, 0)));
     std::vector<int64_t> leaf_of_node;
     {
@@ -1428,7 +1495,7 @@ nb::object bisecting_py(
             label_sums(D, F.lab.data(), 1, S, W);
             for (int64_t d = 0; d < p; ++d) F.C[static_cast<size_t>(d)] = S[static_cast<size_t>(d)] / W[0];
         }
-        D.filter = filter_shape(p, k);
+        D.filter = filter_shape(p, k, scan_threads());
         F.inertia = inertia_of(D, F.lab.data(), F.C.data(), k, &F.per);
         node_centres.assign(static_cast<size_t>(nn * p), 0.0);
         for (int64_t v = 0; v < nn; ++v) {
@@ -1644,6 +1711,27 @@ nb::object assign_expanded_py(nb::handle Xo, nb::handle Co, bool single) {
     return wrap(int_array(lab, n));
 }
 
+// Lloyd's assignment alone, reps times (measurements only, tools/cluster_probe.py): the rows and centres as given
+// (no scaling), path 1 direct, 2 filtered, 3 filtered with every kept centre's sqd (CL95's) -> labels
+nb::object assign_reps_py(nb::handle Xo, nb::handle Co, int path, int64_t reps) {
+    int64_t n, p, k, pc;
+    const double* X = matrix_arg(Xo, "X", n, p);
+    const double* C = matrix_arg(Co, "C", k, pc);
+    if (pc != p || k < 1) throw nb::value_error("C must be (k, p)");
+    std::vector<int64_t> lab(static_cast<size_t>(n), -1);
+    {
+        const parallel::Unlocked unlocked(true);
+        Data D;
+        D.X = X, D.n = n, D.p = p, D.M = Margin(p);
+        D.filter = path == 2 || path == 3;
+        D.prepare_filter();
+        Centres Cs;
+        Cs.set(C, k, p, D.filter, false, D.M);
+        for (int64_t r = 0; r < reps; ++r) assign(D, Cs, lab, nullptr, true, D.filter, path == 3);
+    }
+    return wrap(int_array(lab, n));
+}
+
 }  // namespace
 
 void bind_kmeans(nb::module_& m) {
@@ -1676,6 +1764,7 @@ void bind_kmeans(nb::module_& m) {
         nb::arg("r")
     );
     m.def("_kmeans_assign_expanded", &assign_expanded_py, nb::arg("X"), nb::arg("C"), nb::arg("single") = false);
+    m.def("_kmeans_assign_reps", &assign_reps_py, nb::arg("X"), nb::arg("C"), nb::arg("path"), nb::arg("reps"));
 }
 
 }  // namespace sd::cluster

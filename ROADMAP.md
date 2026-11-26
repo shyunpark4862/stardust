@@ -1260,12 +1260,12 @@
 
 # 군집 영역 (sd.cluster)
 
-> 상태: **완료** (CL0–CL8 마일스톤, 2026-11-27). 공개 이름 61개(계층 `linkage`·`agglomerative`·`divisive`와 scipy 이름의 도구 열여섯, 분할 `kmeans`·`minibatch_kmeans`·`bisecting_kmeans`·`kmedoids`·`fuzzy_cmeans`, 밀도 `dbscan`·`hdbscan`·`optics`, 혼합 `gaussian_mixture`, sklearn 이름의 지표 열여섯과 `gap_statistic`·`gower_distance`, `affinity_propagation`, 결과 클래스와 결과 namedtuple 열넷)가 모두 구현되어 있다. 설계는 [docs/design/cluster.md](docs/design/cluster.md)(확정), API는 [docs/api/cluster.md](docs/api/cluster.md)(확정)다. 결정은 CL1–CL105이다. k-평균의 거리 꼴은 사용자가 정했다(CL49: 차의 꼴 + 증명된 거르기, 2026-11-26). 1스레드에서 자체 커널이 Accelerate보다 1.5배 넘게 느린 두 경로(설계 §9의 39·40번)는 CL7 마일스톤의 잰 값과 함께 묻는다.
+> 상태: **완료** (CL0–CL8 마일스톤, 2026-11-27). 공개 이름 61개(계층 `linkage`·`agglomerative`·`divisive`와 scipy 이름의 도구 열여섯, 분할 `kmeans`·`minibatch_kmeans`·`bisecting_kmeans`·`kmedoids`·`fuzzy_cmeans`, 밀도 `dbscan`·`hdbscan`·`optics`, 혼합 `gaussian_mixture`, sklearn 이름의 지표 열여섯과 `gap_statistic`·`gower_distance`, `affinity_propagation`, 결과 클래스와 결과 namedtuple 열넷)가 모두 구현되어 있다. 설계는 [docs/design/cluster.md](docs/design/cluster.md)(확정), API는 [docs/api/cluster.md](docs/api/cluster.md)(확정)다. 결정은 CL1–CL107이다. k-평균의 거리 꼴은 사용자가 정했다(CL49: 차의 꼴 + 증명된 거르기, 2026-11-26). 1스레드에서 자체 커널이 Accelerate보다 1.5배 넘게 느리던 두 경로(설계 §9의 39·40번)는 사용자가 "재현성만 있으면 성능 우선"으로 정했다(2026-11-27; CL106·CL107).
 
 ## 진행 원칙
 - 다른 영역과 같다: 마일스톤마다 시작 전에 물을 것을 정하고, 구현하고, 정확도·속도를 재고, 커밋하고, 결과를 전달한다. 해설과 안내서는 쓰지 않는다. 결정 번호와 마일스톤 이름이 같은 머리글자라서 마일스톤은 "CL1 마일스톤"처럼 적는다. 마일스톤 에이전트는 한 번에 하나다.
 - 큰 결정(사용자, 2026-11-24): 함수가 결과 객체를 돌려준다(`kmeans(X, k)` → `KMeansResult`; 추정기 클래스가 아니다); 군집은 `sd.cluster`, 차원 축소·임베딩은 나중의 `sd.embed`, 분류기와 그 회귀판은 나중의 `sd.classify`, 순서는 cluster → embed → classify; 비교 대상은 scikit-learn 1.9.1, scipy 1.18.1, R 4.6.2의 `stats`·`cluster`(설치되지 않은 R 꾸러미는 설치하지 않는다) (docs/design/cluster.md §1.1 CL1–CL3). §9의 범위(Mean Shift, mclust의 14 공분산 꼴, 베이즈 혼합, Birch, 연결 제약은 나중; 스펙트럼 군집은 `sd.embed` 뒤), 결정성(자체 NEON 커널로 1·3·10스레드 같은 바이트; 시제품에서 Accelerate보다 1.5배 넘게 느린 경로만 다시 묻는다), 라벨 번호(입력 순서로 처음 나오는 차례), 지표의 자리(`sd.cluster`)도 사용자가 정했다(2026-11-24). 연결법의 기본값은 scipy의 `'single'`(메인 결정, 사용자 위임 2026-11-24; CL16), 나머지 질문은 추천안이다(사용자 위임 2026-11-24).
-- 참값은 정확한 유리수와 Arb다. 결과는 스레드 수와 무관하고(CL9), 결정적인 방법의 분할은 입력 순서와 무관하다(CL7). 임시로 둔 값(퍼지 c-평균의 `tol`, PAM의 `max_iter`, `affinity_propagation`의 `precomputed`의 이름, `gap_statistic`의 `select` 이름)은 해당 마일스톤에서 정한다.
+- 참값은 정확한 유리수와 Arb다. 결과는 스레드 수와 무관하고(CL9; 예외는 큰 p의 `gaussian_mixture` full·tied로 같은 스레드 수에서 같은 비트다: CL107), 결정적인 방법의 분할은 입력 순서와 무관하다(CL7). 임시로 둔 값(퍼지 c-평균의 `tol`, PAM의 `max_iter`, `affinity_propagation`의 `precomputed`의 이름, `gap_statistic`의 `select` 이름)은 해당 마일스톤에서 정한다.
 - 기존 영역의 결과는 비트까지 같아야 한다(이 영역은 spatial·graph의 커널을 부르기만 한다).
 
 ## 진행 상태
@@ -1280,6 +1280,7 @@
 | CL6 그 밖: `affinity_propagation` | 완료 (2026-11-27; CL91–CL94) |
 | CL7 성능과 일관성 점검 | 완료 (2026-11-27; CL95–CL105) |
 | CL8 문서 | 완료 (2026-11-27) |
+| §9의 39·40번의 사용자 결정: k-평균 배정과 혼합 E 단계의 Accelerate 꼴 | 완료 (2026-11-27; CL106·CL107) |
 
 ## 마일스톤
 
@@ -1320,3 +1321,8 @@
 
 ### CL8 마일스톤. 문서 — 완료(2026-11-27)
 - docs/api/cluster.md 확정(상태, 마일스톤 문구를 뺌, `X_new`와 `rng`·`sample_size`의 규칙, 바뀐 메시지), docs/design/cluster.md를 구현대로(상태, §1.1 CL95–CL105와 바뀐 결정의 표시, §3.2·§3.10·§3.11의 길과 메모리, §5의 CL7 마일스톤 측정과 목표의 확인, §8, §9의 39·40번의 잰 값), 등록 문서(README.md, API.md, ARCHITECTURE.md, tests/README.md, bench/README.md, 이 문서).
+
+### §9의 39·40번의 사용자 결정: Accelerate 꼴 (CL106·CL107) — 완료(2026-11-27)
+- 결정(사용자 결정 2026-11-27: 재현성만 있으면 성능 우선; 스레드와 무관한 비트보다 성능, 같은 기계·같은 스레드 수에서 실행마다 같은 비트(D-33; API.md §3, DESIGN.md §1.6 1번)면 된다; 구현과 문턱은 추천안, 사용자 위임): docs/design/cluster.md §1.1 CL106(k-평균 배정: 거르기 앞의 0차 훑기가 `dgemm`의 G = C Xᵀ를 점 여덟씩 NEON으로 훑어, 증명된 한계로 후보가 하나인 점은 차의 꼴을 재지 않고 그 중심을 라벨로 한다; 라벨과 결과의 비트는 그대로이고 스레드와 무관하다. 그래서 거르기와 경계는 모양과 스레드 수로 고르고, 경계의 문턱은 k·p ≥ 64(거르기면 150)), CL107(혼합 E 단계: full·tied의 p ≥ 24(1스레드)·30(2–3스레드)에서 y = Uᵀz를 Accelerate로; 같은 스레드 수에서 같은 비트, 이 영역의 유일한 스레드 의존 길). CL9·CL49·CL95와 §9의 39·40번에 결과를 적었다.
+- 결과: csrc/cluster/kmeans.cpp(0차 훑기, 라벨만 읽는 배정, 스레드 수의 문턱, 측정용 `_kmeans_assign_reps`), csrc/cluster/mixture.cpp(`weighted_logprob_blas`, `blas_estep`, `gmm_fit`·`gmm_estimate`의 `path`), 테스트(k-평균 스레드 비교에 길이 스레드 수로 바뀌는 자료, 혼합의 두 커널 계약과 같은 스레드 수의 같은 바이트), 골든(THREAD_DEPENDENT 둘, 새 사례 하나; 다시 기록한 사례 0), 속도 기준선(사례 11)과 정확도 기준선.
+- 찾은 것(docs/design/cluster.md §5): k-평균 배정 한 번의 1스레드는 Accelerate 전개식의 0.78–1.02배(k = 5–20, p = 10–50; 전 1.2–2.0배), 맞춤 `kmeans p=10 k=10`은 1 / 10스레드 23.6 / 4.47 → 16.3 / 3.86 ms(sklearn 30.8 / 11.8), `bisecting_kmeans`는 31.4 → 27.4 ms로 sklearn(29.9)보다 빠르다. 혼합 E 단계의 1스레드는 p = 50 6.42 → 3.76 ms, p = 100 21.6 → 8.20 ms이고 `gaussian_mixture full p=50 k=5 same start`는 267 → 211 ms(sklearn 231)다. Accelerate의 판은 대개 자체 커널과 같은 fma 차례라 E 단계의 비트가 같았고(무작위 120번 중 114번), 점 하나짜리 끝 작업처럼 행이 아주 적은 곱에서만 끝자리가 달랐다. 10스레드에서는 자체 커널이 같거나 빠르다.

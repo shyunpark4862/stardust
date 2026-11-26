@@ -12,8 +12,9 @@
 
 | 실행 | 커밋 | 기계 | 사례 수 |
 |---|---|---|---:|
-| 20261127-051007-25f6ac27+ | 25f6ac27 + 작업 중 변경 | Apple M4 Pro, 14코어, macOS 26.6.2 | 39 |
+| 20261127-051007-25f6ac27+ | 25f6ac27 + 작업 중 변경 | Apple M4 Pro, 14코어, macOS 26.6.2 | 28 |
 | 20261127-052619-846df10b+ | 846df10b + 작업 중 변경 | Apple M4 Pro, 14코어, macOS 26.6.2 | 3 |
+| 20261127-065812-3f2a7c80+ | 3f2a7c80 + 작업 중 변경 | Apple M4 Pro, 14코어, macOS 26.6.2 | 11 |
 
 라이브러리: stardust 0.0.1, numpy 2.5.4, scipy 1.18.1, pandas 3.1.1, pyarrow 26.0.1, statsmodels 0.15.0, sklearn 1.9.1, threadpoolctl 3.8.0, R 4.6.2, R cluster 2.1.8.3.
 
@@ -49,26 +50,26 @@ BLAS: R libopenblasp-r0.3.34.dylib, numpy accelerate, scipy Accelerate.
 
 ## 분할 (`kmeans`, `minibatch_kmeans`, `bisecting_kmeans`, `kmedoids`, `fuzzy_cmeans`)
 
-- sklearn ÷ sd: 1스레드 중앙값 3.34배(기하평균 3.20배, sd가 느린 줄 1/4), 10스레드 중앙값 5.58배(기하평균 6.68배, sd가 느린 줄 0/4)
-- R Lloyd ÷ sd: 1스레드 중앙값 15.6배(기하평균 15.6배, sd가 느린 줄 0/1), 10스레드 중앙값 82.3배(기하평균 82.3배, sd가 느린 줄 0/1)
-- R ÷ sd: 1스레드 중앙값 2.29배(기하평균 2.87배, sd가 느린 줄 0/3), 10스레드 중앙값 12.1배(기하평균 14.8배, sd가 느린 줄 0/3)
+- sklearn ÷ sd: 1스레드 중앙값 4.29배(기하평균 3.76배, sd가 느린 줄 0/4), 10스레드 중앙값 5.87배(기하평균 7.10배, sd가 느린 줄 0/4)
+- R Lloyd ÷ sd: 1스레드 중앙값 21.7배(기하평균 21.7배, sd가 느린 줄 0/1), 10스레드 중앙값 91.6배(기하평균 91.6배, sd가 느린 줄 0/1)
+- R ÷ sd: 1스레드 중앙값 3.18배(기하평균 3.20배, sd가 느린 줄 0/3), 10스레드 중앙값 13.4배(기하평균 15.3배, sd가 느린 줄 0/3)
 
 | 사례 | 크기 | 스레드 | sd | sklearn | ÷ sd | R Lloyd | ÷ sd | R | ÷ sd | 잡음 | 비고 |
 |---|---|---:|---:|---:|---:|---:|---:|---:|---:|---:|---|
-| `kmeans p=10 k=10` † | 10^5 | 1 | 23.6 ms | 31.5 ms | 1.33 | 368 ms | 15.6 | 54.1 ms | 2.29 | 5% | R Lloyd: R's Lloyd has no tol: it runs until no label changes (117 iterations here, sd's tol 1e-4 stops at 11); R: R's default Hartigan-Wong moves single points: another local minimum |
-| `kmeans p=10 k=10` † | 10^5 | 10 | 4.47 ms | 13.2 ms | 2.95 | 368 ms | 82.3 | 54.1 ms | 12.1 | 5% | R Lloyd: R's Lloyd has no tol: it runs until no label changes (117 iterations here, sd's tol 1e-4 stops at 11); R: R's default Hartigan-Wong moves single points: another local minimum |
-| `minibatch_kmeans p=10 k=10` † | 10^5 | 1 | 5.90 ms | 89.1 ms | 15.1 | - | - | - | - | 4% |  |
-| `minibatch_kmeans p=10 k=10` † | 10^5 | 10 | 3.20 ms | 104 ms | 32.5 | - | - | - | - | 4% |  |
-| `bisecting_kmeans p=10 k=10` † | 10^5 | 1 | 31.4 ms | 30.8 ms | **0.98** | - | - | - | - | 2% |  |
-| `bisecting_kmeans p=10 k=10` † | 10^5 | 10 | 8.87 ms | 22.4 ms | 2.53 | - | - | - | - | 11% |  |
+| `kmeans p=10 k=10` | 10^5 | 1 | 16.3 ms | 30.8 ms | 1.89 | 354 ms | 21.7 | 51.8 ms | 3.18 | 4% | R Lloyd: R's Lloyd has no tol: it runs until no label changes (117 iterations here, sd's tol 1e-4 stops at 11); R: R's default Hartigan-Wong moves single points: another local minimum |
+| `kmeans p=10 k=10` | 10^5 | 10 | 3.86 ms | 11.8 ms | 3.06 | 354 ms | 91.6 | 51.8 ms | 13.4 | 4% | R Lloyd: R's Lloyd has no tol: it runs until no label changes (117 iterations here, sd's tol 1e-4 stops at 11); R: R's default Hartigan-Wong moves single points: another local minimum |
+| `minibatch_kmeans p=10 k=10` | 10^5 | 1 | 5.57 ms | 80.5 ms | 14.5 | - | - | - | - | 2% |  |
+| `minibatch_kmeans p=10 k=10` | 10^5 | 10 | 2.71 ms | 96.5 ms | 35.6 | - | - | - | - | 21% |  |
+| `bisecting_kmeans p=10 k=10` | 10^5 | 1 | 27.4 ms | 29.9 ms | 1.09 | - | - | - | - | 7% |  |
+| `bisecting_kmeans p=10 k=10` | 10^5 | 10 | 8.20 ms | 22.0 ms | 2.69 | - | - | - | - | 15% |  |
 | `kmedoids pam p=5 k=10` | 2000 | 1 | 100 ms | - | - | - | - | 689 ms | 6.87 | 0% |  |
 | `kmedoids pam p=5 k=10` | 2000 | 10 | 15.7 ms | - | - | - | - | 689 ms | 43.9 | 1% |  |
 | `kmedoids clara p=5 k=10` | 10^5 | 1 | 14.9 ms | - | - | - | - | 22.4 ms | 1.50 | 7% | R: R's own sampler: other samples |
 | `kmedoids clara p=5 k=10` | 10^5 | 10 | 3.65 ms | - | - | - | - | 22.4 ms | 6.13 | 7% | R: R's own sampler: other samples |
 | `fuzzy_cmeans p=10 k=10` † | 10^5 | 1 | 772 ms | - | - | - | - | - | - | 1% | no comparator: e1071 is not installed and R's fanny minimizes another objective on n x n distances |
 | `fuzzy_cmeans p=10 k=10` † | 10^5 | 10 | 91.4 ms | - | - | - | - | - | - | 5% | no comparator: e1071 is not installed and R's fanny minimizes another objective on n x n distances |
-| `kmeans p=50 k=100` † | 10^5 | 1 | 150 ms | 803 ms | 5.36 | - | - | - | - | 8% | the same start (the data's first 100 rows) |
-| `kmeans p=50 k=100` † | 10^5 | 10 | 38.4 ms | 316 ms | 8.21 | - | - | - | - | 4% | the same start (the data's first 100 rows) |
+| `kmeans p=50 k=100` | 10^5 | 1 | 135 ms | 901 ms | 6.69 | - | - | - | - | 3% | the same start (the data's first 100 rows) |
+| `kmeans p=50 k=100` | 10^5 | 10 | 36.0 ms | 312 ms | 8.68 | - | - | - | - | 3% | the same start (the data's first 100 rows) |
 
 R Lloyd, R은(는) 스레드 수와 상관없이 한 번 잰 값이다(그 라이브러리의 기본 스레드).
 
@@ -91,29 +92,29 @@ R Lloyd, R은(는) 스레드 수와 상관없이 한 번 잰 값이다(그 라�
 
 ## 가우스 혼합
 
-- sklearn ÷ sd: 1스레드 중앙값 1.99배(기하평균 1.75배, sd가 느린 줄 1/6), 10스레드 중앙값 6.96배(기하평균 7.23배, sd가 느린 줄 0/6)
+- sklearn ÷ sd: 1스레드 중앙값 2.00배(기하평균 1.82배, sd가 느린 줄 0/6), 10스레드 중앙값 7.00배(기하평균 7.23배, sd가 느린 줄 0/6)
 
 | 사례 | 크기 | 스레드 | sd | sklearn | ÷ sd | 잡음 | 비고 |
 |---|---|---:|---:|---:|---:|---:|---|
-| `gaussian_mixture full p=10 k=5` † | 20000 | 1 | 7.70 ms | 15.5 ms | 2.01 | 4% | each library's own k-means start; the blobs are well separated, so both reach one fixed point |
-| `gaussian_mixture full p=10 k=5` † | 20000 | 10 | 1.94 ms | 16.2 ms | 8.39 | 39% | each library's own k-means start; the blobs are well separated, so both reach one fixed point |
-| `gaussian_mixture full p=10 k=5 same start` † | 20000 | 1 | 7.12 ms | 15.7 ms | 2.20 | 3% | the same start (weights, means, precisions) on both sides: the same EM iterations |
-| `gaussian_mixture full p=10 k=5 same start` † | 20000 | 10 | 1.50 ms | 15.8 ms | 10.5 | 30% | the same start (weights, means, precisions) on both sides: the same EM iterations |
-| `gaussian_mixture tied p=10 k=5 same start` † | 20000 | 1 | 6.97 ms | 12.5 ms | 1.80 | 4% | the same start (weights, means, precisions) on both sides: the same EM iterations |
-| `gaussian_mixture tied p=10 k=5 same start` † | 20000 | 10 | 1.78 ms | 12.4 ms | 6.98 | 22% | the same start (weights, means, precisions) on both sides: the same EM iterations |
-| `gaussian_mixture diag p=10 k=5 same start` † | 20000 | 1 | 4.01 ms | 7.91 ms | 1.97 | 2% | the same start (weights, means, precisions) on both sides: the same EM iterations |
-| `gaussian_mixture diag p=10 k=5 same start` † | 20000 | 10 | 1.24 ms | 7.92 ms | 6.38 | 29% | the same start (weights, means, precisions) on both sides: the same EM iterations |
-| `gaussian_mixture spherical p=10 k=5 same start` † | 20000 | 1 | 4.02 ms | 8.53 ms | 2.12 | 3% | the same start (weights, means, precisions) on both sides: the same EM iterations |
-| `gaussian_mixture spherical p=10 k=5 same start` † | 20000 | 10 | 1.24 ms | 8.61 ms | 6.95 | 29% | the same start (weights, means, precisions) on both sides: the same EM iterations |
-| `gaussian_mixture full p=50 k=5 same start` † | 20000 | 1 | 267 ms | 233 ms | **0.87** | 2% | the same start on both sides: the same EM iterations |
-| `gaussian_mixture full p=50 k=5 same start` † | 20000 | 10 | 39.7 ms | 208 ms | 5.23 | 6% | the same start on both sides: the same EM iterations |
+| `gaussian_mixture full p=10 k=5` † | 20000 | 1 | 7.50 ms | 15.4 ms | 2.06 | 2% | each library's own k-means start; the blobs are well separated, so both reach one fixed point |
+| `gaussian_mixture full p=10 k=5` † | 20000 | 10 | 1.94 ms | 16.2 ms | 8.35 | 4% | each library's own k-means start; the blobs are well separated, so both reach one fixed point |
+| `gaussian_mixture full p=10 k=5 same start` | 20000 | 1 | 7.10 ms | 15.7 ms | 2.21 | 4% | the same start (weights, means, precisions) on both sides: the same EM iterations |
+| `gaussian_mixture full p=10 k=5 same start` | 20000 | 10 | 1.49 ms | 15.8 ms | 10.6 | 4% | the same start (weights, means, precisions) on both sides: the same EM iterations |
+| `gaussian_mixture tied p=10 k=5 same start` | 20000 | 1 | 6.94 ms | 12.3 ms | 1.77 | 2% | the same start (weights, means, precisions) on both sides: the same EM iterations |
+| `gaussian_mixture tied p=10 k=5 same start` | 20000 | 10 | 1.77 ms | 12.3 ms | 6.99 | 1% | the same start (weights, means, precisions) on both sides: the same EM iterations |
+| `gaussian_mixture diag p=10 k=5 same start` | 20000 | 1 | 3.98 ms | 7.74 ms | 1.94 | 2% | the same start (weights, means, precisions) on both sides: the same EM iterations |
+| `gaussian_mixture diag p=10 k=5 same start` | 20000 | 10 | 1.22 ms | 7.87 ms | 6.43 | 2% | the same start (weights, means, precisions) on both sides: the same EM iterations |
+| `gaussian_mixture spherical p=10 k=5 same start` | 20000 | 1 | 3.95 ms | 8.41 ms | 2.13 | 2% | the same start (weights, means, precisions) on both sides: the same EM iterations |
+| `gaussian_mixture spherical p=10 k=5 same start` | 20000 | 10 | 1.22 ms | 8.58 ms | 7.01 | 2% | the same start (weights, means, precisions) on both sides: the same EM iterations |
+| `gaussian_mixture full p=50 k=5 same start` | 20000 | 1 | 211 ms | 231 ms | 1.09 | 4% | the same start on both sides: the same EM iterations |
+| `gaussian_mixture full p=50 k=5 same start` | 20000 | 10 | 40.2 ms | 207 ms | 5.14 | 3% | the same start on both sides: the same EM iterations |
 
 † 잴 때 다른 프로세스가 CPU를 1코어 넘게 썼다(사례의 `other_cpu`). 다시 재는 것이 좋다.
 
 ## 지표 (`gap_statistic`, `gower_distance` 포함)
 
 - sklearn ÷ sd: 1스레드 중앙값 3.76배(기하평균 3.76배, sd가 느린 줄 0/1), 10스레드 중앙값 19.2배(기하평균 19.2배, sd가 느린 줄 0/1)
-- R cluster ÷ sd: 1스레드 중앙값 4.11배(기하평균 4.00배, sd가 느린 줄 0/4), 10스레드 중앙값 24.9배(기하평균 27.5배, sd가 느린 줄 0/4)
+- R cluster ÷ sd: 1스레드 중앙값 4.11배(기하평균 4.05배, sd가 느린 줄 0/4), 10스레드 중앙값 24.9배(기하평균 27.7배, sd가 느린 줄 0/4)
 - sklearn ÷ sd: 1스레드 중앙값 3.76배(기하평균 3.76배, sd가 느린 줄 0/1), 10스레드 중앙값 19.2배(기하평균 19.2배, sd가 느린 줄 0/1)
 
 | 사례 | 크기 | 스레드 | sd | sklearn | ÷ sd | R cluster | ÷ sd | sklearn | ÷ sd | 잡음 | 비고 |
@@ -130,8 +131,8 @@ R Lloyd, R은(는) 스레드 수와 상관없이 한 번 잰 값이다(그 라�
 | `normalized_mutual_info_score k=20` † | 10^6 | 10 | 4.94 ms | - | - | - | - | - | - | 6% |  |
 | `adjusted_mutual_info_score k=20` † | 10^5 | 1 | 1.66 ms | - | - | - | - | - | - | 1% | the expected MI by the hypergeometric ratio recurrence (scikit-learn: lgamma at every cell count) |
 | `adjusted_mutual_info_score k=20` † | 10^5 | 10 | 992 µs | - | - | - | - | - | - | 3% | the expected MI by the hypergeometric ratio recurrence (scikit-learn: lgamma at every cell count) |
-| `gap_statistic kmeans p=4 k_max=8 B=50` † | 10^3 | 1 | 192 ms | - | - | 1.02 s | 5.29 | - | - | 2% | R cluster: R's kmeans is Hartigan-Wong with one random start, its reference sets another stream |
-| `gap_statistic kmeans p=4 k_max=8 B=50` † | 10^3 | 10 | 23.5 ms | - | - | 1.02 s | 43.4 | - | - | 5% | R cluster: R's kmeans is Hartigan-Wong with one random start, its reference sets another stream |
+| `gap_statistic kmeans p=4 k_max=8 B=50` | 10^3 | 1 | 178 ms | - | - | 996 ms | 5.59 | - | - | 2% | R cluster: R's kmeans is Hartigan-Wong with one random start, its reference sets another stream |
+| `gap_statistic kmeans p=4 k_max=8 B=50` | 10^3 | 10 | 22.2 ms | - | - | 996 ms | 44.8 | - | - | 1% | R cluster: R's kmeans is Hartigan-Wong with one random start, its reference sets another stream |
 | `gap_statistic pam p=2 k_max=6 B=20` † | 300 | 1 | 182 ms | - | - | 613 ms | 3.37 | - | - | 4% |  |
 | `gap_statistic pam p=2 k_max=6 B=20` † | 300 | 10 | 24.6 ms | - | - | 613 ms | 24.9 | - | - | 4% |  |
 | `gower_distance p=6` † | 3000 | 1 | 50.7 ms | - | - | 150 ms | 2.95 | - | - | 5% |  |

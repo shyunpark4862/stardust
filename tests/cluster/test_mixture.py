@@ -80,7 +80,9 @@ def _precisions(res):
 # ---- the contract at given parameters (§4.5) ------------------------------------------------------------------
 
 
-def test_log_densities_and_responsibilities_at_given_factors():
+@pytest.mark.parametrize("path", [1, 2])
+def test_log_densities_and_responsibilities_at_given_factors(path):
+    # path 1 the own kernel, 2 Accelerate's y = U^T z for full and tied (CL107; theorem 7 holds for either order)
     worst = {"logdens": 0.0, "score": 0.0, "resp": 0.0}
     for mid in S.mixture_ids():
         mx = S.mixture(mid)
@@ -88,7 +90,7 @@ def test_log_densities_and_responsibilities_at_given_factors():
         U = _factors(mid)
         ld = _logdet(t, U, k, p)
         lab, resp, lpn = CORE.gmm_estimate(A(mx.X), A(mx.means), A(np.ascontiguousarray(U)), A(ld),
-                                           A(np.log(mx.weights)), CODE[t], 0)  # fmt: skip
+                                           A(np.log(mx.weights)), CODE[t], 0, path)  # fmt: skip
         wlp = np.column_stack([sum(_per(f"logdens_u_{j}", mid, 0)) + math.log(mx.weights[j]) for j in range(k)])
         bE, bs, br = D.mixture_bounds(t, mx.X, mx.weights, mx.means, U, wlp)
         sh, sl = _per("score_u", mid, 0)
@@ -104,7 +106,7 @@ def test_log_densities_and_responsibilities_at_given_factors():
         for j in range(k):
             Uj = U[j : j + 1] if t != "tied" else U
             _, _, l1 = CORE.gmm_estimate(A(mx.X), A(mx.means[j : j + 1]), A(np.ascontiguousarray(Uj)),
-                                         A(ld[j : j + 1]), A(np.zeros(1)), CODE[t], 0)  # fmt: skip
+                                         A(ld[j : j + 1]), A(np.zeros(1)), CODE[t], 0, path)  # fmt: skip
             ref = sum(_per(f"logdens_u_{j}", mid, 0))
             err = np.abs(_np(l1) - ref)
             assert np.all(err <= bE[:, j]), (mid, j, np.max(err / bE[:, j]))
@@ -275,6 +277,7 @@ def test_starts_rng_and_n_init():
 
 @pytest.mark.parametrize("ctype", TYPES)
 def test_thread_counts_and_input_order(ctype):
+    # p = 4: every type takes the own E-step kernel at every thread count, whose bits do not depend on it
     X = _blobs(12000, 4, 5, seed=11, scale=1.5)
 
     def results(Y, init="kmeans"):
@@ -301,6 +304,39 @@ def test_thread_counts_and_input_order(ctype):
         q = S.first_seen(_np(a.labels)[perm])
         order_a = [int(_np(a.labels)[perm][np.nonzero(q == j)[0][0]]) for j in range(5)]
         assert np.array_equal(_np(a.means)[order_a], _np(b.means)) and a.loglik == b.loglik, init
+
+
+@pytest.mark.parametrize("ctype", ["full", "tied"])
+def test_accelerate_e_step_is_the_same_on_every_run_of_a_thread_count(ctype):
+    # CL107: full and tied with p >= 24 at one thread (p >= 30 at two or three) take y = U^T z from Accelerate, the
+    # own kernel at more threads; D-33: the same thread count gives the same bytes on every run, other thread
+    # counts the same fit to rounding
+    X = _blobs(6000, 32, 3, seed=12, scale=1.0)
+    first = {}
+
+    def results():
+        r = CL.gaussian_mixture(X, 3, rng=_rng(5), covariance_type=ctype, n_init=2)
+        return r, [r.weights, r.means, r.covariances, r.precisions_cholesky, r.loglik, r.lower_bound, r.n_iter,
+                   r.labels, r.score_samples(X[:300]), r.predict_proba(X[:300])]  # fmt: skip
+
+    try:
+        for t in (1, 3, 10):
+            sd.set_num_threads(t)
+            a, av = results()
+            _, bv = results()
+            assert all(bits_equal(x, y) for x, y in zip(av, bv)), t
+            first[t] = a
+            # the kernel the shape and thread count choose
+            args = (A(X), a._fit_means, a._fit_U, a._fit_logdet, a._fit_logw, CODE[ctype], a._fit_scale)
+            auto = CORE.gmm_estimate(*args)
+            forced = CORE.gmm_estimate(*args, 2 if t <= 3 else 1)
+            assert all(bits_equal(x, y) for x, y in zip(auto, forced)), t
+    finally:
+        sd.set_num_threads(10)
+    for t in (3, 10):
+        assert np.array_equal(_np(first[t].labels), _np(first[1].labels)), t
+        assert abs(first[t].loglik - first[1].loglik) <= 1e-12 * abs(first[1].loglik), t
+        assert np.allclose(_np(first[t].means), _np(first[1].means), rtol=1e-12, atol=1e-12), t
 
 
 def test_sample():

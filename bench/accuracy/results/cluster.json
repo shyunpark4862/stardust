@@ -75,6 +75,32 @@
     "Boost": null,
     "Boost in sd.special": "4682f44"
    }
+  },
+  "20261127-070035-3f2a7c80+": {
+   "commit": "3f2a7c80",
+   "dirty": true,
+   "changed": [
+    "bench/cluster/speed.md",
+    "bench/speed/results/cluster.json",
+    "csrc/cluster/kmeans.cpp",
+    "csrc/cluster/mixture.cpp",
+    "docs/design/cluster.md",
+    "tests/cluster/test_kmeans.py",
+    "tests/cluster/test_mixture.py",
+    "tests/golden/cases_cluster.py",
+    "tests/golden/data/cluster.json"
+   ],
+   "date": "2026-11-27T07:00:35",
+   "machine": "arm64",
+   "python": "3.15.0",
+   "references": {
+    "array": "aef7e7bf22a5feb65a19c421f4d1b04d578dca8fd4e3122d503043afbc1c9638",
+    "linalg": "ba8d2d9b5e6767d51c11ec21fe26040320b31de4c06ccfe0562a6b1033ff2950",
+    "special": "241d3855ece237ebf086080118d4295238b54dc9b7b60a2822cef413e170064f",
+    "stats": "6f88d53afd2668510257ee4cc6e6ee9df3d20ef72ebfde263aacaefd1855586f",
+    "regression": "d18611e3becf4d1273fb0aff2671ad314fe6bd66c918a6db28ce54d01acb18b0",
+    "optimize": "28d5e52d860b54463697743fb86962197c0c4b7e5a4b9a670ca0518d9d3588e8"
+   }
   }
  },
  "sweeps": [
@@ -174,6 +200,7 @@
      "worst": []
     }
    },
+   "run": "20261127-070035-3f2a7c80+",
    "comparators": {
     "sklearn": {
      "hdbscan/core_distance": {
@@ -246,9 +273,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261127-052744-846df10b+",
-   "comparators_run": "20261127-052744-846df10b+"
+   "comparators_run": "20261127-052744-846df10b+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "cluster/fuzzy",
@@ -293,7 +319,7 @@
      ]
     }
    },
-   "run": "20261127-052744-846df10b+"
+   "run": "20261127-070035-3f2a7c80+"
   },
   {
    "id": "cluster/hierarchy",
@@ -547,6 +573,7 @@
      "worst": []
     }
    },
+   "run": "20261127-070035-3f2a7c80+",
    "comparators": {
     "scipy": {
      "average/plain": {
@@ -1033,9 +1060,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261127-052744-846df10b+",
-   "comparators_run": "20261127-052744-846df10b+"
+   "comparators_run": "20261127-052744-846df10b+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "cluster/kmeans",
@@ -1069,6 +1095,7 @@
      "worst": []
     }
    },
+   "run": "20261127-070035-3f2a7c80+",
    "comparators": {
     "sklearn": {
      "centers": {
@@ -1129,9 +1156,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261127-052744-846df10b+",
-   "comparators_run": "20261127-052744-846df10b+"
+   "comparators_run": "20261127-052744-846df10b+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "cluster/kmedoids",
@@ -1158,6 +1184,7 @@
      ]
     }
    },
+   "run": "20261127-070035-3f2a7c80+",
    "comparators": {
     "R": {
      "objective": {
@@ -1180,9 +1207,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261127-052744-846df10b+",
-   "comparators_run": "20261127-052744-846df10b+"
+   "comparators_run": "20261127-052744-846df10b+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "cluster/metrics",
@@ -1323,6 +1349,7 @@
      ]
     }
    },
+   "run": "20261127-070035-3f2a7c80+",
    "comparators": {
     "sklearn": {
      "metrics/ami": {
@@ -1450,9 +1477,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261127-052744-846df10b+",
-   "comparators_run": "20261127-052744-846df10b+"
+   "comparators_run": "20261127-052744-846df10b+",
+   "comparator_seconds": 60.0
   },
   {
    "id": "cluster/mixture",
@@ -1506,6 +1532,7 @@
      ]
     }
    },
+   "run": "20261127-070035-3f2a7c80+",
    "comparators": {
     "sklearn": {
      "mixture/logdens": {
@@ -1555,9 +1582,8 @@
      }
     }
    },
-   "comparator_seconds": 60.0,
-   "run": "20261127-052744-846df10b+",
-   "comparators_run": "20261127-052744-846df10b+"
+   "comparators_run": "20261127-052744-846df10b+",
+   "comparator_seconds": 60.0
   }
  ]
 }
