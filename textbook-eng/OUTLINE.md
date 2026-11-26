@@ -394,7 +394,7 @@ Part II Graphics
 
 방식: 리뷰 권과 같되 수학 교양서처럼 쓴다. 결과의 함의와 의미를 충분히 서술하고, 도입·일화·역사·곁이야기를 note 상자가 아니라 본문에서 풀어낸다(이 권에만 허용하는 예외; 서술체 허용). 증명을 대충 한다는 뜻이 아니다: 장마다 중심 정리 하나는 완전히 증명하고 나머지는 진술 + 줄거리 + 참고 문헌. 일화는 출처가 불확실한 것이 많으므로 인용 검증을 본문 권보다 더 엄격히 한다. 장마다 stardust(공용 빌드)로 돌린 작은 모의실험 절을 둔다. 장 단위는 주제 하나에 장 하나를 기본으로 하고, 같은 원리인 것만 합친다. 분량 제한 없음.
 
-묶음 E(유명한 문제들)의 흐름: 그 문제를 독자가 이해할 수 있게 설명하고 → 그간의 성과를 소개하고 → 어떤 의미와 함의를 갖는지 충분히 설명한다. 완전히 증명할 수 있는 조각이 있으면 하나를 중심에 둔다(예: FLT의 n = 4, Euler 곱).
+묶음 E(위대한 질문들, Great Questions)의 흐름: 그 문제를 독자가 이해할 수 있게 설명하고 → 그간의 성과를 소개하고 → 어떤 의미와 함의를 갖는지 충분히 설명한다. 완전히 증명할 수 있는 조각이 있으면 하나를 중심에 둔다(예: FLT의 n = 4, Euler 곱).
 
 (추가) = 메인이 추천해 사용자가 받아들인 주제.
 
@@ -427,7 +427,7 @@ Part II Graphics
 20. The Evolution of Cooperation — 죄수의 딜레마, Axelrod 토너먼트, tit-for-tat, (추가) zero-determinant 전략
 21. (추가) Paradoxes of Voting — Condorcet 순환, Arrow의 불가능성 정리
 
-### Part E — Famous Problems
+### Part E — Great Questions
 22. The Collatz Conjecture
 23. The Riemann Hypothesis
 24. Fermat's Last Theorem
