@@ -17,16 +17,30 @@
 \tableofcontents
 
 \notationchapter
-This list collects the symbols that are used in several chapters, and the conventions that differ from book to book. Every symbol, including those not listed here, is defined, with examples, where it first appears.
+This list collects the symbols that are used in several chapters, and the conventions that differ from book to book. Every symbol, including those not listed here, is defined, with examples, where it first appears, in this volume or in Volumes~I and~II. The notation of Volumes~I and~II is used without change; the first group repeats the conventions on which this volume relies most.
 
 % The chapter authors fill this list as the chapters are written: \symbolgroup{<name>} and a
 % symbols list per group, as in vol1.tex and vol2.tex. Only symbols that several chapters use and
 % conventions that differ between books; at most three pages in all.
 
+\symbolgroup{Conventions of Volumes~I and~II}
+\begin{symbols}
+\item[$\mathbb N$] the natural numbers $0,1,2,\ldots$ (\emph{zero included})
+\item[$A\subseteq B$, $A\subset B$] $A$ is a subset of $B$; $A$ is a \emph{proper} subset of $B$ ($A\subseteq B$ and $A\ne B$)
+\item[{$[a,b]$, $(a,b)$}] the closed interval $a\le x\le b$ and the open interval $a<x<b$; similarly $[a,b)$, $(a,\infty)$, \ldots
+\item[$(a_n)$, $(a_n)_{n\ge1}$] a sequence $a_0,a_1,\ldots$ (indexed from $0$ unless stated); one that starts at $a_1$
+\end{symbols}
+
+\symbolgroup{Real numbers}
+\begin{symbols}
+\item[{$[-\infty,\infty]$}] the extended real line $\mathbb R\cup\{-\infty,\infty\}$ (\cref{def:extended-reals}); $\infty-\infty$ is not defined, and $0\cdot(\pm\infty)$ is not defined before Part~III
+\item[$\limsup a_n$, $\liminf a_n$] the upper and the lower limit, $\inf_n\sup_{k\ge n}a_k$ and $\sup_n\inf_{k\ge n}a_k$, in $[-\infty,\infty]$; for functions, $\limsup_{x\to a}f(x)$ (\cref{def:semicontinuous})
+\end{symbols}
+
 \mainmatter
-% Parts and chapters go here, one \input per chapter (chapters/v3-NN-<name>.tex):
-% \part{Real Analysis}
-% \input{chapters/v3-01-...}
+% Parts and chapters go here, one \input per chapter (chapters/v3-NN-<name>.tex)
+\part{Real Analysis}
+\input{chapters/v3-01-the-real-numbers}
 
 \backmatter
 \end{document}
