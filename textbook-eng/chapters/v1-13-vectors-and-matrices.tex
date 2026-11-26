@@ -501,7 +501,7 @@ A square matrix can be multiplied by itself. The \term{powers} of $A\in\mathbb R
 \[
 p(A)\coloneqq c_0I+c_1A+c_2A^2+\cdots+c_dA^d .
 \]
-Because powers of $A$ commute, products of such matrices multiply out like polynomials: if $r=pq$ is the product of two polynomials, then $r(A)=p(A)q(A)=q(A)p(A)$. Indeed, by the distributive law, $p(A)q(A)=\sum_{j,k}c_jd_kA^{j+k}$, where $d_k$ are the coefficients of $q$, and collecting the terms with $j+k=l$ gives the coefficients of $r$. This is the start of the theory of matrix functions in Chapter~22, where the exponential $e^A=\sum_kA^k/k!$ is defined by the series.
+Because powers of $A$ commute, products of such matrices multiply out like polynomials: if $r=pq$ is the product of two polynomials, then $r(A)=p(A)q(A)=q(A)p(A)$. Indeed, by the distributive law, $p(A)q(A)=\sum_{j,k}c_jd_kA^{j+k}$, where $d_k$ are the coefficients of $q$, and collecting the terms with $j+k=l$ gives the coefficients of $r$. This is the start of the theory of matrix functions in \cref{ch:canonical-forms}, where the exponential $e^A=\sum_kA^k/k!$ is defined by the series.
 
 Powers of a matrix describe repeated application of a linear map, and they appear wherever a linear rule is iterated. The rotations satisfy $R_\varphi^k=R_{k\varphi}$, by the product of rotations computed above. The nilpotent matrix $N$ of the previous subsection has $N^2=0$, so the binomial theorem, applied to the commuting matrices $I$ and $N$, gives $(I+N)^k=I+kN$: the $k$th power of a shear is the shear with $k$ times the factor. A recurrence also becomes a matrix power. The Fibonacci numbers of \cref{sec:gcd}, with $F_0=0$, $F_1=1$ and $F_{k+1}=F_k+F_{k-1}$, satisfy
 \[

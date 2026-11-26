@@ -770,7 +770,7 @@ The invariants of the proposition do not decide similarity. The identity $I_2$ a
 \[
 K=\begin{bmatrix}1&1\\0&1\end{bmatrix}
 \]
-have the same rank $2$ and the same trace $2$, but they are not similar, since $P^{-1}IP=I$ for every $P$: the identity is similar only to itself, and so is every multiple $cI$. Part (iv) does distinguish them, since $\dim\mathcal N(I-I)=2$ and $\dim\mathcal N(K-I)=1$. Whether a finite list of such numbers decides similarity in general is the question of a canonical form, which Chapter~22 answers with the Jordan form.
+have the same rank $2$ and the same trace $2$, but they are not similar, since $P^{-1}IP=I$ for every $P$: the identity is similar only to itself, and so is every multiple $cI$. Part (iv) does distinguish them, since $\dim\mathcal N(I-I)=2$ and $\dim\mathcal N(K-I)=1$. Whether a finite list of such numbers decides similarity in general is the question of a canonical form, which \cref{ch:canonical-forms} answers with the Jordan form.
 
 \subsection{Projections}
 
@@ -844,14 +844,14 @@ The matrix $N$ of \cref{prop:similarity}\,(iii) cannot be diagonalised over any 
 \[
 [D]=\begin{bmatrix}0&1&0&0\\0&0&1&0\\0&0&0&1\\0&0&0&0\end{bmatrix}.
 \]
-This matrix is a \term{Jordan block}, and Chapter~22 shows that every complex matrix is similar to a block diagonal matrix built from such blocks, shifted by multiples of the identity. The difference operator $\Delta$ has the same matrix with respect to the basis of the binomial coefficients
+This matrix is a \term{Jordan block}, and \cref{ch:canonical-forms} shows that every complex matrix is similar to a block diagonal matrix built from such blocks, shifted by multiples of the identity. The difference operator $\Delta$ has the same matrix with respect to the basis of the binomial coefficients
 \[
 \binom x0,\ \binom x1,\ \ldots,\ \binom xn,\qquad\text{where}\quad\binom xk=\frac{x^{\underline k}}{k!},\qquad\text{since}\quad\Delta\binom xk=\binom x{k-1}
 \]
 by Pascal's rule. So $D$ and $\Delta$, two different operators on $\mathcal P_n$, have the same matrix in suitable bases: the isomorphism of $\mathcal P_n$ that maps the $k$th vector of the first basis to the $k$th vector of the second transforms one into the other.
 
 \begin{note}{Isomorphism, invariants and canonical forms}
-This chapter has classified three kinds of objects up to a change of coordinates. Finite-dimensional vector spaces up to isomorphism are classified by one number, the dimension (\cref{thm:isomorphic-dimension}). Linear maps between two spaces, up to a change of basis in each, are classified by one number, the rank, and each class has the representative $N_r$ (\cref{thm:rank-normal-form}). Operators on one space, up to a change of basis, are much harder: the rank and the trace do not suffice, and the classification, with the Jordan form as representative, occupies Chapter~22. The pattern of objects, structure-preserving maps, invariants and canonical forms runs through all of mathematics, from the cardinality of sets in \cref{ch:sets} to the groups and spaces of later volumes, and \emph{category theory} is the language that describes it in general. It was introduced by Eilenberg and Mac Lane to make precise the observation that some isomorphisms, such as the one between a finite-dimensional space and its double dual in \cref{sec:invariant-quotient-dual}, are \emph{natural}, defined without any choice, while others, such as $V\cong\mathbb F^n$, depend on a basis~\cite{eilenberg1945}; Mac Lane's book is the standard introduction~\cite{maclane1998}.
+This chapter has classified three kinds of objects up to a change of coordinates. Finite-dimensional vector spaces up to isomorphism are classified by one number, the dimension (\cref{thm:isomorphic-dimension}). Linear maps between two spaces, up to a change of basis in each, are classified by one number, the rank, and each class has the representative $N_r$ (\cref{thm:rank-normal-form}). Operators on one space, up to a change of basis, are much harder: the rank and the trace do not suffice, and the classification, with the Jordan form as representative, occupies \cref{ch:canonical-forms}. The pattern of objects, structure-preserving maps, invariants and canonical forms runs through all of mathematics, from the cardinality of sets in \cref{ch:sets} to the groups and spaces of later volumes, and \emph{category theory} is the language that describes it in general. It was introduced by Eilenberg and Mac Lane to make precise the observation that some isomorphisms, such as the one between a finite-dimensional space and its double dual in \cref{sec:invariant-quotient-dual}, are \emph{natural}, defined without any choice, while others, such as $V\cong\mathbb F^n$, depend on a basis~\cite{eilenberg1945}; Mac Lane's book is the standard introduction~\cite{maclane1998}.
 \end{note}
 
 \section{Rank Inequalities and Powers of an Operator}
@@ -928,7 +928,7 @@ so the rank of a product of two matrices of nearly full rank is nearly full as w
 
 \subsection{Powers of an Operator}
 
-For an operator $T$ on a finite-dimensional space, the kernels and the images of the powers $T^k$ form two chains, and the rank inequalities control how these chains behave. The result prepares the canonical forms of Chapter~22.
+For an operator $T$ on a finite-dimensional space, the kernels and the images of the powers $T^k$ form two chains, and the rank inequalities control how these chains behave. The result prepares the canonical forms of \cref{ch:canonical-forms}.
 
 \begin{proposition}[Kernels and images of powers]
 \label{prop:kernel-chain}
@@ -964,7 +964,7 @@ The theorem splits every operator into a nilpotent part and an invertible part, 
 \[
 A=\begin{bmatrix}0&1&0\\0&0&0\\0&0&2\end{bmatrix},\qquad A^2=\begin{bmatrix}0&0&0\\0&0&0\\0&0&4\end{bmatrix},
 \]
-the kernels are $\ker A=\operatorname{span}\{\mathbf e_1\}$ and $\ker A^2=\ker A^3=\operatorname{span}\{\mathbf e_1,\mathbf e_2\}$, so $q=2$, and $\operatorname{im}A^2=\operatorname{span}\{\mathbf e_3\}$; on the first space $A$ acts as the nilpotent matrix $N$ of \cref{prop:similarity}, and on the second as multiplication by $2$. For a projection $P$, $q\le1$, and the Fitting decomposition is the decomposition $V=\ker P\oplus\operatorname{im}P$ of \cref{prop:projection}. Applied to the operators $T-\lambda\operatorname{id}$ for the eigenvalues $\lambda$ of \cref{ch:eigenvalues}, the theorem is the first step towards the Jordan form of Chapter~22. The decomposition carries the name of Hans Fitting~\cite{fitting1933}; Axler bases his account of operators on complex spaces on decompositions of this kind~\cite[Chap.~8]{axler2024}.
+the kernels are $\ker A=\operatorname{span}\{\mathbf e_1\}$ and $\ker A^2=\ker A^3=\operatorname{span}\{\mathbf e_1,\mathbf e_2\}$, so $q=2$, and $\operatorname{im}A^2=\operatorname{span}\{\mathbf e_3\}$; on the first space $A$ acts as the nilpotent matrix $N$ of \cref{prop:similarity}, and on the second as multiplication by $2$. For a projection $P$, $q\le1$, and the Fitting decomposition is the decomposition $V=\ker P\oplus\operatorname{im}P$ of \cref{prop:projection}. Applied to the operators $T-\lambda\operatorname{id}$ for the eigenvalues $\lambda$ of \cref{ch:eigenvalues}, the theorem is the first step towards the Jordan form of \cref{ch:canonical-forms}. The decomposition carries the name of Hans Fitting~\cite{fitting1933}; Axler bases his account of operators on complex spaces on decompositions of this kind~\cite[Chap.~8]{axler2024}.
 
 \section{Invariant Subspaces, Quotients and Duals: A Brief Look}
 \label{sec:invariant-quotient-dual}
@@ -997,7 +997,7 @@ and then $A_{11}$ is the matrix of $T|_U$ with respect to $(\mathbf u_1,\ldots,\
 (i) The first $k$ columns of $[T]_{\mathcal B}$ are the coordinate vectors of $T\mathbf u_1,\ldots,T\mathbf u_k$. A vector lies in $U$ if and only if its last $l$ coordinates vanish, since $V=U\oplus W$ and the coordinates split accordingly. So $T\mathbf u_j\in U$ for all $j$, which is equivalent to the invariance of $U$ because the $\mathbf u_j$ span $U$, holds exactly when the lower left block vanishes; the upper left block then contains the coordinates of $T\mathbf u_j$ with respect to the $\mathbf u_i$. (ii) In the same way, $W$ is invariant exactly when the upper right block of the last $l$ columns vanishes.
 \end{proof}
 
-An upper triangular matrix is thus the record of a chain of invariant subspaces of dimensions $1,2,\ldots,n$, and Schur's theorem in Chapter~22 shows that every operator on a complex space has such a chain, so that every complex square matrix is similar to an upper triangular one. A block diagonal matrix splits the operator into independent operators on the two subspaces; the Fitting decomposition, for instance, puts the matrix of every operator into the block diagonal form with a nilpotent block and an invertible block.
+An upper triangular matrix is thus the record of a chain of invariant subspaces of dimensions $1,2,\ldots,n$, and Schur's theorem in \cref{ch:canonical-forms} shows that every operator on a complex space has such a chain, so that every complex square matrix is similar to an upper triangular one. A block diagonal matrix splits the operator into independent operators on the two subspaces; the Fitting decomposition, for instance, puts the matrix of every operator into the block diagonal form with a nilpotent block and an invertible block.
 
 \subsection{Quotient Spaces}
 
