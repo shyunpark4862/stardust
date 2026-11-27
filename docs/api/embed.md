@@ -1,10 +1,10 @@
 # sd.embed API
 
-> 상태: **초안** (2026-11-27; 설계 결정 EM1–EM48). 아직 공개된 이름이 없다. §2–§7의 공개 이름은 선형 분해(§2: `pca PCAResult truncated_svd TruncatedSVDResult random_projection RandomProjectionResult johnson_lindenstrauss_min_dim factor_analysis FactorAnalysisResult rotate_factors RotationResult fastica FastICAResult nmf NMFResult kernel_pca KernelPCAResult`), 거리 보존(§3: `classical_mds ClassicalMDSResult mds sammon MDSResult`), 이웃 그래프(§4: `isomap IsomapResult locally_linear_embedding LLEResult spectral_embedding SpectralEmbeddingResult`), 확률적 이웃 임베딩(§5: `tsne TSNEResult umap UMAPResult`), 지표(§6: `trustworthiness continuity stress`)이고 마일스톤 EM1–EM8에서 하나씩 공개된다(설계 문서 §8). 시그니처는 scikit-learn 1.9.1(`sklearn.decomposition`, `sklearn.manifold`, `sklearn.random_projection`), R 4.6.2의 `stats`·`MASS`, umap-learn(설치되지 않음; 공개 문서)의 이름과 뜻에 stardust의 규칙과 설계 결정을 입힌 안이다.
+> 상태: **초안** (2026-11-27; 설계 결정 EM1–EM66, EM0 마일스톤의 측정으로 고침). 아직 공개된 이름이 없다. §2–§7의 공개 이름은 선형 분해(§2: `pca PCAResult truncated_svd TruncatedSVDResult random_projection RandomProjectionResult johnson_lindenstrauss_min_dim factor_analysis FactorAnalysisResult rotate_factors RotationResult fastica FastICAResult nmf NMFResult kernel_pca KernelPCAResult`), 거리 보존(§3: `classical_mds ClassicalMDSResult mds sammon MDSResult`), 이웃 그래프(§4: `isomap IsomapResult locally_linear_embedding LLEResult spectral_embedding SpectralEmbeddingResult`), 확률적 이웃 임베딩(§5: `tsne TSNEResult umap UMAPResult`), 지표(§6: `trustworthiness continuity stress`)이고 마일스톤 EM1–EM8에서 하나씩 공개된다(설계 문서 §8). 시그니처는 scikit-learn 1.9.1(`sklearn.decomposition`, `sklearn.manifold`, `sklearn.random_projection`), R 4.6.2의 `stats`·`MASS`, umap-learn 0.6.0의 이름과 뜻에 stardust의 규칙과 설계 결정을 입힌 안이다.
 
 - 설계와 결정의 근거는 [docs/design/embed.md](../design/embed.md)(§1.1 EM1–EM48), 공통 규칙은 [API.md](../../API.md)다. 꼴은 [docs/api/cluster.md](cluster.md)와 같다.
 - 언어 표시가 없는 코드 블록은 `tests/embed/test_api_surface.py`(EM0 마일스톤)가 읽는다. 블록의 줄은 모듈의 함수(`name(...)`), 결과 클래스(`Name`), 결과의 메서드(`Name.method(...)`)다. 블록의 모듈 수준 이름이 `sd.embed.__all__` 전부이고, 시그니처가 블록과 같아야 한다.
-- 설계 문서의 §9에 걸린 곳은 "(§9의 n번)"으로 적었다. 답에 따라 그 줄이 바뀐다.
+- 설계 문서 §9의 네 질문은 답을 받았다(설계 문서 EM49–EM52: 범위는 초안대로, 이웃 찾기의 기본은 `'exact'`, UMAP은 동기 꼴만, 비교 대상 다섯을 설치했다).
 
 ## §1. 공통 규칙
 
@@ -38,7 +38,7 @@
 - 자료가 필요한 메서드(`transform` 등)를 위해 결과는 자료의 읽기 전용 참조를 쥔다(사본이 아니다).
 
 ### §1.4 결정성, 난수, 정확도 (EM4, EM11, EM15)
-- **같은 기계, 같은 스레드 수, 같은 입력(같은 `rng` 상태)이면 실행마다 같은 바이트다**(API.md §3). 거의 모든 길은 스레드 수와도 무관하다(설계 문서 §3.11). BLAS·LAPACK을 부르는 계산(밀집 SVD, Gram, 행렬 곱)은 Accelerate의 스레드 모드가 같을 때 같다(API.md §3).
+- **같은 기계, 같은 스레드 수, 같은 입력(같은 `rng` 상태)이면 실행마다 같은 바이트다**(API.md §3). 거의 모든 길은 스레드 수와도 무관하다(설계 문서 §3.11). BLAS·LAPACK을 부르는 계산(밀집 SVD, Gram, 행렬 곱)은 Accelerate의 스레드 모드가 같을 때 같다(API.md §3). 큰 Gram을 sd 스레드마다 나눠 부르는 모양(`'covariance_eigh'`; 문턱은 EM1 마일스톤)은 같은 스레드 수에서만 같은 바이트다(D-33; 설계 문서 EM53, EM56).
 - **`rng`**: 고른 옵션이 난수를 뽑을 때만 받는다. 언제나 뽑는 함수(`fastica`, `random_projection`, `umap`)는 기본값 없는 키워드다(없으면 `TypeError`). 옵션에 달린 함수는 `rng=None`이고, 필요한데 없으면 `TypeError`(`pca(): svd_solver='randomized' needs 'rng' (sd.random.default_rng(seed))`), 쓰지 않는데 주면 `ValueError`(`pca(): 'rng' is only used with svd_solver='randomized'`)다. 필요를 정하는 것은 옵션의 값뿐이고 자료의 모양이 아니다. 호출 하나가 `rng`에서 64비트 두 단어만 받는다(Philox의 키; 흐름 r의 t번째 수는 원소 r·2⁴⁰ + t; cluster와 같은 규칙).
 - **`'auto'`는 어림을 고르지 않는다**: 무작위 어림(`'randomized'`)은 이름으로만 고른다(`[sklearn과 다름]`).
 - **정확도 계약**(설계 문서 §4): 정의가 있는 양(특이값, 고유쌍, 핵, P, 퍼지 집합, 한 걸음의 기울기, 지표)은 참값과 견준 한계 안이다. 비볼록 반복의 끝 좌표는 계약이 없다. `trustworthiness`·`continuity`는 올바르게 반올림한 값이다.
@@ -54,6 +54,7 @@
   | sklearn `SpectralEmbedding`: 연결되지 않은 그래프(경고) | 계산하고 `n_connected_components` |
   | R `cmdscale`: 음의 고유값(경고) | `eigenvalues`에 모두 보인다 |
   | umap-learn: `random_state`가 `n_jobs`를 덮는다(경고) | 없음: 언제나 나란하고 재현된다 |
+  | umap-learn 0.6: `compatibility_layout`의 기본값 예고(`FutureWarning`) | 없음: 걸음은 언제나 동기 꼴의 Adam |
   | umap-learn: 스펙트럼 시작 실패(경고, 무작위 시작으로) | `LinAlgError`: `umap(): the spectral initialisation did not converge; use init='random'` |
   | R `sammon`: 거리 0의 짝(에러) | `ValueError`: `sammon(): points 3 and 7 are at distance 0; Sammon's stress divides by every distance` |
   | sklearn `TSNE`: perplexity ≥ n(`ValueError`) | 같은 `ValueError`: `tsne(): 'perplexity' (30.0) must be less than the number of points (20)` |
@@ -136,7 +137,7 @@ MDSResult
 MDSResult.summary()
 ```
 - **`classical_mds`**: R `cmdscale`, sklearn `ClassicalMDS`의 뜻이다. B = −½JD²J의 큰 고유값 d개와 √λ로 늘린 고유벡터이고, 0 이하의 고유값에 해당하는 축은 0이다. `add=True`는 Cailliez의 더하는 상수(R `add=TRUE`)다. `eigenvalues`는 n개 모두(R `eig=TRUE`), `gof`는 R `GOF`의 두 값이다.
-- **`mds`**: sklearn `MDS`의 SMACOF다. `metric_mds=True`는 계량, False는 비계량(등위 회귀의 불일치도; 같은 목적의 R `isoMDS`와는 다른 국소 최소에 닿을 수 있다). `init`은 `'classical_mds'`(기본; `[sklearn과 다름]`: sklearn 1.9.1은 `'random'`처럼 돌며 1.10에 바뀐다고 경고한다), `'random'`(`rng` 필요), (n, d) 배열. `n_init` > 1은 `init='random'`에서만이고(`ValueError`) 가장 좋은 시작은 (stress, 번호)가 가장 작은 것이다. 멈춤은 sklearn과 같다(`eps`는 Σδ²/2에 대한 stress 감소의 비). `normalized_stress`는 `'auto'`(비계량이면 True), True(Stress-1), False(날 stress).
+- **`mds`**: sklearn `MDS`의 SMACOF다. `metric_mds=True`는 계량, False는 비계량(등위 회귀의 불일치도, 같은 거리는 같은 불일치도: Kruskal의 둘째 처리, sklearn과 같다; 같은 목적의 R `isoMDS`와는 다른 국소 최소에 닿을 수 있다). `init`은 `'classical_mds'`(기본; `[sklearn과 다름]`: sklearn 1.9.1은 `'random'`처럼 돌며 1.10에 바뀐다고 경고한다), `'random'`(`rng` 필요), (n, d) 배열. `n_init` > 1은 `init='random'`에서만이고(`ValueError`) 가장 좋은 시작은 (stress, 번호)가 가장 작은 것이다. 멈춤은 sklearn과 같다(`eps`는 Σδ²/2에 대한 stress 감소의 비). `normalized_stress`는 `'auto'`(비계량이면 True), True(Stress-1), False(날 stress).
 - **`sammon`**: R `MASS::sammon`의 뜻과 기본값이다(`init='classical_mds'`이 R의 `cmdscale` 시작, `max_iter`는 R `niter`). `init`은 배열도 받는다(난수 없음). 거리가 0인 짝이 있으면 `ValueError`(R과 같다).
 
 | 결과 | 필드 |
@@ -159,10 +160,10 @@ spectral_embedding(X, n_components=2, /, *, affinity='nearest_neighbors', gamma=
 SpectralEmbeddingResult
 SpectralEmbeddingResult.summary()
 ```
-- **이웃**: k 최근접은 `sd.spatial.kneighbors`의 정의다(자기 자신은 뺀다; 동점은 (거리, 열쇠)). `neighbors`는 `'exact'`(기본) 또는 `'nndescent'`(라운드 동기의 NN-descent; 재현되고 스레드와 무관하다)다(기본값은 설계 문서 §9의 2번). `'nndescent'`는 `metric='precomputed'`와 함께 쓸 수 없다(`ValueError`).
+- **이웃**: k 최근접은 `sd.spatial.kneighbors`의 정의다(자기 자신은 뺀다; 동점은 (거리, 열쇠)). `neighbors`는 `'exact'`(기본) 또는 `'nndescent'`(라운드 동기의 NN-descent; 재현되고 스레드와 무관하다)다(설계 문서 EM50). `n_neighbors`의 뜻은 함수마다 기준 라이브러리의 것이다: `isomap`·`locally_linear_embedding`·`tsne`·지표는 점 자신을 빼고 세고, `spectral_embedding`·`umap`은 점 자신을 센다(설계 문서 EM62). `'nndescent'`는 `metric='precomputed'`와 함께 쓸 수 없다(`ValueError`).
 - **`isomap`**: sklearn `Isomap`의 뜻이다. `n_neighbors`와 `radius` 가운데 하나만 준다(둘 다면 `ValueError`; sklearn과 같다: `radius`를 쓰려면 `n_neighbors=None`). `path_method`는 `'auto'`, `'D'`(Dijkstra), `'FW'`(Floyd–Warshall)이고 `sd.graph.shortest_path`와 같은 값이다. `eigen_solver`는 `'auto'`, `'dense'`, `'lanczos'`. 그래프가 여러 성분이면 가장 가까운 짝의 변으로 잇는다(sklearn과 같다; 경고 없이 `n_connected_components`). `transform`은 sklearn과 같은 사영, `reconstruction_error()`는 sklearn과 같은 값이다.
 - **`locally_linear_embedding`**: sklearn의 네 `method`(`'standard'`, `'modified'`, `'hessian'`, `'ltsa'`)와 기본값이다. `'hessian'`은 `n_neighbors` > d(d + 3)/2, `'modified'`는 `n_neighbors` ≥ d가 필요하다(sklearn과 같다; `ValueError`). sklearn의 `random_state`는 없다(고유값 풀이의 시작 벡터가 정해져 있다). `transform`은 sklearn과 같다.
-- **`spectral_embedding`**: sklearn `SpectralEmbedding`의 뜻이다. `affinity`는 `'nearest_neighbors'`(`n_neighbors=None`은 max(n/10, 1)), `'rbf'`(`gamma=None`은 1/p), `'precomputed'`(유사도 행렬; 희소 배열도), `'precomputed_nearest_neighbors'`(희소 거리 그래프를 0/1 연결로). 정규화 라플라시안의 가장 작은 고유벡터들이고 첫째를 버린다. sklearn의 `'amg'`·`'lobpcg'`는 없다.
+- **`spectral_embedding`**: sklearn `SpectralEmbedding`의 뜻이다. `affinity`는 `'nearest_neighbors'`(점 자신을 센 `n_neighbors`개의 0/1 연결 A를 0.5(A + Aᵀ)로; `n_neighbors=None`은 max(⌊n/10⌋, 1); sklearn과 같다), `'rbf'`(`gamma=None`은 1/p), `'precomputed'`(유사도 행렬; 희소 배열도), `'precomputed_nearest_neighbors'`(희소 거리 그래프를 0/1 연결로). 정규화 라플라시안의 가장 작은 고유벡터들이고 첫째를 버린다. sklearn의 `'amg'`·`'lobpcg'`는 없다.
 
 | 결과 | 필드와 메서드 |
 |---|---|
@@ -180,8 +181,8 @@ UMAPResult
 UMAPResult.transform(X_new, /, *, rng)
 UMAPResult.summary()
 ```
-- **`tsne`**: sklearn `TSNE`의 뜻과 기본값이다(설계 문서 EM37). `perplexity` > 0이고 n보다 작다. `learning_rate`는 `'auto'`(max(n/`early_exaggeration`/4, 50)) 또는 양수. `init`은 `'pca'`(결정적인 `pca`의 앞 d 성분을 첫 열 표준편차 10⁻⁴로 줄인 것), `'random'`(N(0, 10⁻⁸); `rng` 필요), (n, d) 배열. `method`는 `'barnes_hut'`(d ≤ 3), `'exact'`, `'fft'`(FIt-SNE의 다항 보간, d ≤ 2; EM8 마일스톤). `angle`은 `'barnes_hut'`의 θ다(다른 방법에서는 무시하지 않고 기본값이 아니면 `ValueError`). `metric='precomputed'`는 거리(제곱하지 않은 값; sklearn과 같다)이고 `init='pca'`와 함께면 `ValueError`(sklearn과 같다). 계산은 float64다(`[sklearn과 다름]`: sklearn은 float32). Barnes–Hut의 합은 스레드 수와 무관하다(`[sklearn과 다름]`).
-- **`umap`**: umap-learn `UMAP`의 뜻과 기본값이다(설계 문서 EM39). `n_neighbors`는 2 이상 n − 1 이하, `n_epochs=None`은 n ≤ 10⁴이면 500, 넘으면 200. `init`은 `'spectral'`, `'random'`(균등 [−10, 10]), (n, d) 배열이고 언제나 `rng`가 필요하다(음의 표본). `a`·`b`가 None이면 `min_dist`·`spread`에서 umap-learn과 같은 곡선 맞춤으로 정한다(둘 다 주거나 둘 다 None; `ValueError`). 최적화는 걸음마다 동기인 꼴이다(설계 문서 EM40; §9의 3번): 같은 `rng` 상태면 스레드 수와 무관하게 같은 바이트이고 나란히 돈다. `[umap-learn과 다름]`: umap-learn은 여러 스레드에서 Hogwild라 재현되지 않고 `random_state`를 주면 1스레드로 돈다. 지도 UMAP(`y`), `densmap`, `inverse_transform`은 없다(나중).
+- **`tsne`**: sklearn `TSNE`의 뜻과 기본값이다(설계 문서 EM37). `perplexity` > 0이고 n보다 작다. `learning_rate`는 `'auto'`(max(n/`early_exaggeration`/4, 50)) 또는 양수. `init`은 `'pca'`(결정적인 `pca`의 앞 d 성분을 첫 열 표준편차 10⁻⁴로 줄인 것), `'random'`(N(0, 10⁻⁸); `rng` 필요), (n, d) 배열. `method`는 `'barnes_hut'`(d ≤ 3), `'exact'`, `'fft'`(FIt-SNE의 다항 보간, d ≤ 2; EM8 마일스톤). `angle`은 `'barnes_hut'`의 θ다(다른 방법에서는 무시하지 않고 기본값이 아니면 `ValueError`). `metric='precomputed'`는 거리(제곱하지 않은 값; sklearn과 같다)이고 `init='pca'`와 함께면 `ValueError`(sklearn과 같다). 계산은 float64다(`[sklearn과 다름]`: sklearn은 float32). Barnes–Hut의 합은 스레드 수와 무관하다(`[sklearn과 다름]`: sklearn의 KL은 스레드 수에 달린다). `n_components` ≥ 3의 기울기는 KL의 정의대로다(`[sklearn과 다름]`: sklearn의 식은 자유도가 1이 아닐 때 KL의 기울기가 아니다; 설계 문서 EM64).
+- **`umap`**: umap-learn `UMAP`의 뜻과 기본값이다(설계 문서 EM39). `n_neighbors`는 2 이상 n − 1 이하, `n_epochs=None`은 n ≤ 10⁴이면 500, 넘으면 200. `init`은 `'spectral'`, `'random'`(균등 [−10, 10]), (n, d) 배열이고 언제나 `rng`가 필요하다(음의 표본). `a`·`b`가 None이면 `min_dist`·`spread`에서 umap-learn과 같은 곡선 맞춤으로 정한다(둘 다 주거나 둘 다 None; `ValueError`). `n_neighbors`는 점 자신을 센다(umap-learn·uwot과 같다: 15면 다른 점 14개). 최적화는 걸음마다 동기인 꼴의 Adam이다(설계 문서 EM40, EM51, EM59): 같은 `rng` 상태면 스레드 수와 무관하게 같은 바이트이고 나란히 돈다. `[umap-learn과 다름]`: umap-learn 0.6의 기본 경로는 여러 스레드에서 Hogwild라 재현되지 않고 `random_state`를 주면 1스레드로 돌며, Adam 경로(`compatibility_layout=False`)는 같은 스레드 수에서만 재현된다. 지도 UMAP(`y`), `densmap`, `inverse_transform`은 없다(나중).
   - `transform(X_new, /, *, rng)`: umap-learn `transform`의 단계(맞춘 점을 고정한 최적화)다. umap-learn의 고정 `transform_seed=42` 대신 `rng`를 받는다(`[umap-learn과 다름]`). `metric='precomputed'`의 맞춤에서는 `ValueError`(새 점과 맞춘 점의 거리가 없다).
 
 | 결과 | 필드 |

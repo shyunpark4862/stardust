@@ -24,6 +24,7 @@ AREAS = (
     "fft",
     "smooth",
     "cluster",
+    "embed",
     "plot",
 )
 

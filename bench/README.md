@@ -10,7 +10,7 @@
 
 | 관례 | 뜻 |
 |---|---|
-| `AREA …` | 위치 인자. 영역 이름 `array linalg frame special stats regression random optimize htest sparse integrate differentiate spatial graph interpolate fft smooth cluster plot`(`bench/areas.py`, README.md의 표 순서) 가운데 그 도구가 다루는 것. 주지 않으면 모두다. 정확도는 참값이 있는 열여섯(array, linalg, special, stats, regression, optimize, htest, sparse, integrate, differentiate, spatial, graph, interpolate, fft, smooth, cluster)을 다룬다(spatial은 공개 함수가 생기는 SPT1부터 스윕이 있다; graph는 GR2 마일스톤부터; interpolate는 IP1 마일스톤부터; fft는 FT1 마일스톤부터; smooth는 SM1 마일스톤부터; cluster는 CL1 마일스톤부터; sparse의 스윕은 `spmv`, `sums`, `solve`, `iterative`, `eig`, `norms`, `matfuncs`의 일곱, integrate는 `samples`, `fixed_quad`, `quad`, `multiple`, `quad_weights`, `tanhsinh`, `nsum`, `quad_vec`, `cubature`, `newton_cotes`의 열, differentiate는 `derivative`, `jacobian`, `hessian`, `gradient`의 넷이다; 나머지는 `list`로 본다). |
+| `AREA …` | 위치 인자. 영역 이름 `array linalg frame special stats regression random optimize htest sparse integrate differentiate spatial graph interpolate fft smooth cluster embed plot`(`bench/areas.py`, README.md의 표 순서) 가운데 그 도구가 다루는 것. 주지 않으면 모두다. 정확도는 참값이 있는 열일곱(array, linalg, special, stats, regression, optimize, htest, sparse, integrate, differentiate, spatial, graph, interpolate, fft, smooth, cluster, embed)을 다룬다(spatial은 공개 함수가 생기는 SPT1부터 스윕이 있다; graph는 GR2 마일스톤부터; interpolate는 IP1 마일스톤부터; fft는 FT1 마일스톤부터; smooth는 SM1 마일스톤부터; cluster는 CL1 마일스톤부터; embed는 EM1 마일스톤부터; sparse의 스윕은 `spmv`, `sums`, `solve`, `iterative`, `eig`, `norms`, `matfuncs`의 일곱, integrate는 `samples`, `fixed_quad`, `quad`, `multiple`, `quad_weights`, `tanhsinh`, `nsum`, `quad_vec`, `cubature`, `newton_cotes`의 열, differentiate는 `derivative`, `jacobian`, `hessian`, `gradient`의 넷이다; 나머지는 `list`로 본다). |
 | `--match PATTERN` | id가 맞는 것만 남긴다. `*`, `?`가 있으면 id 전체와 맞춰 보는 glob이고, 없으면 부분 문자열이다. `[`, `]`는 보통 글자라 표에서 복사한 id(`erf(x) [10^6]`)가 그대로 맞는다. 여러 번 주면 하나만 맞아도 된다. |
 | `--jobs N` | 작업 프로세스 수. 기본 8, 최대 10. |
 | `--out FILE` | 결과를 쓸 파일(폴더가 아니다). |
@@ -187,7 +187,7 @@ Case(area="stats", group="continuous", name="Normal.cdf", size="10^5", n=100_000
 .venv/bin/python -m bench.accuracy table                             # 기준선에서 표만 다시
 ```
 
-- 영역은 참값이 있는 열여섯이다: array, linalg, special, stats(다변량·행렬 분포는 그 안의 묶음, 스윕 id `stats/mv/…`), regression, optimize, htest, sparse, integrate, differentiate, spatial(스윕은 SPT1부터), graph(스윕은 GR2 마일스톤부터), interpolate(스윕은 IP1 마일스톤부터), fft(스윕은 FT1 마일스톤부터), smooth(스윕은 SM1 마일스톤부터), cluster(스윕은 CL1 마일스톤부터). 기준선 파일은 스윕이 있는 영역마다 하나씩 열다섯 개다(`bench/accuracy/results/<영역>.json`, §2.3). 스윕 id는 `영역/이름`이고 `--match`는 그 id에 맞춘다.
+- 영역은 참값이 있는 열일곱이다: array, linalg, special, stats(다변량·행렬 분포는 그 안의 묶음, 스윕 id `stats/mv/…`), regression, optimize, htest, sparse, integrate, differentiate, spatial(스윕은 SPT1부터), graph(스윕은 GR2 마일스톤부터), interpolate(스윕은 IP1 마일스톤부터), fft(스윕은 FT1 마일스톤부터), smooth(스윕은 SM1 마일스톤부터), cluster(스윕은 CL1 마일스톤부터), embed(스윕은 EM1 마일스톤부터). 기준선 파일은 스윕이 있는 영역마다 하나씩 열다섯 개다(`bench/accuracy/results/<영역>.json`, §2.3). 스윕 id는 `영역/이름`이고 `--match`는 그 id에 맞춘다.
 - `--jobs`개(기본 8, 최대 10) 작업 프로세스가 스윕을 나눠 잰다. 워커는 sd 1스레드이고 몇 스윕마다 새로 띄운다. 결과는 프로세스 수와 무관하다.
 - `run --promote`는 재고 바로 기준선에 넣는다. `-q`는 터미널에 아무것도 쓰지 않는다(로그만).
 - 콘솔은 머리 블록, 스윕마다 sd와 비교 대상의 값을 말로 적은 몇 줄(터미널에서는 그 아래 진행 막대), 끝에 요약 블록·영역별 표·번호 붙은 Notes다. 같은 줄이 시각과 함께 `build/logs/accuracy/<시각>.log`에 남는다.
@@ -212,6 +212,7 @@ Case(area="stats", group="continuous", name="Normal.cdf", size="10^5", n=100_000
 | fft | `tests/fft/ref/<묶음>.npz`(`c2c`, `real`, `hermitian`, `r2r`, `nd`; 길이 2¹⁴까지, 그보다 긴 줄은 정확도 체계가 그 자리에서 Arb로 잰다; 다른 라이브러리의 기록은 `tests/fft/data`: numpy, scipy, R, vDSP, 자체 길의 시제품; 스윕은 FT1 마일스톤부터) | `tools/fft_ref.py` (기록은 `tools/fft_probe.py`) |
 | smooth | `tests/smooth/ref/<묶음>.npz`(`local`, `local_nd`, `spline`, `spline_fit`, `kreg`, `kde`, `bandwidth`, `savgol`, `savgol_filter`; 다른 라이브러리의 기록과 SM0 마일스톤의 시제품 측정은 `tests/smooth/data`: scipy, statsmodels, scikit-learn, R, `prototype.json`; 스윕은 SM1 마일스톤부터) | `tools/smooth_ref.py` (기록은 `tools/smooth_probe.py`) |
 | cluster | `tests/cluster/ref/<묶음>.npz`(`hierarchy`, `kmeans`, `kmedoids`, `density`, `mixture`, `metrics`; 다른 라이브러리의 기록과 CL0 마일스톤의 시제품 측정은 `tests/cluster/data`: scipy, scikit-learn, R, `prototype.json`; 스윕은 CL1 마일스톤부터) | `tools/cluster_ref.py` (기록은 `tools/cluster_probe.py`) |
+| embed | `tests/embed/ref/<묶음>.npz`(`linear`, `mds`, `graph`, `sne`, `quality`; 다른 라이브러리의 기록과 EM0 마일스톤의 시제품 측정은 `tests/embed/data`: scikit-learn, scipy, statsmodels, R(uwot·Rtsne·fastICA 포함), umap-learn, openTSNE, `times.json`, `prototype.json`; 스윕은 EM1 마일스톤부터) | `tools/embed_ref.py` (기록은 `tools/embed_probe.py`, 시제품 측정은 `tools/embed_proto.py`) |
 | array(vForce 15개·pow·복소 abs, 리덕션) | `tests/array/ref` | `tools/array_ref.py` |
 | linalg | `tests/linalg/ref`(행렬, 참값, 조건수) | `tools/linalg_ref.py` |
 | optimize | `tests/optimize/ref`(`scalar_roots.json`, `scalar_minima.json`, `derivatives.npz`), NIST StRD 인증값 | `tools/optimize_ref.py` |

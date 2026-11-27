@@ -24,6 +24,7 @@ HEAD = {
     "fft": "sd.fft",
     "smooth": "sd.smooth",
     "cluster": "sd.cluster",
+    "embed": "sd.embed",
 }
 MV = "mv/"  # the stats area's multivariate group: its sweeps' name prefix
 MV_HEAD = "sd.stats 다변량·행렬 분포"

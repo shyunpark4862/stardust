@@ -30,12 +30,14 @@ the other areas' results do (API.md §2.1): "predict(): missing 1 required posit
 
 from .. import _calls, _summary
 from .. import _core as _sd
+from .._learn import LearnResult
+from .._learn import fields_in as _fields_in
 
-_MISSING = object()
 
-
-class ClusterResult:
-    """Base class: ClusterResult(**fields). Not a public constructor (docs/api/cluster.md §1.3)."""
+class ClusterResult(LearnResult):
+    """Base class: ClusterResult(**fields). Not a public constructor (docs/api/cluster.md §1.3). The field
+    mechanics (read-only fields and arrays, lazy fields) are stardust._learn.LearnResult's, shared with sd.embed
+    (docs/design/embed.md EM44)."""
 
     _TITLE = "Clustering Results"
     _METHOD = ""
@@ -43,53 +45,6 @@ class ClusterResult:
     _TUNING = ()
     _COLUMNS = ()
     _REPR = ("nobs", "n_clusters")
-
-    def __init__(self, **fields):
-        values = {}
-        for k, v in fields.items():
-            if isinstance(v, _sd.ndarray):
-                v._set_readonly()
-            values[k] = v
-        object.__setattr__(self, "_fields", values)
-
-    def __getattr__(self, name):
-        fields = object.__getattribute__(self, "_fields")
-        v = fields.get(name, _MISSING)
-        if v is _MISSING:
-            raise AttributeError(f"{type(self).__name__} has no field {name!r}")
-        if callable(v) and not isinstance(v, _sd.ndarray):
-            v = v()
-            if isinstance(v, _sd.ndarray):
-                v._set_readonly()
-            fields[name] = v
-        return v
-
-    def __setattr__(self, name, value):
-        raise AttributeError(f"{type(self).__name__}: the fields are read-only")
-
-    def __delattr__(self, name):
-        raise AttributeError(f"{type(self).__name__}: the fields are read-only")
-
-    def __dir__(self):  # the public fields (the private state a result keeps for its methods is left out)
-        fields = (k for k in object.__getattribute__(self, "_fields") if not k.startswith("_"))
-        return sorted(set(super().__dir__()) | set(fields))
-
-    def _has(self, name):
-        return name in object.__getattribute__(self, "_fields")
-
-    def _cell(self, field):
-        v = getattr(self, field)
-        if v is None:
-            return "None"
-        if isinstance(v, bool):
-            return str(v)
-        if isinstance(v, str):
-            return v
-        if isinstance(v, int):
-            return str(v)
-        if isinstance(v, _sd.ndarray):
-            return _summary.compact(v)
-        return _summary.stat(v)
 
     def _sizes(self):
         """(cluster sizes (K,), noise points, omitted rows) from labels and omitted."""
@@ -136,16 +91,6 @@ class ClusterResult:
             rows.append((str(i), [str(sizes[i])] + [_summary.forg(v[i], 4) for v in values]))
         table = _summary.Table(columns, rows, stub_head="cluster")
         return _summary.render(self._TITLE, header=(left, right), tables=(table,) if rows else ())
-
-    def __repr__(self):
-        return _summary.one_line(type(self).__name__, [(k, getattr(self, k)) for k in self._REPR])
-
-
-def _fields_in(text):
-    """The field names a format string reads ("k-means ({init})" -> ["init"])."""
-    import string
-
-    return [name for _, name, _, _ in string.Formatter().parse(text) if name]
 
 
 _calls.methods(ClusterResult)

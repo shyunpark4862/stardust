@@ -386,6 +386,7 @@ def sweeps(areas=None):
         "fft": lambda: _module("fft").sweeps(),
         "smooth": lambda: _module("smooth").sweeps(),
         "cluster": lambda: _module("cluster").sweeps(),
+        "embed": lambda: _module("embed").sweeps(),
     }
     out = []
     for a in check_areas(areas):

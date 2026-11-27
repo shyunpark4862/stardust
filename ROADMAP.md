@@ -1,6 +1,6 @@
 # stardust 로드맵
 
-> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6 완료·승인, G7a 완료·승인, G7b 완료·승인), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0 완료·승인, O1 완료·승인, O2 완료·승인, O3 완료·승인, O4 완료·승인, O5 완료·승인, O6 완료·승인), 그 뒤 [가설검정 (sd.htest)](#가설검정-영역-sdhtest)(H0 완료·승인, H1 완료·승인, H2 완료·승인, H3 완료·승인, H4 완료·승인, H5 완료·승인, H6 완료·승인(위임), H7 완료·승인(위임), H8 완료·승인(위임), H9 완료·승인(위임), H10 완료·승인(위임)), 그 뒤 [희소 (sd.sparse)](#희소-영역-sdsparse)(SP0 완료·승인, SP1 완료·승인, SP2 완료·승인, SP3 완료·승인, SP4 완료·승인(위임), SP5 완료·승인(위임), SP6 완료·승인(위임), SP7 완료·승인(위임), SP8 완료·승인(위임)), 그 뒤 [수치 미적분 (sd.integrate, sd.differentiate)](#수치-미적분-영역-sdintegrate-sddifferentiate)(C0 완료·승인(위임), C1 완료·승인(위임), C2 완료·승인(위임), C3 완료·승인(위임), C4 완료·승인(위임), C5 완료·승인(위임), C6 완료·승인(위임), C7 완료·승인(위임), C8 완료·승인(위임)), 그 뒤 [공간 (sd.spatial)](#공간-영역-sdspatial)(SPT0 완료·승인(위임), SPT1 완료·승인(위임), SPT2 완료·승인(위임), SPT3 완료·승인(위임), SPT4 완료·승인(위임), SPT6 완료·승인(위임), SPT7 완료·승인(위임); 계산 기하 SPT8·SPT9·SPT10·SPT11·SPT12·SPT13·SPT14 완료·승인(위임), 흩어진 점 보간 IP9는 나중), 그리고 [그림 (sd.plot)](#그림-영역-sdplot)(PL0–PL9 완료·승인), 그 뒤 [그래프 (sd.graph)](#그래프-영역-sdgraph)(GR0·GR1·GR2·GR3·GR4·GR5·GR6·GR7 마일스톤 완료·승인(위임)), 그 뒤 [보간 (sd.interpolate)](#보간-영역-sdinterpolate)(IP0·IP1·IP2·IP3·IP4·IP5·IP6·IP7·IP8 마일스톤 완료·승인(위임)), 그 뒤 [푸리에 변환 (sd.fft)](#푸리에-변환-영역-sdfft)(FT0·FT1·FT2·FT3·FT4·FT5·FT6·FT7 마일스톤 완료·승인(위임)), 그 뒤 [평활 (sd.smooth)](#평활-영역-sdsmooth)(SM0·SM1·SM2·SM3·SM4·SM5·SM6·SM7·SM8 마일스톤 완료·승인(위임)), 그 뒤 [군집 (sd.cluster)](#군집-영역-sdcluster)(CL0–CL8 마일스톤 완료)이다.
+> 상태: **확정** (2026-11-12). 앞부분은 세 프로젝트의 통합(M0–M7, 완료), 뒷부분은 새 영역 [특수함수 (sd.special)](#특수함수-영역-sdspecial)(S0–S11, 완료), 그 뒤 [통계 (sd.stats, sd.random)](#통계-영역-sdstats-sdrandom)(T0–T10, 완료·승인; 검정은 뺐다), 그 뒤 [회귀 (sd.regression)](#회귀-영역-sdregression)(G0–G6 완료·승인, G7a 완료·승인, G7b 완료·승인), 그 뒤 [최적화 (sd.optimize)](#최적화-영역-sdoptimize)(O0 완료·승인, O1 완료·승인, O2 완료·승인, O3 완료·승인, O4 완료·승인, O5 완료·승인, O6 완료·승인), 그 뒤 [가설검정 (sd.htest)](#가설검정-영역-sdhtest)(H0 완료·승인, H1 완료·승인, H2 완료·승인, H3 완료·승인, H4 완료·승인, H5 완료·승인, H6 완료·승인(위임), H7 완료·승인(위임), H8 완료·승인(위임), H9 완료·승인(위임), H10 완료·승인(위임)), 그 뒤 [희소 (sd.sparse)](#희소-영역-sdsparse)(SP0 완료·승인, SP1 완료·승인, SP2 완료·승인, SP3 완료·승인, SP4 완료·승인(위임), SP5 완료·승인(위임), SP6 완료·승인(위임), SP7 완료·승인(위임), SP8 완료·승인(위임)), 그 뒤 [수치 미적분 (sd.integrate, sd.differentiate)](#수치-미적분-영역-sdintegrate-sddifferentiate)(C0 완료·승인(위임), C1 완료·승인(위임), C2 완료·승인(위임), C3 완료·승인(위임), C4 완료·승인(위임), C5 완료·승인(위임), C6 완료·승인(위임), C7 완료·승인(위임), C8 완료·승인(위임)), 그 뒤 [공간 (sd.spatial)](#공간-영역-sdspatial)(SPT0 완료·승인(위임), SPT1 완료·승인(위임), SPT2 완료·승인(위임), SPT3 완료·승인(위임), SPT4 완료·승인(위임), SPT6 완료·승인(위임), SPT7 완료·승인(위임); 계산 기하 SPT8·SPT9·SPT10·SPT11·SPT12·SPT13·SPT14 완료·승인(위임), 흩어진 점 보간 IP9는 나중), 그리고 [그림 (sd.plot)](#그림-영역-sdplot)(PL0–PL9 완료·승인), 그 뒤 [그래프 (sd.graph)](#그래프-영역-sdgraph)(GR0·GR1·GR2·GR3·GR4·GR5·GR6·GR7 마일스톤 완료·승인(위임)), 그 뒤 [보간 (sd.interpolate)](#보간-영역-sdinterpolate)(IP0·IP1·IP2·IP3·IP4·IP5·IP6·IP7·IP8 마일스톤 완료·승인(위임)), 그 뒤 [푸리에 변환 (sd.fft)](#푸리에-변환-영역-sdfft)(FT0·FT1·FT2·FT3·FT4·FT5·FT6·FT7 마일스톤 완료·승인(위임)), 그 뒤 [평활 (sd.smooth)](#평활-영역-sdsmooth)(SM0·SM1·SM2·SM3·SM4·SM5·SM6·SM7·SM8 마일스톤 완료·승인(위임)), 그 뒤 [군집 (sd.cluster)](#군집-영역-sdcluster)(CL0–CL8 마일스톤 완료), 그 뒤 [임베딩 (sd.embed)](#임베딩-영역-sdembed)(EM0 마일스톤 완료)이다.
 >
 > **구현은 사용자가 시작을 지시한 뒤에만 진행한다.**
 
@@ -1326,3 +1326,36 @@
 - 결정(사용자 결정 2026-11-27: 재현성만 있으면 성능 우선; 스레드와 무관한 비트보다 성능, 같은 기계·같은 스레드 수에서 실행마다 같은 비트(D-33; API.md §3, DESIGN.md §1.6 1번)면 된다; 구현과 문턱은 추천안, 사용자 위임): docs/design/cluster.md §1.1 CL106(k-평균 배정: 거르기 앞의 0차 훑기가 `dgemm`의 G = C Xᵀ를 점 여덟씩 NEON으로 훑어, 증명된 한계로 후보가 하나인 점은 차의 꼴을 재지 않고 그 중심을 라벨로 한다; 라벨과 결과의 비트는 그대로이고 스레드와 무관하다. 그래서 거르기와 경계는 모양과 스레드 수로 고르고, 경계의 문턱은 k·p ≥ 64(거르기면 150)), CL107(혼합 E 단계: full·tied의 p ≥ 24(1스레드)·30(2–3스레드)에서 y = Uᵀz를 Accelerate로; 같은 스레드 수에서 같은 비트, 이 영역의 유일한 스레드 의존 길). CL9·CL49·CL95와 §9의 39·40번에 결과를 적었다.
 - 결과: csrc/cluster/kmeans.cpp(0차 훑기, 라벨만 읽는 배정, 스레드 수의 문턱, 측정용 `_kmeans_assign_reps`), csrc/cluster/mixture.cpp(`weighted_logprob_blas`, `blas_estep`, `gmm_fit`·`gmm_estimate`의 `path`), 테스트(k-평균 스레드 비교에 길이 스레드 수로 바뀌는 자료, 혼합의 두 커널 계약과 같은 스레드 수의 같은 바이트), 골든(THREAD_DEPENDENT 둘, 새 사례 하나; 다시 기록한 사례 0), 속도 기준선(사례 11)과 정확도 기준선.
 - 찾은 것(docs/design/cluster.md §5): k-평균 배정 한 번의 1스레드는 Accelerate 전개식의 0.78–1.02배(k = 5–20, p = 10–50; 전 1.2–2.0배), 맞춤 `kmeans p=10 k=10`은 1 / 10스레드 23.6 / 4.47 → 16.3 / 3.86 ms(sklearn 30.8 / 11.8), `bisecting_kmeans`는 31.4 → 27.4 ms로 sklearn(29.9)보다 빠르다. 혼합 E 단계의 1스레드는 p = 50 6.42 → 3.76 ms, p = 100 21.6 → 8.20 ms이고 `gaussian_mixture full p=50 k=5 same start`는 267 → 211 ms(sklearn 231)다. Accelerate의 판은 대개 자체 커널과 같은 fma 차례라 E 단계의 비트가 같았고(무작위 120번 중 114번), 점 하나짜리 끝 작업처럼 행이 아주 적은 곱에서만 끝자리가 달랐다. 10스레드에서는 자체 커널이 같거나 빠르다.
+
+# 임베딩 영역 (sd.embed)
+
+> 상태: **EM0 마일스톤 완료** (2026-11-27). 설계는 [docs/design/embed.md](docs/design/embed.md), API는 [docs/api/embed.md](docs/api/embed.md)(초안)다. 공개 이름은 아직 없고 EM1–EM8 마일스톤에서 하나씩 공개된다. 결정은 EM1–EM66이다.
+
+## 진행 원칙
+- 다른 영역과 같다: 마일스톤마다 시작 전에 정할 것을 추천안으로 정하고, 구현하고, 정확도·속도를 재고, 커밋한다. 해설과 안내서는 쓰지 않는다. 결정 번호와 마일스톤 이름이 같은 머리글자라서 마일스톤은 "EM1 마일스톤"처럼 적는다. 마일스톤 에이전트는 한 번에 하나다.
+- 큰 결정(사용자, 2026-11-24·27): 함수가 결과 객체를 돌려준다(`pca(X, n_components)` → `PCAResult`); 차원 축소와 임베딩, 선형 분해가 한 영역이다(LDA는 `sd.classify`); 비교 대상은 Python과 R을 모두 조사해 설치된 것과 견준다(EM1–EM3). §9의 답(2026-11-27): 범위는 초안대로(EM49, 사용자 결정), 비교 대상 다섯(umap-learn, openTSNE, R uwot, Rtsne, fastICA)을 설치(EM52, 사용자 결정), 이웃 찾기의 기본은 정확한 k-NN(EM50)과 UMAP은 동기 꼴만(EM51)은 추천안 위임이다.
+- 결정성(EM53, 사용자 결정 2026-11-27): 지켜야 하는 약속은 D-33(같은 기계·같은 스레드 수면 실행마다 같은 바이트)이다. 스레드 수와 무관한 바이트는 잴 수 있는 속도를 잃지 않는 곳에서 지키고, 빠른 꼴이 이기면 묻지 않고 D-33으로 물러서며 그 골든 케이스를 `THREAD_DEPENDENT`에 둔다. D-33조차 지킬 수 없는 길만 묻는다. 성능이 먼저이고 정확도가 그다음이다: 자체 커널이 가장 빠른 꼴보다 1.5배 넘게 느리면 빠른 꼴로 바꾼다(EM54).
+- 참값은 정확한 유리수와 Arb다(mpmath 금지). 기존 영역의 결과는 비트까지 같아야 한다(이 영역은 다른 영역의 커널을 부르기만 한다; 공용 장치를 꺼낸 EM0 마일스톤은 cluster의 테스트·골든으로 확인했다).
+
+## 진행 상태
+| 마일스톤 | 상태 |
+|---|---|
+| EM0 준비: 영역 등록, 공용 장치 꺼내기, 시험 자료, 참값, 비교 대상의 설치와 기록, 시제품의 측정, 결과의 공통 기반, 속도 사례와 골든의 틀 | 완료 (2026-11-27; EM49–EM66) |
+| EM1 PCA·절단 SVD·무작위 투영: `pca`, `truncated_svd`, `random_projection`, `johnson_lindenstrauss_min_dim` | 예정 |
+| EM2 인자 분석·회전·ICA: `factor_analysis`, `rotate_factors`, `fastica` | 예정 |
+| EM3 NMF·커널 PCA: `nmf`, `kernel_pca` | 예정 |
+| EM4 MDS: `classical_mds`, `mds`, `sammon`, `stress` | 예정 |
+| EM5 이웃 그래프와 지표: `isomap`, `locally_linear_embedding`, `spectral_embedding`, `trustworthiness`, `continuity` | 예정 |
+| EM6 t-SNE: `tsne`(`'exact'`, `'barnes_hut'`) | 예정 |
+| EM7 UMAP: `umap`(동기 Adam, `transform`) | 예정 |
+| EM8 큰 n: `neighbors='nndescent'`, `tsne(method='fft')` | 예정 |
+| EM9 성능과 일관성 점검 | 예정 |
+| EM10 문서와 전체 검사 | 예정 |
+
+## 마일스톤
+
+### EM0 마일스톤. 준비 — 완료(2026-11-27)
+- 결정: docs/design/embed.md §1.1 EM49–EM52(§9의 네 답), EM53·EM54(결정성과 성능의 규칙, 사용자 결정), EM55–EM66(추천안, 사용자 위임 2026-11-27: 공용 장치를 꺼낸 것, Gram의 꼴과 D-33의 모양, 작은 고유값 문제, Barnes–Hut의 정렬 나무, UMAP의 Adam, 정확한 이웃의 비용, umap-learn의 판, 이웃 수의 뜻, 바로잡은 초안 셋, t-SNE의 d ≥ 3 기울기, 퇴화 입력, 시제품과 측정 도구).
+- 설치(EM52): `.venv`에 umap-learn 0.6.0(numba 0.68.1, llvmlite 0.50.0, pynndescent 0.7.0)과 openTSNE 1.0.4, R에 uwot 0.2.5(FNN, RcppAnnoy, dqrng, RcppProgress, BH, sitmo), Rtsne 0.17, fastICA 1.2-8. 이미 있던 꾸러미는 바뀌지 않았다.
+- 결과: src/stardust/embed/(`sd.embed`, `__all__`은 비었다; `_results.py`의 `EmbeddingResult`와 `summary`, `_common.py`), 공용 장치 src/stardust/_learn.py(학습 영역의 검사와 결과의 필드 장치 `LearnResult`; `ClusterResult`도 잇는다)와 csrc/base/keyorder.hpp(열쇠 순서, 덩이 짝 합, 난수의 원소 번호; csrc/cluster/common.hpp는 `using`으로 받는다), 시제품 csrc/embed/prototype.cpp와 csrc/bind/embed_bind.cpp(`_core.embed._proto_*`; 그 길을 구현하는 마일스톤이 지운다), 시험 자료 tests/embed/samples.py(점 집합 39개), 참값 tools/embed_ref.py(다섯 묶음 → tests/embed/ref/, 약 3 MiB)와 tests/embed/refdata.py, 탐침 tools/embed_probe.py(sklearn·scipy·statsmodels·R·umap-learn·openTSNE의 기록과 §5의 시간 → tests/embed/data/), 시제품 측정 tools/embed_proto.py(→ prototype.json), 측정 등록(bench/areas.py, bench/accuracy/embed.py, bench/embed/accuracy.md, bench/speed/cases/embed.py의 18 사례 계획, tests/golden/cases_embed.py와 빈 기록), 테스트 tests/embed/(test_api_surface.py, test_results.py, test_reference_data.py). cluster 테스트 344개와 골든 2,758케이스가 1·3·10스레드에서 그대로다.
+- 찾은 것(docs/design/embed.md §5, §5.1, §7.4): 자체 NEON Gram은 Accelerate `dsyrk`의 1스레드 3.8–115배라 두지 않고, 큰 Gram은 스레드 덩이 꼴이 10스레드에서 2.8–3.8배 빨라 D-33의 모양이 된다(문턱은 EM1 마일스톤). Barnes–Hut의 정렬 나무는 삽입 나무보다 만들기가 3–4배 빠르고 float64의 값은 3–5%다. UMAP의 동기 Adam은 같은 걸음 수에서 umap-learn의 차례 SGD와 같거나 낫고 1스레드에서도 1.4배 빠르며 1·3·10스레드가 같은 바이트다. 비교 대상: t-SNE BH n = 2×10⁴에서 Rtsne(25.6 s)가 sklearn(87.6 s)보다 빠르고, umap-learn 0.6의 Adam 경로는 10스레드 2.6 s(n = 7×10⁴)다. sklearn TSNE는 d ≥ 3의 기울기 식이 KL의 기울기가 아니고, 모든 점이 같으면 SIGSEGV로 죽는다.
