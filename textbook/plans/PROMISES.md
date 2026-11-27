@@ -210,5 +210,5 @@
 - 12권: (3권 2장에서) 최소제곱의 자연스러운 척도 ‖·‖_2(fig:function-distances 뒤), 점값은 취약하고 적분은 견고함(sec:continuity-metric 'Evaluation and integration'), 수치 미분의 불안정성(prop:differentiation-unbounded 뒤), 이산화가 기대는 구적 규칙(sec:metric-computation 'A Neumann Series'; 검토 때 OUTLINE 12권에 적분 방정식이 없어 Nyström 이산화의 분석 약속을 구적 규칙으로 좁힘)
 - 13권: (3권 2장에서) 좋은 시작점에서 Newton 방법의 수렴을 thm:local-contraction 꼴의 논법으로(thm:local-contraction 뒤 "an argument of this kind that Volume~XIII gives"; 1권의 Kantorovich 약속과 같은 자리), 선형 수렴이라는 용어(thm:banach-fixed-point 뒤)
 - 11권: (3권 3장에서) Chebyshev 최소최대 근사(최선 균등 근사의 존재는 thm:best-approximation-normed, 유일성과 계산 알고리즘은 11권; sec:finite-dimensional 'Best Approximation' 끝 "Volume~XI develops this theory")
-- 13권: (3권 3장에서) 하반연속 함수와 제약 함수 χ_F로 하는 존재 정리(thm:lsc-minimum 뒤 "Volume~XIII builds on existence results of this kind"), 강압 함수의 최솟값 존재(cor:coercive-minimum), 그물 위 최댓값의 보증과 전역 최적화의 비용(prop:net-maximum 뒤)
+- 13권: (3권 3장에서) 하반연속 함수와 제약 함수 χ_F로 하는 존재 정리(thm:lsc-minimum 뒤 "Volume~XIII builds on existence results of this kind"; 강압 함수의 최솟값 cor:coercive-minimum과 그물 위 최댓값 prop:net-maximum은 본문이 13권을 가리키지 않으므로 약속이 아님 — 검토 2026-11-27)
 - 17권: (3권 3장에서) 고차원 최근접 이웃 탐색과 차원의 저주(sec:compact-computation 'Counting ε-Nets' 끝 "which Volume~XVII studies")
